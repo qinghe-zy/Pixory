@@ -29,6 +29,8 @@ interface GlobalSearchScreenProps {
   onOpenImageDetail: (imageId: number) => void;
 }
 
+const SEARCH_RESULT_LIMIT = 20;
+
 export function GlobalSearchScreen({
   space = 'normal',
   query,
@@ -40,6 +42,8 @@ export function GlobalSearchScreen({
   onOpenImageDetail,
 }: GlobalSearchScreenProps) {
   const keyword = query.trim();
+  const [debouncedKeyword, setDebouncedKeyword] = useState(keyword);
+  const resultKey = JSON.stringify([space, debouncedKeyword]);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<string | null>(null);
@@ -48,42 +52,45 @@ export function GlobalSearchScreen({
     groups: GlobalGroupListItem[];
     tags: TagUsageItem[];
     images: ImageListItem[];
+    resultKey: string;
   }>(
     async () => {
-      if (!keyword) {
-        return { groups: [], images: [], ips: [], tags: [] };
+      if (!debouncedKeyword) {
+        return { groups: [], images: [], ips: [], tags: [], resultKey };
       }
 
-      const [ips, allGroups, allTags, images] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        ipRepository.findLibraryItems(db, { searchText: keyword }),
-        groupRepository.findOverview(db),
-        tagRepository.findUsageOverview(db),
-        imageRepository.findFiltered(db, { mediaType: 'all', searchText: keyword }),
+      const [ipPage, groups, tagPage, imagePage] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findLibraryItemsPage(db, { searchText: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
+        groupRepository.findOverviewSearch(db, debouncedKeyword, SEARCH_RESULT_LIMIT),
+        tagRepository.findUsageOverviewPage(db, { searchText: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
+        imageRepository.findFilteredPage(db, { mediaType: 'all', searchText: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
       ]));
-      const lower = keyword.toLowerCase();
 
       return {
-        ips,
-        groups: allGroups.filter((group) => group.name.toLowerCase().includes(lower) || group.ipName.toLowerCase().includes(lower)),
-        tags: allTags.filter((tag) => tag.name.toLowerCase().includes(lower)),
-        images,
+        ips: ipPage.items,
+        groups,
+        tags: tagPage.items,
+        images: imagePage.items,
+        resultKey,
       };
     },
-    [keyword, space],
+    [debouncedKeyword, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `搜索失败：${message}`;
       },
-      initialData: { groups: [], images: [], ips: [], tags: [] },
+      initialData: { groups: [], images: [], ips: [], tags: [], resultKey: '' },
     }
   );
-  const ips = data?.ips ?? [];
-  const groups = data?.groups ?? [];
-  const tags = data?.tags ?? [];
-  const images = data?.images ?? [];
+  const isCurrentResult = data?.resultKey === resultKey && keyword === debouncedKeyword;
+  const ips = isCurrentResult ? data.ips : [];
+  const groups = isCurrentResult ? data.groups : [];
+  const tags = isCurrentResult ? data.tags : [];
+  const images = isCurrentResult ? data.images : [];
   const totalCount = ips.length + groups.length + tags.length + images.length;
-  const isEmpty = !isLoading && totalCount === 0;
+  const isSearchLoading = Boolean(keyword) && (isLoading || !isCurrentResult);
+  const isEmpty = !isSearchLoading && totalCount === 0;
   const showHistory = !keyword && searchHistory.length > 0;
   const suggestions = keyword
     ? buildSearchSuggestions({
@@ -94,6 +101,11 @@ export function GlobalSearchScreen({
         tags,
       })
     : [];
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(keyword), 250);
+    return () => clearTimeout(timer);
+  }, [keyword]);
 
   useEffect(() => {
     let isMounted = true;
@@ -157,9 +169,9 @@ export function GlobalSearchScreen({
           emptyDescription=""
           emptyIconName="search-outline"
           emptyTitle=""
-          errorMessage={errorMessage}
+          errorMessage={isCurrentResult ? errorMessage : null}
           isEmpty={false}
-          loading={isLoading && Boolean(keyword)}
+          loading={isSearchLoading}
           loadingDescription="正在搜索本地 SQLite 数据。"
           loadingTitle="搜索中"
           onRetry={reload}

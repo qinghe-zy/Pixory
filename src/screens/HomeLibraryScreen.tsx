@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -14,7 +14,7 @@ import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../cons
 import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { BlurView } from 'expo-blur';
-import { useScreenLoad } from '../hooks/useScreenLoad';
+import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
@@ -25,6 +25,8 @@ const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'recent', label: '最近更新' },
   { key: 'favorite', label: '收藏' },
 ];
+
+const IP_LIBRARY_PAGE_SIZE = 20;
 
 interface HomeLibraryScreenProps {
   refreshKey: number;
@@ -55,28 +57,38 @@ export function HomeLibraryScreen({
   const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [isMovingSpace, setIsMovingSpace] = useState(false);
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ items: IpListItem[]; needsOrganizingCount: number }>(
-    async () => {
-      const [items, needsOrganizingCount] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        ipRepository.findLibraryItems(db, {
-          filter: activeFilter,
-        }),
-        imageRepository.countNeedsOrganizing(db),
-      ]));
-      return { items, needsOrganizingCount };
-    },
-    [activeFilter, refreshKey, space],
+  const {
+    items,
+    meta: needsOrganizingCount,
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    loadMore,
+    reload,
+  } = usePagedScreenLoad<IpListItem, number>(
+    async (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await ipRepository.findLibraryItemsPage(db, {
+        filter: activeFilter,
+        limit: IP_LIBRARY_PAGE_SIZE,
+        offset,
+      });
+      const count = offset === 0 ? await imageRepository.countNeedsOrganizing(db) : undefined;
+      return { items: page.items, hasMore: page.hasMore, meta: count };
+    }),
     {
+      requestKey: JSON.stringify([space, activeFilter, refreshKey]),
+      getItemKey: (item) => item.id,
+      initialMeta: 0,
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取 IP 资产失败：${message}`;
       },
-      initialData: { items: [], needsOrganizingCount: 0 },
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败');
+      },
       deferUntilInteractions: true,
     }
   );
-  const items = data?.items ?? [];
-  const needsOrganizingCount = data?.needsOrganizingCount ?? 0;
 
   useEffect(() => {
     setActiveFilter(initialFilter);
@@ -188,7 +200,6 @@ export function HomeLibraryScreen({
       backgroundVariant="home"
       footer={footer}
       rightAction={rightSlot}
-      scrollable
       subtitle="IP 图像资产管理"
       title="Pixory"
       titleVariant="brand"
@@ -256,11 +267,17 @@ export function HomeLibraryScreen({
           onEmptyAction={onCreateIp}
           onRetry={reload}
         >
-          <View style={styles.grid}>
-            {items.map((item) => (
-              <IPCard ip={item} key={item.id} onLongPress={handleDeleteIp} onPress={onOpenIp} space={space} />
-            ))}
-          </View>
+          <FlatList
+            contentContainerStyle={styles.grid}
+            data={items}
+            keyExtractor={(item) => String(item.id)}
+            ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            renderItem={({ item }) => <IPCard ip={item} onLongPress={handleDeleteIp} onPress={onOpenIp} space={space} />}
+            showsVerticalScrollIndicator={false}
+            style={styles.list}
+          />
         </PageStateBlock>
       </View>
     </ScreenScaffold>
@@ -395,6 +412,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emptyWrap: {
+    flex: 1,
     paddingTop: spacing[3],
   },
   emptyGuideOffset: {
@@ -402,6 +420,13 @@ const styles = StyleSheet.create({
   },
   grid: {
     gap: rhythm.entryCardGap,
+    paddingBottom: spacing[6],
+  },
+  list: {
+    flex: 1,
+  },
+  loadingMore: {
+    marginVertical: spacing[4],
   },
   passwordInput: {
     ...typography.textStyles.body,

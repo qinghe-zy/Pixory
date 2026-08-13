@@ -16,6 +16,8 @@ import type {
   GroupRow,
   IpOrganizationProgress,
   NeedsOrganizingScope,
+  PageRequest,
+  PageResult,
   SuspectedDuplicateGroup,
   SumRow,
   UpdateImageAssetInput,
@@ -794,6 +796,26 @@ export const imageRepository = {
     );
 
     return rows.map(mapImageListItemRow);
+  },
+
+  async findFilteredPage(db: SQLiteDatabase, options?: ImageListQueryOptions & PageRequest): Promise<PageResult<ImageListItem>> {
+    const limit = Math.max(1, Math.min(100, Math.floor(options?.limit ?? 20)));
+    const offset = Math.max(0, Math.floor(options?.offset ?? 0));
+    const queryParts = buildImageListQueryParts([], [], options);
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}
+       LIMIT ? OFFSET ?`,
+      ...queryParts.values,
+      limit + 1,
+      offset
+    );
+    return {
+      items: rows.slice(0, limit).map(mapImageListItemRow),
+      hasMore: rows.length > limit,
+    };
   },
 
   async findByIds(db: SQLiteDatabase, ids: number[], options?: ImageListQueryOptions): Promise<ImageListItem[]> {

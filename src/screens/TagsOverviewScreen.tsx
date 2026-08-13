@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -11,7 +11,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { runWithDatabaseSpace, tagRepository, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
-import { useScreenLoad } from '../hooks/useScreenLoad';
+import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 
 interface TagsOverviewScreenProps {
@@ -22,9 +22,17 @@ interface TagsOverviewScreenProps {
   onOpenTag: (tagId: number) => void;
 }
 
+const TAG_PAGE_SIZE = 60;
+
+interface TagOverviewMeta {
+  popularTags: TagUsageItem[];
+  recentTags: TagUsageItem[];
+}
+
 export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, titleSlot, onOpenTag }: TagsOverviewScreenProps) {
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [actionTag, setActionTag] = useState<TagUsageItem | null>(null);
   const [deleteTag, setDeleteTag] = useState<TagUsageItem | null>(null);
   const [renameTag, setRenameTag] = useState<TagUsageItem | null>(null);
@@ -34,37 +42,62 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [isBatchDeleteDialogVisible, setIsBatchDeleteDialogVisible] = useState(false);
-  const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
-    () => runWithDatabaseSpace(space, (db) => tagRepository.findUsageOverview(db)),
-    [refreshToken, space],
+  const {
+    items: tags,
+    hasMore,
+    meta: { popularTags, recentTags },
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    loadMore,
+    reload,
+  } = usePagedScreenLoad<TagUsageItem, TagOverviewMeta>(
+    (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await tagRepository.findUsageOverviewPage(db, {
+        limit: TAG_PAGE_SIZE,
+        offset,
+        searchText: debouncedSearchText,
+      });
+      if (offset > 0 || debouncedSearchText.trim()) {
+        return { items: page.items, hasMore: page.hasMore };
+      }
+      const [nextPopularTags, nextRecentTags] = await Promise.all([
+        tagRepository.findPopular(db, 6),
+        tagRepository.findRecentlyUsed(db, 6),
+      ]);
+      return {
+        items: page.items,
+        hasMore: page.hasMore,
+        meta: { popularTags: nextPopularTags, recentTags: nextRecentTags },
+      };
+    }),
     {
+      requestKey: JSON.stringify([space, debouncedSearchText.trim(), refreshToken]),
+      getItemKey: (tag) => tag.id,
+      initialMeta: { popularTags: [], recentTags: [] },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取标签总览失败：${message}`;
       },
-      initialData: [],
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多标签失败：${error.message}` : '加载更多标签失败');
+      },
     }
   );
-  const visibleTags = useMemo(() => {
-    const keyword = searchText.trim().toLowerCase();
-    return keyword ? tags.filter((tag) => tag.name.toLowerCase().includes(keyword)) : tags;
-  }, [searchText, tags]);
-  const popularTags = useMemo(
-    () => [...tags].sort((left, right) => right.imageCount - left.imageCount).slice(0, 6),
-    [tags]
-  );
-  const recentTags = useMemo(
-    () =>
-      [...tags]
-        .filter((tag) => tag.lastUsedAt)
-        .sort((left, right) => new Date(right.lastUsedAt ?? '').getTime() - new Date(left.lastUsedAt ?? '').getTime())
-        .slice(0, 6),
-    [tags]
-  );
-  const shouldShowPopular = !searchText.trim() && popularTags.length > 0;
-  const shouldShowRecent = !searchText.trim() && recentTags.length > 0;
+  const visibleTags = tags;
+  const shouldShowPopular = !debouncedSearchText.trim() && popularTags.length > 0;
+  const shouldShowRecent = !debouncedSearchText.trim() && recentTags.length > 0;
   const allSelected = visibleTags.length > 0 && visibleTags.every((tag) => selectedTagIds.includes(tag.id));
   const selectedCount = selectedTagIds.length;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchText(searchText), 250);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    clearSelectionMode();
+  }, [debouncedSearchText, refreshToken, space]);
 
   function toggleTagSelection(tagId: number) {
     setSelectedTagIds((current) => (current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]));
@@ -216,9 +249,53 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
     </View>
   );
 
+  const listHeader = (
+    <View style={styles.listHeader}>
+      {shouldShowRecent ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>最近使用</Text>
+          <View style={styles.allTags}>
+            {recentTags.map((tag) => (
+              <Pressable
+                key={tag.id}
+                onLongPress={() => handleTagLongPress(tag)}
+                onPress={() => handleTagPress(tag)}
+                style={({ pressed }) => [styles.recentTagPill, selectedTagIds.includes(tag.id) ? styles.selectedPill : null, pressed && styles.pressed]}
+              >
+                <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
+                <Text style={styles.pillCount}>{tag.imageCount}</Text>
+                {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {shouldShowPopular ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>热门标签</Text>
+          <View style={styles.popularGrid}>
+            {popularTags.map((tag) => (
+              <Pressable
+                key={tag.id}
+                onLongPress={() => handleTagLongPress(tag)}
+                onPress={() => handleTagPress(tag)}
+                style={({ pressed }) => [styles.popularTag, selectedTagIds.includes(tag.id) ? styles.selectedTag : null, pressed && styles.pressed]}
+              >
+                <Text numberOfLines={1} style={styles.popularName}>#{tag.name}</Text>
+                <Text style={styles.countBadge}>{tag.imageCount}</Text>
+                {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      <Text style={styles.sectionTitle}>{debouncedSearchText.trim() ? '搜索结果' : '全部标签'}</Text>
+    </View>
+  );
+
   return (
     <>
-    <ScreenScaffold backgroundVariant="tags" decorativeTitle="Tags" footer={footer} rightAction={rightAction} scrollable title="标签" titleSlot={titleSlot}>
+    <ScreenScaffold backgroundVariant="tags" decorativeTitle="Tags" footer={footer} rightAction={rightAction} title="标签" titleSlot={titleSlot}>
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
       </View>
@@ -230,7 +307,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
           </View>
           <View style={styles.selectionActions}>
             <Pressable disabled={visibleTags.length === 0} onPress={toggleSelectAll} style={({ pressed }) => [styles.selectionButton, visibleTags.length === 0 ? styles.disabled : null, pressed && visibleTags.length > 0 ? styles.pressed : null]}>
-              <Text style={styles.selectionButtonText}>{allSelected ? '取消全选' : '全选'}</Text>
+              <Text style={styles.selectionButtonText}>{allSelected ? '取消全选' : hasMore ? '全选已加载' : '全选'}</Text>
             </Pressable>
             <Pressable disabled={selectedCount === 0} onPress={() => setIsBatchDeleteDialogVisible(true)} style={({ pressed }) => [styles.selectionButtonDanger, selectedCount === 0 ? styles.disabled : null, pressed && selectedCount > 0 ? styles.pressed : null]}>
               <Text style={styles.selectionButtonDangerText}>批量删除</Text>
@@ -267,73 +344,32 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
         loadingTitle="正在读取标签"
         onRetry={reload}
       >
-        <View style={styles.content}>
-          {shouldShowRecent ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>最近使用</Text>
-              <View style={styles.allTags}>
-                {recentTags.map((tag) => (
-                  <Pressable
-                    key={tag.id}
-                    onLongPress={() => handleTagLongPress(tag)}
-                    onPress={() => handleTagPress(tag)}
-                    style={({ pressed }) => [styles.recentTagPill, selectedTagIds.includes(tag.id) ? styles.selectedPill : null, pressed && styles.pressed]}
-                  >
-                    <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
-                    <Text style={styles.pillCount}>{tag.imageCount}</Text>
-                    {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {shouldShowPopular ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>热门标签</Text>
-              <View style={styles.popularGrid}>
-                {popularTags.map((tag) => (
-                  <Pressable
-                    key={tag.id}
-                    onLongPress={() => handleTagLongPress(tag)}
-                    onPress={() => handleTagPress(tag)}
-                    style={({ pressed }) => [
-                      styles.popularTag,
-                      selectedTagIds.includes(tag.id) ? styles.selectedTag : null,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text numberOfLines={1} style={styles.popularName}>#{tag.name}</Text>
-                    <Text style={styles.countBadge}>{tag.imageCount}</Text>
-                    {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{searchText.trim() ? '搜索结果' : '全部标签'}</Text>
-            <View style={styles.allTags}>
-              {visibleTags.map((tag) => (
+          <FlatList
+            columnWrapperStyle={styles.tagRow}
+            contentContainerStyle={styles.tagList}
+            data={visibleTags}
+            keyExtractor={(item) => String(item.id)}
+            ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+            ListHeaderComponent={listHeader}
+            numColumns={2}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            renderItem={({ item: tag }) => (
+              <View style={styles.tagCell}>
                 <Pressable
-                  key={tag.id}
                   onLongPress={() => handleTagLongPress(tag)}
                   onPress={() => handleTagPress(tag)}
-                  style={({ pressed }) => [
-                    styles.tagPill,
-                    selectedTagIds.includes(tag.id) ? styles.selectedPill : null,
-                    pressed && styles.pressed,
-                  ]}
+                  style={({ pressed }) => [styles.tagPill, selectedTagIds.includes(tag.id) ? styles.selectedPill : null, pressed && styles.pressed]}
                 >
                   <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
                   <Text style={styles.pillCount}>{tag.imageCount}</Text>
                   {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
                 </Pressable>
-              ))}
-            </View>
-          </View>
-        </View>
+              </View>
+            )}
+            showsVerticalScrollIndicator={false}
+            style={styles.tagListViewport}
+          />
       </PageStateBlock>
     </ScreenScaffold>
     <AppActionSheet
@@ -472,6 +508,10 @@ const styles = StyleSheet.create({
   section: {
     gap: rhythm.listCardGap,
   },
+  listHeader: {
+    gap: rhythm.screenSectionGap,
+    paddingBottom: rhythm.listCardGap,
+  },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
   },
@@ -585,6 +625,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     columnGap: rhythm.compactGridGap,
     rowGap: rhythm.compactGridGap,
+  },
+  tagList: {
+    paddingBottom: spacing[6],
+    rowGap: rhythm.compactGridGap,
+  },
+  tagListViewport: {
+    flex: 1,
+  },
+  tagRow: {
+    columnGap: rhythm.compactGridGap,
+    marginBottom: rhythm.compactGridGap,
+  },
+  tagCell: {
+    flex: 1,
+  },
+  loadingMore: {
+    marginVertical: spacing[4],
   },
   tagPill: {
     alignItems: 'center',

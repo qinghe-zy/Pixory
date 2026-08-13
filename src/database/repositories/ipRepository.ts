@@ -8,6 +8,7 @@ import type {
   IpListItemRow,
   IpRecord,
   IpRow,
+  PageResult,
   UpdateIpInput,
 } from '../types';
 import {
@@ -161,6 +162,103 @@ function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array
   };
 }
 
+function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: Array<number | string>; limit: number } {
+  const values: Array<number | string> = [];
+  const whereClauses: string[] = ['ips.deletedAt IS NULL'];
+  const normalizedSearchText = query?.searchText?.trim();
+  const filter = query?.filter ?? 'all';
+  const limit = Math.max(1, Math.min(100, Math.floor(query?.limit ?? 20)));
+  const offset = Math.max(0, Math.floor(query?.offset ?? 0));
+
+  if (normalizedSearchText) {
+    const likeValue = `%${normalizedSearchText}%`;
+    whereClauses.push("(ips.name LIKE ? COLLATE NOCASE OR COALESCE(ips.description, '') LIKE ? COLLATE NOCASE)");
+    values.push(likeValue, likeValue);
+  }
+
+  if (filter === 'favorite') {
+    whereClauses.push('ips.isFavorite = 1');
+  }
+
+  const orderBy = filter === 'all'
+    ? 'ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
+    : 'ips.updatedAt DESC, ips.id DESC';
+
+  return {
+    sql: `WITH page_ips AS (
+      SELECT ips.*
+      FROM ips
+      WHERE ${whereClauses.join(' AND ')}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    ),
+    image_stats AS (
+      SELECT
+        image_assets.ipId,
+        COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image' THEN image_assets.id END) AS imageCount,
+        COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'video' THEN image_assets.id END) AS videoCount,
+        COALESCE(SUM(CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.fileSize ELSE 0 END), 0) AS totalBytes
+      FROM page_ips
+      CROSS JOIN image_assets
+      WHERE image_assets.ipId = page_ips.id
+      GROUP BY image_assets.ipId
+    ),
+    group_stats AS (
+      SELECT groups.ipId, COUNT(*) AS groupCount
+      FROM page_ips
+      CROSS JOIN groups
+      WHERE groups.ipId = page_ips.id
+      GROUP BY groups.ipId
+    )
+    SELECT
+      page_ips.id,
+      page_ips.name,
+      page_ips.description,
+      page_ips.isFavorite,
+      page_ips.coverImageAssetId,
+      page_ips.coverBlurEnabled,
+      page_ips.coverBlurRadius,
+      page_ips.deletedAt,
+      page_ips.createdAt,
+      page_ips.updatedAt,
+      COALESCE(image_stats.imageCount, 0) AS imageCount,
+      COALESCE(image_stats.videoCount, 0) AS videoCount,
+      COALESCE(group_stats.groupCount, 0) AS groupCount,
+      COALESCE(image_stats.totalBytes, 0) AS totalBytes,
+      COALESCE(
+        (
+          SELECT customCover.thumbnailFileUri
+          FROM image_assets AS customCover
+          WHERE customCover.id = page_ips.coverImageAssetId
+            AND customCover.ipId = page_ips.id
+            AND customCover.deletedAt IS NULL
+          LIMIT 1
+        ),
+        (
+          SELECT defaultCover.thumbnailFileUri
+          FROM image_assets AS defaultCover
+          WHERE defaultCover.ipId = page_ips.id
+            AND defaultCover.deletedAt IS NULL
+          ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
+          LIMIT 1
+        )
+      ) AS coverThumbnailFileUri,
+      CASE WHEN EXISTS (
+        SELECT 1
+        FROM image_assets AS customCover
+        WHERE customCover.id = page_ips.coverImageAssetId
+          AND customCover.ipId = page_ips.id
+          AND customCover.deletedAt IS NULL
+      ) THEN 'custom' ELSE 'default' END AS coverSource
+    FROM page_ips
+    LEFT JOIN image_stats ON image_stats.ipId = page_ips.id
+    LEFT JOIN group_stats ON group_stats.ipId = page_ips.id
+    ORDER BY ${orderBy.replaceAll('ips.', 'page_ips.')}`,
+    values: [...values, limit + 1, offset],
+    limit,
+  };
+}
+
 export const ipRepository = {
   async create(db: SQLiteDatabase, input: CreateIpInput): Promise<IpRecord> {
     const now = createTimestamp();
@@ -239,6 +337,16 @@ export const ipRepository = {
     const builtQuery = buildLibraryQuery(query);
     const rows = await db.getAllAsync<IpListItemRow>(builtQuery.sql, ...builtQuery.values);
     return rows.map(mapIpListItemRow);
+  },
+
+  async findLibraryItemsPage(db: SQLiteDatabase, query?: IpLibraryQuery): Promise<PageResult<IpListItem>> {
+    const builtQuery = buildLibraryPageQuery(query);
+    const rows = await db.getAllAsync<IpListItemRow>(builtQuery.sql, ...builtQuery.values);
+    const hasMore = rows.length > builtQuery.limit;
+    return {
+      items: rows.slice(0, builtQuery.limit).map(mapIpListItemRow),
+      hasMore,
+    };
   },
 
   async findLibraryItemById(db: SQLiteDatabase, id: number): Promise<IpListItem | null> {

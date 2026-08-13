@@ -9,9 +9,10 @@ export interface AssetFilterDrawerProps {
   onClose: () => void;
   visible: boolean;
   children: ReactNode;
+  scrollable?: boolean;
 }
 
-export function AssetFilterDrawer({ onClose, visible, children }: AssetFilterDrawerProps) {
+export function AssetFilterDrawer({ onClose, visible, children, scrollable = true }: AssetFilterDrawerProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -27,9 +28,13 @@ export function AssetFilterDrawer({ onClose, visible, children }: AssetFilterDra
               <Ionicons color={colors.text.body} name="close" size={24} />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            {children}
-          </ScrollView>
+          {scrollable ? (
+            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={[styles.content, styles.flexContent]}>{children}</View>
+          )}
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing[6]) }]}>
             <Pressable onPress={onClose} style={({ pressed }) => [styles.footerBtn, pressed && styles.pressed]}>
               <Text style={styles.footerBtnText}>收起筛选</Text>
@@ -87,6 +92,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[6],
     paddingVertical: spacing[5],
     gap: rhythm.screenSectionGap,
+  },
+  flexContent: {
+    flex: 1,
   },
   footer: {
     backgroundColor: colors.background.surface,

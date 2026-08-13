@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -14,9 +14,9 @@ import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { BlurView } from 'expo-blur';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
-import { groupRepository, runWithDatabaseSpace, type GlobalGroupListItem, type PixorySpace } from '../database';
+import { groupRepository, ipRepository, runWithDatabaseSpace, type GlobalGroupListItem, type IpListItem, type PixorySpace } from '../database';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
-import { useScreenLoad } from '../hooks/useScreenLoad';
+import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
@@ -34,6 +34,9 @@ interface GlobalGroupsScreenProps {
   onImportImagesToGroup?: (ipId: number, groupId: number) => void;
   onImportVideosToGroup?: (ipId: number, groupId: number) => void;
 }
+
+const GROUP_PAGE_SIZE = 30;
+const IP_SCOPE_PAGE_SIZE = 30;
 
 export function GlobalGroupsScreen({
   space = 'normal',
@@ -53,25 +56,63 @@ export function GlobalGroupsScreen({
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
   const [isIpDrawerOpen, setIsIpDrawerOpen] = useState(false);
-  const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
-    () => runWithDatabaseSpace(space, (db) => groupRepository.findOverview(db)),
-    [refreshToken, space],
+  const {
+    items: groups,
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    loadMore,
+    reload,
+  } = usePagedScreenLoad<GlobalGroupListItem, null>(
+    (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await groupRepository.findOverviewPage(db, {
+        ipId: selectedIpId ?? undefined,
+        limit: GROUP_PAGE_SIZE,
+        offset,
+      });
+      return { items: page.items, hasMore: page.hasMore };
+    }),
     {
+      requestKey: JSON.stringify([space, selectedIpId, refreshToken]),
+      getItemKey: (group) => group.id,
+      initialMeta: null,
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取分组总览失败：${message}`;
       },
-      initialData: [],
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多分组失败：${error.message}` : '加载更多分组失败');
+      },
+    }
+  );
+  const {
+    items: ipScopes,
+    isLoadingMore: isLoadingMoreScopes,
+    loadMore: loadMoreScopes,
+  } = usePagedScreenLoad<IpListItem, null>(
+    (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await ipRepository.findLibraryItemsPage(db, { limit: IP_SCOPE_PAGE_SIZE, offset });
+      return { items: page.items, hasMore: page.hasMore };
+    }),
+    {
+      requestKey: JSON.stringify([space, refreshToken]),
+      getItemKey: (ip) => ip.id,
+      initialMeta: null,
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败');
+      },
     }
   );
 
-  const ipScopes = [...new Map(groups.map((group) => [group.ipId, { id: group.ipId, name: group.ipName }])).values()];
-  const visibleGroups = selectedIpId == null ? groups : groups.filter((group) => group.ipId === selectedIpId);
-  const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? '全部 IP';
+  useEffect(() => {
+    setSelectedIpId(null);
+  }, [space]);
+
+  const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? groups[0]?.ipName ?? '当前 IP';
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
-    items: visibleGroups.filter((group) => group.type === option.value),
-  })).filter((section) => section.items.length > 0);
+    data: groups.filter((group) => group.type === option.value),
+  })).filter((section) => section.data.length > 0);
 
   function getGroupCoverBlurRadius(group: GlobalGroupListItem): number | undefined {
     return space === 'personal' && (group.ipCoverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(group.ipCoverBlurRadius) : undefined;
@@ -112,7 +153,7 @@ export function GlobalGroupsScreen({
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} rightAction={headerRightAction} scrollable title="分组" titleSlot={titleSlot}>
+    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} rightAction={headerRightAction} title="分组" titleSlot={titleSlot}>
       <PageStateBlock
         emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
         emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"
@@ -127,38 +168,18 @@ export function GlobalGroupsScreen({
         onEmptyAction={onCreateFirstIp}
         onRetry={reload}
       >
-        <View style={styles.list}>
-          {groupedSections.map((section) => (
-            <View key={section.value} style={styles.sectionBlock}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{section.label}</Text>
-                <Text style={styles.sectionCount}>{section.items.length}</Text>
-              </View>
-              {section.items.map((group) => (
-                <View key={group.id} style={styles.groupCardWrapper}>
-                  <Pressable
-                    onLongPress={() => setActionGroup(group)}
-                    onPress={() => onOpenGroup(group.ipId, group.id)}
-                    style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}
-                  >
-                    <View style={styles.groupCardInner}>
-                      <View style={styles.coverWrap}>
-                        {group.coverThumbnailFileUri ? (
-                          <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
-                        ) : (
-                          <View style={styles.coverEmpty}>
-                            <Ionicons color={colors.primary.default} name="images-outline" size={22} />
-                          </View>
-                        )}
-                      </View>
-                      <GroupCardCopy group={group} />
-                    </View>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
+        <SectionList
+          contentContainerStyle={styles.list}
+          keyExtractor={(group) => String(group.id)}
+          ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          renderItem={({ item: group }) => <View style={styles.groupCardWrapper}><Pressable onLongPress={() => setActionGroup(group)} onPress={() => onOpenGroup(group.ipId, group.id)} style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}><View style={styles.groupCardInner}><View style={styles.coverWrap}>{group.coverThumbnailFileUri ? <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} /> : <View style={styles.coverEmpty}><Ionicons color={colors.primary.default} name="images-outline" size={22} /></View>}</View><GroupCardCopy group={group} /></View></Pressable></View>}
+          renderSectionHeader={({ section }) => <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.label}</Text><Text style={styles.sectionCount}>{section.data.length}</Text></View>}
+          sections={groupedSections}
+          showsVerticalScrollIndicator={false}
+          style={styles.listViewport}
+        />
       </PageStateBlock>
     </ScreenScaffold>
     <AppActionSheet
@@ -195,7 +216,7 @@ export function GlobalGroupsScreen({
       space={space}
       visible={Boolean(renameGroup)}
     />
-    <AssetFilterDrawer onClose={() => setIsIpDrawerOpen(false)} visible={isIpDrawerOpen}>
+    <AssetFilterDrawer onClose={() => setIsIpDrawerOpen(false)} scrollable={false} visible={isIpDrawerOpen}>
       <OptionSelectRow
         label="全部 IP"
         onPress={() => {
@@ -204,17 +225,15 @@ export function GlobalGroupsScreen({
         }}
         selected={selectedIpId === null}
       />
-      {ipScopes.map((ip) => (
-        <OptionSelectRow
-          key={ip.id}
-          label={ip.name}
-          onPress={() => {
-            setSelectedIpId(ip.id);
-            setIsIpDrawerOpen(false);
-          }}
-          selected={selectedIpId === ip.id}
-        />
-      ))}
+      <FlatList
+        data={ipScopes}
+        keyExtractor={(ip) => String(ip.id)}
+        ListFooterComponent={isLoadingMoreScopes ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+        onEndReached={loadMoreScopes}
+        onEndReachedThreshold={0.5}
+        renderItem={({ item: ip }) => <OptionSelectRow label={ip.name} onPress={() => { setSelectedIpId(ip.id); setIsIpDrawerOpen(false); }} selected={selectedIpId === ip.id} />}
+        style={styles.scopeList}
+      />
     </AssetFilterDrawer>
     <AppDialog
       danger
@@ -255,6 +274,16 @@ const styles = StyleSheet.create({
   list: {
     gap: rhythm.entryCardGap,
     paddingTop: spacing[4],
+    paddingBottom: spacing[6],
+  },
+  listViewport: {
+    flex: 1,
+  },
+  loadingMore: {
+    marginVertical: spacing[4],
+  },
+  scopeList: {
+    flex: 1,
   },
   emptyGuideOffset: {
     paddingTop: spacing[8],

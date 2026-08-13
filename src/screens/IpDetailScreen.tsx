@@ -89,7 +89,7 @@ export function IpDetailScreen({
     async () => {
       const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findDetailById(db, ipId),
-        groupRepository.findOverviewByIpId(db, ipId),
+        groupRepository.findOverviewPreviewByIpId(db, ipId, 4),
         imageRepository.findRecentByIpId(db, ipId, 15, { mediaType: 'all' }),
         importBatchRepository.findByIpId(db, ipId, 3),
         imageRepository.countNeedsOrganizing(db, ipId),
@@ -442,7 +442,7 @@ export function IpDetailScreen({
             <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={() => { setIsDrawerVisible(false); onOpenGroups(); }} title="分组入口" />
             {groups.length > 0 ? (
               <View style={styles.groupEntryList}>
-                {groups.slice(0, 4).map((group) => (
+                {groups.map((group) => (
                   <Pressable
                     key={group.id}
                     onLongPress={() => { setIsDrawerVisible(false); setActionGroup(group); }}

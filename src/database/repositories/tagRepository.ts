@@ -1,6 +1,16 @@
-import type { CountRow, CreateTagInput, TagRecord, TagUsageItem, TagUsageItemRow, UpdateTagInput } from '../types';
+import type { CountRow, CreateTagInput, PageResult, TagRecord, TagUsageItem, TagUsageItemRow, UpdateTagInput } from '../types';
 import { buildUpdateStatement, createTimestamp, mapTagUsageItemRow, requireNonEmptyText } from '../utils';
 import type { SQLiteDatabase } from 'expo-sqlite';
+
+const SQLITE_BIND_BATCH_SIZE = 400;
+
+function chunkValues<T>(values: T[], size = SQLITE_BIND_BATCH_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < values.length; offset += size) {
+    chunks.push(values.slice(offset, offset + size));
+  }
+  return chunks;
+}
 
 function normalizeTagNames(tagNames: string[]): string[] {
   const deduped = new Map<string, string>();
@@ -75,32 +85,39 @@ async function getOrCreateTag(db: SQLiteDatabase, name: string): Promise<TagReco
 }
 
 async function touchImagesAfterTagChange(db: SQLiteDatabase, imageIds: number[]): Promise<void> {
-  if (imageIds.length === 0) {
+  const uniqueImageIds = [...new Set(imageIds)];
+  if (uniqueImageIds.length === 0) {
     return;
   }
 
   const now = createTimestamp();
-  const imageInClause = buildInClause(imageIds);
+  const ipIds = new Set<number>();
+  const groupIds = new Set<number>();
 
-  await db.runAsync(
-    `UPDATE image_assets SET updatedAt = ? WHERE id IN (${imageInClause.placeholders})`,
-    now,
-    ...imageInClause.values
-  );
+  for (const imageIdBatch of chunkValues(uniqueImageIds)) {
+    const imageInClause = buildInClause(imageIdBatch);
+    await db.runAsync(
+      `UPDATE image_assets SET updatedAt = ? WHERE id IN (${imageInClause.placeholders})`,
+      now,
+      ...imageInClause.values
+    );
+    const parents = await db.getAllAsync<{ ipId: number; groupId: number | null }>(
+      `SELECT DISTINCT image_assets.ipId, image_groups.groupId
+       FROM image_assets
+       LEFT JOIN image_groups ON image_groups.imageAssetId = image_assets.id
+       WHERE image_assets.id IN (${imageInClause.placeholders})`,
+      ...imageInClause.values
+    );
+    for (const parent of parents) {
+      ipIds.add(parent.ipId);
+      if (parent.groupId != null) {
+        groupIds.add(parent.groupId);
+      }
+    }
+  }
 
-  const parents = await db.getAllAsync<{ ipId: number; groupId: number | null }>(
-    `SELECT DISTINCT image_assets.ipId, image_groups.groupId
-     FROM image_assets
-     LEFT JOIN image_groups ON image_groups.imageAssetId = image_assets.id
-     WHERE image_assets.id IN (${imageInClause.placeholders})`,
-    ...imageInClause.values
-  );
-
-  const ipIds = [...new Set(parents.map((parent) => parent.ipId))];
-  const groupIds = [...new Set(parents.map((parent) => parent.groupId).filter((groupId): groupId is number => groupId != null))];
-
-  if (ipIds.length > 0) {
-    const ipInClause = buildInClause(ipIds);
+  for (const ipIdBatch of chunkValues([...ipIds])) {
+    const ipInClause = buildInClause(ipIdBatch);
     await db.runAsync(
       `UPDATE ips SET updatedAt = ? WHERE id IN (${ipInClause.placeholders})`,
       now,
@@ -108,8 +125,8 @@ async function touchImagesAfterTagChange(db: SQLiteDatabase, imageIds: number[])
     );
   }
 
-  if (groupIds.length > 0) {
-    const groupInClause = buildInClause(groupIds);
+  for (const groupIdBatch of chunkValues([...groupIds])) {
+    const groupInClause = buildInClause(groupIdBatch);
     await db.runAsync(
       `UPDATE groups SET updatedAt = ? WHERE id IN (${groupInClause.placeholders})`,
       now,
@@ -208,6 +225,51 @@ export const tagRepository = {
     return rows.map(mapTagUsageItemRow);
   },
 
+  async findUsageOverviewPage(db: SQLiteDatabase, input?: { searchText?: string; limit?: number; offset?: number }): Promise<PageResult<TagUsageItem>> {
+    const limit = Math.max(1, Math.min(100, Math.floor(input?.limit ?? 60)));
+    const offset = Math.max(0, Math.floor(input?.offset ?? 0));
+    const searchText = input?.searchText?.trim();
+    const where = searchText ? 'WHERE tags.name LIKE ? COLLATE NOCASE' : '';
+    const values: Array<number | string> = searchText ? [`%${searchText}%`] : [];
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt) END) AS lastUsedAt
+       FROM tags
+       LEFT JOIN image_tags ON image_tags.tagId = tags.id
+       LEFT JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       ${where}
+       GROUP BY tags.id
+       ORDER BY tags.name COLLATE NOCASE ASC, tags.id ASC
+       LIMIT ? OFFSET ?`,
+      ...values,
+      limit + 1,
+      offset
+    );
+    return {
+      items: rows.slice(0, limit).map(mapTagUsageItemRow),
+      hasMore: rows.length > limit,
+    };
+  },
+
+  async findPopular(db: SQLiteDatabase, limit = 6): Promise<TagUsageItem[]> {
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt) END) AS lastUsedAt
+       FROM tags
+       LEFT JOIN image_tags ON image_tags.tagId = tags.id
+       LEFT JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       GROUP BY tags.id
+       ORDER BY imageCount DESC, tags.name COLLATE NOCASE ASC, tags.id ASC
+       LIMIT ?`,
+      Math.max(1, Math.min(20, Math.floor(limit)))
+    );
+    return rows.map(mapTagUsageItemRow);
+  },
+
   async findUsageOverviewByIpId(db: SQLiteDatabase, ipId: number): Promise<TagUsageItem[]> {
     const rows = await db.getAllAsync<TagUsageItemRow>(
       `SELECT
@@ -231,7 +293,7 @@ export const tagRepository = {
       `SELECT
          tags.*,
          COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
-         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.updatedAt, image_assets.createdAt) END) AS lastUsedAt
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt, image_assets.createdAt) END) AS lastUsedAt
        FROM tags
        INNER JOIN image_tags ON image_tags.tagId = tags.id
        INNER JOIN image_assets ON image_assets.id = image_tags.imageAssetId
@@ -365,25 +427,26 @@ export const tagRepository = {
     if (tagIds.length === 0) {
       return 0;
     }
-    const tagInClause = buildInClause(tagIds);
-    const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
-      `SELECT DISTINCT imageAssetId FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,
-      ...tagInClause.values
-    );
-    const affectedImageIds = affectedImages.map((image) => image.imageAssetId);
     let changedCount = 0;
 
     await db.withTransactionAsync(async () => {
-      await db.runAsync(
-        `DELETE FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,
-        ...tagInClause.values
-      );
-      const result = await db.runAsync(
-        `DELETE FROM tags WHERE id IN (${tagInClause.placeholders})`,
-        ...tagInClause.values
-      );
-      changedCount = result.changes;
-      await touchImagesAfterTagChange(db, affectedImageIds);
+      for (const tagIdBatch of chunkValues(tagIds)) {
+        const tagInClause = buildInClause(tagIdBatch);
+        const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
+          `SELECT DISTINCT imageAssetId FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,
+          ...tagInClause.values
+        );
+        await db.runAsync(
+          `DELETE FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,
+          ...tagInClause.values
+        );
+        const result = await db.runAsync(
+          `DELETE FROM tags WHERE id IN (${tagInClause.placeholders})`,
+          ...tagInClause.values
+        );
+        changedCount += result.changes;
+        await touchImagesAfterTagChange(db, affectedImages.map((image) => image.imageAssetId));
+      }
     });
 
     return changedCount;
