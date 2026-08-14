@@ -7407,10 +7407,11 @@ export function AiChatScreen({
         </View>
       </Modal>
       <ParallaxLightSweep
-        color1="#81D4FA"
-        color2="#FFAB91"
+        color1="#A7F3D0"
+        color2="#BAE6FD"
         fadeDuration={500}
-        opacity={0.65}
+        opacity={0.2}
+        variant="edges"
         visible={showSweep}
       />
     </AppScreen>

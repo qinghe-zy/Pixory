@@ -26,6 +26,8 @@ export interface ParallaxLightSweepProps {
   fadeInDuration?: number;
   /** 单独指定淡出时长，覆盖 fadeDuration */
   fadeOutDuration?: number;
+  /** 极光分布模式：default（铺满全屏），edges（仅边缘发光，中间通透留白） */
+  variant?: 'default' | 'edges';
 }
 
 /**
@@ -43,6 +45,7 @@ export function ParallaxLightSweep({
   fadeDuration = 1200,
   fadeInDuration,
   fadeOutDuration,
+  variant = 'default',
 }: ParallaxLightSweepProps) {
   const { width, height } = useWindowDimensions();
   
@@ -103,9 +106,10 @@ export function ParallaxLightSweep({
   return (
     <Animated.View style={[styles.container, containerStyle]} pointerEvents="none">
       {/* 顶部边缘发光区 */}
-      <Animated.View style={[styles.topAurora, layer1Style]}>
+      <Animated.View style={[variant === 'edges' ? styles.topAuroraEdges : styles.topAurora, layer1Style]}>
         <LinearGradient
-          colors={[color1, 'transparent']}
+          colors={[color1, variant === 'edges' ? 'transparent' : `${color1}00`, 'transparent']}
+          locations={variant === 'edges' ? [0, 0.4, 1] : [0, 0.8, 1]}
           start={{ x: 0.5, y: 0.1 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.gradientFill}
@@ -113,9 +117,10 @@ export function ParallaxLightSweep({
       </Animated.View>
       
       {/* 底部边缘发光区 */}
-      <Animated.View style={[styles.bottomAurora, layer2Style]}>
+      <Animated.View style={[variant === 'edges' ? styles.bottomAuroraEdges : styles.bottomAurora, layer2Style]}>
         <LinearGradient
-          colors={[color2, 'transparent']}
+          colors={[color2, variant === 'edges' ? 'transparent' : `${color2}00`, 'transparent']}
+          locations={variant === 'edges' ? [0, 0.4, 1] : [0, 0.8, 1]}
           start={{ x: 0.5, y: 0.9 }}
           end={{ x: 0.5, y: 0 }}
           style={styles.gradientFill}
@@ -137,12 +142,26 @@ const styles = StyleSheet.create({
     width: '200%',
     height: '80%',
   },
+  topAuroraEdges: {
+    position: 'absolute',
+    top: '-20%',
+    left: '-50%',
+    width: '200%',
+    height: '45%',
+  },
   bottomAurora: {
     position: 'absolute',
     bottom: '-30%',
     left: '-50%',
     width: '200%',
     height: '80%',
+  },
+  bottomAuroraEdges: {
+    position: 'absolute',
+    bottom: '-20%',
+    left: '-50%',
+    width: '200%',
+    height: '45%',
   },
   gradientFill: {
     flex: 1,
