@@ -11,6 +11,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 export const MagneticCardContext = createContext<{
   rotateX: SharedValue<number>;
@@ -78,31 +79,31 @@ export function MagneticCardContainer({
     });
 
   // 平滑物理倾斜角度。动态判断并选择传感器数据源。
+  // 优化物理手感：降低阻尼 (damping) 并微调刚度 (stiffness)，使得光效跟随手腕滑动时产生极其丝滑的“流体滞后感”和微小回弹。
+  const sensorSpringConfig = { damping: 28, stiffness: 55, mass: 0.8 };
+
   const smoothedPitch = useDerivedValue(() => {
     let rPitch = rotation.sensor.value?.pitch ?? 0;
     let rRoll = rotation.sensor.value?.roll ?? 0;
     let rYaw = rotation.sensor.value?.yaw ?? 0;
     
-    // 如果 ROTATION 传感器有任何非 0 数据输出，说明硬件可用且未被权限拦截
     if (!hasRotationData.value && (rPitch !== 0 || rRoll !== 0 || rYaw !== 0)) {
       hasRotationData.value = true;
     }
 
     if (hasRotationData.value) {
-      // ROTATION 的 pitch 为弧度。放大 8 倍以对齐 GRAVITY 的数值范围，确保高光扫过幅度一致。
-      return withSpring(rPitch * 8, { damping: 40, stiffness: 60 });
+      return withSpring(rPitch * 8, sensorSpringConfig);
     } else {
-      // 降级使用 GRAVITY 的 y 轴重力分量
-      return withSpring(gravity.sensor.value?.y ?? 0, { damping: 40, stiffness: 60 });
+      return withSpring(gravity.sensor.value?.y ?? 0, sensorSpringConfig);
     }
   });
 
   const smoothedRoll = useDerivedValue(() => {
     if (hasRotationData.value) {
       let rRoll = rotation.sensor.value?.roll ?? 0;
-      return withSpring(rRoll * 8, { damping: 40, stiffness: 60 });
+      return withSpring(rRoll * 8, sensorSpringConfig);
     } else {
-      return withSpring(gravity.sensor.value?.x ?? 0, { damping: 40, stiffness: 60 });
+      return withSpring(gravity.sensor.value?.x ?? 0, sensorSpringConfig);
     }
   });
 
@@ -152,37 +153,97 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     return null;
   }
 
-  const animatedStyle = useAnimatedStyle(() => {
-    // 基础高光位置由卡片手势翻转角度决定
+  // 前沿高光算法 1：Sheen (高光面反射) + 全向物理跟随 (Angular Tracking)
+  // 带有菲涅尔效应的锐利扫光带，不仅亮度随倾斜角变大，其光带的旋转角度也 360 度完全跟随物理重力向量
+  const animatedSheenStyle = useAnimatedStyle(() => {
     let tx = -context.rotateY.value * 25; 
     let ty = -context.rotateX.value * 25;
+    tx -= context.roll.value * context.gyroSensitivity * 15;
+    ty -= context.pitch.value * context.gyroSensitivity * 15;
 
-    // 叠加设备物理旋转 (基于重力 x/y 分量)
-    // 重力值在 -9.8 到 +9.8 左右。映射到像素位移，使得高光可以在卡片表面大幅度平滑扫过
+    // 菲涅尔方程近似
+    const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
+    const fresnelOpacity = Math.min(1, 0.4 + (tiltMagnitude / 150));
+
+    // 核心高级算法：计算重力向量的绝对角度 (弧度)
+    // 使得光效带始终完美垂直于手机倾斜滑动的方向，实现真正的 3D 球面反光映射
+    const angle = Math.atan2(ty, tx);
+
+    return {
+      transform: [
+        { translateX: tx * 1.6 },
+        { translateY: ty * 1.6 },
+        { rotate: `${angle}rad` }, // 动态注入旋转
+      ],
+      opacity: intensity * fresnelOpacity,
+    };
+  });
+
+  // 前沿高光算法 2：Ambient Glow (环境柔光光源)
+  // 模拟远处的巨大柔光箱，移动速度较慢，与 Sheen 形成 3D 视差 (Parallax) 纵深感
+  const animatedAmbientStyle = useAnimatedStyle(() => {
+    let tx = -context.rotateY.value * 25; 
+    let ty = -context.rotateX.value * 25;
     tx -= context.roll.value * context.gyroSensitivity * 15;
     ty -= context.pitch.value * context.gyroSensitivity * 15;
 
     return {
       transform: [
-        { translateX: tx }, 
-        { translateY: ty },
+        { translateX: tx * 0.5 }, // 速度系数 0.5，视觉上位于更深的空间
+        { translateY: ty * 0.5 },
       ],
-      opacity: intensity, // 保持恒定亮度，不随角度变暗，确保“通透度不能变”
+      opacity: intensity * 0.7, // 保持恒定且柔和的环境照明
     };
   });
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, animatedStyle, { pointerEvents: 'none' }]}>
-      {/* 300% 尺寸并旋转 45度，形成大面积的对角线高级反光扫过卡片 */}
-      <View style={{ position: 'absolute', width: '300%', height: '300%', top: '-100%', left: '-100%', transform: [{ rotate: '45deg' }] }}>
-        <LinearGradient
-          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0)']}
-          locations={[0.3, 0.45, 0.5, 0.55, 0.7]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={{ flex: 1 }}
-        />
-      </View>
-    </Animated.View>
+    <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
+      {/* 底层空间：Ambient Glow 环境漫反射 */}
+      <Animated.View style={[StyleSheet.absoluteFill, animatedAmbientStyle]}>
+        <View style={{ position: 'absolute', width: '200%', height: '200%', top: '-50%', left: '-50%' }}>
+          <Svg height="100%" width="100%">
+            <Defs>
+              <RadialGradient id="ambient-glow" cx="50%" cy="50%" rx="50%" ry="50%">
+                {/* 极其柔和的宽广光源，绝不产生“手电筒光点”感 */}
+                <Stop offset="0%" stopColor="white" stopOpacity="0.35" />
+                <Stop offset="50%" stopColor="white" stopOpacity="0.1" />
+                <Stop offset="100%" stopColor="white" stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#ambient-glow)" />
+          </Svg>
+        </View>
+      </Animated.View>
+
+      {/* 顶层空间：Directional Sheen 镜面高光带 (融合微小色散 Chromatic Aberration) */}
+      <Animated.View style={[StyleSheet.absoluteFill, animatedSheenStyle]}>
+        <View style={{ position: 'absolute', width: '300%', height: '300%', top: '-100%', left: '-100%' }}>
+          {/* 红橙色散边 (稍稍向左偏移) */}
+          <LinearGradient
+            colors={['rgba(255,50,0,0)', 'rgba(255,100,0,0.15)', 'rgba(255,255,255,0)']}
+            locations={[0.42, 0.48, 0.51]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* 主白光体 */}
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0)']}
+            locations={[0.4, 0.47, 0.5, 0.53, 0.6]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* 青蓝色散边 (稍稍向右偏移) */}
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(0,180,255,0.15)', 'rgba(0,50,255,0)']}
+            locations={[0.49, 0.52, 0.58]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      </Animated.View>
+    </View>
   );
 }
