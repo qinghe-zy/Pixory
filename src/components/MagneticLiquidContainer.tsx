@@ -53,6 +53,9 @@ export function MagneticLiquidContainer({
   const isPressed = useSharedValue(false);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  const fallbackForce = useSharedValue(0);
+  const forceX = externalForceX ?? fallbackForce;
+  const forceY = externalForceY ?? fallbackForce;
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-5, 5])
@@ -81,8 +84,8 @@ export function MagneticLiquidContainer({
       translateY.value = withSpring(0, springConfig);
     });
 
-  const totalX = useDerivedValue(() => translateX.value + (externalForceX?.value ?? 0));
-  const totalY = useDerivedValue(() => translateY.value + (externalForceY?.value ?? 0));
+  const totalX = useDerivedValue(() => translateX.value + forceX.value);
+  const totalY = useDerivedValue(() => translateY.value + forceY.value);
   
   const derivedAngle = useDerivedValue(() => Math.atan2(totalY.value, totalX.value));
 
