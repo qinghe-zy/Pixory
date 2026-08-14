@@ -1,8 +1,8 @@
 /**
  * RhythmBars – A self-contained multi-waveform decorative animation.
  *
- * 7 vertical bars with macaron pastel colors that cycle through
- * 6 waveform patterns (cascade → ripple → breathe → drift → bloom → seesaw)
+ * 7 vertical bars with macaron pastel colors that randomly cycle through
+ * 12 highly designed waveform patterns (Cascade, Ripple, Double Helix, Heartbeat, etc.)
  * with seamless parameter-interpolation transitions.
  *
  * Fully independent – no project-specific tokens required.
@@ -32,78 +32,112 @@ interface WaveformConfig {
   readonly phi2: readonly number[];
   readonly shape: readonly number[];
   readonly ampScale: number;
+  readonly sharpness: number;
 }
 
 // ─── Waveform definitions ────────────────────────────────
-// Transition route: each waveform naturally evolves into the next.
-//   cascade → ripple → breathe → drift → bloom → seesaw → (cycle)
+// 12 highly designed waveforms, combining symmetric, asymmetric, and chaotic patterns.
+// When 2 RhythmBars are placed side-by-side (14 bars total), the symmetric ones
+// create a stunning mirrored impact.
 
 const WAVEFORMS: readonly WaveformConfig[] = [
-  {
-    // 0 · Cascade – wave flows left to right
-    phi1: [0, 0.62, 1.24, 1.86, 2.48, 3.1, 3.72],
-    phi2: [0, 0.45, 0.9, 1.35, 1.8, 2.25, 2.7],
-    shape: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-    ampScale: 1,
+  { // 0 · Cascade (Flow right, smooth sweep)
+    phi1: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6],
+    phi2: [0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4],
+    shape: [1, 1, 1, 1, 1, 1, 1],
+    ampScale: 1, sharpness: 1,
   },
-  {
-    // 1 · Ripple – center radiates outward
-    phi1: [2.1, 1.4, 0.7, 0, 0.7, 1.4, 2.1],
-    phi2: [1.5, 1.0, 0.5, 0, 0.5, 1.0, 1.5],
-    shape: [0.65, 0.78, 0.92, 1.0, 0.92, 0.78, 0.65],
-    ampScale: 1,
+  { // 1 · Ripple (Center radiating out, symmetric)
+    phi1: [2.4, 1.6, 0.8, 0, 0.8, 1.6, 2.4],
+    phi2: [1.2, 0.8, 0.4, 0, 0.4, 0.8, 1.2],
+    shape: [0.8, 0.9, 1.0, 1.0, 1.0, 0.9, 0.8],
+    ampScale: 1, sharpness: 1.5,
   },
-  {
-    // 2 · Breathe – near-unison rise and fall
-    phi1: [0.15, 0.08, 0.03, 0, 0.03, 0.08, 0.15],
-    phi2: [0.3, 0.15, 0.05, 0, 0.05, 0.15, 0.3],
-    shape: [0.7, 0.82, 0.95, 1.0, 0.95, 0.82, 0.7],
-    ampScale: 1,
+  { // 2 · Double Helix (Opposite traveling waves, DNA effect)
+    phi1: [0, 0.8, 1.6, 2.4, 3.2, 4.0, 4.8], // Left to right
+    phi2: [4.8, 4.0, 3.2, 2.4, 1.6, 0.8, 0], // Right to left
+    shape: [1, 0.95, 0.9, 0.9, 0.9, 0.95, 1],
+    ampScale: 1, sharpness: 1.5,
   },
-  {
-    // 3 · Drift – near-still resting state
-    phi1: [0, 1.9, 3.5, 0.8, 4.2, 2.6, 5.1],
-    phi2: [1.2, 3.8, 0.6, 5.0, 2.4, 4.6, 0.3],
-    shape: [0.85, 0.9, 0.88, 0.92, 0.87, 0.91, 0.86],
-    ampScale: 0.5,
+  { // 3 · Heartbeat (Pulsing, sharp peaks, long quiet)
+    phi1: [0.2, 0.1, 0, 0, 0, 0.1, 0.2],
+    phi2: [0.4, 0.2, 0, 0, 0, 0.2, 0.4],
+    shape: [0.8, 0.9, 1.0, 1.0, 1.0, 0.9, 0.8],
+    ampScale: 1, sharpness: 8, // High sharpness creates the heartbeat pulse
   },
-  {
-    // 4 · Bloom – odd/even alternating
+  { // 4 · Breathe (Unison, full height, peaceful)
+    phi1: [0.2, 0.1, 0, 0, 0, 0.1, 0.2],
+    phi2: [0.1, 0.05, 0, 0, 0, 0.05, 0.1],
+    shape: [0.9, 0.95, 1.0, 1.0, 1.0, 0.95, 0.9],
+    ampScale: 1, sharpness: 1,
+  },
+  { // 5 · Canyon (Edges high, center suppressed)
+    phi1: [0, 0.5, 1.0, 1.5, 1.0, 0.5, 0],
+    phi2: [0, 0.3, 0.6, 0.9, 0.6, 0.3, 0],
+    shape: [1.0, 0.8, 0.5, 0.3, 0.5, 0.8, 1.0],
+    ampScale: 1, sharpness: 1.2,
+  },
+  { // 6 · Wind Chimes (Chaos, irregular phases, organic feel)
+    phi1: [0, 1.7, 3.5, 0.8, 4.2, 2.1, 5.1],
+    phi2: [1.2, 3.1, 0.5, 2.9, 1.4, 4.6, 0.3],
+    shape: [0.9, 1.0, 0.85, 1.0, 0.9, 0.95, 0.85],
+    ampScale: 0.9, sharpness: 1,
+  },
+  { // 7 · Twin Peaks (M-shape, peaks at indices 1 and 5)
+    phi1: [1.0, 0, 1.0, 2.0, 1.0, 0, 1.0],
+    phi2: [1.5, 0, 1.5, 3.0, 1.5, 0, 1.5],
+    shape: [0.6, 1.0, 0.6, 0.4, 0.6, 1.0, 0.6],
+    ampScale: 1, sharpness: 2,
+  },
+  { // 8 · Mexican Wave (Single sharp peak sweeping across)
+    phi1: [0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    phi2: [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
+    shape: [1, 1, 1, 1, 1, 1, 1],
+    ampScale: 1, sharpness: 4,
+  },
+  { // 9 · Bloom (Alternating odd/even, high energy)
     phi1: [0, 3.14, 0, 3.14, 0, 3.14, 0],
-    phi2: [0.4, 2.74, 0.4, 2.74, 0.4, 2.74, 0.4],
-    shape: [0.8, 0.9, 0.95, 1.0, 0.95, 0.9, 0.8],
-    ampScale: 1,
+    phi2: [0, 2.5, 0, 2.5, 0, 2.5, 0],
+    shape: [1, 0.9, 1, 0.9, 1, 0.9, 1],
+    ampScale: 1, sharpness: 1.2,
   },
-  {
-    // 5 · Seesaw – left/right alternating
-    phi1: [0, 0.25, 0.5, 1.57, 3.14, 2.89, 2.64],
-    phi2: [0.2, 0.1, 0, 0.8, 1.6, 1.7, 1.8],
-    shape: [0.9, 0.95, 1.0, 0.6, 1.0, 0.95, 0.9],
-    ampScale: 1,
+  { // 10 · Syncopation (2-3-2 grouping, rhythmic offset)
+    phi1: [0, 0, 1.57, 1.57, 1.57, 3.14, 3.14],
+    phi2: [0, 0, 0.8, 0.8, 0.8, 1.6, 1.6],
+    shape: [1, 1, 0.9, 0.9, 0.9, 1, 1],
+    ampScale: 1, sharpness: 1,
+  },
+  { // 11 · Seesaw (Left vs Right imbalance)
+    phi1: [0, 0.5, 1.0, 1.57, 3.14, 2.64, 2.14],
+    phi2: [0, 0.2, 0.4, 1.57, 3.14, 2.94, 2.74],
+    shape: [1, 1, 1, 0.7, 1, 1, 1],
+    ampScale: 1, sharpness: 1,
   },
 ];
-
-const WAVEFORM_SEQUENCE = [0, 1, 2, 3, 4, 5] as const;
 
 // ─── Physics ─────────────────────────────────────────────
 
 const BAR_COUNT = 7;
 const W1 = (2 * Math.PI) / 4.5; // main breathing freq
-const W2 = (2 * Math.PI) / 2.78; // ripple freq (≈ W1 / φ)
-const ENVELOPE_W = (2 * Math.PI) / 10; // envelope period: 10 s
+const W2 = (2 * Math.PI) / 2.78; // ripple freq
 const A1 = 0.7; // main wave weight
 const A2 = 0.3; // ripple weight
 
 // ─── Timing ──────────────────────────────────────────────
 
-const BLEND_MS = 3000;
-const HOLD_MIN = 8000;
-const HOLD_MAX = 15000;
+const BLEND_MS = 2500; // Smooth 2.5s crossfade between states
+const HOLD_MIN = 12000; // 12s minimum active duration
+const HOLD_MAX = 18000; // 18s maximum active duration
 const TICK = 500;
-const ENV_LOW = 0.15;
-const WAIT_CAP = 5000;
-// 1 000 s cycle – wraps once every ~16 min, imperceptible
+// 1000s continuous cycle clock
 const T_LOOP = 1000;
+
+// Resonance Sync Timing
+const SYNC_INTERVAL_MS = 75000; // Trigger global sync every 75 seconds (approx 4-5 cycles)
+const SYNC_HOLD_MS = 18000; // Hold the synchronized wave for 18 seconds
+// Symmetric/Gorgeous waves suitable for global resonance:
+// 2: Double Helix, 3: Heartbeat, 5: Canyon, 7: Twin Peaks, 9: Bloom, 10: Syncopation
+const SYNC_WAVES = [2, 3, 5, 7, 9, 10]; 
 
 // ─── Default palette ─────────────────────────────────────
 
@@ -118,7 +152,7 @@ export const MACARON_COLORS = [
   'hsl(265, 42%, 84%)', // 香芋紫
 ] as const;
 
-// ─── Pre-allocated index array (avoids new array each render) ─
+// ─── Pre-allocated index array ───────────────────────────
 
 const INDICES = Array.from({ length: BAR_COUNT }, (_, i) => i);
 
@@ -190,32 +224,65 @@ export function RhythmBars({
     [cfgB, blend, onBlendDone],
   );
 
-  // Auto-scheduler: hold → wait for quiet envelope → transition
+  // Auto-scheduler: handles both independent random cycles and exact global resonance
   useEffect(() => {
+    let active = true;
+    let syncTimeout: ReturnType<typeof setTimeout>;
+    let randomInterval: ReturnType<typeof setInterval>;
+    
     let elapsed = 0;
     let hold = rand(HOLD_MIN, HOLD_MAX);
-    let waited = 0;
 
-    const id = setInterval(() => {
+    // 1. Independent random loop (diverges over time)
+    randomInterval = setInterval(() => {
       if (busy.current) return;
       elapsed += TICK;
       if (elapsed < hold) return;
 
-      const env = 0.45 + 0.55 * Math.sin(ENVELOPE_W * time.value);
-      waited += TICK;
-
-      if (env < ENV_LOW || waited > WAIT_CAP) {
-        const next = (seqIdx.current + 1) % WAVEFORM_SEQUENCE.length;
-        seqIdx.current = next;
-        goNext(WAVEFORM_SEQUENCE[next]);
-        elapsed = 0;
-        waited = 0;
-        hold = rand(HOLD_MIN, HOLD_MAX);
+      // Pick a random next waveform, avoiding repeats and avoiding the static sync waves if possible
+      let next = Math.floor(rand(0, WAVEFORMS.length));
+      if (next === seqIdx.current) {
+        next = (next + 1) % WAVEFORMS.length;
       }
+      seqIdx.current = next;
+      goNext(next);
+      
+      elapsed = 0;
+      hold = rand(HOLD_MIN, HOLD_MAX);
     }, TICK);
 
-    return () => clearInterval(id);
-  }, [time, goNext]);
+    // 2. Precise global sync clock (converges exactly at SYNC_INTERVAL_MS boundaries)
+    function scheduleNextSync() {
+      if (!active) return;
+      const now = Date.now();
+      const timeToNextSync = SYNC_INTERVAL_MS - (now % SYNC_INTERVAL_MS);
+      
+      syncTimeout = setTimeout(() => {
+        if (!active) return;
+        
+        // Calculate a deterministic index based on the current global cycle epoch
+        const currentCycle = Math.round(Date.now() / SYNC_INTERVAL_MS);
+        const syncIdx = SYNC_WAVES[currentCycle % SYNC_WAVES.length];
+        
+        seqIdx.current = syncIdx;
+        goNext(syncIdx);
+        
+        // Reset the random loop's timers so it stays locked on the sync wave for SYNC_HOLD_MS
+        elapsed = 0;
+        hold = SYNC_HOLD_MS;
+        
+        scheduleNextSync();
+      }, timeToNextSync);
+    }
+
+    scheduleNextSync();
+
+    return () => {
+      active = false;
+      clearInterval(randomInterval);
+      clearTimeout(syncTimeout);
+    };
+  }, [goNext]);
 
   return (
     <View style={[s.row, { gap: barGap, height: maxBarHeight }, style]}>
@@ -259,22 +326,33 @@ function Bar({ idx, time, cfgA, cfgB, blend, color, maxH, minH, w }: BarProps) {
     const a = cfgA.value;
     const b = cfgB.value;
 
-    // Lerp waveform parameters
+    // Lerp waveform parameters seamlessly
     const inv = 1 - bl;
     const p1 = a.phi1[idx] * inv + b.phi1[idx] * bl;
     const p2 = a.phi2[idx] * inv + b.phi2[idx] * bl;
     const sh = a.shape[idx] * inv + b.shape[idx] * bl;
     const amp = a.ampScale * inv + b.ampScale * bl;
-
-    // Breathing envelope (0 → 1 with quiet dips)
-    const env = Math.max(0, 0.45 + 0.55 * Math.sin(ENVELOPE_W * t));
+    const shp = a.sharpness * inv + b.sharpness * bl;
 
     // Dual-frequency wave, normalized 0 → 1
-    const wave = A1 * amp * Math.sin(W1 * t + p1) + A2 * amp * Math.sin(W2 * t + p2);
-    const norm = amp > 0.001 ? (wave + amp) / (2 * amp) : 0.5;
+    let w1 = (Math.sin(W1 * t + p1) + 1) / 2;
+    let w2 = (Math.sin(W2 * t + p2) + 1) / 2;
+
+    // Apply sharpness (e.g. Heartbeat uses high sharpness to create sudden pulses)
+    if (shp > 1.01) {
+      w1 = Math.pow(w1, shp);
+      w2 = Math.pow(w2, shp);
+    }
+
+    const norm = (A1 * w1 + A2 * w2) * amp;
+
+    // A subtle 20% dip exactly at the middle of the transition (bl = 0.5).
+    // This provides a tiny 0.75-1s "breathing" cue that the animation is shifting,
+    // without ever completely stopping or going flat.
+    const transitionDip = 1 - Math.sin(bl * Math.PI) * 0.2;
 
     // Final height
-    const h = minH + env * sh * norm * (maxH - minH);
+    const h = minH + sh * norm * transitionDip * (maxH - minH);
     return { height: Math.max(minH, h) };
   });
 

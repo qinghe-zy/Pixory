@@ -9,6 +9,7 @@ import { AiMarkdownReader } from '../components/ai/AiMarkdownReader';
 import type { AiReadableDocument } from '../ai/readers/readerTypes';
 import { colors, layout, spacing, typography } from '../design/tokens';
 import { getProductDocumentationMarkdown } from '../services/productDocumentationService';
+import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 
 interface ProductDocumentationScreenProps {
   onBack: () => void;
@@ -22,10 +23,17 @@ export function ProductDocumentationScreen({
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const [markdown, setMarkdown] = useState<string | null>(preloadedMarkdown ?? null);
+  const [showSweep, setShowSweep] = useState(true);
+
   const readable = useMemo<Pick<AiReadableDocument, 'text'> | null>(
     () => (markdown ? { text: markdown } : null),
     [markdown]
   );
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSweep(false), 750);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,8 +62,9 @@ export function ProductDocumentationScreen({
   };
 
   return (
-    <AppScreen backgroundColor={DOC_CANVAS} contentStyle={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
+    <>
+      <AppScreen backgroundColor={DOC_CANVAS} contentStyle={styles.screen}>
+        <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
         <Pressable
           accessibilityLabel="返回"
           hitSlop={10}
@@ -82,7 +91,9 @@ export function ProductDocumentationScreen({
           </View>
         )}
       </View>
-    </AppScreen>
+      </AppScreen>
+      <ParallaxLightSweep fadeDuration={750} opacity={0.35} visible={showSweep} />
+    </>
   );
 }
 

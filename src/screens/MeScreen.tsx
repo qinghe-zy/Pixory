@@ -13,6 +13,7 @@ import { useToast } from '../components/AppToast';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
 import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
+import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
 
 interface MeScreenProps {
   refreshToken: number;
@@ -340,6 +341,7 @@ export function MeScreen({
                 <Ionicons color={colors.primary.active} name="person" size={34} />
               )}
             </View>
+            <OrbitalSpectralRing avatarSize={68} isActive={false} padding={2} />
             <View style={styles.avatarEditBadge}>
               <Ionicons color={colors.primary.active} name="camera-outline" size={13} />
             </View>

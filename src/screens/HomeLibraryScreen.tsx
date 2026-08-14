@@ -11,6 +11,7 @@ import { IPCard } from '../components/IPCard';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { RhythmBars } from '../components/RhythmBars';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
@@ -59,6 +60,14 @@ export function HomeLibraryScreen({
   const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [isMovingSpace, setIsMovingSpace] = useState(false);
+  const [showSweep, setShowSweep] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSweep(false);
+    }, 750);
+    return () => clearTimeout(timer);
+  }, []);
 
   const isDaytime = useMemo(() => {
     const hour = new Date().getHours();
@@ -378,6 +387,7 @@ export function HomeLibraryScreen({
       title={actionIp?.name ?? 'IP 操作'}
       visible={Boolean(actionIp)}
     />
+      <ParallaxLightSweep fadeDuration={750} opacity={0.35} visible={showSweep || isLoading} />
     </>
   );
 }

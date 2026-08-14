@@ -16,6 +16,7 @@ import {
 } from '../services/productDocumentationService';
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 
 interface AboutScreenProps {
   onBack: () => void;
@@ -40,6 +41,12 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const [detailMd, setDetailMd] = useState<string | null>(null);
   const [productDocMd, setProductDocMd] = useState<string>(() => getPreloadedProductDocumentationMarkdown());
   const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
+  const [showSweep, setShowSweep] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSweep(false), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;
@@ -195,15 +202,16 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   };
 
   return (
-    <ScreenScaffold
-      backgroundVariant="profile"
-      decorativeTitle={space === 'personal' ? 'Journal' : 'Journal'}
-      onBack={onBack}
-      scrollable
-      title=""
-    >
-      <View style={styles.container}>
-        <View style={styles.heroArea}>
+    <View style={{ flex: 1 }}>
+      <ScreenScaffold
+        backgroundVariant="profile"
+        decorativeTitle={space === 'personal' ? 'Journal' : 'Journal'}
+        onBack={onBack}
+        scrollable
+        title=""
+      >
+        <View style={styles.container}>
+          <View style={styles.heroArea}>
           <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
             已陪伴你
           </Animated.Text>
@@ -327,7 +335,9 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
         </Animated.View>
 
       </View>
-    </ScreenScaffold>
+      </ScreenScaffold>
+      <ParallaxLightSweep opacity={0.35} visible={showSweep} />
+    </View>
   );
 }
 
