@@ -126,6 +126,31 @@ export function ParallaxLightSweep({
           style={styles.gradientFill}
         />
       </Animated.View>
+      {/* 左侧边缘发光区 (仅 edges 模式) */}
+      {variant === 'edges' && (
+        <Animated.View style={[styles.leftAuroraEdges, layer1Style]}>
+          <LinearGradient
+            colors={[color1, 'transparent', 'transparent']}
+            locations={[0, 0.7, 1]}
+            start={{ x: 0.1, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.gradientFill}
+          />
+        </Animated.View>
+      )}
+
+      {/* 右侧边缘发光区 (仅 edges 模式) */}
+      {variant === 'edges' && (
+        <Animated.View style={[styles.rightAuroraEdges, layer2Style]}>
+          <LinearGradient
+            colors={[color2, 'transparent', 'transparent']}
+            locations={[0, 0.7, 1]}
+            start={{ x: 0.9, y: 0.5 }}
+            end={{ x: 0, y: 0.5 }}
+            style={styles.gradientFill}
+          />
+        </Animated.View>
+      )}
     </Animated.View>
   );
 }
@@ -162,6 +187,20 @@ const styles = StyleSheet.create({
     left: '-50%',
     width: '200%',
     height: '55%',
+  },
+  leftAuroraEdges: {
+    position: 'absolute',
+    top: '-50%',
+    left: '-10%',
+    width: '55%',
+    height: '200%',
+  },
+  rightAuroraEdges: {
+    position: 'absolute',
+    top: '-50%',
+    right: '-10%',
+    width: '55%',
+    height: '200%',
   },
   gradientFill: {
     flex: 1,
