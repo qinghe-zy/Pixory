@@ -144,10 +144,10 @@ const styles = StyleSheet.create({
   },
   topAuroraEdges: {
     position: 'absolute',
-    top: '-15%',
+    top: '-10%',
     left: '-50%',
     width: '200%',
-    height: '45%',
+    height: '55%',
   },
   bottomAurora: {
     position: 'absolute',
@@ -158,10 +158,10 @@ const styles = StyleSheet.create({
   },
   bottomAuroraEdges: {
     position: 'absolute',
-    bottom: '-15%',
+    bottom: '-10%',
     left: '-50%',
     width: '200%',
-    height: '45%',
+    height: '55%',
   },
   gradientFill: {
     flex: 1,
