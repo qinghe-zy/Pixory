@@ -393,7 +393,7 @@ export function HomeLibraryScreen({
       title={actionIp?.name ?? 'IP 操作'}
       visible={Boolean(actionIp)}
     />
-      <ParallaxLightSweep fadeDuration={750} opacity={0.35} visible={showSweep || isLoading} />
+      <ParallaxLightSweep fadeOutDuration={750} opacity={0.35} visible={showSweep || isLoading} />
     </>
   );
 }

@@ -22,6 +22,10 @@ export interface ParallaxLightSweepProps {
   visible?: boolean;
   /** 淡入淡出的动画时长，默认 1200ms */
   fadeDuration?: number;
+  /** 单独指定淡入时长，覆盖 fadeDuration */
+  fadeInDuration?: number;
+  /** 单独指定淡出时长，覆盖 fadeDuration */
+  fadeOutDuration?: number;
 }
 
 /**
@@ -37,6 +41,8 @@ export function ParallaxLightSweep({
   speedMultiplier = 1,
   visible = true,
   fadeDuration = 1200,
+  fadeInDuration,
+  fadeOutDuration,
 }: ParallaxLightSweepProps) {
   const { width, height } = useWindowDimensions();
   
@@ -45,8 +51,11 @@ export function ParallaxLightSweep({
   const opacityVal = useSharedValue(visible ? opacity : 0);
 
   useEffect(() => {
-    opacityVal.value = withTiming(visible ? opacity : 0, { duration: fadeDuration, easing: Easing.inOut(Easing.ease) });
-  }, [visible, opacity, opacityVal, fadeDuration]);
+    const duration = visible
+      ? (fadeInDuration ?? fadeDuration)
+      : (fadeOutDuration ?? fadeDuration);
+    opacityVal.value = withTiming(visible ? opacity : 0, { duration, easing: Easing.inOut(Easing.ease) });
+  }, [visible, opacity, opacityVal, fadeDuration, fadeInDuration, fadeOutDuration]);
 
   useEffect(() => {
     p1.value = withRepeat(

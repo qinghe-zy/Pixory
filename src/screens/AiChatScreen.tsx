@@ -7409,7 +7409,7 @@ export function AiChatScreen({
       <ParallaxLightSweep
         color1="#81D4FA"
         color2="#FFAB91"
-        fadeDuration={750}
+        fadeDuration={500}
         opacity={0.65}
         visible={showSweep}
       />
