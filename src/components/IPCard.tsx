@@ -24,12 +24,12 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
   return (
     <View style={styles.shadowContainer}>
       <MagneticLiquidContainer 
-        damping={16} 
-        magneticStrength={0.15} 
-        stiffness={400} 
-        stretchFactor={0.001}
-        maxScale={1.02}
-        maxTranslation={12}
+        damping={20} 
+        magneticStrength={0.03} 
+        stiffness={500} 
+        stretchFactor={0.0005}
+        maxScale={1.015}
+        maxTranslation={4}
       >
         <MagneticCardContainer gyroSensitivity={3}>
         <Pressable
