@@ -267,7 +267,7 @@ const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
-const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
+const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [50, 120, 180];
 const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
 const SEARCH_SCROLL_RETRY_DELAYS_MS = [80, 260, 520, 900, 1400, 2200, 3400];
 const SEARCH_HIGHLIGHT_DURATION_MS = 1800;
@@ -4445,9 +4445,9 @@ export function AiChatScreen({
           replaceMessages(prefetched.messages);
           setIsInitialMessageLoading(false);
           // Give the FlatList time to position itself at offset 0.
-          // scheduleIntentionalLatestJump retries the scroll at 80/260/520ms;
-          // hold the white mask for 200ms while rendering settles, then
-          // reveal in a 50ms fade so the list is rock-stable by 250ms.
+          // scheduleIntentionalLatestJump retries the scroll at 50/120/180ms;
+          // all retries complete before the 200ms mask lift so the list is
+          // rock-stable when the 50ms fade-in begins at t=200ms.
           scheduleIntentionalLatestJump(false);
           fadeInMessageArea(200);
           return;

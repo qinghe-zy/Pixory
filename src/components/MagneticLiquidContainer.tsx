@@ -96,7 +96,6 @@ export function MagneticLiquidContainer({
   const animatedOuterStyle = useAnimatedStyle(() => {
     return {
       zIndex: isPressed.value ? 999 : 0,
-      elevation: isPressed.value ? 999 : 0,
       transform: [
         { translateX: totalX.value },
         { translateY: totalY.value },

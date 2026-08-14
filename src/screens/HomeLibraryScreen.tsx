@@ -240,7 +240,9 @@ export function HomeLibraryScreen({
               speedMultiplier={isDaytime ? 1.5 : 1}
             />
           </View>
-          <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
+          <MagneticLiquidContainer magneticStrength={0.35} stretchFactor={0.02} damping={14}>
+            <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
+          </MagneticLiquidContainer>
         </View>
         {needsOrganizingCount > 0 ? (
           <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
@@ -253,12 +255,13 @@ export function HomeLibraryScreen({
         ) : null}
         <View style={styles.filterRow}>
           {FILTER_OPTIONS.map((option) => (
-            <FilterChip
-              active={activeFilter === option.key}
-              key={option.key}
-              label={option.label}
-              onPress={() => setActiveFilter(option.key)}
-            />
+            <MagneticLiquidContainer key={option.key} magneticStrength={0.4} stretchFactor={0.03} damping={12}>
+              <FilterChip
+                active={activeFilter === option.key}
+                label={option.label}
+                onPress={() => setActiveFilter(option.key)}
+              />
+            </MagneticLiquidContainer>
           ))}
         </View>
       </View>
