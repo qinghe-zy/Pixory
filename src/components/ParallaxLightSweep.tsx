@@ -105,52 +105,27 @@ export function ParallaxLightSweep({
 
   return (
     <Animated.View style={[styles.container, containerStyle]} pointerEvents="none">
-      {/* 顶部边缘发光区 */}
+      {/* 顶部发光区 (支持全屏或仅边缘) */}
       <Animated.View style={[variant === 'edges' ? styles.topAuroraEdges : styles.topAurora, layer1Style]}>
         <LinearGradient
-          colors={[color1, variant === 'edges' ? 'transparent' : `${color1}00`, 'transparent']}
-          locations={variant === 'edges' ? [0, 0.7, 1] : [0, 0.8, 1]}
-          start={{ x: 0.5, y: 0.1 }}
+          colors={[color1, `${color1}00`]}
+          locations={variant === 'edges' ? [0, 1] : [0, 0.8]}
+          start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.gradientFill}
         />
       </Animated.View>
-      
-      {/* 底部边缘发光区 */}
+
+      {/* 底部发光区 (支持全屏或仅边缘) */}
       <Animated.View style={[variant === 'edges' ? styles.bottomAuroraEdges : styles.bottomAurora, layer2Style]}>
         <LinearGradient
-          colors={[color2, variant === 'edges' ? 'transparent' : `${color2}00`, 'transparent']}
-          locations={variant === 'edges' ? [0, 0.7, 1] : [0, 0.8, 1]}
-          start={{ x: 0.5, y: 0.9 }}
+          colors={[color2, `${color2}00`]}
+          locations={variant === 'edges' ? [0, 1] : [0, 0.8]}
+          start={{ x: 0.5, y: 1 }}
           end={{ x: 0.5, y: 0 }}
           style={styles.gradientFill}
         />
       </Animated.View>
-      {/* 左侧边缘发光区 (仅 edges 模式) */}
-      {variant === 'edges' && (
-        <Animated.View style={[styles.leftAuroraEdges, layer1Style]}>
-          <LinearGradient
-            colors={[color1, 'transparent', 'transparent']}
-            locations={[0, 0.7, 1]}
-            start={{ x: 0.1, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.gradientFill}
-          />
-        </Animated.View>
-      )}
-
-      {/* 右侧边缘发光区 (仅 edges 模式) */}
-      {variant === 'edges' && (
-        <Animated.View style={[styles.rightAuroraEdges, layer2Style]}>
-          <LinearGradient
-            colors={[color2, 'transparent', 'transparent']}
-            locations={[0, 0.7, 1]}
-            start={{ x: 0.9, y: 0.5 }}
-            end={{ x: 0, y: 0.5 }}
-            style={styles.gradientFill}
-          />
-        </Animated.View>
-      )}
     </Animated.View>
   );
 }
@@ -169,10 +144,10 @@ const styles = StyleSheet.create({
   },
   topAuroraEdges: {
     position: 'absolute',
-    top: '-10%',
+    top: '-30%',
     left: '-50%',
     width: '200%',
-    height: '55%',
+    height: '65%',
   },
   bottomAurora: {
     position: 'absolute',
@@ -183,24 +158,10 @@ const styles = StyleSheet.create({
   },
   bottomAuroraEdges: {
     position: 'absolute',
-    bottom: '-10%',
+    bottom: '-30%',
     left: '-50%',
     width: '200%',
-    height: '55%',
-  },
-  leftAuroraEdges: {
-    position: 'absolute',
-    top: '-50%',
-    left: '-10%',
-    width: '55%',
-    height: '200%',
-  },
-  rightAuroraEdges: {
-    position: 'absolute',
-    top: '-50%',
-    right: '-10%',
-    width: '55%',
-    height: '200%',
+    height: '65%',
   },
   gradientFill: {
     flex: 1,
