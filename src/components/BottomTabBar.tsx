@@ -1,17 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View, Dimensions } from 'react-native';
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { aiLightColors } from './ai/aiLightTheme';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
-import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
 
 interface BottomTabBarProps {
   activeTab: RootTabKey;
   onSelectTab: (tab: RootTabKey) => void;
-  scrollOffset?: SharedValue<number>;
 }
 
 const TAB_ITEMS: Array<{
@@ -29,19 +26,7 @@ function getActiveTintColor(tab: RootTabKey) {
   return tab === 'ai' ? aiLightColors.primaryActive : colors.primary.default;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export function BottomTabBar({ activeTab, onSelectTab, scrollOffset }: BottomTabBarProps) {
-  // Convert pager scroll offset into a horizontal pulling force for the icons
-  const externalForceX = useDerivedValue(() => {
-    if (!scrollOffset) return 0;
-    const val = scrollOffset.value;
-    const nearest = Math.round(val / SCREEN_WIDTH) * SCREEN_WIDTH;
-    const deviation = val - nearest; // range: -SCREEN_WIDTH/2 to +SCREEN_WIDTH/2
-    // Max stretch force is 40px when swiping between pages
-    return (deviation / SCREEN_WIDTH) * 40; 
-  });
-
+export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
   return (
     <View style={styles.wrap}>
       {TAB_ITEMS.map((item) => {
@@ -49,28 +34,21 @@ export function BottomTabBar({ activeTab, onSelectTab, scrollOffset }: BottomTab
         const activeTintColor = getActiveTintColor(item.key);
 
         return (
-          <MagneticLiquidContainer 
+          <Pressable
+            accessibilityLabel={item.label}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
             key={item.key}
-            magneticStrength={0.5} 
-            stretchFactor={0.015} 
-            externalForceX={externalForceX}
-            style={{ flex: 1 }}
+            onPress={() => onSelectTab(item.key)}
+            style={({ pressed }) => [styles.item, pressed && styles.pressed]}
           >
-            <Pressable
-              accessibilityLabel={item.label}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-              onPress={() => onSelectTab(item.key)}
-              style={({ pressed }) => [styles.item, pressed && styles.pressed]}
-            >
-              <Ionicons
-                color={isActive ? activeTintColor : colors.text.secondary}
-                name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
-                size={componentTokens.bottomTab.iconSize}
-              />
-              <Text style={[styles.label, isActive ? styles.activeLabel : null, isActive ? { color: activeTintColor } : null]}>{item.label}</Text>
-            </Pressable>
-          </MagneticLiquidContainer>
+            <Ionicons
+              color={isActive ? activeTintColor : colors.text.secondary}
+              name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
+              size={componentTokens.bottomTab.iconSize}
+            />
+            <Text style={[styles.label, isActive ? styles.activeLabel : null, isActive ? { color: activeTintColor } : null]}>{item.label}</Text>
+          </Pressable>
         );
       })}
     </View>

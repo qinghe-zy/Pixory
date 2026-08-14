@@ -2289,7 +2289,7 @@ function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTa
         paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
       }}
     >
-      <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} scrollOffset={scrollOffset} />
+      <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} />
     </View>
   );
 }
