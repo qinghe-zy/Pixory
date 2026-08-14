@@ -15,6 +15,9 @@ import Svg, { Defs, RadialGradient, Rect, Stop, LinearGradient as SvgLinearGradi
 export const MagneticCardContext = createContext<{
   rotateX: SharedValue<number>;
   rotateY: SharedValue<number>;
+  gyroX: SharedValue<number>;
+  gyroY: SharedValue<number>;
+  gyroSensitivity: number;
 } | null>(null);
 
 export interface MagneticCardContainerProps {
@@ -76,20 +79,13 @@ export function MagneticCardContainer({
       scale.value = withSpring(1, springConfig);
     });
 
-  const finalRotateX = useDerivedValue(() => {
-    let val = rotateX.value;
-    if (!isPressed.value && gyro.sensor.value) {
-      val += gyro.sensor.value.x * gyroSensitivity;
-    }
-    return val;
+  // 使得陀螺仪数据更加平滑，并将其作为附加偏移量
+  const smoothedGyroX = useDerivedValue(() => {
+    return withSpring(gyro.sensor.value?.x ?? 0, { damping: 15, stiffness: 100 });
   });
 
-  const finalRotateY = useDerivedValue(() => {
-    let val = rotateY.value;
-    if (!isPressed.value && gyro.sensor.value) {
-      val += gyro.sensor.value.y * gyroSensitivity;
-    }
-    return val;
+  const smoothedGyroY = useDerivedValue(() => {
+    return withSpring(gyro.sensor.value?.y ?? 0, { damping: 15, stiffness: 100 });
   });
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -99,14 +95,20 @@ export function MagneticCardContainer({
         { translateX: translateX.value },
         { translateY: translateY.value },
         { scale: scale.value },
-        { rotateX: `${finalRotateX.value}deg` },
-        { rotateY: `${finalRotateY.value}deg` },
+        { rotateX: `${rotateX.value}deg` }, // 卡片本身只受手势翻转影响
+        { rotateY: `${rotateY.value}deg` },
       ],
     };
   });
 
   return (
-    <MagneticCardContext.Provider value={{ rotateX: finalRotateX, rotateY: finalRotateY }}>
+    <MagneticCardContext.Provider value={{ 
+      rotateX, 
+      rotateY, 
+      gyroX: smoothedGyroX, 
+      gyroY: smoothedGyroY,
+      gyroSensitivity,
+    }}>
       <GestureDetector gesture={panGesture}>
         <Animated.View style={[animatedStyle]} collapsable={false}>
           {children}
@@ -135,14 +137,17 @@ export function GyroSpecularHighlight({ intensity = 0.5, type = 'point' }: GyroS
   }
 
   const animatedStyle = useAnimatedStyle(() => {
-    // 根据卡片的 3D 旋转角度，反向移动高光层，模拟光源反射
-    // rotateY 大于 0 (右侧翘起) -> 反光点向右偏移
-    const tx = context.rotateY.value * 25; 
-    const ty = -context.rotateX.value * 25;
+    // 基础高光位置由卡片 3D 旋转角度决定（手指拖拽）
+    let tx = context.rotateY.value * 25; 
+    let ty = -context.rotateX.value * 25;
+
+    // 叠加由陀螺仪带来的高光偏移量（晃动手机时只有高光游走，卡片不跟着扭动）
+    tx += context.gyroY.value * context.gyroSensitivity * 30;
+    ty += context.gyroX.value * context.gyroSensitivity * 30;
 
     // 根据倾斜角度增加高光强度 (倾斜越多越亮，制造“反光闪烁”感)
     const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
-    const dynamicOpacity = Math.min(1, 0.2 + tiltMagnitude / 80);
+    const dynamicOpacity = Math.min(1, 0.2 + tiltMagnitude / 150);
 
     return {
       transform: [{ translateX: tx }, { translateY: ty }],

@@ -23,6 +23,12 @@ export interface MagneticLiquidContainerProps {
   externalForceX?: SharedValue<number>;
   /** 外部注入的垂直力 */
   externalForceY?: SharedValue<number>;
+  /** 外部样式 (如 flex: 1) */
+  style?: any;
+  /** 最大形变比例限制 (默认 1.35) */
+  maxScale?: number;
+  /** 最大平移阻力极限 (默认 120) */
+  maxTranslation?: number;
 }
 
 /**
@@ -36,10 +42,13 @@ export function MagneticLiquidContainer({
   children,
   magneticStrength = 0.3,
   stretchFactor = 0.005,
-  damping = 10,
-  stiffness = 200,
+  damping = 12,
+  stiffness = 300,
   externalForceX,
   externalForceY,
+  style,
+  maxScale = 1.35,
+  maxTranslation = 120,
 }: MagneticLiquidContainerProps) {
   const isPressed = useSharedValue(false);
   const translateX = useSharedValue(0);
@@ -50,8 +59,11 @@ export function MagneticLiquidContainer({
       isPressed.value = true;
     })
     .onUpdate((e) => {
-      translateX.value = e.translationX * magneticStrength;
-      translateY.value = e.translationY * magneticStrength;
+      const rawTx = e.translationX * magneticStrength;
+      const rawTy = e.translationY * magneticStrength;
+      // 渐进式非线性阻力：越拉越费力，且不会超过 maxTranslation
+      translateX.value = maxTranslation * Math.tanh(rawTx / maxTranslation);
+      translateY.value = maxTranslation * Math.tanh(rawTy / maxTranslation);
     })
     .onFinalize(() => {
       isPressed.value = false;
@@ -74,7 +86,9 @@ export function MagneticLiquidContainer({
 
   const derivedStretchX = useDerivedValue(() => {
     const distance = Math.sqrt(totalX.value * totalX.value + totalY.value * totalY.value);
-    return 1 + distance * stretchFactor;
+    const maxStretchAmount = maxScale - 1;
+    // 使用 tanh 限制形变上限，防止无底线拉伸变形
+    return 1 + maxStretchAmount * Math.tanh((distance * stretchFactor) / maxStretchAmount);
   });
 
   const derivedStretchY = useDerivedValue(() => Math.max(0.5, 1 / derivedStretchX.value));
@@ -102,7 +116,7 @@ export function MagneticLiquidContainer({
   return (
     <GestureDetector gesture={panGesture}>
       {/* 使用 collapsable={false} 确保响应手势 */}
-      <Animated.View style={[styles.container, animatedOuterStyle]} collapsable={false}>
+      <Animated.View style={[styles.container, style, animatedOuterStyle]} collapsable={false}>
         <Animated.View style={[styles.inner, animatedInnerStyle]} collapsable={false}>
           {children}
         </Animated.View>

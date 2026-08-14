@@ -54,6 +54,7 @@ export function BottomTabBar({ activeTab, onSelectTab, scrollOffset }: BottomTab
             magneticStrength={0.5} 
             stretchFactor={0.015} 
             externalForceX={externalForceX}
+            style={{ flex: 1 }}
           >
             <Pressable
               accessibilityLabel={item.label}
