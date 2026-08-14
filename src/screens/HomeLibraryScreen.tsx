@@ -472,23 +472,27 @@ function HomeBrandHeader() {
             {greeting}
           </Animated.Text>
         </MagneticLiquidContainer>
-        <View style={styles.binaryStarsContainer}>
-          {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
-          <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />
-          <View style={[styles.faintOrbit, { width: 25, height: 25, borderRadius: 12.5, transform: [{ rotateY: '60deg' }] }]} />
-          <View style={[styles.faintOrbit, { width: 31, height: 31, borderRadius: 15.5, transform: [{ rotateZ: '45deg' }, { rotateX: '70deg' }] }]} />
-          
-          {/* 星星实体 */}
-          <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }, star1Style]} />
-          <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }, star2Style]} />
-          <View style={{ position: 'absolute', transform: [{ rotateZ: '45deg' }] }}>
-            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }, star3Style]} />
+        <MagneticLiquidContainer magneticStrength={0.5} stretchFactor={0.05} damping={14}>
+          <View style={styles.binaryStarsContainer}>
+            {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
+            <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />
+            <View style={[styles.faintOrbit, { width: 25, height: 25, borderRadius: 12.5, transform: [{ rotateY: '60deg' }] }]} />
+            <View style={[styles.faintOrbit, { width: 31, height: 31, borderRadius: 15.5, transform: [{ rotateZ: '45deg' }, { rotateX: '70deg' }] }]} />
+            
+            {/* 星星实体 */}
+            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }, star1Style]} />
+            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }, star2Style]} />
+            <View style={{ position: 'absolute', transform: [{ rotateZ: '45deg' }] }}>
+              <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }, star3Style]} />
+            </View>
           </View>
-        </View>
+        </MagneticLiquidContainer>
       </View>
-      <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
-        PIXORY · PRIVATE ARCHIVE
-      </Animated.Text>
+      <MagneticLiquidContainer magneticStrength={0.3} stretchFactor={0.02} damping={10}>
+        <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
+          PIXORY · PRIVATE ARCHIVE
+        </Animated.Text>
+      </MagneticLiquidContainer>
     </View>
   );
 }
