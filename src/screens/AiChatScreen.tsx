@@ -7410,7 +7410,7 @@ export function AiChatScreen({
         color1="#A7F3D0"
         color2="#BAE6FD"
         fadeDuration={500}
-        opacity={0.4}
+        opacity={0.65}
         variant="edges"
         visible={showSweep}
       />
