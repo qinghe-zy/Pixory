@@ -4557,25 +4557,16 @@ export function AiChatScreen({
   }, [threadId, space]);
 
   useEffect(() => {
-    if (isInitialMessageLoading) {
-      return;
-    }
     void reloadModelLabel(threadId ?? null);
-  }, [isInitialMessageLoading, modelRefreshKey, reloadModelLabel, threadId]);
+  }, [modelRefreshKey, reloadModelLabel, threadId]);
 
   useEffect(() => {
-    if (isInitialMessageLoading) {
-      return;
-    }
     void reloadParticipantAppearance(threadId ?? null);
-  }, [isInitialMessageLoading, reloadParticipantAppearance, threadId]);
+  }, [reloadParticipantAppearance, threadId]);
 
   useEffect(() => {
-    if (isInitialMessageLoading) {
-      return;
-    }
     void reloadThreadTitle(threadId ?? null);
-  }, [isInitialMessageLoading, reloadThreadTitle, threadId]);
+  }, [reloadThreadTitle, threadId]);
 
   useEffect(() => {
     if (!threadId) {
