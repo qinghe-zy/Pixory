@@ -7,6 +7,8 @@ import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatFileSize, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
+import { MagneticCardContainer, GyroSpecularHighlight } from './MagneticCardContainer';
+import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 interface IPCardProps {
   ip: IpListItem;
@@ -21,34 +23,40 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
 
   return (
     <View style={styles.shadowContainer}>
-      <Pressable
-        accessibilityLabel={`打开 ${ip.name}`}
-        accessibilityRole="button"
-        onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
-        onPress={() => onPress(ip.id)}
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      >
-        {ip.coverThumbnailFileUri ? (
-          <View style={styles.cover}>
-            <View style={styles.imageInset}>
-              <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
+      <MagneticLiquidContainer damping={12} magneticStrength={0.25} stiffness={180} stretchFactor={0.003}>
+        <MagneticCardContainer gyroSensitivity={5}>
+        <Pressable
+          accessibilityLabel={`打开 ${ip.name}`}
+          accessibilityRole="button"
+          onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
+          onPress={() => onPress(ip.id)}
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        >
+          {ip.coverThumbnailFileUri ? (
+            <View style={styles.cover}>
+              <View style={styles.imageInset}>
+                <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
+              </View>
+              <AcrylicGlass />
+              <GyroSpecularHighlight intensity={0.6} type="band" />
+              {content}
             </View>
-            <AcrylicGlass />
-            {content}
-          </View>
-        ) : (
-          <View style={[styles.cover, styles.fallbackCover]}>
-            <View style={styles.imageInset}>
-              <Text numberOfLines={1} style={styles.initialsText}>
-                {getIpInitials(ip.name)}
-              </Text>
-              <View style={styles.fallbackMark} />
+          ) : (
+            <View style={[styles.cover, styles.fallbackCover]}>
+              <View style={styles.imageInset}>
+                <Text numberOfLines={1} style={styles.initialsText}>
+                  {getIpInitials(ip.name)}
+                </Text>
+                <View style={styles.fallbackMark} />
+              </View>
+              <AcrylicGlass />
+              <GyroSpecularHighlight intensity={0.6} type="band" />
+              {content}
             </View>
-            <AcrylicGlass />
-            {content}
-          </View>
-        )}
-      </Pressable>
+          )}
+        </Pressable>
+        </MagneticCardContainer>
+      </MagneticLiquidContainer>
     </View>
   );
 }
@@ -62,13 +70,6 @@ function AcrylicGlass() {
           colors={['rgba(255, 255, 255, 0.25)', 'transparent', 'rgba(255, 255, 255, 0.05)']}
           end={{ x: 1, y: 1 }}
           start={{ x: 0, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <LinearGradient
-          colors={['transparent', 'rgba(255, 255, 255, 0.65)', 'transparent']}
-          end={{ x: 0.65, y: 1 }}
-          locations={[0.48, 0.5, 0.52]}
-          start={{ x: 0.35, y: 0 }}
           style={StyleSheet.absoluteFill}
         />
       </View>
@@ -132,7 +133,6 @@ const styles = StyleSheet.create({
   },
   cardPressed: {
     opacity: 0.88,
-    transform: [{ scale: 0.985 }],
   },
   cover: {
     flex: 1,

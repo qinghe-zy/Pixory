@@ -9,6 +9,7 @@ import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleShee
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppDialog } from './src/components/AppDialog';
@@ -459,6 +460,8 @@ function getUpdateVersionKey(update: AppUpdateInfo): string {
 }
 
 export default function App() {
+  const globalScrollOffset = useSharedValue(0);
+
   const [fontsLoaded, fontError] = useFonts({
     PlayfairDisplay_400Regular,
     PlayfairDisplay_400Regular_Italic,
@@ -1269,6 +1272,7 @@ export default function App() {
             switchRootTab(tab);
           }
         }}
+        scrollOffset={globalScrollOffset}
       >
         <View style={{ width: sw, flex: 1 }}>
           {renderedTabs.has('home') ? (
@@ -2027,57 +2031,6 @@ export default function App() {
         threadId={currentRoute.threadId}
       />
     );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   } else if (currentRoute.name === 'ai-memory-board') {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'dream-reader') {
@@ -2243,7 +2196,7 @@ export default function App() {
           ) : null}
           {/* Tab bar: only show when no overlay is covering the base layer */}
           {content == null && baseRootRoute ? (
-            <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} />
+            <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} scrollOffset={globalScrollOffset} />
           ) : null}
         </View>
         <PersonalUnlockModal
@@ -2322,7 +2275,7 @@ function FloatingFooterProvider({ children }: { children: React.ReactNode }) {
   return <FloatingFooterContext.Provider value={floatingFooterHeight}>{children}</FloatingFooterContext.Provider>;
 }
 
-function FloatingRootFooter({ activeTab, onSelectTab }: { activeTab: RootTabKey; onSelectTab: (tab: RootTabKey) => void }) {
+function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTab: RootTabKey; onSelectTab: (tab: RootTabKey) => void; scrollOffset?: SharedValue<number> }) {
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -2336,7 +2289,7 @@ function FloatingRootFooter({ activeTab, onSelectTab }: { activeTab: RootTabKey;
         paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
       }}
     >
-      <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} />
+      <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} scrollOffset={scrollOffset} />
     </View>
   );
 }

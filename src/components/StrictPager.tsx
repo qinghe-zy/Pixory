@@ -6,12 +6,14 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 export interface StrictPagerProps {
   children: React.ReactNode[];
   activeIndex: number;
   onChange: (index: number) => void;
+  scrollOffset?: SharedValue<number>;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -24,8 +26,9 @@ const springConfig = {
   restSpeedThreshold: 0.5,
 };
 
-export function StrictPager({ children, activeIndex, onChange }: StrictPagerProps) {
-  const translateX = useSharedValue(-activeIndex * SCREEN_WIDTH);
+export function StrictPager({ children, activeIndex, onChange, scrollOffset: externalScrollOffset }: StrictPagerProps) {
+  const localScrollOffset = useSharedValue(-activeIndex * SCREEN_WIDTH);
+  const translateX = externalScrollOffset ?? localScrollOffset;
   const context = useSharedValue({ startX: 0 });
   const maxIndex = children.length - 1;
 

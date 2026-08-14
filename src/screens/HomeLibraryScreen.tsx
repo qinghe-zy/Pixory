@@ -20,6 +20,7 @@ import { BlurView } from 'expo-blur';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
+import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
 
@@ -112,19 +113,21 @@ export function HomeLibraryScreen({
 
   const rightSlot = useMemo(
     () => (
-      <View style={styles.addActionWrapper}>
-        <Pressable
-          accessibilityLabel="新建 IP"
-          hitSlop={10}
-          onPress={onCreateIp}
-          style={({ pressed }) => [styles.addAction, pressed && styles.pressed]}
-        >
-          <BlurView intensity={50} style={styles.addActionBlur} tint="light">
-            <LiquidGlassBezel radius={componentTokens.iconButton.radius} />
-            <Ionicons color={colors.primary.default} name="add" size={componentTokens.iconButton.iconSize} />
-          </BlurView>
-        </Pressable>
-      </View>
+        <View style={styles.addActionWrapper}>
+          <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
+            <Pressable
+              accessibilityLabel="新建 IP"
+              hitSlop={10}
+              onPress={onCreateIp}
+              style={({ pressed }) => [styles.addAction, pressed && styles.pressed]}
+            >
+              <BlurView intensity={50} style={styles.addActionBlur} tint="light">
+                <LiquidGlassBezel radius={componentTokens.iconButton.radius} />
+                <Ionicons color={colors.primary.default} name="add" size={componentTokens.iconButton.iconSize} />
+              </BlurView>
+            </Pressable>
+          </MagneticLiquidContainer>
+        </View>
     ),
     [onCreateIp]
   );
