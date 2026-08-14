@@ -90,6 +90,8 @@ export function MagneticCardContainer({
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
+      zIndex: isPressed.value ? 99 : 0,
+      elevation: isPressed.value ? 99 : 0,
       transform: [
         { perspective: 800 }, // 创造 3D 景深
         { translateX: translateX.value },
