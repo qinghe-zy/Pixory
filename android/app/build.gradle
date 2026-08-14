@@ -99,7 +99,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 280
-        versionName "2.7.8"
+        versionName "2.8.0"
+        buildConfigField("boolean", "REACT_NATIVE_UNSTABLE_USE_RUNTIME_SCHEDULER_ALWAYS", (findProperty("reactNative.unstable_useRuntimeSchedulerAlways") ?: true).toString())
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -150,7 +151,7 @@ android {
 android.applicationVariants.all { variant ->
     if (variant.name == "release") {
         variant.outputs.all {
-            outputFileName = "Pixory-v2.7.8-local-release.apk"
+            outputFileName = "Pixory-v2.8.0-local-release.apk"
         }
     }
 }
