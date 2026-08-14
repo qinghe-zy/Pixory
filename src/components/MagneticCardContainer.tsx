@@ -48,8 +48,9 @@ export function MagneticCardContainer({
   const rotateY = useSharedValue(0);
   const scale = useSharedValue(1);
 
-  // 使用 ROTATION 传感器获取设备的绝对倾斜角 (pitch/roll)，避免使用 GYROSCOPE (角速度) 导致的高光抖动和回弹
-  const rotation = useAnimatedSensor(SensorType.ROTATION, { interval: 16 });
+  // 使用 GRAVITY (重力加速) 传感器获取设备的绝对倾斜角。
+  // 它比 ROTATION (需要地磁传感器) 兼容性好得多，能在绝大多数安卓设备上稳定运行。
+  const gravity = useAnimatedSensor(SensorType.GRAVITY, { interval: 16 });
 
   const panGesture = Gesture.Pan()
     .onBegin(() => {
@@ -72,13 +73,13 @@ export function MagneticCardContainer({
       scale.value = withSpring(1, springConfig);
     });
 
-  // 平滑物理倾斜角度
+  // 平滑物理倾斜角度。重力矢量 x/y 的范围通常是 -9.8 到 +9.8
   const smoothedPitch = useDerivedValue(() => {
-    return withSpring(rotation.sensor.value?.pitch ?? 0, { damping: 40, stiffness: 60 });
+    return withSpring(gravity.sensor.value?.y ?? 0, { damping: 40, stiffness: 60 });
   });
 
   const smoothedRoll = useDerivedValue(() => {
-    return withSpring(rotation.sensor.value?.roll ?? 0, { damping: 40, stiffness: 60 });
+    return withSpring(gravity.sensor.value?.x ?? 0, { damping: 40, stiffness: 60 });
   });
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -132,10 +133,10 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     let tx = -context.rotateY.value * 25; 
     let ty = -context.rotateX.value * 25;
 
-    // 叠加设备物理旋转 (pitch: 俯仰, roll: 左右翻滚)
-    // 弧度放大映射到像素位移，使得高光可以在卡片表面大幅度平滑扫过
-    tx -= context.roll.value * context.gyroSensitivity * 120;
-    ty -= context.pitch.value * context.gyroSensitivity * 120;
+    // 叠加设备物理旋转 (基于重力 x/y 分量)
+    // 重力值在 -9.8 到 +9.8 左右。映射到像素位移，使得高光可以在卡片表面大幅度平滑扫过
+    tx -= context.roll.value * context.gyroSensitivity * 15;
+    ty -= context.pitch.value * context.gyroSensitivity * 15;
 
     return {
       transform: [
