@@ -70,12 +70,24 @@ export function MagneticCardContainer({
       rotateX.value = Math.max(-maxRotation, Math.min(maxRotation, nextRotateX));
       rotateY.value = Math.max(-maxRotation, Math.min(maxRotation, nextRotateY));
     })
-    .onFinalize(() => {
+    .onFinalize((e) => {
       isPressed.value = false;
-      const springConfig = { damping: 12, stiffness: 150 };
-      rotateX.value = withSpring(0, springConfig);
-      rotateY.value = withSpring(0, springConfig);
-      scale.value = withSpring(1, springConfig);
+      
+      // 引入物理学阻尼谐振子 (Damped Harmonic Oscillator) 的流体设计
+      // 优秀 Fluid Interface 的核心法则：
+      // 1. 注入初速度 (Initial Velocity)：必须将松手瞬间的滑动速度转化为弹簧初速度，严守动量守恒，避免突兀的减速停顿。
+      // 2. 惯性与能量损耗：增加 mass (质量) 放大回弹惯性，适度降低 damping (阻尼) 减小能量损耗。
+      // 在这个配置下：临界阻尼约为 2*sqrt(1.5 * 130) ≈ 28。设置 damping 为 14，阻尼比为 0.5，属于极佳的欠阻尼状态，会产生柔和且持久的余振。
+      const springConfig = { mass: 1.5, damping: 14, stiffness: 130 };
+      
+      const velocityX = -e.velocityY * rotationFactor;
+      const velocityY = e.velocityX * rotationFactor;
+
+      rotateX.value = withSpring(0, { ...springConfig, velocity: velocityX });
+      rotateY.value = withSpring(0, { ...springConfig, velocity: velocityY });
+      
+      // Z轴缩放不需要那么长时间的余振，采用独立的高阻尼配置
+      scale.value = withSpring(1, { mass: 1, damping: 18, stiffness: 200 });
     });
 
   // 平滑物理倾斜角度。动态判断并选择传感器数据源。
