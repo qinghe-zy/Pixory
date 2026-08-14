@@ -265,7 +265,7 @@ const SHRINK_STABLE_DELAY_MS = 200;
 const RETAIN_RECONCILE_WINDOW_MS = 350;
 const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
-const COMPOSER_ENTRANCE_DURATION_MS = 680;
+const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
 const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
 const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
@@ -2947,13 +2947,15 @@ export function AiChatScreen({
     [],
   );
 
-  /** Fade the message area in from transparent to opaque. */
+  /** Fade the message area in from transparent to opaque.
+   *  The mask holds for ~200ms while FlatList renders silently,
+   *  then lifts in a crisp 50ms so the reveal finishes by ~250ms. */
   const fadeInMessageArea = useCallback(
     (delay = 0) => {
       const run = () =>
         Animated.timing(messageAreaFadeAnim, {
           toValue: 1,
-          duration: 200,
+          duration: 50,
           easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }).start();
@@ -4442,11 +4444,12 @@ export function AiChatScreen({
           setMessageLoadError(null);
           replaceMessages(prefetched.messages);
           setIsInitialMessageLoading(false);
-          // Give the FlatList one frame to position itself at offset 0.
+          // Give the FlatList time to position itself at offset 0.
           // scheduleIntentionalLatestJump retries the scroll at 80/260/520ms;
-          // fade in at 150ms so the 80ms retry has settled before reveal.
+          // hold the white mask for 200ms while rendering settles, then
+          // reveal in a 50ms fade so the list is rock-stable by 250ms.
           scheduleIntentionalLatestJump(false);
-          fadeInMessageArea(150);
+          fadeInMessageArea(200);
           return;
         }
       }
@@ -4466,7 +4469,7 @@ export function AiChatScreen({
           return;
         }
         scrollToLatestMessage(false, true);
-        fadeInMessageArea(150);
+        fadeInMessageArea(200);
         scheduleIntentionalLatestJump(false);
       }
     })();
