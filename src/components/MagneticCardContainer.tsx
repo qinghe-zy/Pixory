@@ -44,8 +44,6 @@ export function MagneticCardContainer({
   gyroSensitivity = 4,
 }: MagneticCardContainerProps) {
   const isPressed = useSharedValue(false);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
   const rotateX = useSharedValue(0);
   const rotateY = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -60,9 +58,6 @@ export function MagneticCardContainer({
       scale.value = withSpring(0.96, { damping: 15, stiffness: 300 });
     })
     .onUpdate((e) => {
-      translateX.value = e.translationX * 0.4;
-      translateY.value = e.translationY * 0.4;
-
       let nextRotateY = e.translationX * rotationFactor;
       let nextRotateX = -e.translationY * rotationFactor;
 
@@ -72,8 +67,6 @@ export function MagneticCardContainer({
     .onFinalize(() => {
       isPressed.value = false;
       const springConfig = { damping: 12, stiffness: 150 };
-      translateX.value = withSpring(0, springConfig);
-      translateY.value = withSpring(0, springConfig);
       rotateX.value = withSpring(0, springConfig);
       rotateY.value = withSpring(0, springConfig);
       scale.value = withSpring(1, springConfig);
@@ -94,8 +87,6 @@ export function MagneticCardContainer({
       elevation: isPressed.value ? 99 : 0,
       transform: [
         { perspective: 800 }, // 创造 3D 景深
-        { translateX: translateX.value },
-        { translateY: translateY.value },
         { scale: scale.value },
         { rotateX: `${rotateX.value}deg` }, // 卡片本身只受手势翻转影响
         { rotateY: `${rotateY.value}deg` },
