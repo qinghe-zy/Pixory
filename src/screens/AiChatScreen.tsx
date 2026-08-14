@@ -267,7 +267,7 @@ const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
-const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [50, 130, 220, 500, 800];
+const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [50, 120, 180, 400, 700];
 const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
 const SEARCH_SCROLL_RETRY_DELAYS_MS = [80, 260, 520, 900, 1400, 2200, 3400];
 const SEARCH_HIGHLIGHT_DURATION_MS = 1800;
@@ -2948,14 +2948,14 @@ export function AiChatScreen({
   );
 
   /** Fade the message area in from transparent to opaque.
-   *  The mask holds for ~300ms while FlatList renders silently,
-   *  then fades in over 100ms so the reveal finishes by ~400ms. */
+   *  The mask holds for ~250ms while FlatList renders silently,
+   *  then fades in over 50ms so the reveal finishes by ~300ms. */
   const fadeInMessageArea = useCallback(
     (delay = 0) => {
       const run = () =>
         Animated.timing(messageAreaFadeAnim, {
           toValue: 1,
-          duration: 100,
+          duration: 50,
           easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }).start();
@@ -3060,7 +3060,7 @@ export function AiChatScreen({
             return;
           }
           markIntentionalLatestJump();
-          followLatestMessage(animated);
+          followLatestMessage(animated || delay > 250);
         }, delay),
       );
     });
@@ -4445,10 +4445,10 @@ export function AiChatScreen({
           replaceMessages(prefetched.messages);
           setIsInitialMessageLoading(false);
           // Give the FlatList time to position itself at offset 0.
-          // scheduleIntentionalLatestJump retries at 50/130/220ms (all before
-          // the 300ms mask lift) plus 500/800ms safety nets.
+          // scheduleIntentionalLatestJump retries at 50/120/180ms (all before
+          // the 250ms mask lift) as hard snaps, plus 400/700ms as soft animated safety nets.
           scheduleIntentionalLatestJump(false);
-          fadeInMessageArea(300);
+          fadeInMessageArea(250);
           return;
         }
       }
@@ -4468,7 +4468,7 @@ export function AiChatScreen({
           return;
         }
         scrollToLatestMessage(false, true);
-        fadeInMessageArea(300);
+        fadeInMessageArea(250);
         scheduleIntentionalLatestJump(false);
       }
     })();
