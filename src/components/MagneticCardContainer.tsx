@@ -79,13 +79,13 @@ export function MagneticCardContainer({
       scale.value = withSpring(1, springConfig);
     });
 
-  // 使得陀螺仪数据更加平滑，并将其作为附加偏移量
+  // 使得陀螺仪数据更加平滑，并将其作为附加偏移量（类似浓稠液体里的气泡，移动缓慢不突兀）
   const smoothedGyroX = useDerivedValue(() => {
-    return withSpring(gyro.sensor.value?.x ?? 0, { damping: 15, stiffness: 100 });
+    return withSpring(gyro.sensor.value?.x ?? 0, { damping: 40, stiffness: 60 });
   });
 
   const smoothedGyroY = useDerivedValue(() => {
-    return withSpring(gyro.sensor.value?.y ?? 0, { damping: 15, stiffness: 100 });
+    return withSpring(gyro.sensor.value?.y ?? 0, { damping: 40, stiffness: 60 });
   });
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -143,13 +143,13 @@ export function GyroSpecularHighlight({ intensity = 0.5, type = 'point' }: GyroS
     let tx = context.rotateY.value * 25; 
     let ty = -context.rotateX.value * 25;
 
-    // 叠加由陀螺仪带来的高光偏移量（晃动手机时只有高光游走，卡片不跟着扭动）
-    tx += context.gyroY.value * context.gyroSensitivity * 30;
-    ty += context.gyroX.value * context.gyroSensitivity * 30;
+    // 叠加由陀螺仪带来的高光偏移量（晃动手机时只有高光游走，且变得极其缓慢和克制）
+    tx += context.gyroY.value * context.gyroSensitivity * 15;
+    ty += context.gyroX.value * context.gyroSensitivity * 15;
 
     // 根据倾斜角度增加高光强度 (倾斜越多越亮，制造“反光闪烁”感)
     const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
-    const dynamicOpacity = Math.min(1, 0.2 + tiltMagnitude / 150);
+    const dynamicOpacity = Math.min(1, 0.1 + tiltMagnitude / 200);
 
     return {
       transform: [{ translateX: tx }, { translateY: ty }],
@@ -165,15 +165,17 @@ export function GyroSpecularHighlight({ intensity = 0.5, type = 'point' }: GyroS
           <Defs>
             {type === 'point' ? (
               <RadialGradient id="highlight-point" cx="50%" cy="50%" rx="50%" ry="50%">
-                <Stop offset="0%" stopColor="white" stopOpacity="0.8" />
-                <Stop offset="20%" stopColor="white" stopOpacity="0.2" />
-                <Stop offset="100%" stopColor="white" stopOpacity="0" />
+                <Stop offset="0%" stopColor="white" stopOpacity="0.4" />
+                <Stop offset="15%" stopColor="white" stopOpacity="0.1" />
+                <Stop offset="30%" stopColor="white" stopOpacity="0" />
               </RadialGradient>
             ) : (
               <SvgLinearGradient id="highlight-band" x1="0%" y1="0%" x2="100%" y2="100%">
-                <Stop offset="30%" stopColor="white" stopOpacity="0" />
-                <Stop offset="50%" stopColor="white" stopOpacity="0.5" />
-                <Stop offset="70%" stopColor="white" stopOpacity="0" />
+                <Stop offset="45%" stopColor="white" stopOpacity="0" />
+                <Stop offset="48%" stopColor="white" stopOpacity="0.1" />
+                <Stop offset="50%" stopColor="white" stopOpacity="0.3" />
+                <Stop offset="52%" stopColor="white" stopOpacity="0.1" />
+                <Stop offset="55%" stopColor="white" stopOpacity="0" />
               </SvgLinearGradient>
             )}
           </Defs>

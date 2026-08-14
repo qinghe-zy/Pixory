@@ -23,8 +23,15 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
 
   return (
     <View style={styles.shadowContainer}>
-      <MagneticLiquidContainer damping={12} magneticStrength={0.25} stiffness={180} stretchFactor={0.003}>
-        <MagneticCardContainer gyroSensitivity={5}>
+      <MagneticLiquidContainer 
+        damping={16} 
+        magneticStrength={0.15} 
+        stiffness={400} 
+        stretchFactor={0.001}
+        maxScale={1.02}
+        maxTranslation={12}
+      >
+        <MagneticCardContainer gyroSensitivity={3}>
         <Pressable
           accessibilityLabel={`打开 ${ip.name}`}
           accessibilityRole="button"
