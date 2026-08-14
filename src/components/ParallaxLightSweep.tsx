@@ -109,7 +109,7 @@ export function ParallaxLightSweep({
       <Animated.View style={[variant === 'edges' ? styles.topAuroraEdges : styles.topAurora, layer1Style]}>
         <LinearGradient
           colors={[color1, variant === 'edges' ? 'transparent' : `${color1}00`, 'transparent']}
-          locations={variant === 'edges' ? [0, 0.4, 1] : [0, 0.8, 1]}
+          locations={variant === 'edges' ? [0, 0.7, 1] : [0, 0.8, 1]}
           start={{ x: 0.5, y: 0.1 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.gradientFill}
@@ -120,7 +120,7 @@ export function ParallaxLightSweep({
       <Animated.View style={[variant === 'edges' ? styles.bottomAuroraEdges : styles.bottomAurora, layer2Style]}>
         <LinearGradient
           colors={[color2, variant === 'edges' ? 'transparent' : `${color2}00`, 'transparent']}
-          locations={variant === 'edges' ? [0, 0.4, 1] : [0, 0.8, 1]}
+          locations={variant === 'edges' ? [0, 0.7, 1] : [0, 0.8, 1]}
           start={{ x: 0.5, y: 0.9 }}
           end={{ x: 0.5, y: 0 }}
           style={styles.gradientFill}
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   },
   topAuroraEdges: {
     position: 'absolute',
-    top: '-20%',
+    top: '-15%',
     left: '-50%',
     width: '200%',
     height: '45%',
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   },
   bottomAuroraEdges: {
     position: 'absolute',
-    bottom: '-20%',
+    bottom: '-15%',
     left: '-50%',
     width: '200%',
     height: '45%',
