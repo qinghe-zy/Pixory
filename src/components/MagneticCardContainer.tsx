@@ -48,9 +48,13 @@ export function MagneticCardContainer({
   const rotateY = useSharedValue(0);
   const scale = useSharedValue(1);
 
-  // 使用 GRAVITY (重力加速) 传感器获取设备的绝对倾斜角。
-  // 它比 ROTATION (需要地磁传感器) 兼容性好得多，能在绝大多数安卓设备上稳定运行。
+  // 优先使用 ROTATION (地磁+陀螺仪绝对旋转)，因为其物理顺滑感和体验更好。
+  // 但在某些设备上如果被禁用或无传感器，会静默返回全 0。此时回退到几乎 100% 兼容的 GRAVITY (重力加速)。
+  const rotation = useAnimatedSensor(SensorType.ROTATION, { interval: 16 });
   const gravity = useAnimatedSensor(SensorType.GRAVITY, { interval: 16 });
+
+  // 记录 ROTATION 是否真实产生了数据
+  const hasRotationData = useSharedValue(false);
 
   const panGesture = Gesture.Pan()
     .onBegin(() => {
@@ -73,13 +77,33 @@ export function MagneticCardContainer({
       scale.value = withSpring(1, springConfig);
     });
 
-  // 平滑物理倾斜角度。重力矢量 x/y 的范围通常是 -9.8 到 +9.8
+  // 平滑物理倾斜角度。动态判断并选择传感器数据源。
   const smoothedPitch = useDerivedValue(() => {
-    return withSpring(gravity.sensor.value?.y ?? 0, { damping: 40, stiffness: 60 });
+    let rPitch = rotation.sensor.value?.pitch ?? 0;
+    let rRoll = rotation.sensor.value?.roll ?? 0;
+    let rYaw = rotation.sensor.value?.yaw ?? 0;
+    
+    // 如果 ROTATION 传感器有任何非 0 数据输出，说明硬件可用且未被权限拦截
+    if (!hasRotationData.value && (rPitch !== 0 || rRoll !== 0 || rYaw !== 0)) {
+      hasRotationData.value = true;
+    }
+
+    if (hasRotationData.value) {
+      // ROTATION 的 pitch 为弧度。放大 8 倍以对齐 GRAVITY 的数值范围，确保高光扫过幅度一致。
+      return withSpring(rPitch * 8, { damping: 40, stiffness: 60 });
+    } else {
+      // 降级使用 GRAVITY 的 y 轴重力分量
+      return withSpring(gravity.sensor.value?.y ?? 0, { damping: 40, stiffness: 60 });
+    }
   });
 
   const smoothedRoll = useDerivedValue(() => {
-    return withSpring(gravity.sensor.value?.x ?? 0, { damping: 40, stiffness: 60 });
+    if (hasRotationData.value) {
+      let rRoll = rotation.sensor.value?.roll ?? 0;
+      return withSpring(rRoll * 8, { damping: 40, stiffness: 60 });
+    } else {
+      return withSpring(gravity.sensor.value?.x ?? 0, { damping: 40, stiffness: 60 });
+    }
   });
 
   const animatedStyle = useAnimatedStyle(() => {
