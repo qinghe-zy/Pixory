@@ -465,9 +465,11 @@ function HomeBrandHeader() {
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
-        <Animated.Text style={[styles.brandGreetingText, textStyle]}>
-          {greeting}
-        </Animated.Text>
+        <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
+          <Animated.Text style={[styles.brandGreetingText, textStyle]}>
+            {greeting}
+          </Animated.Text>
+        </MagneticLiquidContainer>
         <View style={styles.binaryStarsContainer}>
           {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
           <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />

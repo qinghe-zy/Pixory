@@ -55,6 +55,8 @@ export function MagneticLiquidContainer({
   const translateY = useSharedValue(0);
 
   const panGesture = Gesture.Pan()
+    .activeOffsetX([-5, 5])
+    .activeOffsetY([-5, 5])
     .onBegin(() => {
       isPressed.value = true;
     })
