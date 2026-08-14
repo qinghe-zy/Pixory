@@ -13,7 +13,6 @@ import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { BlurView } from 'expo-blur';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
-import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GlobalGroupListItem, type IpListItem, type PixorySpace } from '../database';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
@@ -141,25 +140,15 @@ export function GlobalGroupsScreen({
   }
 
   const headerRightAction = (
-    <MagneticLiquidContainer
-      damping={16} 
-      magneticStrength={0.15} 
-      stiffness={400} 
-      stretchFactor={0.001}
-      maxScale={1.02}
-      maxTranslation={10}
-      style={styles.headerFilterBtn}
-    >
-      <Pressable onPress={() => setIsIpDrawerOpen(true)} style={({ pressed }) => [styles.headerFilterBtn, pressed && styles.pressed]}>
-        <BlurView intensity={50} style={styles.headerFilterBlur} tint="light">
-          <LiquidGlassBezel radius={16} />
-          <View style={styles.headerFilterInner}>
-            <Text numberOfLines={1} style={styles.headerFilterText}>{selectedIpName}</Text>
-            <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
-          </View>
-        </BlurView>
-      </Pressable>
-    </MagneticLiquidContainer>
+    <Pressable onPress={() => setIsIpDrawerOpen(true)} style={({ pressed }) => [styles.headerFilterBtn, pressed && styles.pressed]}>
+      <BlurView intensity={50} style={styles.headerFilterBlur} tint="light">
+        <LiquidGlassBezel radius={16} />
+        <View style={styles.headerFilterInner}>
+          <Text numberOfLines={1} style={styles.headerFilterText}>{selectedIpName}</Text>
+          <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
+        </View>
+      </BlurView>
+    </Pressable>
   );
 
   return (
