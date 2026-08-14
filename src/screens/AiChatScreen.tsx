@@ -37,6 +37,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
+import { ParallaxLightSweep } from "../components/ParallaxLightSweep";
 import {
   AiChatComposer,
   type AiComposerAttachment,
@@ -901,6 +902,7 @@ export function AiChatScreen({
   onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
+
   const initialBottomInsetRef = useRef(insets.bottom);
   const statusBarHeight =
     Platform.OS === "android"
@@ -1514,6 +1516,17 @@ export function AiChatScreen({
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
   const [isInitialMessageLoading, setIsInitialMessageLoading] = useState(true);
+
+  const [showSweep, setShowSweep] = useState(true);
+
+  useEffect(() => {
+    if (!isInitialMessageLoading) {
+      const timer = setTimeout(() => setShowSweep(false), 500);
+      return () => clearTimeout(timer);
+    } else {
+      setShowSweep(true);
+    }
+  }, [isInitialMessageLoading]);
   const [singleBubbleTailReplayEnabled] = useState(
     getAiTailReplaySingleBubbleEnabled,
   );
@@ -7400,6 +7413,13 @@ export function AiChatScreen({
           </View>
         </View>
       </Modal>
+      <ParallaxLightSweep
+        color1="#E0F7FA"
+        color2="#FFF0E5"
+        fadeDuration={750}
+        opacity={0.35}
+        visible={showSweep}
+      />
     </AppScreen>
   );
 }
