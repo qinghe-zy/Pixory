@@ -45,7 +45,7 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
                 <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
               </View>
               <AcrylicGlass />
-              <GyroSpecularHighlight intensity={0.6} type="band" />
+              <GyroSpecularHighlight intensity={0.6} />
               {content}
             </View>
           ) : (
@@ -57,7 +57,7 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
                 <View style={styles.fallbackMark} />
               </View>
               <AcrylicGlass />
-              <GyroSpecularHighlight intensity={0.6} type="band" />
+              <GyroSpecularHighlight intensity={0.6} />
               {content}
             </View>
           )}

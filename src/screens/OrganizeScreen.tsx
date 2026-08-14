@@ -71,6 +71,8 @@ export function OrganizeScreen({
   );
 }
 
+import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
+
 function OrganizeSegmentedControl({
   mode,
   onSelect,
@@ -79,7 +81,15 @@ function OrganizeSegmentedControl({
   onSelect: (mode: OrganizeMode) => void;
 }) {
   return (
-    <View style={styles.segmentRoot}>
+    <MagneticLiquidContainer
+      damping={16} 
+      magneticStrength={0.15} 
+      stiffness={400} 
+      stretchFactor={0.001}
+      maxScale={1.02}
+      maxTranslation={10}
+      style={styles.segmentRoot}
+    >
       <BlurView intensity={50} style={styles.segmentBlur} tint="light">
         <LiquidGlassBezel radius={16} />
         <View style={styles.segmentInner}>
@@ -101,7 +111,7 @@ function OrganizeSegmentedControl({
           </Pressable>
         </View>
       </BlurView>
-    </View>
+    </MagneticLiquidContainer>
   );
 }
 

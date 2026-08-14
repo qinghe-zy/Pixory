@@ -14,6 +14,7 @@ import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
 import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
 import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
+import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
 
 interface MeScreenProps {
   refreshToken: number;
@@ -308,7 +309,8 @@ export function MeScreen({
 
   return (
     <ScreenScaffold backgroundVariant="profile" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
-      <ContentCard style={styles.heroCard}>
+      <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
+        <ContentCard style={styles.heroCard}>
         <Pressable
           accessibilityLabel={space === 'personal' ? '返回普通模式' : '进入隐私模式'}
           accessibilityRole="button"
@@ -385,14 +387,16 @@ export function MeScreen({
           </View>
 
         </View>
-      </ContentCard>
+        </ContentCard>
+      </MagneticLiquidContainer>
 
       <View style={styles.entryList}>
         {/* BLOCK 1: Core Assets (Side-by-side squares) */}
         <View style={styles.coreAssetsRow}>
-          <Pressable
-            accessibilityLabel="收藏图片"
-            accessibilityRole="button"
+          <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10} style={{ flex: 1 }}>
+            <Pressable
+              accessibilityLabel="收藏图片"
+              accessibilityRole="button"
             onPress={() => handleEntryPress('favorites')}
             style={({ pressed }) => [styles.coreAssetCard, pressed && styles.pressed]}
           >
@@ -410,10 +414,12 @@ export function MeScreen({
               <Text style={styles.coreAssetTitle}>收藏图片</Text>
             </View>
           </Pressable>
+          </MagneticLiquidContainer>
 
-          <Pressable
-            accessibilityLabel="最近查看"
-            accessibilityRole="button"
+          <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10} style={{ flex: 1 }}>
+            <Pressable
+              accessibilityLabel="最近查看"
+              accessibilityRole="button"
             onPress={() => handleEntryPress('recent')}
             style={({ pressed }) => [styles.coreAssetCard, pressed && styles.pressed]}
           >
@@ -431,10 +437,12 @@ export function MeScreen({
               <Text style={styles.coreAssetTitle}>最近查看</Text>
             </View>
           </Pressable>
+          </MagneticLiquidContainer>
         </View>
 
         {/* BLOCK 2: Tools Grid (4 columns) */}
-        <ContentCard style={styles.toolsGroup}>
+        <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
+          <ContentCard style={styles.toolsGroup}>
           <View style={styles.toolsGrid}>
             <Pressable onPress={() => handleEntryPress('trash')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
               <View style={styles.toolIconWrap}>
@@ -467,9 +475,11 @@ export function MeScreen({
             </Pressable>
           </View>
         </ContentCard>
+        </MagneticLiquidContainer>
 
         {/* BLOCK 3: System List */}
-        <ContentCard style={styles.systemGroup}>
+        <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
+          <ContentCard style={styles.systemGroup}>
           <Pressable onPress={() => handleEntryPress('about')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
             <View style={styles.systemListIcon}>
               <Ionicons color={colors.primary.active} name="information-circle-outline" size={20} />
@@ -486,6 +496,7 @@ export function MeScreen({
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
         </ContentCard>
+        </MagneticLiquidContainer>
       </View>
 
       {isLoading ? <Text style={styles.loadingText}>正在刷新本地统计…</Text> : null}
