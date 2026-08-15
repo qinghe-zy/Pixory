@@ -221,10 +221,10 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
       {/* 底层空间：Ambient Glow 环境漫反射 */}
       <Animated.View style={[StyleSheet.absoluteFill, animatedAmbientStyle]}>
-        <View style={{ position: 'absolute', width: '200%', height: '200%', top: '-50%', left: '-50%' }}>
+        <View style={{ position: 'absolute', width: '800%', height: '800%', top: '-350%', left: '-350%' }}>
           <Svg height="100%" width="100%">
             <Defs>
-              <RadialGradient id="ambient-glow" cx="50%" cy="50%" rx="50%" ry="50%">
+              <RadialGradient id="ambient-glow" cx="50%" cy="50%" rx="12.5%" ry="12.5%">
                 {/* 极其柔和的宽广光源，绝不产生“手电筒光点”感 */}
                 <Stop offset="0%" stopColor="white" stopOpacity="0.35" />
                 <Stop offset="50%" stopColor="white" stopOpacity="0.1" />
@@ -238,27 +238,27 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
 
       {/* 顶层空间：Directional Sheen 镜面高光带 (融合微小色散 Chromatic Aberration) */}
       <Animated.View style={[StyleSheet.absoluteFill, animatedSheenStyle]}>
-        <View style={{ position: 'absolute', width: '300%', height: '300%', top: '-100%', left: '-100%' }}>
+        <View style={{ position: 'absolute', width: '800%', height: '800%', top: '-350%', left: '-350%' }}>
           {/* 红橙色散边 (稍稍向左偏移) */}
           <LinearGradient
-            colors={['rgba(255,50,0,0)', 'rgba(255,100,0,0.15)', 'rgba(255,255,255,0)']}
-            locations={[0.42, 0.48, 0.51]}
+            colors={['transparent', 'transparent', 'rgba(255,100,0,0.15)', 'transparent', 'transparent']}
+            locations={[0, 0.47, 0.4925, 0.50375, 1]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={StyleSheet.absoluteFill}
           />
           {/* 主白光体 */}
           <LinearGradient
-            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0)']}
-            locations={[0.4, 0.47, 0.5, 0.53, 0.6]}
+            colors={['transparent', 'transparent', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.05)', 'transparent', 'transparent']}
+            locations={[0, 0.4625, 0.48875, 0.5, 0.51125, 0.5375, 1]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={StyleSheet.absoluteFill}
           />
           {/* 青蓝色散边 (稍稍向右偏移) */}
           <LinearGradient
-            colors={['rgba(255,255,255,0)', 'rgba(0,180,255,0.15)', 'rgba(0,50,255,0)']}
-            locations={[0.49, 0.52, 0.58]}
+            colors={['transparent', 'transparent', 'rgba(0,150,255,0.15)', 'transparent', 'transparent']}
+            locations={[0, 0.49625, 0.5075, 0.53, 1]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={StyleSheet.absoluteFill}
