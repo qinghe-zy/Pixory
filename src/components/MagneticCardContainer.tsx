@@ -73,12 +73,9 @@ export function MagneticCardContainer({
     .onFinalize((e) => {
       isPressed.value = false;
       
-      // 引入物理学阻尼谐振子 (Damped Harmonic Oscillator) 的流体设计
-      // 优秀 Fluid Interface 的核心法则：
-      // 1. 注入初速度 (Initial Velocity)：必须将松手瞬间的滑动速度转化为弹簧初速度，严守动量守恒，避免突兀的减速停顿。
-      // 2. 惯性与能量损耗：增加 mass (质量) 放大回弹惯性，适度降低 damping (阻尼) 减小能量损耗。
-      // 在这个配置下：临界阻尼约为 2*sqrt(1.5 * 130) ≈ 28。设置 damping 为 14，阻尼比为 0.5，属于极佳的欠阻尼状态，会产生柔和且持久的余振。
-      const springConfig = { mass: 1.5, damping: 14, stiffness: 130 };
+      // 物理学阻尼谐振子 (Damped Harmonic Oscillator) 的流体设计
+      // 根据反馈：减轻 mass 避免沉重感，提高 stiffness 让摆动更清脆（不要太慢），降低 damping 让衰减变慢（摆动时间长）
+      const springConfig = { mass: 0.8, damping: 8, stiffness: 180 };
       
       const velocityX = -e.velocityY * rotationFactor;
       const velocityY = e.velocityX * rotationFactor;
@@ -165,8 +162,8 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     return null;
   }
 
-  // 前沿高光算法 1：Sheen (高光面反射) + 全向物理跟随 (Angular Tracking)
-  // 带有菲涅尔效应的锐利扫光带，不仅亮度随倾斜角变大，其光带的旋转角度也 360 度完全跟随物理重力向量
+  // 前沿高光算法 1：Sheen (高光面反射)
+  // 固定角度的扫光带，通过偏移映射产生物理真实的反光移动
   const animatedSheenStyle = useAnimatedStyle(() => {
     let tx = -context.rotateY.value * 25; 
     let ty = -context.rotateX.value * 25;
@@ -177,15 +174,12 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
     const fresnelOpacity = Math.min(1, 0.4 + (tiltMagnitude / 150));
 
-    // 核心高级算法：计算重力向量的绝对角度 (弧度)
-    // 使得光效带始终完美垂直于手机倾斜滑动的方向，实现真正的 3D 球面反光映射
-    const angle = Math.atan2(ty, tx);
-
+    // 回退到自然且固定角度 (斜对角线) 的真实反射带，不随意旋转
     return {
       transform: [
         { translateX: tx * 1.6 },
         { translateY: ty * 1.6 },
-        { rotate: `${angle}rad` }, // 动态注入旋转
+        { rotate: '35deg' }, // 固定斜向扫光
       ],
       opacity: intensity * fresnelOpacity,
     };
