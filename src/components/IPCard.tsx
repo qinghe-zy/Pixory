@@ -15,11 +15,53 @@ interface IPCardProps {
   space?: PixorySpace;
   onLongPress?: (ip: IpListItem) => void;
   onPress: (ipId: number) => void;
+  isFirst?: boolean;
 }
 
-export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardProps) {
+export function IPCard({ ip, space = 'normal', onLongPress, onPress, isFirst = false }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
   const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
+
+  const innerPressable = (
+    <Pressable
+      accessibilityLabel={`打开 ${ip.name}`}
+      accessibilityRole="button"
+      onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
+      onPress={() => onPress(ip.id)}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+    >
+      {ip.coverThumbnailFileUri ? (
+        <View style={styles.cover}>
+          <View style={styles.imageInset}>
+            <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
+          </View>
+          <AcrylicGlass />
+          {isFirst && <GyroSpecularHighlight intensity={0.6} />}
+          {content}
+        </View>
+      ) : (
+        <View style={[styles.cover, styles.fallbackCover]}>
+          <View style={styles.imageInset}>
+            <Text numberOfLines={1} style={styles.initialsText}>
+              {getIpInitials(ip.name)}
+            </Text>
+            <View style={styles.fallbackMark} />
+          </View>
+          <AcrylicGlass />
+          {isFirst && <GyroSpecularHighlight intensity={0.6} />}
+          {content}
+        </View>
+      )}
+    </Pressable>
+  );
+
+  if (!isFirst) {
+    return (
+      <View style={styles.shadowContainer}>
+        {innerPressable}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.shadowContainer}>
@@ -32,36 +74,7 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
         maxTranslation={4}
       >
         <MagneticCardContainer gyroSensitivity={3}>
-        <Pressable
-          accessibilityLabel={`打开 ${ip.name}`}
-          accessibilityRole="button"
-          onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
-          onPress={() => onPress(ip.id)}
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-        >
-          {ip.coverThumbnailFileUri ? (
-            <View style={styles.cover}>
-              <View style={styles.imageInset}>
-                <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
-              </View>
-              <AcrylicGlass />
-              <GyroSpecularHighlight intensity={0.6} />
-              {content}
-            </View>
-          ) : (
-            <View style={[styles.cover, styles.fallbackCover]}>
-              <View style={styles.imageInset}>
-                <Text numberOfLines={1} style={styles.initialsText}>
-                  {getIpInitials(ip.name)}
-                </Text>
-                <View style={styles.fallbackMark} />
-              </View>
-              <AcrylicGlass />
-              <GyroSpecularHighlight intensity={0.6} />
-              {content}
-            </View>
-          )}
-        </Pressable>
+          {innerPressable}
         </MagneticCardContainer>
       </MagneticLiquidContainer>
     </View>

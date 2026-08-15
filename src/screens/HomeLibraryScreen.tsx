@@ -315,7 +315,7 @@ export function HomeLibraryScreen({
             ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
             onEndReached={loadMore}
             onEndReachedThreshold={0.5}
-            renderItem={({ item }) => <IPCard ip={item} onLongPress={handleDeleteIp} onPress={onOpenIp} space={space} />}
+            renderItem={({ item, index }) => <IPCard ip={item} isFirst={index === 0} onLongPress={handleDeleteIp} onPress={onOpenIp} space={space} />}
             showsVerticalScrollIndicator={false}
             style={styles.list}
           />
