@@ -264,21 +264,21 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
         <View style={{ position: 'absolute', width: '800%', height: '800%', top: '-350%', left: '-350%' }}>
           {/* 红橙色散边 (稍稍向左偏移) */}
           <AnimatedLinearGradient
-            colors={['transparent', 'transparent', 'rgba(255,100,0,0.15)', 'transparent', 'transparent']}
+            colors={['rgba(255,100,0,0)', 'rgba(255,100,0,0)', 'rgba(255,100,0,0.15)', 'rgba(255,100,0,0)', 'rgba(255,100,0,0)']}
             locations={[0, 0.47, 0.4925, 0.50375, 1]}
             animatedProps={sheenGradientProps}
             style={StyleSheet.absoluteFill}
           />
           {/* 主白光体 */}
           <AnimatedLinearGradient
-            colors={['transparent', 'transparent', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.05)', 'transparent', 'transparent']}
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0)', 'rgba(255,255,255,0)']}
             locations={[0, 0.4625, 0.48875, 0.5, 0.51125, 0.5375, 1]}
             animatedProps={sheenGradientProps}
             style={StyleSheet.absoluteFill}
           />
           {/* 青蓝色散边 (稍稍向右偏移) */}
           <AnimatedLinearGradient
-            colors={['transparent', 'transparent', 'rgba(0,150,255,0.15)', 'transparent', 'transparent']}
+            colors={['rgba(0,150,255,0)', 'rgba(0,150,255,0)', 'rgba(0,150,255,0.15)', 'rgba(0,150,255,0)', 'rgba(0,150,255,0)']}
             locations={[0, 0.49625, 0.5075, 0.53, 1]}
             animatedProps={sheenGradientProps}
             style={StyleSheet.absoluteFill}
