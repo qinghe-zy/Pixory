@@ -58,8 +58,10 @@ export function MagneticLiquidContainer({
   const forceY = externalForceY ?? fallbackForce;
 
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-5, 5])
-    .activeOffsetY([-5, 5])
+    // 将激活死区从 5 像素大幅压缩到 1 像素，几乎实现“零延迟”跟手，
+    // 同时保留这 1 像素是为了防止普通点击（Tap）的手指微颤被误判为拖拽而导致点击失效。
+    .activeOffsetX([-1, 1])
+    .activeOffsetY([-1, 1])
     .onBegin(() => {
       isPressed.value = true;
     })
