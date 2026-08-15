@@ -56,6 +56,7 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
+  const [isNeedsPanelDismissed, setIsNeedsPanelDismissed] = useState(false);
   const [actionIp, setActionIp] = useState<IpListItem | null>(null);
   const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
@@ -247,13 +248,23 @@ export function HomeLibraryScreen({
             <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
           </MagneticLiquidContainer>
         </View>
-        {needsOrganizingCount > 0 ? (
+        {!isNeedsPanelDismissed && needsOrganizingCount > 0 ? (
           <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
             <View style={styles.needsIcon}>
               <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
             </View>
             <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 张</Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
+            <Pressable 
+              hitSlop={15} 
+              onPress={(e) => {
+                e.stopPropagation();
+                setIsNeedsPanelDismissed(true);
+              }}
+              style={styles.needsCloseButton}
+            >
+              <Ionicons color={colors.text.tertiary} name="close" size={18} />
+            </Pressable>
           </Pressable>
         ) : null}
         <View style={styles.filterRow}>
@@ -604,6 +615,11 @@ const styles = StyleSheet.create({
     height: 30,
     justifyContent: 'center',
     width: 30,
+  },
+  needsCloseButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: spacing[2],
   },
   needsText: {
     ...typography.textStyles.bodyStrong,
