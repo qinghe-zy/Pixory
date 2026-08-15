@@ -20,6 +20,7 @@ import { BlurView } from 'expo-blur';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
+import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
 
@@ -223,23 +224,27 @@ export function HomeLibraryScreen({
     >
       <View style={styles.topArea}>
         <View style={styles.searchWithDecor}>
-          <View style={styles.rhythmDecorRow}>
-            <RhythmBars
-              barGap={5}
-              barWidth={3}
-              maxBarHeight={24}
-              minBarHeight={7}
-              speedMultiplier={isDaytime ? 1.5 : 1}
-            />
-            <RhythmBars
-              barGap={5}
-              barWidth={3}
-              maxBarHeight={24}
-              minBarHeight={7}
-              speedMultiplier={isDaytime ? 1.5 : 1}
-            />
-          </View>
-          <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
+          <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
+            <View style={styles.rhythmDecorRow}>
+              <RhythmBars
+                barGap={5}
+                barWidth={3}
+                maxBarHeight={24}
+                minBarHeight={7}
+                speedMultiplier={isDaytime ? 1.5 : 1}
+              />
+              <RhythmBars
+                barGap={5}
+                barWidth={3}
+                maxBarHeight={24}
+                minBarHeight={7}
+                speedMultiplier={isDaytime ? 1.5 : 1}
+              />
+            </View>
+          </MagneticLiquidContainer>
+          <MagneticLiquidContainer magneticStrength={0.35} stretchFactor={0.02} damping={14}>
+            <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
+          </MagneticLiquidContainer>
         </View>
         {needsOrganizingCount > 0 ? (
           <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
@@ -252,12 +257,13 @@ export function HomeLibraryScreen({
         ) : null}
         <View style={styles.filterRow}>
           {FILTER_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.key}
-              active={activeFilter === option.key}
-              label={option.label}
-              onPress={() => setActiveFilter(option.key)}
-            />
+            <MagneticLiquidContainer key={option.key} magneticStrength={0.4} stretchFactor={0.03} damping={12}>
+              <FilterChip
+                active={activeFilter === option.key}
+                label={option.label}
+                onPress={() => setActiveFilter(option.key)}
+              />
+            </MagneticLiquidContainer>
           ))}
         </View>
       </View>
@@ -461,26 +467,32 @@ function HomeBrandHeader() {
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
-        <Animated.Text style={[styles.brandGreetingText, textStyle]}>
-          {greeting}
-        </Animated.Text>
-        <View style={styles.binaryStarsContainer}>
-          {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
-          <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />
-          <View style={[styles.faintOrbit, { width: 25, height: 25, borderRadius: 12.5, transform: [{ rotateY: '60deg' }] }]} />
-          <View style={[styles.faintOrbit, { width: 31, height: 31, borderRadius: 15.5, transform: [{ rotateZ: '45deg' }, { rotateX: '70deg' }] }]} />
-          
-          {/* 星星实体 */}
-          <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }, star1Style]} />
-          <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }, star2Style]} />
-          <View style={{ position: 'absolute', transform: [{ rotateZ: '45deg' }] }}>
-            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }, star3Style]} />
+        <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
+          <Animated.Text style={[styles.brandGreetingText, textStyle]}>
+            {greeting}
+          </Animated.Text>
+        </MagneticLiquidContainer>
+        <MagneticLiquidContainer magneticStrength={0.5} stretchFactor={0.05} damping={14}>
+          <View style={styles.binaryStarsContainer}>
+            {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
+            <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />
+            <View style={[styles.faintOrbit, { width: 25, height: 25, borderRadius: 12.5, transform: [{ rotateY: '60deg' }] }]} />
+            <View style={[styles.faintOrbit, { width: 31, height: 31, borderRadius: 15.5, transform: [{ rotateZ: '45deg' }, { rotateX: '70deg' }] }]} />
+            
+            {/* 星星实体 */}
+            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }, star1Style]} />
+            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }, star2Style]} />
+            <View style={{ position: 'absolute', transform: [{ rotateZ: '45deg' }] }}>
+              <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }, star3Style]} />
+            </View>
           </View>
-        </View>
+        </MagneticLiquidContainer>
       </View>
-      <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
-        PIXORY · PRIVATE ARCHIVE
-      </Animated.Text>
+      <MagneticLiquidContainer magneticStrength={0.3} stretchFactor={0.02} damping={10}>
+        <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
+          PIXORY · PRIVATE ARCHIVE
+        </Animated.Text>
+      </MagneticLiquidContainer>
     </View>
   );
 }
