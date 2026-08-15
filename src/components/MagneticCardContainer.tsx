@@ -73,9 +73,9 @@ export function MagneticCardContainer({
     .onFinalize((e) => {
       isPressed.value = false;
       
-      // 物理学阻尼谐振子 (Damped Harmonic Oscillator) 的流体设计
-      // 根据反馈：减轻 mass 避免沉重感，提高 stiffness 让摆动更清脆（不要太慢），降低 damping 让衰减变慢（摆动时间长）
-      const springConfig = { mass: 0.8, damping: 8, stiffness: 180 };
+      // 物理学阻尼谐振子 (Damped Harmonic Oscillator) 
+      // 用户要求：摆动时间长一点，慢慢衰减能量，但不要太慢（加快频率，降低阻尼）
+      const springConfig = { mass: 0.8, damping: 5, stiffness: 220 };
       
       const velocityX = -e.velocityY * rotationFactor;
       const velocityY = e.velocityX * rotationFactor;
