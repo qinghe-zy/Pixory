@@ -8,10 +8,13 @@ import Animated, {
   useAnimatedSensor,
   SensorType,
   useDerivedValue,
+  useAnimatedProps,
   type SharedValue,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
+
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 export const MagneticCardContext = createContext<{
   rotateX: SharedValue<number>;
@@ -181,22 +184,42 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
     const fresnelOpacity = Math.min(1, 0.4 + (tiltMagnitude / 150));
 
-    // 根据反馈：拖拽时随角度偏转高光方向，但传感器监测时保持单一固定方向（35度斜对角线）。
-    // 通过给一个权重较大的基准向量，并叠加拖拽向量，即可实现顺滑的向量计算而无角度突变。
-    const baseTx = Math.cos(35 * (Math.PI / 180)) * 5; 
-    const baseTy = Math.sin(35 * (Math.PI / 180)) * 5;
-    
-    const dirTx = dragTx + baseTx;
-    const dirTy = dragTy + baseTy;
-    const angleRad = Math.atan2(dirTy, dirTx);
-
     return {
       transform: [
         { translateX: tx * 1.6 },
         { translateY: ty * 1.6 },
-        { rotate: `${angleRad}rad` }, 
       ],
       opacity: intensity * fresnelOpacity,
+    };
+  });
+
+  const sheenGradientProps = useAnimatedProps(() => {
+    let tx = -context.rotateY.value * 25; 
+    let ty = -context.rotateX.value * 25;
+    tx -= context.roll.value * context.gyroSensitivity * 15;
+    ty -= context.pitch.value * context.gyroSensitivity * 15;
+
+    const length = Math.sqrt(tx * tx + ty * ty);
+
+    let nx = length > 0 ? tx / length : 0;
+    let ny = length > 0 ? ty / length : 0;
+
+    const baseAngle = 35 * (Math.PI / 180);
+    const baseNx = Math.cos(baseAngle);
+    const baseNy = Math.sin(baseAngle);
+
+    const factor = Math.min(1, length / 100);
+
+    let finalNx = baseNx * (1 - factor) + nx * factor;
+    let finalNy = baseNy * (1 - factor) + ny * factor;
+
+    const finalLen = Math.sqrt(finalNx * finalNx + finalNy * finalNy) || 1;
+    finalNx /= finalLen;
+    finalNy /= finalLen;
+
+    return {
+      start: { x: 0.5 - finalNx * 0.5, y: 0.5 - finalNy * 0.5 },
+      end:   { x: 0.5 + finalNx * 0.5, y: 0.5 + finalNy * 0.5 }
     };
   });
 
@@ -240,27 +263,24 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
       <Animated.View style={[StyleSheet.absoluteFill, animatedSheenStyle]}>
         <View style={{ position: 'absolute', width: '800%', height: '800%', top: '-350%', left: '-350%' }}>
           {/* 红橙色散边 (稍稍向左偏移) */}
-          <LinearGradient
+          <AnimatedLinearGradient
             colors={['transparent', 'transparent', 'rgba(255,100,0,0.15)', 'transparent', 'transparent']}
             locations={[0, 0.47, 0.4925, 0.50375, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
+            animatedProps={sheenGradientProps}
             style={StyleSheet.absoluteFill}
           />
           {/* 主白光体 */}
-          <LinearGradient
+          <AnimatedLinearGradient
             colors={['transparent', 'transparent', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.05)', 'transparent', 'transparent']}
             locations={[0, 0.4625, 0.48875, 0.5, 0.51125, 0.5375, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
+            animatedProps={sheenGradientProps}
             style={StyleSheet.absoluteFill}
           />
           {/* 青蓝色散边 (稍稍向右偏移) */}
-          <LinearGradient
+          <AnimatedLinearGradient
             colors={['transparent', 'transparent', 'rgba(0,150,255,0.15)', 'transparent', 'transparent']}
             locations={[0, 0.49625, 0.5075, 0.53, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
+            animatedProps={sheenGradientProps}
             style={StyleSheet.absoluteFill}
           />
         </View>
