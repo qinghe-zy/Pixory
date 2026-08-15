@@ -162,10 +162,8 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     return null;
   }
 
-  // 记录上一次的绝对角度和累积角度，用于解决跨越 180 度时的旋转抽风问题
-  const prevAngle = useSharedValue(35 * (Math.PI / 180));
-  const accumAngle = useSharedValue(35 * (Math.PI / 180));
-
+  // 记录上一次的绝对角度和累积角度（已废弃：用户要求改回单角度以提升性能）
+  
   // 前沿高光算法 1：Sheen (高光面反射)
   const animatedSheenStyle = useAnimatedStyle(() => {
     // 拖拽带来的视差
@@ -184,35 +182,12 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
     const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
     const fresnelOpacity = Math.min(1, 0.4 + (tiltMagnitude / 150));
 
-    // 计算高光的角度向量
-    let nx = tiltMagnitude > 0 ? tx / tiltMagnitude : 0;
-    let ny = tiltMagnitude > 0 ? ty / tiltMagnitude : 0;
-
-    const baseAngleRad = 35 * (Math.PI / 180);
-    const baseNx = Math.cos(baseAngleRad);
-    const baseNy = Math.sin(baseAngleRad);
-
-    const factor = Math.min(1, tiltMagnitude / 100);
-
-    let finalNx = baseNx * (1 - factor) + nx * factor;
-    let finalNy = baseNy * (1 - factor) + ny * factor;
-
-    // 真正的目标角度
-    const targetAngle = Math.atan2(finalNy, finalNx);
-
-    // 连续展开算法 (Continuous Unwrapped Angle)
-    let diff = targetAngle - prevAngle.value;
-    while (diff > Math.PI) diff -= 2 * Math.PI;
-    while (diff < -Math.PI) diff += 2 * Math.PI;
-
-    accumAngle.value += diff;
-    prevAngle.value = targetAngle;
-
+    // 用户要求取消多角度旋转计算，直接写死为 35 度单角度，大幅减少 CPU 计算和重绘
     return {
       transform: [
         { translateX: tx * 1.6 },
         { translateY: ty * 1.6 },
-        { rotate: `${accumAngle.value}rad` }
+        { rotate: '35deg' }
       ],
       opacity: intensity * fresnelOpacity,
     };
