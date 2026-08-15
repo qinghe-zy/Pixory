@@ -335,23 +335,27 @@ export function MeScreen({
           </Animated.View>
         </Pressable>
         <View style={styles.profileRow}>
-          <Pressable onPress={handleAvatarPress} style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
-            <View style={styles.avatar}>
-              {avatarUri ? (
-                <Image resizeMode="cover" source={{ uri: avatarUri }} style={styles.avatarImage} />
-              ) : (
-                <Ionicons color={colors.primary.active} name="person" size={34} />
-              )}
-            </View>
-            <OrbitalSpectralRing avatarSize={68} isActive={false} padding={2} />
-            <View style={styles.avatarEditBadge}>
-              <Ionicons color={colors.primary.active} name="camera-outline" size={13} />
-            </View>
-          </Pressable>
+          <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={12} stretchFactor={0.02}>
+            <Pressable onPress={handleAvatarPress} style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
+              <View style={styles.avatar}>
+                {avatarUri ? (
+                  <Image resizeMode="cover" source={{ uri: avatarUri }} style={styles.avatarImage} />
+                ) : (
+                  <Ionicons color={colors.primary.active} name="person" size={34} />
+                )}
+              </View>
+              <OrbitalSpectralRing avatarSize={68} isActive={false} padding={2} />
+              <View style={styles.avatarEditBadge}>
+                <Ionicons color={colors.primary.active} name="camera-outline" size={13} />
+              </View>
+            </Pressable>
+          </MagneticLiquidContainer>
           <View style={styles.profileCopy}>
             <View style={styles.nameRow}>
               <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.heroTitleContainer, pressed && styles.pressed]}>
-                <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
+                <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
+                  <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
+                </MagneticLiquidContainer>
               </Pressable>
               <ProfileMemoryCore />
             </View>
@@ -408,7 +412,9 @@ export function MeScreen({
             </View>
             <View style={styles.coreAssetBody}>
               <View style={styles.coreAssetCountRow}>
-                <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
+                <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
+                  <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
+                </MagneticLiquidContainer>
                 <AnimatedSparkline heights={[6, 12, 4, 9]} />
               </View>
               <Text style={styles.coreAssetTitle}>收藏图片</Text>
@@ -431,7 +437,9 @@ export function MeScreen({
             </View>
             <View style={styles.coreAssetBody}>
               <View style={styles.coreAssetCountRow}>
-                <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
+                <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
+                  <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
+                </MagneticLiquidContainer>
                 <AnimatedSparkline heights={[4, 9, 11, 5]} />
               </View>
               <Text style={styles.coreAssetTitle}>最近查看</Text>

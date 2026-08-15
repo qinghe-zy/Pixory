@@ -29,7 +29,7 @@ export interface OrbitalSpectralRingProps {
 export function OrbitalSpectralRing({
   avatarSize,
   isActive = false,
-  thickness = 3,
+  thickness = 2,
   padding = 4,
 }: OrbitalSpectralRingProps) {
   const baseSize = avatarSize + padding * 2;
@@ -46,7 +46,7 @@ export function OrbitalSpectralRing({
 
   useEffect(() => {
     rotation.value = withRepeat(
-      withTiming(360, { duration: 12000, easing: Easing.linear }),
+      withTiming(360, { duration: 24000, easing: Easing.linear }),
       -1,
       false
     );

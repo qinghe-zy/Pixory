@@ -165,21 +165,36 @@ export function GyroSpecularHighlight({ intensity = 0.5 }: GyroSpecularHighlight
   // 前沿高光算法 1：Sheen (高光面反射)
   // 固定角度的扫光带，通过偏移映射产生物理真实的反光移动
   const animatedSheenStyle = useAnimatedStyle(() => {
-    let tx = -context.rotateY.value * 25; 
-    let ty = -context.rotateX.value * 25;
-    tx -= context.roll.value * context.gyroSensitivity * 15;
-    ty -= context.pitch.value * context.gyroSensitivity * 15;
+    // 拖拽带来的视差
+    let dragTx = -context.rotateY.value * 25; 
+    let dragTy = -context.rotateX.value * 25;
+    
+    // 传感器倾斜带来的视差
+    let sensorTx = -context.roll.value * context.gyroSensitivity * 15;
+    let sensorTy = -context.pitch.value * context.gyroSensitivity * 15;
+    
+    // 总偏移
+    let tx = dragTx + sensorTx;
+    let ty = dragTy + sensorTy;
 
     // 菲涅尔方程近似
     const tiltMagnitude = Math.sqrt(tx * tx + ty * ty);
     const fresnelOpacity = Math.min(1, 0.4 + (tiltMagnitude / 150));
 
-    // 回退到自然且固定角度 (斜对角线) 的真实反射带，不随意旋转
+    // 根据反馈：拖拽时随角度偏转高光方向，但传感器监测时保持单一固定方向（35度斜对角线）。
+    // 通过给一个权重较大的基准向量，并叠加拖拽向量，即可实现顺滑的向量计算而无角度突变。
+    const baseTx = Math.cos(35 * (Math.PI / 180)) * 5; 
+    const baseTy = Math.sin(35 * (Math.PI / 180)) * 5;
+    
+    const dirTx = dragTx + baseTx;
+    const dirTy = dragTy + baseTy;
+    const angleRad = Math.atan2(dirTy, dirTx);
+
     return {
       transform: [
         { translateX: tx * 1.6 },
         { translateY: ty * 1.6 },
-        { rotate: '35deg' }, // 固定斜向扫光
+        { rotate: `${angleRad}rad` }, 
       ],
       opacity: intensity * fresnelOpacity,
     };
