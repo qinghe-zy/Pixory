@@ -8,7 +8,6 @@ import { colors, componentTokens, radius, shadows, spacing, typography } from '.
 import { formatFileSize, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
 import { MagneticCardContainer, GyroSpecularHighlight } from './MagneticCardContainer';
-import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 interface IPCardProps {
   ip: IpListItem;
@@ -23,15 +22,7 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
 
   return (
     <View style={styles.shadowContainer}>
-      <MagneticLiquidContainer 
-        damping={20} 
-        magneticStrength={0.03} 
-        stiffness={500} 
-        stretchFactor={0.0005}
-        maxScale={1.015}
-        maxTranslation={4}
-      >
-        <MagneticCardContainer gyroSensitivity={3}>
+      <MagneticCardContainer gyroSensitivity={3}>
         <Pressable
           accessibilityLabel={`打开 ${ip.name}`}
           accessibilityRole="button"
@@ -62,8 +53,7 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
             </View>
           )}
         </Pressable>
-        </MagneticCardContainer>
-      </MagneticLiquidContainer>
+      </MagneticCardContainer>
     </View>
   );
 }
