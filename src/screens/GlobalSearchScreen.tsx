@@ -9,28 +9,6 @@ import { searchGlobalMessages, searchGlobalThreads, type AiHomeThreadItem } from
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AppDialog } from '../components/AppDialog';
-
-const MOCK_TRENDING_POOL = [
-  { text: '苏打锋藏兵术', isHot: true },
-  { text: '苏打锋老师我还记得你', isHot: true },
-  { text: '洋河奇趣欢乐城', badge: '团' },
-  { text: '海乐迪量贩式ktv' },
-  { text: '团购美食' },
-  { text: '奇怪的中路' },
-  { text: '牛来' },
-  { text: '《crucified》歌曲' },
-  { text: '无锡工作招聘' },
-  { text: 'chatgpt重置' },
-  { text: '二百者也宿迁' },
-  { text: '洋河二百者也' },
-  { text: 'vivo pad5pro和6pro推荐' },
-  { text: '阿斯利康' },
-];
-
-function getRandomTrending(count: number) {
-  const shuffled = [...MOCK_TRENDING_POOL].sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, count);
-}
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
@@ -85,10 +63,23 @@ export function GlobalSearchScreen({
   const [historyEditMode, setHistoryEditMode] = useState(false);
 
   // Recommendations
-  const [trendingSearches, setTrendingSearches] = useState(() => getRandomTrending(8));
+  const [allRoleCards, setAllRoleCards] = useState<AiRoleCardRecord[]>([]);
+  const [recommendedRoleCards, setRecommendedRoleCards] = useState<AiRoleCardRecord[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void listRoleCards(space).then((cards) => {
+      if (!isMounted) return;
+      setAllRoleCards(cards);
+      setRecommendedRoleCards(cards.slice(0, 8)); // Initial 8 items
+    });
+    return () => { isMounted = false; };
+  }, [space]);
 
   const handleRefreshTrending = () => {
-    setTrendingSearches(getRandomTrending(8));
+    if (allRoleCards.length <= 8) return; // Not enough to shuffle meaningfully
+    const shuffled = [...allRoleCards].sort(() => 0.5 - Math.random());
+    setRecommendedRoleCards(shuffled.slice(0, 8));
   };
 
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -227,16 +218,22 @@ export function GlobalSearchScreen({
                       onViewMore={onOpenHistory}
                       editMode={historyEditMode}
                       setEditMode={setHistoryEditMode}
+                      onEditModeStart={() => {
+                        setHistoryEditMode(true);
+                        setIsHistoryExpanded(true);
+                      }}
                     />
                     <View style={styles.divider} />
                   </>
                 )}
                 
-                <GuessYouWantList
-                  items={trendingSearches}
-                  onRefresh={handleRefreshTrending}
-                  onUseItem={useHistoryItem}
-                />
+                {recommendedRoleCards.length > 0 && (
+                  <GuessYouWantList
+                    items={recommendedRoleCards}
+                    onRefresh={handleRefreshTrending}
+                    onUseItem={useHistoryItem}
+                  />
+                )}
               </View>
             ) : isEmpty ? (
               <View style={styles.emptySpace} />
@@ -308,6 +305,7 @@ function SearchHistoryList({
   onViewMore,
   editMode,
   setEditMode,
+  onEditModeStart,
 }: {
   history: SearchHistoryItem[];
   isExpanded: boolean;
@@ -318,6 +316,7 @@ function SearchHistoryList({
   onViewMore?: () => void;
   editMode: boolean;
   setEditMode: (mode: boolean) => void;
+  onEditModeStart: () => void;
 }) {
   const displayLimit = isExpanded ? 14 : 6;
   const displayHistory = history.slice(0, displayLimit);
@@ -327,14 +326,28 @@ function SearchHistoryList({
       <View style={styles.historyHeader}>
         <Text style={styles.historyTitle}>历史记录</Text>
         <View style={styles.headerRight}>
-          <Pressable hitSlop={8} onPress={onToggleExpand} style={styles.headerAction}>
-            <Text style={styles.headerActionText}>{isExpanded ? '收起' : '展开'}</Text>
-            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text.tertiary} />
-          </Pressable>
-          <View style={styles.headerDivider} />
-          <Pressable accessibilityLabel="清空全部搜索记录" hitSlop={8} onPress={onClearAll} style={styles.headerAction}>
-            <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
-          </Pressable>
+          {editMode ? (
+            <>
+              <Pressable hitSlop={8} onPress={onClearAll} style={styles.headerAction}>
+                <Text style={styles.headerActionText}>全部删除</Text>
+              </Pressable>
+              <View style={styles.headerDivider} />
+              <Pressable hitSlop={8} onPress={() => setEditMode(false)} style={styles.headerAction}>
+                <Text style={styles.headerActionText}>完成</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable hitSlop={8} onPress={onToggleExpand} style={styles.headerAction}>
+                <Text style={styles.headerActionText}>{isExpanded ? '收起' : '展开'}</Text>
+                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text.tertiary} />
+              </Pressable>
+              <View style={styles.headerDivider} />
+              <Pressable accessibilityLabel="编辑搜索记录" hitSlop={8} onPress={onEditModeStart} style={styles.headerAction}>
+                <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
 
@@ -342,7 +355,6 @@ function SearchHistoryList({
         {displayHistory.map((item) => (
           <View key={item.id} style={styles.twoColumnItemWrapper}>
             <Pressable
-              onLongPress={() => setEditMode(true)}
               onPress={() => {
                 if (editMode) onDeleteItem(item.id);
                 else onUseItem(item.keyword);
@@ -354,7 +366,7 @@ function SearchHistoryList({
               </Text>
               {editMode && (
                 <View style={styles.deleteIconWrapper}>
-                  <Ionicons name="close-circle" size={16} color={colors.text.placeholder} />
+                  <Ionicons name="close" size={18} color={colors.text.tertiary} />
                 </View>
               )}
             </Pressable>
@@ -362,7 +374,7 @@ function SearchHistoryList({
         ))}
       </View>
       
-      {onViewMore && history.length > 6 && (
+      {onViewMore && (
         <Pressable style={styles.viewMoreButton} onPress={onViewMore}>
           <Text style={styles.viewMoreText}>查看更多搜索记录 ({history.length})</Text>
         </Pressable>
@@ -376,7 +388,7 @@ function GuessYouWantList({
   onRefresh,
   onUseItem,
 }: {
-  items: Array<{ text: string; isHot?: boolean; badge?: string }>;
+  items: AiRoleCardRecord[];
   onRefresh: () => void;
   onUseItem: (value: string) => void;
 }) {
@@ -397,20 +409,15 @@ function GuessYouWantList({
       </View>
 
       <View style={styles.twoColumnList}>
-        {items.map((item, index) => (
-          <View key={index} style={styles.twoColumnItemWrapper}>
+        {items.map((item) => (
+          <View key={item.id} style={styles.twoColumnItemWrapper}>
             <Pressable
-              onPress={() => onUseItem(item.text)}
+              onPress={() => onUseItem(item.name)}
               style={({ pressed }) => [styles.textItemRow, pressed && styles.pressed]}
             >
-              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.textItemText, item.isHot && styles.hotText]}>
-                {item.text}
+              <Text numberOfLines={1} ellipsizeMode="tail" style={styles.textItemText}>
+                {item.name}
               </Text>
-              {item.badge && (
-                <View style={styles.badgeWrapper}>
-                  <Text style={styles.badgeText}>{item.badge}</Text>
-                </View>
-              )}
             </Pressable>
           </View>
         ))}
