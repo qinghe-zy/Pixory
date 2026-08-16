@@ -134,7 +134,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | 图片导入 | 多选图片、读取 metadata、复制原图、缩略图、创建记录 | `ImportImagesScreen`, `imageImportService` |
-| 视频导入 | 多选视频、读取时长/尺寸、复制原视频、生成视频缩略图 | `videoImportService`, native media module |
+| 视频导入 | 多选视频、读取时长/尺寸、复制原视频、动态提取时长生成视频缩略图（默认提取第 1 秒避免片头黑屏） | `videoImportService`, native media module |
 | 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签 | `ImportImagesScreen`, `ImportResultScreen` |
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review；批次默认按来源顺序展示，支持来源正/逆序 | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `BatchManageImagesScreen`, `imageRepository`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
@@ -166,7 +166,7 @@
 | --- | --- | --- |
 | 图片查看器 | 翻页、沉浸 reader、filmstrip、设置、zoom 手势、反向顺序 | `ImageViewerScreen`, `mediaExperiencePreferences` |
 | 系统相册保存 | 保存单张/多张图片到系统相册 | `mediaLibraryService`, `AlbumSaveDialog` |
-| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定、末尾恢复保护、竖滑切换封面时序优化 | `VideoPlayerScreen`, `mediaExperiencePreferences` |
+| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定、末尾恢复保护、基于 3 视图虚拟翻页的无缝竖滑切换体验（彻底消除视频切换时的封面跳动闪烁） | `VideoPlayerScreen`, `mediaExperiencePreferences` |
 | 视频手势 | 双击播放/暂停、左右区域切换、长按快进、scrub | `VideoPlayerScreen` |
 | 视频偏好 | 播放器偏好持久化、图片 viewer 偏好持久化 | `mediaExperiencePreferences` |
 | 外部视频 | open-with 外部视频进入播放器 | `App.tsx`, native media module |
