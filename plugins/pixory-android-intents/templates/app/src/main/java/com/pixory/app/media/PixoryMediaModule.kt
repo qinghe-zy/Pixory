@@ -627,16 +627,40 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
 
     val uris = mutableListOf<Uri>()
     val filesUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+    val projection = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE)
+
     for (index in 0 until assetIds.size()) {
       val assetId = assetIds.getString(index)?.trim().orEmpty()
       if (assetId.isEmpty()) continue
-      val uri = if (assetId.startsWith("content://")) {
-        Uri.parse(assetId)
-      } else {
-        val mediaId = assetId.toLongOrNull() ?: continue
-        ContentUris.withAppendedId(filesUri, mediaId)
+      
+      if (assetId.startsWith("content://")) {
+        uris.add(Uri.parse(assetId))
+        continue
       }
-      uris.add(uri)
+      
+      val mediaId = assetId.toLongOrNull() ?: continue
+      val fileUri = ContentUris.withAppendedId(filesUri, mediaId)
+      var mediaType = MediaStore.Files.FileColumns.MEDIA_TYPE_NONE
+      
+      try {
+        reactApplicationContext.contentResolver.query(fileUri, projection, null, null, null)?.use { cursor ->
+          if (cursor.moveToFirst()) {
+            val typeIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
+            mediaType = cursor.getInt(typeIndex)
+          }
+        }
+      } catch (e: Exception) {
+        // Ignore and fallback to fileUri if query fails
+      }
+      
+      val specificUri = when (mediaType) {
+        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE -> ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL), mediaId)
+        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> ContentUris.withAppendedId(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL), mediaId)
+        MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO -> ContentUris.withAppendedId(MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL), mediaId)
+        else -> fileUri
+      }
+      
+      uris.add(specificUri)
     }
 
     if (uris.isEmpty()) {
