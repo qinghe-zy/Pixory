@@ -3814,6 +3814,54 @@ export const aiThreadRepository = {
     }
   },
 
+  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number }): Promise<(AiMessageRecord & { threadTitle: string })[]> {
+    const ftsQuery = buildFtsQuery(input.query);
+    if (!ftsQuery || input.limit <= 0) {
+      return [];
+    }
+    const fallbackTerms = buildSearchTerms(input.query).slice(0, 8);
+    const fallbackClause = fallbackTerms.length > 0 ? `AND (${fallbackTerms.map(() => 'candidate.content LIKE ?').join(' OR ')})` : 'AND candidate.content LIKE ?';
+    const fallbackValues = fallbackTerms.length > 0 ? fallbackTerms.map((term) => `%${term}%`) : [`%${input.query.trim()}%`];
+    const fallbackSearch = async () => {
+      return db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
+        `SELECT candidate.*, t.title as threadTitle
+         FROM ai_messages candidate
+         JOIN ai_threads t ON t.id = candidate.threadId
+         WHERE t.space = ?
+           AND t.archivedAt IS NULL
+           AND candidate.status = 'completed'
+           AND candidate.role <> 'system'
+           ${fallbackClause}
+         ORDER BY candidate.updatedAt DESC
+         LIMIT ?`,
+        space,
+        ...fallbackValues,
+        input.limit
+      );
+    };
+    try {
+      const rows = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
+        `SELECT ai_messages.*, t.title as threadTitle
+         FROM ai_message_fts
+         JOIN ai_messages ON ai_messages.id = ai_message_fts.id
+         JOIN ai_threads t ON t.id = ai_messages.threadId
+         WHERE ai_message_fts MATCH ?
+           AND t.space = ?
+           AND t.archivedAt IS NULL
+           AND ai_messages.status = 'completed'
+           AND ai_messages.role <> 'system'
+         ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
+         LIMIT ?`,
+        ftsQuery,
+        space,
+        input.limit
+      );
+      return rows.length > 0 ? rows : fallbackSearch();
+    } catch {
+      return fallbackSearch();
+    }
+  },
+
   async listMessages(db: SQLiteDatabase, threadId: string, limit?: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
     if (limit && limit > 0) {

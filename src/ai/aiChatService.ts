@@ -2827,6 +2827,59 @@ export async function searchThreadMessages(input: {
   };
 }
 
+export async function searchGlobalMessages(input: {
+  space: PixorySpace;
+  query: string;
+  offset?: number;
+  limit?: number;
+}): Promise<{ results: (AiChatSearchResult & { threadTitle: string; threadId: string })[]; hasMore: boolean }> {
+  const terms = buildChatSearchTerms(input.query);
+  const limit = Math.max(1, input.limit ?? 40);
+  const offset = Math.max(0, input.offset ?? 0);
+  if (terms.length === 0) {
+    return { hasMore: false, results: [] };
+  }
+  const candidateLimit = offset + limit + 1;
+  const matches = await runWithDatabaseSpace(input.space, async (db) => {
+    const candidateRows = await aiThreadRepository.searchGlobalCompletedMessageFts(db, input.space, {
+      limit: candidateLimit,
+      query: input.query,
+    });
+    const messageIds = candidateRows.map((message) => message.id);
+    const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
+    const candidates: (AiMessageWithCitations & { threadTitle: string })[] = candidateRows
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
+        ...message,
+        citations: [] as AiCitationRecord[],
+        messageVersions: [],
+        versionIndex: versionTotalsByMessageId[message.id] ?? 1,
+        versionTotal: versionTotalsByMessageId[message.id] ?? 1,
+      }));
+    return candidates
+      .map((message) => {
+        const score = scoreChatSearchMessage(message, input.query, terms);
+        return score ? { message, ...score } : null;
+      })
+      .filter((item): item is { message: AiMessageWithCitations & { threadTitle: string }; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
+      .sort((left, right) =>
+        left.rank - right.rank ||
+        left.message.createdAt.localeCompare(right.message.createdAt) ||
+        left.message.id.localeCompare(right.message.id)
+      );
+  });
+  const pagedMatches = matches.slice(offset, offset + limit);
+  return {
+    hasMore: matches.length > offset + limit,
+    results: pagedMatches
+      .map((item) => ({
+        ...toChatSearchResult(item.message, input.query, terms, item.matchKind),
+        threadTitle: item.message.threadTitle,
+        threadId: item.message.threadId,
+      })),
+  };
+}
+
 export async function loadThreadAvatarConfig(space: PixorySpace, threadId: string): Promise<AiThreadAvatarConfig> {
   return runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
@@ -2869,6 +2922,27 @@ export async function listAiHomeThreads(input: {
 }): Promise<AiHomeThreadItem[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
+    const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
+    const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
+    return threads.map((thread) => {
+      const roleCard = thread.roleCardId ? roleCardsById.get(thread.roleCardId) : null;
+      return {
+        ...thread,
+        avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+        avatarAvailable: Boolean(roleCard),
+        roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
+      };
+    });
+  });
+}
+
+export async function searchGlobalThreads(input: {
+  space: PixorySpace;
+  query: string;
+  limit?: number;
+}): Promise<AiHomeThreadItem[]> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 20, input.query);
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
     return threads.map((thread) => {

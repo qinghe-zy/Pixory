@@ -34,6 +34,7 @@ import { EditIpScreen } from './src/screens/EditIpScreen';
 import { EditImageScreen } from './src/screens/EditImageScreen';
 import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { GlobalGroupsScreen } from './src/screens/GlobalGroupsScreen';
+import { GlobalSearchHistoryScreen } from './src/screens/GlobalSearchHistoryScreen';
 import { GlobalSearchScreen } from './src/screens/GlobalSearchScreen';
 import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
@@ -171,6 +172,7 @@ type AppRoute =
   | { name: 'recent-viewed'; space: PixorySpace }
   | { name: 'quick-organize'; ipId?: number; importBatchId?: number | null; space: PixorySpace }
   | { name: 'global-search'; query?: string; space: PixorySpace }
+  | { name: 'global-search-history'; space: PixorySpace }
   | { name: 'global-groups'; space: PixorySpace }
   | { name: 'tags-overview'; space: PixorySpace }
   | { name: 'trash'; space: PixorySpace; storageMode?: boolean }
@@ -1814,7 +1816,21 @@ export default function App() {
         onOpenImageDetail={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
         onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: currentRoute.space })}
+        onOpenThread={(threadId) => pushRoute({ name: 'ai-chat', threadId, space: currentRoute.space })}
+        onOpenRoleCard={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
+        onOpenHistory={() => pushRoute({ name: 'global-search-history', space: currentRoute.space })}
         query={globalSearchQuery}
+      />
+    );
+  } else if (currentRoute.name === 'global-search-history') {
+    content = (
+      <GlobalSearchHistoryScreen
+        space={currentRoute.space}
+        onBack={popRoute}
+        onUseItem={(keyword) => {
+          popRoute();
+          setGlobalSearchQuery(keyword);
+        }}
       />
     );
   } else if (currentRoute.name === 'global-groups') {

@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-16（视频播放器体验优化：高倍速音调自适应策略与无缝视频切换）
+最后更新：2026-08-16（全局搜索优化：支持单日与范围快捷预设的高级搜索历史体验，并补全路由与依赖）
 适用版本：Pixory 2.7.7
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -153,7 +153,7 @@
 | 标签素材 | 标签总览、标签结果页、标签多选、标签创建/删除 | `TagsOverviewScreen`, `TagResultScreen`, `tagRepository` |
 | 收藏 | 收藏列表、收藏筛选、取消收藏 | `FavoritesScreen`, `imageRepository` |
 | 最近查看 | 最近查看列表、清空本地查看历史 | `RecentViewedScreen` |
-| 全局搜索 | 素材搜索、建议、搜索历史、结果跳转；输入防抖、分类 SQL 查询和每类 20 条结果上限 | `GlobalSearchScreen`, `searchHistoryService`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
+| 全局搜索 | 素材搜索、建议、高级搜索历史（支持单日、快捷范围胶囊预设与按时间段批量删除）、结果跳转；输入防抖、分类 SQL 查询和每类 20 条结果上限 | `GlobalSearchScreen`, `GlobalSearchHistoryScreen`, `searchHistoryService`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
 | 快速整理 | 未整理提示、按顺序快速设置 IP/分组/标签/备注 | `QuickOrganizeScreen`, `OrganizeScreen` |
 | 批量整理 | 批量移动、打标签、收藏、选择规则、撤销快照；图片/视频可混选后批量移动到其他 IP | `BatchManageImagesScreen`, `BatchImageOrganizePanel`, `videoMoveService`, `batchUndoService` |
 | 选择规则 | 全选、同前缀、相似图、多规则交集 | `batchSelectionRules` |
