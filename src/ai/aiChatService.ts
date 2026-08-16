@@ -2942,18 +2942,30 @@ export async function searchGlobalThreads(input: {
   limit?: number;
 }): Promise<AiHomeThreadItem[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
-    const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 20, input.query);
+    // Fetch a larger pool of recent threads without text filtering (so we don't match message contents)
+    const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', 1000, '');
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
-    return threads.map((thread) => {
+    const queryLower = input.query.toLowerCase();
+    
+    const results: AiHomeThreadItem[] = [];
+    for (const thread of threads) {
       const roleCard = thread.roleCardId ? roleCardsById.get(thread.roleCardId) : null;
-      return {
-        ...thread,
-        avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
-        avatarAvailable: Boolean(roleCard),
-        roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
-      };
-    });
+      const roleCardName = roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson);
+      
+      if (thread.title.toLowerCase().includes(queryLower) || (roleCardName && roleCardName.toLowerCase().includes(queryLower))) {
+        results.push({
+          ...thread,
+          avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+          avatarAvailable: Boolean(roleCard),
+          roleCardName,
+        });
+        if (results.length >= (input.limit ?? 20)) {
+          break;
+        }
+      }
+    }
+    return results;
   });
 }
 

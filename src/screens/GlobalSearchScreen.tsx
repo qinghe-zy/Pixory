@@ -33,7 +33,7 @@ interface GlobalSearchScreenProps {
   onOpenGroup: (ipId: number, groupId: number) => void;
   onOpenTag: (tagId: number) => void;
   onOpenImageDetail: (imageId: number) => void;
-  onOpenThread?: (threadId: string) => void;
+  onOpenThread?: (threadId: string, messageId?: string) => void;
   onOpenRoleCard?: (roleCardId: string) => void;
   onOpenHistory?: () => void;
 }
@@ -246,7 +246,7 @@ export function GlobalSearchScreen({
                 </ResultSection>
                 <ResultSection title="聊天记录" count={messages.length}>
                   {messages.map((msg) => (
-                    <ResultRow key={msg.id} label={msg.content} meta={`${msg.threadTitle} · ${format(new Date(msg.createdAt), 'MM-dd HH:mm')}`} onPress={() => onOpenThread?.(msg.threadId)} />
+                    <ResultRow key={msg.id} label={msg.content} meta={`${msg.threadTitle} · ${format(new Date(msg.createdAt), 'MM-dd HH:mm')}`} onPress={() => onOpenThread?.(msg.threadId, msg.id)} />
                   ))}
                 </ResultSection>
                 <ResultSection title="角色卡" count={roles.length}>

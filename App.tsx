@@ -1816,7 +1816,7 @@ export default function App() {
         onOpenImageDetail={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
         onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: currentRoute.space })}
-        onOpenThread={(threadId) => pushRoute({ name: 'ai-chat', threadId, space: currentRoute.space })}
+        onOpenThread={(threadId, messageId) => pushRoute({ name: 'ai-chat', threadId, space: currentRoute.space, searchTargetMessageId: messageId, searchTargetKey: messageId ? String(Date.now()) : undefined })}
         onOpenRoleCard={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
         onOpenHistory={() => pushRoute({ name: 'global-search-history', space: currentRoute.space })}
         query={globalSearchQuery}
