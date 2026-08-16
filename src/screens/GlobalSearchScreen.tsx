@@ -246,7 +246,7 @@ export function GlobalSearchScreen({
                 </ResultSection>
                 <ResultSection title="聊天记录" count={messages.length}>
                   {messages.map((msg) => (
-                    <ResultRow key={msg.id} label={msg.content} meta={`${msg.threadTitle} · ${format(new Date(msg.createdAt), 'MM-dd HH:mm')}`} onPress={() => onOpenThread?.(msg.threadId, msg.id)} />
+                    <ResultRow key={msg.id} label={msg.content} meta={`${msg.threadTitle} · ${format(new Date(msg.createdAt), 'MM-dd HH:mm')}`} onPress={() => onOpenThread?.(msg.threadId, msg.id)} highlight={debouncedKeyword} snippet={true} />
                   ))}
                 </ResultSection>
                 <ResultSection title="角色卡" count={roles.length}>
@@ -436,11 +436,50 @@ function ResultSection({ children, count, title }: { children: ReactNode; count:
   );
 }
 
-function ResultRow({ label, meta, onPress }: { label: string; meta: string; onPress: () => void }) {
+function HighlightedText({ text, keyword, style, highlightStyle, snippet = false }: { text: string; keyword?: string; style?: any; highlightStyle?: any; snippet?: boolean }) {
+  if (!keyword || !text) return <Text style={style} numberOfLines={1}>{text}</Text>;
+  
+  const lowerText = text.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+  const index = lowerText.indexOf(lowerKeyword);
+  
+  if (index === -1) return <Text style={style} numberOfLines={1}>{text}</Text>;
+
+  let displayText = text.replace(/\n/g, ' ');
+  
+  if (snippet && text.length > 30) {
+    let start = Math.max(0, index - 8);
+    let end = Math.min(text.length, index + keyword.length + 20);
+    
+    displayText = text.substring(start, end).replace(/\n/g, ' ');
+    if (start > 0) displayText = '...' + displayText;
+    if (end < text.length) displayText = displayText + '...';
+  }
+
+  const parts = displayText.split(new RegExp(`(${keyword})`, 'gi'));
+
+  return (
+    <Text style={style} numberOfLines={1}>
+      {parts.map((part, i) => 
+        part.toLowerCase() === lowerKeyword ? (
+          <Text key={i} style={[style, highlightStyle]}>{part}</Text>
+        ) : (
+          part
+        )
+      )}
+    </Text>
+  );
+}
+
+function ResultRow({ label, meta, onPress, highlight, snippet }: { label: string; meta: string; onPress: () => void; highlight?: string; snippet?: boolean }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={styles.rowCopy}>
-        <Text numberOfLines={1} style={styles.rowTitle}>{label}</Text>
+        {highlight ? (
+          <HighlightedText text={label} keyword={highlight} style={styles.rowTitle} highlightStyle={styles.highlightedText} snippet={snippet} />
+        ) : (
+          <Text numberOfLines={1} style={styles.rowTitle}>{label}</Text>
+        )}
         <Text numberOfLines={1} style={styles.rowMeta}>{meta}</Text>
       </View>
     </Pressable>
@@ -571,6 +610,9 @@ const styles = StyleSheet.create({
   rowTitle: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
+  },
+  highlightedText: {
+    color: colors.primary.default,
   },
   rowMeta: {
     ...typography.textStyles.caption,

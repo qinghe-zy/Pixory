@@ -50,46 +50,36 @@ export function GlobalSearchHistoryScreen({
   }, [space]);
 
   const listData = useMemo(() => {
-    type FlatItem = SearchHistoryItem | { id: string; isHeader: true; level: 'year' | 'month' | 'day'; title: string; count: number; data: SearchHistoryItem[] };
-    const yearMap = new Map<string, { count: number, months: Map<string, { count: number, days: Map<string, { count: number, items: SearchHistoryItem[] }> }> }>();
-    
+    type FlatItem = SearchHistoryItem | { id: string; isHeader: true; title: string; count: number; data: SearchHistoryItem[] };
+    const flat: FlatItem[] = [];
+    let currentDayStr = '';
+    let currentDayLabel = '';
+    let currentDayCount = 0;
+    let currentDayItems: SearchHistoryItem[] = [];
+
+    // History is implicitly sorted descending by timestamp
     for (const item of history) {
-      const year = format(item.timestamp, 'yyyy年');
-      const month = format(item.timestamp, 'MM月');
-      const dayStr = format(item.timestamp, 'dd日');
+      const dayStr = format(item.timestamp, 'yyyy年MM月dd日');
       const dayLabel = isToday(item.timestamp) ? `${dayStr} (今天)` : isYesterday(item.timestamp) ? `${dayStr} (昨天)` : dayStr;
 
-      if (!yearMap.has(year)) yearMap.set(year, { count: 0, months: new Map() });
-      const yearData = yearMap.get(year)!;
-      yearData.count++;
-      
-      if (!yearData.months.has(month)) yearData.months.set(month, { count: 0, days: new Map() });
-      const monthData = yearData.months.get(month)!;
-      monthData.count++;
-      
-      if (!monthData.days.has(dayLabel)) monthData.days.set(dayLabel, { count: 0, items: [] });
-      const dayData = monthData.days.get(dayLabel)!;
-      dayData.count++;
-      dayData.items.push(item);
+      if (currentDayStr !== dayStr) {
+        if (currentDayItems.length > 0) {
+          flat.push({ id: `day_${currentDayStr}`, isHeader: true, title: currentDayLabel, count: currentDayCount, data: currentDayItems });
+          flat.push(...currentDayItems);
+        }
+        currentDayStr = dayStr;
+        currentDayLabel = dayLabel;
+        currentDayCount = 0;
+        currentDayItems = [];
+      }
+      currentDayCount++;
+      currentDayItems.push(item);
     }
-
-    const flat: FlatItem[] = [];
-    yearMap.forEach((yearData, year) => {
-      let allYearItems: SearchHistoryItem[] = [];
-      yearData.months.forEach(m => m.days.forEach(d => allYearItems.push(...d.items)));
-      flat.push({ id: `year_${year}`, isHeader: true, level: 'year', title: year, count: yearData.count, data: allYearItems });
-
-      yearData.months.forEach((monthData, month) => {
-        let allMonthItems: SearchHistoryItem[] = [];
-        monthData.days.forEach(d => allMonthItems.push(...d.items));
-        flat.push({ id: `month_${year}_${month}`, isHeader: true, level: 'month', title: month, count: monthData.count, data: allMonthItems });
-
-        monthData.days.forEach((dayData, day) => {
-          flat.push({ id: `day_${year}_${month}_${day}`, isHeader: true, level: 'day', title: day, count: dayData.count, data: dayData.items });
-          flat.push(...dayData.items);
-        });
-      });
-    });
+    
+    if (currentDayItems.length > 0) {
+      flat.push({ id: `day_${currentDayStr}`, isHeader: true, title: currentDayLabel, count: currentDayCount, data: currentDayItems });
+      flat.push(...currentDayItems);
+    }
 
     return flat;
   }, [history]);
@@ -238,13 +228,9 @@ export function GlobalSearchHistoryScreen({
           keyExtractor={(item) => ('isHeader' in item ? item.id : item.id)}
           renderItem={({ item }) => {
             if ('isHeader' in item) {
-              const indent = item.level === 'month' ? spacing[4] : item.level === 'day' ? spacing[8] : 0;
               return (
-                <View style={[styles.groupHeader, { paddingLeft: indent }]}>
+                <View style={styles.groupHeader}>
                   <Text style={styles.groupHeaderText}>{item.title} <Text style={styles.groupHeaderCount}>{item.data.length}</Text></Text>
-                  <Pressable hitSlop={10} onPress={() => handleDeleteGroup(item.data)}>
-                    <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
-                  </Pressable>
                 </View>
               );
             }
@@ -252,7 +238,7 @@ export function GlobalSearchHistoryScreen({
             return (
               <Pressable
                 onPress={() => onUseItem(item.keyword)}
-                style={[styles.historyItem, { paddingLeft: spacing[8] + spacing[4] }]}
+                style={styles.historyItem}
               >
                 <View style={styles.itemContent}>
                   <Text style={styles.itemText} numberOfLines={1}>
@@ -338,7 +324,16 @@ export function GlobalSearchHistoryScreen({
         }
         primaryDisabled={!customStartDate}
         danger
-        title="按日期删除"
+        title={
+          !customStartDate
+            ? '按日期删除'
+            : !customEndDate
+            ? `按日期删除  ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日`
+            : (customStartDate <= customEndDate 
+                ? `按日期删除  ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日 - ${customEndDate.substring(0, 4)}年${customEndDate.substring(5, 7)}月${customEndDate.substring(8, 10)}日`
+                : `按日期删除  ${customEndDate.substring(0, 4)}年${customEndDate.substring(5, 7)}月${customEndDate.substring(8, 10)}日 - ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日`
+              )
+        }
         visible={customDateVisible}
       >
         <View style={styles.calendarContainer}>
@@ -358,6 +353,7 @@ export function GlobalSearchHistoryScreen({
           </View>
 
           <Calendar
+            key={calendarMonth}
             current={calendarMonth}
             onMonthChange={(date) => {
               setCalendarMonth(date.dateString);
@@ -366,8 +362,9 @@ export function GlobalSearchHistoryScreen({
             renderHeader={(date) => (
               <View style={styles.customCalendarHeader}>
                 <View style={styles.calendarHeaderArrows}>
-                  <Pressable hitSlop={10} onPress={() => setCalendarMonth(format(subYears(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
-                    <Ionicons name="play-back-outline" size={18} color={colors.text.secondary} />
+                  <Pressable hitSlop={10} onPress={() => setCalendarMonth(format(subYears(new Date(calendarMonth), 1), 'yyyy-MM-dd'))} style={{ flexDirection: 'row' }}>
+                    <Ionicons name="chevron-back" size={20} color={colors.text.secondary} style={{ marginRight: -10 }} />
+                    <Ionicons name="chevron-back" size={20} color={colors.text.secondary} />
                   </Pressable>
                   <Pressable hitSlop={10} style={{ marginLeft: spacing[4] }} onPress={() => setCalendarMonth(format(subMonths(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
                     <Ionicons name="chevron-back" size={20} color={colors.text.secondary} />
@@ -378,8 +375,9 @@ export function GlobalSearchHistoryScreen({
                   <Pressable hitSlop={10} style={{ marginRight: spacing[4] }} onPress={() => setCalendarMonth(format(addMonths(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
                     <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
                   </Pressable>
-                  <Pressable hitSlop={10} onPress={() => setCalendarMonth(format(addYears(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
-                    <Ionicons name="play-forward-outline" size={18} color={colors.text.secondary} />
+                  <Pressable hitSlop={10} onPress={() => setCalendarMonth(format(addYears(new Date(calendarMonth), 1), 'yyyy-MM-dd'))} style={{ flexDirection: 'row' }}>
+                    <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} style={{ marginRight: -10 }} />
+                    <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
                   </Pressable>
                 </View>
               </View>
@@ -497,12 +495,14 @@ const styles = StyleSheet.create({
   groupHeaderText: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '700',
   },
   groupHeaderCount: {
-    ...typography.textStyles.body,
+    ...typography.textStyles.caption,
     color: colors.text.tertiary,
-    fontSize: 13,
+    fontWeight: '400',
+    marginLeft: spacing[2],
   },
   headerActions: {
     alignItems: 'center',
