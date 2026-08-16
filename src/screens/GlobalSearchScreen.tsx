@@ -10,6 +10,7 @@ import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
+import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { ThumbnailTile } from '../components/ThumbnailTile';
@@ -282,6 +283,15 @@ export function GlobalSearchScreen({
         </Pressable>
       </ScreenScaffold>
       
+      <ParallaxLightSweep
+        color1="#A7F3D0"
+        color2="#BAE6FD"
+        fadeDuration={500}
+        opacity={0.65}
+        variant="edges"
+        visible={isSearchLoading}
+      />
+
       <AppDialog
         danger
         message="确定要清空全部搜索记录吗？"
@@ -612,6 +622,7 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
   highlightedText: {
+    backgroundColor: colors.primary.background,
     color: colors.primary.default,
   },
   rowMeta: {

@@ -324,18 +324,20 @@ export function GlobalSearchHistoryScreen({
         }
         primaryDisabled={!customStartDate}
         danger
-        title={
-          !customStartDate
-            ? '按日期删除'
-            : !customEndDate
-            ? `按日期删除  ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日`
-            : (customStartDate <= customEndDate 
-                ? `按日期删除  ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日 - ${customEndDate.substring(0, 4)}年${customEndDate.substring(5, 7)}月${customEndDate.substring(8, 10)}日`
-                : `按日期删除  ${customEndDate.substring(0, 4)}年${customEndDate.substring(5, 7)}月${customEndDate.substring(8, 10)}日 - ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日`
-              )
-        }
+        title="按日期删除"
         visible={customDateVisible}
       >
+        {customStartDate && (
+          <View style={styles.dateRangeDisplay}>
+            <Text style={styles.dateRangeText} adjustsFontSizeToFit numberOfLines={1}>
+              {!customEndDate
+                ? `${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日`
+                : customStartDate <= customEndDate
+                ? `${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日 - ${customEndDate.substring(0, 4)}年${customEndDate.substring(5, 7)}月${customEndDate.substring(8, 10)}日`
+                : `${customEndDate.substring(0, 4)}年${customEndDate.substring(5, 7)}月${customEndDate.substring(8, 10)}日 - ${customStartDate.substring(0, 4)}年${customStartDate.substring(5, 7)}月${customStartDate.substring(8, 10)}日`}
+            </Text>
+          </View>
+        )}
         <View style={styles.calendarContainer}>
           <View style={styles.quickSelectContainer}>
             <Pressable style={styles.quickSelectPill} onPress={() => selectQuickRange(0)}>
@@ -427,6 +429,15 @@ const styles = StyleSheet.create({
   calendarHeaderArrows: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  dateRangeDisplay: {
+    alignItems: 'center',
+    marginTop: -spacing[2],
+    marginBottom: spacing[4],
+  },
+  dateRangeText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   calendarHeaderText: {
     ...typography.textStyles.bodyStrong,
