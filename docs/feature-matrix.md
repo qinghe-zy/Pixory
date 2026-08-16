@@ -45,7 +45,7 @@
 | 图片浏览与整理 | 已实现 | 全部素材、分组素材、标签素材、收藏、最近查看、快速整理 | `AllImagesScreen`, `ImageViewerScreen`, `QuickOrganizeScreen` |
 | 视频体验 | 已实现 | 视频详情、沉浸播放、手势、队列、横竖屏、进度偏好 | `VideoDetailScreen`, `VideoPlayerScreen` |
 | 分组与标签 | 已实现 | 全局分组、IP 分组、标签管理、多选、筛选和结果页；分组采用 SectionList，标签采用双列 FlatList，热门/最近标签由 SQLite 排序并限制返回数量 | `GlobalGroupsScreen`, `GroupOverviewScreen`, `TagsOverviewScreen` |
-| 搜索 | 已实现 | 全局素材搜索、搜索历史、AI 聊天搜索；全局素材搜索约 250ms 防抖，并在 SQLite 层按 IP、分组、标签、素材分类筛选且每类限制 20 条，避免先全量载入再由 JS 过滤 | `GlobalSearchScreen`, `AiChatSearchScreen`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
+| 搜索 | 已实现 | 全局素材搜索、全局搜索历史（支持年/月/日三级树状分组与统计，无缝路由返回）、AI 聊天搜索；全局素材搜索约 250ms 防抖，并在 SQLite 层按 IP、分组、标签、素材分类筛选且每类限制 20 条，避免先全量载入再由 JS 过滤 | `GlobalSearchScreen`, `GlobalSearchHistoryScreen`, `AiChatSearchScreen`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
 | 批量管理 | 已实现 | 多选、批量移动、批量打标签、批量整理、撤销；“移动到 IP”支持图片和视频混选，复制受管文件后软删除源记录；批量删除标签按安全批次执行，避免超过 Android SQLite 绑定参数上限 | `BatchManageImagesScreen`, `BatchImageOrganizePanel`, `tagRepository`, `videoMoveService` |
 | 重复检测 | 已实现 | exact hash、visual hash、重复审查、跳过导入 | `DuplicateReviewScreen`, `duplicateDetectionService` |
 | 回收站 | 已实现 | 软删除、恢复、清空、过期清理 | `TrashScreen`, `trashService` |

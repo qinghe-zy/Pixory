@@ -1828,8 +1828,8 @@ export default function App() {
         space={currentRoute.space}
         onBack={popRoute}
         onUseItem={(keyword) => {
-          popRoute();
           setGlobalSearchQuery(keyword);
+          pushRoute({ name: 'global-search', space: currentRoute.space });
         }}
       />
     );

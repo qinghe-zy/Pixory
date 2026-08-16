@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { differenceInDays, eachDayOfInterval, format, isToday, isYesterday, subDays, subHours, subMonths } from 'date-fns';
+import { addMonths, addYears, differenceInDays, eachDayOfInterval, format, isToday, isYesterday, subDays, subHours, subMonths, subYears } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
@@ -37,6 +37,7 @@ export function GlobalSearchHistoryScreen({
   const [customDateVisible, setCustomDateVisible] = useState(false);
   const [customStartDate, setCustomStartDate] = useState<string | null>(null);
   const [customEndDate, setCustomEndDate] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   useEffect(() => {
     let isMounted = true;
@@ -48,58 +49,60 @@ export function GlobalSearchHistoryScreen({
     };
   }, [space]);
 
-  const groupedHistory = useMemo(() => {
-    const groups: { title: string; data: SearchHistoryItem[] }[] = [];
-    const today: SearchHistoryItem[] = [];
-    const yesterday: SearchHistoryItem[] = [];
-    const earlier: SearchHistoryItem[] = [];
-
+  const listData = useMemo(() => {
+    type FlatItem = SearchHistoryItem | { id: string; isHeader: true; level: 'year' | 'month' | 'day'; title: string; count: number; data: SearchHistoryItem[] };
+    const yearMap = new Map<string, { count: number, months: Map<string, { count: number, days: Map<string, { count: number, items: SearchHistoryItem[] }> }> }>();
+    
     for (const item of history) {
-      if (isToday(item.timestamp)) {
-        today.push(item);
-      } else if (isYesterday(item.timestamp)) {
-        yesterday.push(item);
-      } else {
-        earlier.push(item);
-      }
+      const year = format(item.timestamp, 'yyyy年');
+      const month = format(item.timestamp, 'MM月');
+      const dayStr = format(item.timestamp, 'dd日');
+      const dayLabel = isToday(item.timestamp) ? `${dayStr} (今天)` : isYesterday(item.timestamp) ? `${dayStr} (昨天)` : dayStr;
+
+      if (!yearMap.has(year)) yearMap.set(year, { count: 0, months: new Map() });
+      const yearData = yearMap.get(year)!;
+      yearData.count++;
+      
+      if (!yearData.months.has(month)) yearData.months.set(month, { count: 0, days: new Map() });
+      const monthData = yearData.months.get(month)!;
+      monthData.count++;
+      
+      if (!monthData.days.has(dayLabel)) monthData.days.set(dayLabel, { count: 0, items: [] });
+      const dayData = monthData.days.get(dayLabel)!;
+      dayData.count++;
+      dayData.items.push(item);
     }
 
-    if (today.length > 0) groups.push({ title: '今天', data: today });
-    if (yesterday.length > 0) groups.push({ title: '昨天', data: yesterday });
-    if (earlier.length > 0) groups.push({ title: '更早', data: earlier });
+    const flat: FlatItem[] = [];
+    yearMap.forEach((yearData, year) => {
+      let allYearItems: SearchHistoryItem[] = [];
+      yearData.months.forEach(m => m.days.forEach(d => allYearItems.push(...d.items)));
+      flat.push({ id: `year_${year}`, isHeader: true, level: 'year', title: year, count: yearData.count, data: allYearItems });
 
-    return groups;
+      yearData.months.forEach((monthData, month) => {
+        let allMonthItems: SearchHistoryItem[] = [];
+        monthData.days.forEach(d => allMonthItems.push(...d.items));
+        flat.push({ id: `month_${year}_${month}`, isHeader: true, level: 'month', title: month, count: monthData.count, data: allMonthItems });
+
+        monthData.days.forEach((dayData, day) => {
+          flat.push({ id: `day_${year}_${month}_${day}`, isHeader: true, level: 'day', title: day, count: dayData.count, data: dayData.items });
+          flat.push(...dayData.items);
+        });
+      });
+    });
+
+    return flat;
   }, [history]);
 
-  function toggleEditMode() {
-    setIsEditMode(!isEditMode);
-    setSelectedIds(new Set());
-  }
-
-  function toggleSelection(id: string) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelectedIds(next);
-  }
-
-  function selectAll() {
-    if (selectedIds.size === history.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(history.map((h) => h.id)));
-    }
-  }
-
-  async function handleDeleteSelected() {
-    if (selectedIds.size === 0) return;
-    const next = await batchDeleteSearchHistory(space, Array.from(selectedIds));
+  async function handleDeleteSingle(id: string) {
+    const next = await batchDeleteSearchHistory(space, [id]);
     setHistory(next);
-    setIsEditMode(false);
-    setSelectedIds(new Set());
+  }
+
+  async function handleDeleteGroup(groupData: SearchHistoryItem[]) {
+    const ids = groupData.map(i => i.id);
+    const next = await batchDeleteSearchHistory(space, ids);
+    setHistory(next);
   }
 
   async function handleDeleteRange(type: DateFilterType) {
@@ -163,13 +166,13 @@ export function GlobalSearchHistoryScreen({
   }
 
   const markedDates = useMemo(() => {
-    if (!customStartDate) return {};
-
     const marks: any = {};
     const primaryColor = colors.primary.default;
     const weakColor = colors.background.tag;
     const inverseColor = colors.text.inverse;
     const defaultColor = colors.text.title;
+
+    if (!customStartDate) return {};
 
     if (!customEndDate || customStartDate === customEndDate) {
       marks[customStartDate] = {
@@ -214,15 +217,6 @@ export function GlobalSearchHistoryScreen({
     return marks;
   }, [customStartDate, customEndDate]);
 
-  const listData = useMemo(() => {
-    const flat: (SearchHistoryItem | string)[] = [];
-    for (const group of groupedHistory) {
-      flat.push(group.title);
-      flat.push(...group.data);
-    }
-    return flat;
-  }, [groupedHistory]);
-
   const customDaysCount = useMemo(() => {
     if (!customStartDate) return 0;
     if (!customEndDate) return 1;
@@ -234,77 +228,41 @@ export function GlobalSearchHistoryScreen({
   return (
     <>
       <ScreenScaffold
-        backgroundVariant="home"
         onBack={onBack}
+        subtitle={history.length > 0 ? `共 ${history.length} 条` : undefined}
         title="搜索历史"
-        rightAction={
-          history.length > 0 ? (
-            <View style={styles.headerActions}>
-              {isEditMode ? (
-                <>
-                  <Pressable onPress={selectAll} style={styles.actionButton}>
-                    <Text style={styles.actionText}>{selectedIds.size === history.length ? '取消全选' : '全选'}</Text>
-                  </Pressable>
-                  <Pressable onPress={handleDeleteSelected} style={styles.actionButton}>
-                    <Text style={[styles.actionText, { color: colors.support.coral400 }]}>删除</Text>
-                  </Pressable>
-                  <Pressable onPress={toggleEditMode} style={styles.actionButton}>
-                    <Text style={styles.actionText}>完成</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Pressable onPress={() => setDeleteMenuVisible(true)} style={styles.actionButton}>
-                    <Ionicons name="trash-outline" size={24} color={colors.text.secondary} />
-                  </Pressable>
-                  <Pressable onPress={toggleEditMode} style={styles.actionButton}>
-                    <Text style={styles.actionText}>管理</Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
-          ) : undefined
-        }
       >
         <FlatList
           contentContainerStyle={styles.listContent}
           data={listData}
-          keyExtractor={(item) => (typeof item === 'string' ? `header_${item}` : item.id)}
+          keyExtractor={(item) => ('isHeader' in item ? item.id : item.id)}
           renderItem={({ item }) => {
-            if (typeof item === 'string') {
+            if ('isHeader' in item) {
+              const indent = item.level === 'month' ? spacing[4] : item.level === 'day' ? spacing[8] : 0;
               return (
-                <View style={styles.groupHeader}>
-                  <Text style={styles.groupHeaderText}>{item}</Text>
+                <View style={[styles.groupHeader, { paddingLeft: indent }]}>
+                  <Text style={styles.groupHeaderText}>{item.title} <Text style={styles.groupHeaderCount}>{item.data.length}</Text></Text>
+                  <Pressable hitSlop={10} onPress={() => handleDeleteGroup(item.data)}>
+                    <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
+                  </Pressable>
                 </View>
               );
             }
 
-            const isSelected = selectedIds.has(item.id);
-
             return (
               <Pressable
-                onPress={() => {
-                  if (isEditMode) {
-                    toggleSelection(item.id);
-                  } else {
-                    onUseItem(item.keyword);
-                  }
-                }}
-                style={[styles.historyItem, isSelected && styles.historyItemSelected]}
+                onPress={() => onUseItem(item.keyword)}
+                style={[styles.historyItem, { paddingLeft: spacing[8] + spacing[4] }]}
               >
-                {isEditMode ? (
-                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                    {isSelected && <Ionicons name="checkmark" size={16} color={colors.text.inverse} />}
-                  </View>
-                ) : (
-                  <Ionicons name="time-outline" size={20} color={colors.text.tertiary} style={styles.itemIcon} />
-                )}
                 <View style={styles.itemContent}>
                   <Text style={styles.itemText} numberOfLines={1}>
                     {item.keyword}
                   </Text>
                   <Text style={styles.itemTime}>{format(item.timestamp, 'HH:mm')}</Text>
                 </View>
+                <Pressable hitSlop={15} onPress={() => handleDeleteSingle(item.id)}>
+                  <Ionicons name="close" size={18} color={colors.text.tertiary} />
+                </Pressable>
               </Pressable>
             );
           }}
@@ -315,6 +273,20 @@ export function GlobalSearchHistoryScreen({
             </View>
           }
         />
+        {history.length > 0 && (
+          <View style={styles.floatingActionContainer}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.floatingActionButton,
+                pressed && { opacity: 0.8 }
+              ]}
+              onPress={() => setDeleteMenuVisible(true)}
+            >
+              <Ionicons name="trash" size={16} color={colors.text.inverse} style={{ marginRight: spacing[2] }} />
+              <Text style={styles.floatingActionText}>清空历史</Text>
+            </Pressable>
+          </View>
+        )}
       </ScreenScaffold>
 
       <AppDialog
@@ -386,10 +358,39 @@ export function GlobalSearchHistoryScreen({
           </View>
 
           <Calendar
+            current={calendarMonth}
+            onMonthChange={(date) => {
+              setCalendarMonth(date.dateString);
+            }}
+            hideArrows={true}
+            renderHeader={(date) => (
+              <View style={styles.customCalendarHeader}>
+                <View style={styles.calendarHeaderArrows}>
+                  <Pressable hitSlop={10} onPress={() => setCalendarMonth(format(subYears(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
+                    <Ionicons name="play-back-outline" size={18} color={colors.text.secondary} />
+                  </Pressable>
+                  <Pressable hitSlop={10} style={{ marginLeft: spacing[4] }} onPress={() => setCalendarMonth(format(subMonths(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
+                    <Ionicons name="chevron-back" size={20} color={colors.text.secondary} />
+                  </Pressable>
+                </View>
+                <Text style={styles.calendarHeaderText}>{format(new Date(calendarMonth), 'yyyy年 MM月')}</Text>
+                <View style={styles.calendarHeaderArrows}>
+                  <Pressable hitSlop={10} style={{ marginRight: spacing[4] }} onPress={() => setCalendarMonth(format(addMonths(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
+                    <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
+                  </Pressable>
+                  <Pressable hitSlop={10} onPress={() => setCalendarMonth(format(addYears(new Date(calendarMonth), 1), 'yyyy-MM-dd'))}>
+                    <Ionicons name="play-forward-outline" size={18} color={colors.text.secondary} />
+                  </Pressable>
+                </View>
+              </View>
+            )}
             markingType={'period'}
             markedDates={markedDates}
             onDayPress={(day) => {
-              if (!customStartDate || (customStartDate && customEndDate)) {
+              if (customStartDate && !customEndDate && day.dateString === customStartDate) {
+                // Toggle off if clicking the same start date
+                setCustomStartDate(null);
+              } else if (!customStartDate || (customStartDate && customEndDate)) {
                 setCustomStartDate(day.dateString);
                 setCustomEndDate(null);
               } else if (customStartDate) {
@@ -399,15 +400,11 @@ export function GlobalSearchHistoryScreen({
             theme={{
               backgroundColor: 'transparent',
               calendarBackground: 'transparent',
-              textSectionTitleColor: colors.text.secondary,
               selectedDayBackgroundColor: colors.primary.default,
               selectedDayTextColor: colors.text.inverse,
               todayTextColor: colors.primary.default,
               dayTextColor: colors.text.title,
               textDisabledColor: colors.text.tertiary,
-              arrowColor: colors.text.secondary,
-              monthTextColor: colors.text.title,
-              textMonthFontWeight: '600',
               textDayHeaderFontWeight: '500',
             }}
           />
@@ -428,6 +425,22 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     marginTop: spacing[2],
+  },
+  calendarHeaderArrows: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  calendarHeaderText: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  customCalendarHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[3],
+    width: '100%',
   },
   checkbox: {
     alignItems: 'center',
@@ -454,15 +467,42 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginTop: spacing[3],
   },
+  floatingActionContainer: {
+    alignItems: 'center',
+    bottom: spacing[8],
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  floatingActionButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
+  floatingActionText: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.inverse,
+  },
   groupHeader: {
-    backgroundColor: colors.background.surface,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingBottom: spacing[2],
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
+    paddingTop: spacing[6],
   },
   groupHeaderText: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.secondary,
+    color: colors.text.title,
+    fontSize: 15,
+  },
+  groupHeaderCount: {
+    ...typography.textStyles.body,
+    color: colors.text.tertiary,
+    fontSize: 13,
   },
   headerActions: {
     alignItems: 'center',
@@ -470,8 +510,6 @@ const styles = StyleSheet.create({
   },
   historyItem: {
     alignItems: 'center',
-    borderBottomColor: colors.border.subtle,
-    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],

@@ -338,11 +338,15 @@ function SearchHistoryList({
             </>
           ) : (
             <>
-              <Pressable hitSlop={8} onPress={onToggleExpand} style={styles.headerAction}>
-                <Text style={styles.headerActionText}>{isExpanded ? '收起' : '展开'}</Text>
-                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text.tertiary} />
-              </Pressable>
-              <View style={styles.headerDivider} />
+              {history.length > 6 && (
+                <>
+                  <Pressable hitSlop={8} onPress={onToggleExpand} style={styles.headerAction}>
+                    <Text style={styles.headerActionText}>{isExpanded ? '收起' : '展开'}</Text>
+                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text.tertiary} />
+                  </Pressable>
+                  <View style={styles.headerDivider} />
+                </>
+              )}
               <Pressable accessibilityLabel="编辑搜索记录" hitSlop={8} onPress={onEditModeStart} style={styles.headerAction}>
                 <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
               </Pressable>
@@ -374,9 +378,9 @@ function SearchHistoryList({
         ))}
       </View>
       
-      {onViewMore && (
+      {onViewMore && isExpanded && (
         <Pressable style={styles.viewMoreButton} onPress={onViewMore}>
-          <Text style={styles.viewMoreText}>查看更多搜索记录 ({history.length})</Text>
+          <Text style={styles.viewMoreText}>查看更多搜索记录</Text>
         </Pressable>
       )}
     </View>
@@ -400,10 +404,6 @@ function GuessYouWantList({
           <Pressable hitSlop={8} onPress={onRefresh} style={styles.headerAction}>
             <Ionicons name="refresh" size={14} color={colors.text.tertiary} />
             <Text style={styles.headerActionText}>换一换</Text>
-          </Pressable>
-          <View style={styles.headerDivider} />
-          <Pressable hitSlop={8} style={styles.headerAction}>
-            <Ionicons name="ellipsis-vertical" size={16} color={colors.text.tertiary} />
           </Pressable>
         </View>
       </View>
