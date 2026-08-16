@@ -9,6 +9,28 @@ import { searchGlobalMessages, searchGlobalThreads, type AiHomeThreadItem } from
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AppDialog } from '../components/AppDialog';
+
+const MOCK_TRENDING_POOL = [
+  { text: '苏打锋藏兵术', isHot: true },
+  { text: '苏打锋老师我还记得你', isHot: true },
+  { text: '洋河奇趣欢乐城', badge: '团' },
+  { text: '海乐迪量贩式ktv' },
+  { text: '团购美食' },
+  { text: '奇怪的中路' },
+  { text: '牛来' },
+  { text: '《crucified》歌曲' },
+  { text: '无锡工作招聘' },
+  { text: 'chatgpt重置' },
+  { text: '二百者也宿迁' },
+  { text: '洋河二百者也' },
+  { text: 'vivo pad5pro和6pro推荐' },
+  { text: '阿斯利康' },
+];
+
+function getRandomTrending(count: number) {
+  const shuffled = [...MOCK_TRENDING_POOL].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+}
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
@@ -63,15 +85,11 @@ export function GlobalSearchScreen({
   const [historyEditMode, setHistoryEditMode] = useState(false);
 
   // Recommendations
-  const [recommendedRoleCards, setRecommendedRoleCards] = useState<AiRoleCardRecord[]>([]);
+  const [trendingSearches, setTrendingSearches] = useState(() => getRandomTrending(8));
 
-  useEffect(() => {
-    let isMounted = true;
-    void listRoleCards(space).then((cards) => {
-      if (isMounted) setRecommendedRoleCards(cards.slice(0, 6)); // Just take a few
-    });
-    return () => { isMounted = false; };
-  }, [space]);
+  const handleRefreshTrending = () => {
+    setTrendingSearches(getRandomTrending(8));
+  };
 
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ips: IpListItem[];
@@ -198,35 +216,27 @@ export function GlobalSearchScreen({
             {showHistory ? (
               <View style={styles.historyAndRecommendationsBlock}>
                 {searchHistory.length > 0 && (
-                  <SearchHistoryList
-                    history={searchHistory}
-                    isExpanded={isHistoryExpanded}
-                    onToggleExpand={() => setIsHistoryExpanded(!isHistoryExpanded)}
-                    onClearAll={() => setClearConfirmVisible(true)}
-                    onDeleteItem={deleteHistoryItem}
-                    onUseItem={useHistoryItem}
-                    onViewMore={onOpenHistory}
-                    editMode={historyEditMode}
-                    setEditMode={setHistoryEditMode}
-                  />
+                  <>
+                    <SearchHistoryList
+                      history={searchHistory}
+                      isExpanded={isHistoryExpanded}
+                      onToggleExpand={() => setIsHistoryExpanded(!isHistoryExpanded)}
+                      onClearAll={() => setClearConfirmVisible(true)}
+                      onDeleteItem={deleteHistoryItem}
+                      onUseItem={useHistoryItem}
+                      onViewMore={onOpenHistory}
+                      editMode={historyEditMode}
+                      setEditMode={setHistoryEditMode}
+                    />
+                    <View style={styles.divider} />
+                  </>
                 )}
                 
-                {recommendedRoleCards.length > 0 && (
-                  <View style={styles.historyBlock}>
-                    <Text style={styles.historyTitle}>猜你想搜</Text>
-                    <View style={styles.historyList}>
-                      {recommendedRoleCards.map((role) => (
-                        <Pressable
-                          key={role.id}
-                          onPress={() => useHistoryItem(role.name)}
-                          style={({ pressed }) => [styles.historyPill, pressed && styles.pressed]}
-                        >
-                          <Text numberOfLines={1} style={styles.historyPillText}>{role.name}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                )}
+                <GuessYouWantList
+                  items={trendingSearches}
+                  onRefresh={handleRefreshTrending}
+                  onUseItem={useHistoryItem}
+                />
               </View>
             ) : isEmpty ? (
               <View style={styles.emptySpace} />
@@ -309,50 +319,102 @@ function SearchHistoryList({
   editMode: boolean;
   setEditMode: (mode: boolean) => void;
 }) {
-  // Approximate lines by slicing. In a real flexWrap layout, we can't exactly control lines via array slice unless we measure.
-  // We'll use an array slice heuristic: 3 lines ~ 9 items, 7 lines ~ 21 items
-  const displayLimit = isExpanded ? 21 : 9;
+  const displayLimit = isExpanded ? 14 : 6;
   const displayHistory = history.slice(0, displayLimit);
 
   return (
     <View style={styles.historyBlock}>
       <View style={styles.historyHeader}>
-        <Text style={styles.historyTitle}>搜索记录</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
-          <Pressable accessibilityLabel="清空全部搜索记录" hitSlop={8} onPress={onClearAll}>
-            <Ionicons name="trash-outline" size={18} color={colors.text.secondary} />
+        <Text style={styles.historyTitle}>历史记录</Text>
+        <View style={styles.headerRight}>
+          <Pressable hitSlop={8} onPress={onToggleExpand} style={styles.headerAction}>
+            <Text style={styles.headerActionText}>{isExpanded ? '收起' : '展开'}</Text>
+            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text.tertiary} />
           </Pressable>
-          <Pressable accessibilityLabel="展开折叠" hitSlop={8} onPress={onToggleExpand}>
-            <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color={colors.text.secondary} />
+          <View style={styles.headerDivider} />
+          <Pressable accessibilityLabel="清空全部搜索记录" hitSlop={8} onPress={onClearAll} style={styles.headerAction}>
+            <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
           </Pressable>
         </View>
       </View>
-      <View style={styles.historyList}>
+
+      <View style={styles.twoColumnList}>
         {displayHistory.map((item) => (
-          <Pressable
-            key={item.id}
-            onLongPress={() => setEditMode(true)}
-            onPress={() => {
-              if (editMode) {
-                onDeleteItem(item.id);
-              } else {
-                onUseItem(item.keyword);
-              }
-            }}
-            style={({ pressed }) => [styles.historyPill, pressed && styles.pressed]}
-          >
-            <Text numberOfLines={1} style={styles.historyPillText}>{item.keyword}</Text>
-            {editMode && (
-              <Ionicons name="close-circle" size={16} color={colors.text.placeholder} style={{ marginLeft: spacing[1] }} />
-            )}
-          </Pressable>
+          <View key={item.id} style={styles.twoColumnItemWrapper}>
+            <Pressable
+              onLongPress={() => setEditMode(true)}
+              onPress={() => {
+                if (editMode) onDeleteItem(item.id);
+                else onUseItem(item.keyword);
+              }}
+              style={({ pressed }) => [styles.textItemRow, pressed && styles.pressed]}
+            >
+              <Text numberOfLines={1} ellipsizeMode="tail" style={styles.textItemText}>
+                {item.keyword}
+              </Text>
+              {editMode && (
+                <View style={styles.deleteIconWrapper}>
+                  <Ionicons name="close-circle" size={16} color={colors.text.placeholder} />
+                </View>
+              )}
+            </Pressable>
+          </View>
         ))}
       </View>
-      {onViewMore && history.length > 9 && (
+      
+      {onViewMore && history.length > 6 && (
         <Pressable style={styles.viewMoreButton} onPress={onViewMore}>
           <Text style={styles.viewMoreText}>查看更多搜索记录 ({history.length})</Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+function GuessYouWantList({
+  items,
+  onRefresh,
+  onUseItem,
+}: {
+  items: Array<{ text: string; isHot?: boolean; badge?: string }>;
+  onRefresh: () => void;
+  onUseItem: (value: string) => void;
+}) {
+  return (
+    <View style={styles.historyBlock}>
+      <View style={styles.historyHeader}>
+        <Text style={styles.historyTitle}>猜你想搜</Text>
+        <View style={styles.headerRight}>
+          <Pressable hitSlop={8} onPress={onRefresh} style={styles.headerAction}>
+            <Ionicons name="refresh" size={14} color={colors.text.tertiary} />
+            <Text style={styles.headerActionText}>换一换</Text>
+          </Pressable>
+          <View style={styles.headerDivider} />
+          <Pressable hitSlop={8} style={styles.headerAction}>
+            <Ionicons name="ellipsis-vertical" size={16} color={colors.text.tertiary} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.twoColumnList}>
+        {items.map((item, index) => (
+          <View key={index} style={styles.twoColumnItemWrapper}>
+            <Pressable
+              onPress={() => onUseItem(item.text)}
+              style={({ pressed }) => [styles.textItemRow, pressed && styles.pressed]}
+            >
+              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.textItemText, item.isHot && styles.hotText]}>
+                {item.text}
+              </Text>
+              {item.badge && (
+                <View style={styles.badgeWrapper}>
+                  <Text style={styles.badgeText}>{item.badge}</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -398,31 +460,78 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   historyTitle: {
-    ...typography.textStyles.sectionTitle,
-    color: colors.text.title,
-    fontWeight: '700',
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.tertiary,
+    fontWeight: '500',
+    fontSize: 15,
   },
-  historyList: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  headerActionText: {
+    ...typography.textStyles.caption,
+    color: colors.text.tertiary,
+    fontSize: 13,
+  },
+  headerDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 12,
+    backgroundColor: colors.border.default,
+    marginHorizontal: 4,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.subtle,
+    marginVertical: spacing[1],
+  },
+  twoColumnList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    marginHorizontal: -spacing[2],
   },
-  historyPill: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
+  twoColumnItemWrapper: {
+    width: '50%',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2] + 2,
+  },
+  textItemRow: {
     flexDirection: 'row',
-    maxWidth: '100%',
-    minHeight: 32,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
+    alignItems: 'center',
+    gap: spacing[1],
   },
-  historyPillText: {
+  textItemText: {
     ...typography.textStyles.body,
-    color: colors.text.body,
-    maxWidth: 200,
+    color: colors.text.title,
+    fontSize: 15,
+    flexShrink: 1,
+  },
+  hotText: {
+    color: '#FF4D4F',
+  },
+  badgeWrapper: {
+    backgroundColor: '#FF7A45',
+    borderRadius: radius.sm,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    ...typography.textStyles.micro,
+    color: '#FFF',
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  deleteIconWrapper: {
+    marginLeft: 'auto',
   },
   viewMoreButton: {
     alignItems: 'center',
