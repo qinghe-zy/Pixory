@@ -19,13 +19,6 @@ import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlayb
 import { formatDuration } from '../utils/formatters';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
-
-// 根据播放速度决定是否保持音调。
-// ≤ 2.5x：Sonic（Android）/ AVPlayer（iOS）算法在此区间内可良好处理，开启保持音调。
-// > 2.5x：算法在极限倍速下产生明显机械电音，关闭音调保持；轻微升调远比断续失真易于接受。
-function shouldPreservePitch(rate: number): boolean {
-  return rate <= 2.5;
-}
 const CONTROL_HIDE_DELAY_MS = 5000;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const DOUBLE_TAP_PAUSE_WINDOW_MS = 280;
@@ -152,8 +145,6 @@ export function VideoPlayerScreen({
   const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] = useState(false);
   const [switchPreviewVideo, setSwitchPreviewVideo] = useState<ImageListItem | null>(null);
   const [loadingCoverVideo, setLoadingCoverVideo] = useState<ImageListItem | ImageDetailRecord | null>(null);
-  const [stablePrevVideo, setStablePrevVideo] = useState<ImageListItem | null>(null);
-  const [stableNextVideo, setStableNextVideo] = useState<ImageListItem | null>(null);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
@@ -197,7 +188,6 @@ export function VideoPlayerScreen({
   const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.playbackRate = speed;
-    instance.preservesPitch = shouldPreservePitch(speed);
     instance.loop = true;
   });
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
@@ -292,38 +282,6 @@ export function VideoPlayerScreen({
     watchedVideoIdsRef.current = videoId ? [videoId] : [];
   }, [videoId]);
 
-  const stableNextVideoRef = useRef<ImageListItem | null>(null);
-  const lastRolledForVideoIdRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (queue.length <= 1) {
-      setStablePrevVideo(null);
-      setStableNextVideo(null);
-      stableNextVideoRef.current = null;
-      return;
-    }
-    if (playbackOrder === 'shuffle') {
-      const prev = getPreviousWatchedVideo();
-      let next = stableNextVideoRef.current;
-      
-      const isNextInvalid = !next || !queue.some(item => item.id === next?.id);
-      const isNewActiveVideo = lastRolledForVideoIdRef.current !== activeVideoId;
-      
-      if (isNextInvalid || isNewActiveVideo) {
-        next = getRandomQueueVideo();
-        stableNextVideoRef.current = next;
-        lastRolledForVideoIdRef.current = activeVideoId;
-      }
-      
-      setStablePrevVideo(prev);
-      setStableNextVideo(next);
-    } else {
-      setStablePrevVideo(getSequenceVideoByOffset(-1));
-      setStableNextVideo(getSequenceVideoByOffset(1));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVideoId, queue, playbackOrder]);
-
   useEffect(() => {
     if (externalSource) {
       setVideo(null);
@@ -396,7 +354,6 @@ export function VideoPlayerScreen({
       }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
-      player.preservesPitch = shouldPreservePitch(speed);
       player.loop = Boolean(externalSource) || queue.length <= 1;
       if (initialDisplayTime > 0) {
         player.currentTime = initialDisplayTime;
@@ -421,7 +378,6 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     player.playbackRate = speed;
-    player.preservesPitch = shouldPreservePitch(speed);
     if (videoPreferencesLoadedRef.current) {
       void saveVideoPlayerPreferences({ speed });
     }
@@ -839,7 +795,6 @@ export function VideoPlayerScreen({
     setHoldSpeedVisible(true);
     const previousSpeed = player.playbackRate;
     player.playbackRate = holdSpeed;
-    player.preservesPitch = shouldPreservePitch(holdSpeed);
     safePlayPlayer();
     longPressTimerRef.current = setInterval(() => {
       currentTimeRef.current = player.currentTime;
@@ -853,7 +808,6 @@ export function VideoPlayerScreen({
 
   function finishHoldFastForward() {
     player.playbackRate = speed;
-    player.preservesPitch = shouldPreservePitch(speed);
     if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
       safePausePlayer();
     }
@@ -1005,7 +959,7 @@ export function VideoPlayerScreen({
 
   function finishCenterVideoSwitchGesture(deltaY: number) {
     const offset = deltaY < 0 ? 1 : -1;
-    const nextVideo = offset === 1 ? stableNextVideo : stablePrevVideo;
+    const nextVideo = getVideoByOffset(offset);
     if (Math.abs(deltaY) < CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX) {
       resetVideoSwitchDrag();
       return;
@@ -1056,9 +1010,17 @@ export function VideoPlayerScreen({
       }
       setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
-      videoSwitchTranslateY.setValue(0);
-      setIsVideoSwitchTransitioning(false);
-      resetHideTimer();
+      videoSwitchTranslateY.setValue(direction * transitionHeight);
+      requestAnimationFrame(() => {
+        Animated.timing(videoSwitchTranslateY, {
+          toValue: 0,
+          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
+          useNativeDriver: true,
+        }).start(() => {
+          setIsVideoSwitchTransitioning(false);
+          resetHideTimer();
+        });
+      });
     });
   }
 
@@ -1432,16 +1394,6 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
-        {stablePrevVideo && (stablePrevVideo.coverThumbnailFileUri ?? stablePrevVideo.thumbnailFileUri) ? (
-          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: -surfaceHeight, height: surfaceHeight, backgroundColor: '#050607' }}>
-            <SecureImage
-              contentFit="contain"
-              space={space}
-              style={styles.videoLoadingCoverImage}
-              uri={(stablePrevVideo.coverThumbnailFileUri ?? stablePrevVideo.thumbnailFileUri) as string}
-            />
-          </View>
-        ) : null}
         <VideoView
           allowsPictureInPicture={false}
           contentFit="contain"
@@ -1458,16 +1410,6 @@ export function VideoPlayerScreen({
               space={space}
               style={styles.videoLoadingCoverImage}
               uri={(loadingCoverVideo.coverThumbnailFileUri ?? loadingCoverVideo.thumbnailFileUri) as string}
-            />
-          </View>
-        ) : null}
-        {stableNextVideo && (stableNextVideo.coverThumbnailFileUri ?? stableNextVideo.thumbnailFileUri) ? (
-          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: surfaceHeight, height: surfaceHeight, backgroundColor: '#050607' }}>
-            <SecureImage
-              contentFit="contain"
-              space={space}
-              style={styles.videoLoadingCoverImage}
-              uri={(stableNextVideo.coverThumbnailFileUri ?? stableNextVideo.thumbnailFileUri) as string}
             />
           </View>
         ) : null}

@@ -381,16 +381,10 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
       var bitmap: Bitmap? = null
       try {
       setRetrieverSource(retriever, sourceUri)
-      val durationMsStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-      val durationMs = durationMsStr?.toLongOrNull() ?: 0L
-      // If video is longer than 1 second, take the frame at 1 second to avoid black fade-ins.
-      // Otherwise, take the frame at halfway.
-      val timeUs = if (durationMs > 1000L) 1000000L else (durationMs * 1000L) / 2L
-
       bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-        retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, THUMBNAIL_MAX_SIZE, THUMBNAIL_MAX_SIZE)
+        retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, THUMBNAIL_MAX_SIZE, THUMBNAIL_MAX_SIZE)
       } else {
-        retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        retriever.frameAtTime
       } ?: throw IllegalStateException("Unable to read a video frame.")
       val destination = fileFromUri(destinationUri)
       destination.parentFile?.mkdirs()
@@ -627,40 +621,16 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
 
     val uris = mutableListOf<Uri>()
     val filesUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
-    val projection = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE)
-
     for (index in 0 until assetIds.size()) {
       val assetId = assetIds.getString(index)?.trim().orEmpty()
       if (assetId.isEmpty()) continue
-      
-      if (assetId.startsWith("content://")) {
-        uris.add(Uri.parse(assetId))
-        continue
+      val uri = if (assetId.startsWith("content://")) {
+        Uri.parse(assetId)
+      } else {
+        val mediaId = assetId.toLongOrNull() ?: continue
+        ContentUris.withAppendedId(filesUri, mediaId)
       }
-      
-      val mediaId = assetId.toLongOrNull() ?: continue
-      val fileUri = ContentUris.withAppendedId(filesUri, mediaId)
-      var mediaType = MediaStore.Files.FileColumns.MEDIA_TYPE_NONE
-      
-      try {
-        reactApplicationContext.contentResolver.query(fileUri, projection, null, null, null)?.use { cursor ->
-          if (cursor.moveToFirst()) {
-            val typeIndex = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
-            mediaType = cursor.getInt(typeIndex)
-          }
-        }
-      } catch (e: Exception) {
-        // Ignore and fallback to fileUri if query fails
-      }
-      
-      val specificUri = when (mediaType) {
-        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE -> ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL), mediaId)
-        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> ContentUris.withAppendedId(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL), mediaId)
-        MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO -> ContentUris.withAppendedId(MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL), mediaId)
-        else -> fileUri
-      }
-      
-      uris.add(specificUri)
+      uris.add(uri)
     }
 
     if (uris.isEmpty()) {

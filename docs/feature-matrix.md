@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-16（全局搜索优化：支持单日与范围快捷预设的高级搜索历史体验，并补全路由与依赖）
+最后更新：2026-08-13（AI 聊天 P0/P1 运行时性能：游标分页、流式发布与后台标题收敛）
 适用版本：Pixory 2.7.7
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -40,7 +40,7 @@
 | 陪伴内心运行时（情绪、梦境、思绪） | 已实现，V1 核心 | 情绪/关系投影、角色梦境、离线思绪、内心产物仲裁和后台恢复均已进入主分支；思绪是给 AI 的低权限一次性动态材料，梦境只有用户明确允许才可进入后续上下文，情绪与关系状态不直接暴露内部数值 | `src/ai/companion/`, `src/ai/dream/`, `src/ai/thought/`, `CompanionInnerLifeScreen`, `CompanionRuntimeManagerScreen`, `DreamReaderScreen` |
 | 陪伴手帐与数据面板 | 已实现，未来可扩展 | 珍珠时间线、双轴古典排版字体、底层零延迟预取、SQLite C++聚合、多维数据详单、WebView原生深链拦截 | `AboutScreen`, `MilestonesDetailScreen`, `milestoneService.ts` |
 | IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面；首页、分组和标签总览采用 SQLite 分页与虚拟列表，IP 详情分组预览在数据库层限制为 4 条，避免大库全量查询和一次性挂载卡片 | `HomeLibraryScreen`, `IpDetailScreen`, `GroupOverviewScreen`, `GlobalGroupsScreen`, `TagsOverviewScreen` |
-| 创意视觉动效与反馈 | 已实现 | 边缘极光入场（ParallaxLightSweep）、AI 档案行星与星轨系统（OrbitalSpectralRing）、聊天声纹频谱反馈（RhythmBars）、具有初速度与欠阻尼谐振子的磁性流体拉伸物理引擎（MagneticLiquidContainer）、基于双层视差与全向物理跟随的 3D 陀螺仪悬浮高光（MagneticCardContainer & GyroSpecularHighlight：包含流体惯性阻尼、菲涅尔效应、底层漫反射与顶层镜面微色散），为系统各模块注入轻量级的生命力、物理感与科技感表现 | `ParallaxLightSweep` (AiChatScreen, HomeLibraryScreen, AboutScreen, ProductDocumentationScreen), `OrbitalSpectralRing` (MeScreen), `RhythmBars` (AiChatComposer 回复状态显示, HomeLibraryScreen), `MagneticLiquidContainer` (全局多处使用：BottomTabBar, 首页副标题与星轨, 筛选芯片, 搜索栏), `MagneticCardContainer` & `GyroSpecularHighlight` (IPCard) |
+| 创意视觉动效与反馈 | 已实现 | 边缘极光入场（ParallaxLightSweep）、AI 档案行星与星轨系统（OrbitalSpectralRing）、聊天声纹频谱反馈（RhythmBars）、磁性流体拉伸交互（MagneticLiquidContainer）、基于双层视差与全向物理跟随的 3D 陀螺仪悬浮高光（MagneticCardContainer & GyroSpecularHighlight：包含流体惯性阻尼、菲涅尔效应、底层漫反射与顶层镜面微色散），为系统各模块注入轻量级的生命力、物理感与科技感表现 | `ParallaxLightSweep` (AiChatScreen, HomeLibraryScreen, AboutScreen, ProductDocumentationScreen), `OrbitalSpectralRing` (MeScreen), `RhythmBars` (AiChatComposer 回复状态显示, HomeLibraryScreen), `MagneticLiquidContainer` (BottomTabBar), `MagneticCardContainer` & `GyroSpecularHighlight` (IPCard) |
 | 图片/视频导入 | 已实现，Android 删除确认待真机验收 | 批量导入、复制原文件、生成缩略图、重复检查、导入批次；相册素材按来源创建时间记录来源序号，ZIP/PIXORYPACK 按压缩包条目顺序记录来源序号；Android 11+ 使用系统删除确认，取消/不支持时保留原文件并回退；大批量选择仅渲染少量预览，视频复制进度合并写入以避免长视频导入时积压 | `ImportImagesScreen`, `mediaFilePickerService`, `imageImportService`, `videoImportService`, `mediaSourceDeletionService`, `PixoryMediaModule` |
 | 图片浏览与整理 | 已实现 | 全部素材、分组素材、标签素材、收藏、最近查看、快速整理 | `AllImagesScreen`, `ImageViewerScreen`, `QuickOrganizeScreen` |
 | 视频体验 | 已实现 | 视频详情、沉浸播放、手势、队列、横竖屏、进度偏好 | `VideoDetailScreen`, `VideoPlayerScreen` |
@@ -134,7 +134,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | 图片导入 | 多选图片、读取 metadata、复制原图、缩略图、创建记录 | `ImportImagesScreen`, `imageImportService` |
-| 视频导入 | 多选视频、读取时长/尺寸、复制原视频、动态提取时长生成视频缩略图（默认提取第 1 秒避免片头黑屏） | `videoImportService`, native media module |
+| 视频导入 | 多选视频、读取时长/尺寸、复制原视频、生成视频缩略图 | `videoImportService`, native media module |
 | 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签 | `ImportImagesScreen`, `ImportResultScreen` |
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review；批次默认按来源顺序展示，支持来源正/逆序 | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `BatchManageImagesScreen`, `imageRepository`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
@@ -153,7 +153,7 @@
 | 标签素材 | 标签总览、标签结果页、标签多选、标签创建/删除 | `TagsOverviewScreen`, `TagResultScreen`, `tagRepository` |
 | 收藏 | 收藏列表、收藏筛选、取消收藏 | `FavoritesScreen`, `imageRepository` |
 | 最近查看 | 最近查看列表、清空本地查看历史 | `RecentViewedScreen` |
-| 全局搜索 | 素材搜索、建议、高级搜索历史（支持单日、快捷范围胶囊预设与按时间段批量删除）、结果跳转；输入防抖、分类 SQL 查询和每类 20 条结果上限 | `GlobalSearchScreen`, `GlobalSearchHistoryScreen`, `searchHistoryService`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
+| 全局搜索 | 素材搜索、建议、搜索历史、结果跳转；输入防抖、分类 SQL 查询和每类 20 条结果上限 | `GlobalSearchScreen`, `searchHistoryService`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
 | 快速整理 | 未整理提示、按顺序快速设置 IP/分组/标签/备注 | `QuickOrganizeScreen`, `OrganizeScreen` |
 | 批量整理 | 批量移动、打标签、收藏、选择规则、撤销快照；图片/视频可混选后批量移动到其他 IP | `BatchManageImagesScreen`, `BatchImageOrganizePanel`, `videoMoveService`, `batchUndoService` |
 | 选择规则 | 全选、同前缀、相似图、多规则交集 | `batchSelectionRules` |
@@ -166,8 +166,8 @@
 | --- | --- | --- |
 | 图片查看器 | 翻页、沉浸 reader、filmstrip、设置、zoom 手势、反向顺序 | `ImageViewerScreen`, `mediaExperiencePreferences` |
 | 系统相册保存 | 保存单张/多张图片到系统相册 | `mediaLibraryService`, `AlbumSaveDialog` |
-| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定、末尾恢复保护、基于 3 视图虚拟翻页的无缝竖滑切换体验（彻底消除视频切换时的封面跳动闪烁）、基于倍速阈值的音调自适应策略（消除极限高倍速下的机械电音失真） | `VideoPlayerScreen`, `mediaExperiencePreferences` |
-| 视频手势 | 双击播放/暂停、左右区域切换、长按快进（支持音调自适应降级）、scrub | `VideoPlayerScreen` |
+| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定、末尾恢复保护、竖滑切换封面时序优化 | `VideoPlayerScreen`, `mediaExperiencePreferences` |
+| 视频手势 | 双击播放/暂停、左右区域切换、长按快进、scrub | `VideoPlayerScreen` |
 | 视频偏好 | 播放器偏好持久化、图片 viewer 偏好持久化 | `mediaExperiencePreferences` |
 | 外部视频 | open-with 外部视频进入播放器 | `App.tsx`, native media module |
 
