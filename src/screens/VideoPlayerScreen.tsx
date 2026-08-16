@@ -152,6 +152,8 @@ export function VideoPlayerScreen({
   const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] = useState(false);
   const [switchPreviewVideo, setSwitchPreviewVideo] = useState<ImageListItem | null>(null);
   const [loadingCoverVideo, setLoadingCoverVideo] = useState<ImageListItem | ImageDetailRecord | null>(null);
+  const [stablePrevVideo, setStablePrevVideo] = useState<ImageListItem | null>(null);
+  const [stableNextVideo, setStableNextVideo] = useState<ImageListItem | null>(null);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
@@ -289,6 +291,38 @@ export function VideoPlayerScreen({
     setSwitchPreviewVideo(null);
     watchedVideoIdsRef.current = videoId ? [videoId] : [];
   }, [videoId]);
+
+  const stableNextVideoRef = useRef<ImageListItem | null>(null);
+  const lastRolledForVideoIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (queue.length <= 1) {
+      setStablePrevVideo(null);
+      setStableNextVideo(null);
+      stableNextVideoRef.current = null;
+      return;
+    }
+    if (playbackOrder === 'shuffle') {
+      const prev = getPreviousWatchedVideo();
+      let next = stableNextVideoRef.current;
+      
+      const isNextInvalid = !next || !queue.some(item => item.id === next?.id);
+      const isNewActiveVideo = lastRolledForVideoIdRef.current !== activeVideoId;
+      
+      if (isNextInvalid || isNewActiveVideo) {
+        next = getRandomQueueVideo();
+        stableNextVideoRef.current = next;
+        lastRolledForVideoIdRef.current = activeVideoId;
+      }
+      
+      setStablePrevVideo(prev);
+      setStableNextVideo(next);
+    } else {
+      setStablePrevVideo(getSequenceVideoByOffset(-1));
+      setStableNextVideo(getSequenceVideoByOffset(1));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeVideoId, queue, playbackOrder]);
 
   useEffect(() => {
     if (externalSource) {
@@ -971,7 +1005,7 @@ export function VideoPlayerScreen({
 
   function finishCenterVideoSwitchGesture(deltaY: number) {
     const offset = deltaY < 0 ? 1 : -1;
-    const nextVideo = getVideoByOffset(offset);
+    const nextVideo = offset === 1 ? stableNextVideo : stablePrevVideo;
     if (Math.abs(deltaY) < CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX) {
       resetVideoSwitchDrag();
       return;
@@ -1022,17 +1056,9 @@ export function VideoPlayerScreen({
       }
       setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
-      videoSwitchTranslateY.setValue(direction * transitionHeight);
-      requestAnimationFrame(() => {
-        Animated.timing(videoSwitchTranslateY, {
-          toValue: 0,
-          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
-          useNativeDriver: true,
-        }).start(() => {
-          setIsVideoSwitchTransitioning(false);
-          resetHideTimer();
-        });
-      });
+      videoSwitchTranslateY.setValue(0);
+      setIsVideoSwitchTransitioning(false);
+      resetHideTimer();
     });
   }
 
@@ -1406,6 +1432,16 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
+        {stablePrevVideo && (stablePrevVideo.coverThumbnailFileUri ?? stablePrevVideo.thumbnailFileUri) ? (
+          <View pointerEvents="none" style={[styles.videoLoadingCover, { top: -surfaceHeight, bottom: 'auto', height: surfaceHeight }]}>
+            <SecureImage
+              contentFit="contain"
+              space={space}
+              style={styles.videoLoadingCoverImage}
+              uri={(stablePrevVideo.coverThumbnailFileUri ?? stablePrevVideo.thumbnailFileUri) as string}
+            />
+          </View>
+        ) : null}
         <VideoView
           allowsPictureInPicture={false}
           contentFit="contain"
@@ -1422,6 +1458,16 @@ export function VideoPlayerScreen({
               space={space}
               style={styles.videoLoadingCoverImage}
               uri={(loadingCoverVideo.coverThumbnailFileUri ?? loadingCoverVideo.thumbnailFileUri) as string}
+            />
+          </View>
+        ) : null}
+        {stableNextVideo && (stableNextVideo.coverThumbnailFileUri ?? stableNextVideo.thumbnailFileUri) ? (
+          <View pointerEvents="none" style={[styles.videoLoadingCover, { top: surfaceHeight, bottom: 'auto', height: surfaceHeight }]}>
+            <SecureImage
+              contentFit="contain"
+              space={space}
+              style={styles.videoLoadingCoverImage}
+              uri={(stableNextVideo.coverThumbnailFileUri ?? stableNextVideo.thumbnailFileUri) as string}
             />
           </View>
         ) : null}
