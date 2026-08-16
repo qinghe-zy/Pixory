@@ -1433,7 +1433,7 @@ export function VideoPlayerScreen({
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
         {stablePrevVideo && (stablePrevVideo.coverThumbnailFileUri ?? stablePrevVideo.thumbnailFileUri) ? (
-          <View pointerEvents="none" style={[styles.videoLoadingCover, { top: -surfaceHeight, bottom: 'auto', height: surfaceHeight }]}>
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: -surfaceHeight, height: surfaceHeight, backgroundColor: '#050607' }}>
             <SecureImage
               contentFit="contain"
               space={space}
@@ -1462,7 +1462,7 @@ export function VideoPlayerScreen({
           </View>
         ) : null}
         {stableNextVideo && (stableNextVideo.coverThumbnailFileUri ?? stableNextVideo.thumbnailFileUri) ? (
-          <View pointerEvents="none" style={[styles.videoLoadingCover, { top: surfaceHeight, bottom: 'auto', height: surfaceHeight }]}>
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: surfaceHeight, height: surfaceHeight, backgroundColor: '#050607' }}>
             <SecureImage
               contentFit="contain"
               space={space}
