@@ -19,6 +19,13 @@ import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlayb
 import { formatDuration } from '../utils/formatters';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
+
+// 根据播放速度决定是否保持音调。
+// ≤ 2.5x：Sonic（Android）/ AVPlayer（iOS）算法在此区间内可良好处理，开启保持音调。
+// > 2.5x：算法在极限倍速下产生明显机械电音，关闭音调保持；轻微升调远比断续失真易于接受。
+function shouldPreservePitch(rate: number): boolean {
+  return rate <= 2.5;
+}
 const CONTROL_HIDE_DELAY_MS = 5000;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const DOUBLE_TAP_PAUSE_WINDOW_MS = 280;
@@ -188,6 +195,7 @@ export function VideoPlayerScreen({
   const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.playbackRate = speed;
+    instance.preservesPitch = shouldPreservePitch(speed);
     instance.loop = true;
   });
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
@@ -354,6 +362,7 @@ export function VideoPlayerScreen({
       }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
+      player.preservesPitch = shouldPreservePitch(speed);
       player.loop = Boolean(externalSource) || queue.length <= 1;
       if (initialDisplayTime > 0) {
         player.currentTime = initialDisplayTime;
@@ -378,6 +387,7 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     player.playbackRate = speed;
+    player.preservesPitch = shouldPreservePitch(speed);
     if (videoPreferencesLoadedRef.current) {
       void saveVideoPlayerPreferences({ speed });
     }
@@ -795,6 +805,7 @@ export function VideoPlayerScreen({
     setHoldSpeedVisible(true);
     const previousSpeed = player.playbackRate;
     player.playbackRate = holdSpeed;
+    player.preservesPitch = shouldPreservePitch(holdSpeed);
     safePlayPlayer();
     longPressTimerRef.current = setInterval(() => {
       currentTimeRef.current = player.currentTime;
@@ -808,6 +819,7 @@ export function VideoPlayerScreen({
 
   function finishHoldFastForward() {
     player.playbackRate = speed;
+    player.preservesPitch = shouldPreservePitch(speed);
     if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
       safePausePlayer();
     }
