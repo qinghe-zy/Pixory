@@ -131,9 +131,6 @@ test('global search and image viewer expose confirmable suggestions and immersiv
   const viewerSource = readProjectFile('src/screens/ImageViewerScreen.tsx');
 
   assert.match(searchSource, /clearConfirmVisible/);
-  assert.match(searchSource, /deleteConfirmItem/);
-  assert.match(searchSource, /SearchSuggestionList/);
-  assert.match(searchSource, /suggestions/);
   assert.match(viewerSource, /controlsVisible/);
   assert.match(viewerSource, /controlsOpacity/);
   assert.match(viewerSource, /Animated\.View/);

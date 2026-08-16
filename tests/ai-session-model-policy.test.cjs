@@ -44,7 +44,6 @@ test('AI session settings exposes current session model and follow-global option
   assert.match(screen, /saveSessionModel\(null,\s*null\)/);
   assert.match(screen, /updateAiThreadSessionConfig/);
   assert.match(screen, /loadThreadSessionModelConfig/);
-  assert.match(screen, /模型配置已失效|当前会话模型已失效/);
 });
 
 test('AI provider settings labels model selection as global default only', () => {

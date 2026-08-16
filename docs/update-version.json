@@ -1,17 +1,17 @@
 {
-  "version": "2.8.0",
-  "versionCode": 280,
+  "version": "2.8.1",
+  "versionCode": 281,
   "enabled": true,
   "forceUpdate": false,
   "minSupportVersion": "2.1.2",
-  "message": "Pixory 2.8.0 发布。带来全新「极光」全屏动效与 AI 头像「星轨」环绕特效；为产品文档页新增呼吸光带支持；优化了动态视觉表现。可前往官网下载区获取最新版。",
+  "message": "Pixory 2.8.1 发布。引入全套高级动态物理引擎与「极光」边缘动效，大幅提升组件阻尼回弹手感与双层视差高光质量；重新设计全局搜索历史界面与日历过滤功能；优化视频列表三视图滑动性能及高倍速音调自适应；修复 Android 11 删除闪退及应用长时间挂机后卡死等问题。可前往官网下载区获取最新版。",
   "detailLines": [
     "✨ 引入全新「极光」全屏动效与 AI 头像「星轨」环绕特效，提升交互沉浸感",
     "📄 为产品文档页新增呼吸光带显示效果，优化排版细节",
     "🎨 全面优化多处动态视觉表现，提升系统运行流畅度与稳定性"
   ],
-  "latestVersion": "2.8.0",
-  "latestVersionCode": 280,
+  "latestVersion": "2.8.1",
+  "latestVersionCode": 281,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 引入全新「极光」全屏动效与 AI 头像「星轨」环绕特效；2. 优化文档加载视觉体验；3. 全面优化动态视觉表现与运行流畅度。"
 }

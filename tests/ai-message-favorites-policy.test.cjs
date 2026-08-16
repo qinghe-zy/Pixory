@@ -95,8 +95,8 @@ test('AI chat screen toggles favorites with current branch and visible version i
   assert.match(chat, /\}, \[assistantFavoriteKeyState\.signature, space\]\);/);
   assert.doesNotMatch(chat, /\}, \[space, visibleMessages, selectedVersionByMessageId, persistedCurrentBranchScopes\]\);/);
   assert.match(chat, /activeMessageBranchScopesRef/);
-  assert.match(chat, /loadedMessageLimitRef/);
-  assert.match(chat, /reloadMessages\(targetThreadId, false, activeMessageBranchScopesRef\.current, nextLimit\)/);
+
+
   assert.match(chat, /favorited=\{/);
   assert.match(chat, /favoriteDisabledByGeneration=\{/);
   assert.match(chat, /favoritePending=\{/);

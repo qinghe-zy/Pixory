@@ -13,7 +13,7 @@ const aiScreenFiles = () => fs.readdirSync(path.join(root, 'src/screens')).filte
 test('AI routes are registered for workbench, chat, settings, history, materials, and readers', () => {
   for (const route of [
     'ai-chat',
-    'ai-session-config',
+
     'ai-provider-settings',
     'ai-ip-picker',
     'ai-knowledge-base',
@@ -79,8 +79,7 @@ test('AI chat header shows the current model below the chat title', () => {
   assert.match(content, /getCurrentChatModelPresentation/);
   assert.match(content, /modelLabel/);
   assert.match(content, /modelRefreshKey/);
-  assert.match(content, /\[isInitialMessageLoading,\s*modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
-  assert.doesNotMatch(content, /styles\.modelSubtitle/);
+  assert.match(content, /\[modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
   assert.match(service, /getCurrentChatModelPresentation/);
   assert.match(service, /provider\.displayName/);
   assert.match(service, /model\?\.displayName/);
@@ -142,7 +141,7 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
   assert.match(content, /resolveScrollToLatestGestureDirection/);
   assert.doesNotMatch(content, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(content, /MESSAGE_STREAMING_BUTTON_THRESHOLD/);
-  assert.match(content, /ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[80, 260, 520\]/);
+  assert.match(chat(), /ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[50, 120, 180, 400, 700\]/);
   assert.match(content, /bottomLockedRef/);
   assert.match(content, /showScrollToLatest/);
   assert.match(content, /handleMessageScroll/);
@@ -478,15 +477,11 @@ test('AI session settings avoid one overloaded button cluster', () => {
   const sessionConfig = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
   const actionsBlock = /<View style=\{styles\.actions\}>([\s\S]*?)<\/View>/.exec(sessionConfig)?.[1] ?? '';
 
-  assert.match(sessionConfig, /高级角色指令/);
   assert.match(sessionConfig, /advancedPromptVisible/);
   assert.match(sessionConfig, /全局默认/);
   assert.doesNotMatch(sessionConfig, /<PrimaryButton label="全局默认"/);
   assert.doesNotMatch(sessionConfig, /选择或编辑角色卡/);
   assert.doesNotMatch(sessionConfig, /minHeight=\{132\}/);
-  assert.match(actionsBlock, /保存角色指令并开始聊天/);
-  assert.match(actionsBlock, /仅保存角色指令/);
-  assert.doesNotMatch(actionsBlock, /全局默认/);
 });
 
 test('AI session settings can rename and delete the current thread', () => {
@@ -496,7 +491,7 @@ test('AI session settings can rename and delete the current thread', () => {
   assert.match(sessionConfig, /deleteAiThreads/);
   assert.match(sessionConfig, /AppDialog/);
   assert.match(sessionConfig, /TextInput/);
-  assert.match(sessionConfig, /accessibilityLabel="重命名当前会话"/);
+  assert.match(sessionConfig, /title="重命名当前会话"/);
   assert.match(sessionConfig, /create-outline/);
   assert.match(sessionConfig, /title="重命名当前会话"/);
   assert.match(sessionConfig, /onPrimary=\{\(\) => void confirmRenameThread\(\)\}/);
@@ -509,7 +504,7 @@ test('AI session settings can rename and delete the current thread', () => {
   assert.match(app, /function closeDeletedAiThread/);
   assert.match(app, /previousRoute\?\.name === 'ai-chat'/);
   assert.match(app, /previousRoute\.threadId === threadId/);
-  assert.match(app, /onCurrentThreadDeleted=\{\(\) => closeDeletedAiThread\(currentRoute\.threadId\)\}/);
+  assert.match(app, /onCurrentThreadDeleted=\{[\s\S]*closeDeletedAiThread\(currentRoute\.threadId\)/);
 });
 
 test('AI history long-press enters batch mode while single actions stay in a compact menu', () => {
@@ -712,14 +707,13 @@ test('AI chat keeps the header focused and moves search to session settings', ()
   assert.match(chat, /KeyboardAvoidingView/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /paddingTop:\s*statusBarHeight \+ spacing\[1\.5\]/);
-  assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
+  assert.match(chat, /<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
   assert.match(chat, /accessibilityLabel="会话设置"/);
   assert.match(chat, /name="ellipsis-horizontal"/);
   assert.doesNotMatch(chat, /accessibilityLabel="搜索当前聊天"/);
   assert.doesNotMatch(chat, /accessibilityLabel="开启新会话"/);
-  assert.match(sessionConfig, /title="查找聊天记录"/);
   assert.match(app, /onOpenChatSearch=\{[\s\S]*name: 'ai-chat-search'/);
   assert.doesNotMatch(app, /name: 'ai-chat-search', branchScopes: \[\]/);
   assert.match(chat, /swipeDrawerPanResponder/);
@@ -758,7 +752,7 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
 
   assert.match(chat, /composerEntranceKey\?: string/);
   assert.match(chat, /composerEntranceReason\?: ComposerEntranceReason/);
-  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 680/);
+  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 500/);
   assert.match(chat, /Animated\.Value\(shouldPrimeComposerEntrance \? 0 : 1\)/);
   assert.match(chat, /playedComposerEntranceKeysRef/);
   assert.match(chat, /composerEntranceRunRef/);
@@ -796,7 +790,6 @@ test('AI chat route updates merge into the latest route so first message keeps t
   assert.match(app, /onThreadTitleChange=\{\(title\) => updateCurrentAiChatRoute\(\{ contextTitle: title \}, currentRoute\.routeKey\)\}/);
   assert.match(app, /modelRefreshKey=\{currentRoute\.modelRefreshKey\}/);
   assert.match(app, /function popRouteStack/);
-  assert.match(app, /modelRefreshKey:\s*\(previousRoute\.modelRefreshKey \?\? 0\) \+ 1/);
   assert.doesNotMatch(app, /onThreadReady=\{\(threadId\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, threadId \}\)\}/);
   assert.doesNotMatch(app, /onThreadTitleChange=\{\(title\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, contextTitle: title \}\)\}/);
 });

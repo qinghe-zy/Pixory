@@ -365,7 +365,7 @@ test('AI session settings opens branch tree from the current-session module and 
   assert.doesNotMatch(chat, /onOpenBranchTree: \(threadId: string, currentBranchScopes: AiBranchScope\[\]\) => void/);
   assert.doesNotMatch(chat, /accessibilityLabel="打开创作路线树"/);
   assert.match(sessionConfig, /onOpenBranchTree\?: \(\) => void/);
-  assert.match(sessionConfig, /title="创作路线树"/);
+  assert.match(sessionConfig, /label="路线树"/);
   assert.match(sessionConfig, /icon="git-branch-outline"/);
   assert.match(sessionConfig, /disabled=\{!threadId \|\| !onOpenBranchTree\}/);
   assert.match(app, /onOpenBranchTree=\{[\s\S]{0,220}name: 'ai-branch-tree'/);

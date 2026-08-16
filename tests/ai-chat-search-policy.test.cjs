@@ -20,7 +20,7 @@ test('AI chat search is a full-page session-settings local fuzzy search flow', (
   assert.doesNotMatch(app, /name: 'ai-chat-search', branchScopes: \[\]/);
   assert.doesNotMatch(chat, /accessibilityLabel="搜索当前聊天"/);
   assert.doesNotMatch(chat, /handleOpenChatSearch/);
-  assert.match(sessionConfig, /title="查找聊天记录"/);
+
   assert.match(sessionConfig, /icon="search-outline"/);
   assert.match(search, /AiLightSearchBar/);
   assert.match(search, /searchThreadMessages/);

@@ -149,7 +149,7 @@ test('select text opens a full-screen selectable message reader', () => {
   assert.match(modal, /选择文本/);
   assert.match(modal, /selectable/);
   assert.match(modal, /ScrollView/);
-  assert.match(modal, /onRequestClose=\{handleClose\}/);
+  assert.match(modal, /onRequestClose=\{handleBack\}/);
 });
 
 test('user and assistant long-press menus keep their distinct existing actions', () => {

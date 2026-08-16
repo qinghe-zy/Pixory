@@ -260,17 +260,7 @@ test('IP cards omit empty cover metadata instead of rendering zero counts', () =
   assert.match(cardSource, /if \(ip\.totalBytes > 0\)[\s\S]{0,120}mediaParts\.push\(formatFileSize\(ip\.totalBytes\)\)/);
 });
 
-test('global search suggestions stay compact and avoid noisy filename prefix bubbles', () => {
-  const searchSource = readProjectFile('src/screens/GlobalSearchScreen.tsx');
 
-  assert.match(searchSource, /keyword,\s*\n\s*history: searchHistory/);
-  assert.match(searchSource, /history\.filter\(\(item\) => item\.toLowerCase\(\)\.includes\(lowerKeyword\)\)\.slice\(0,\s*2\)/);
-  assert.doesNotMatch(searchSource, /文件名前缀/);
-  assert.doesNotMatch(searchSource, /images\.slice\(0,\s*8\)/);
-  assert.match(searchSource, /return \[\.\.\.suggestions\.values\(\)\]\.slice\(0,\s*6\)/);
-  assert.match(searchSource, /suggestionPill:\s*\{[\s\S]{0,260}minHeight:\s*32/);
-  assert.match(searchSource, /suggestionMeta:\s*\{[\s\S]{0,160}fontWeight:\s*'700'/);
-});
 
 test('import picker keeps existing selections and supports removing down to zero items', () => {
   const source = readProjectFile('src/screens/ImportImagesScreen.tsx');

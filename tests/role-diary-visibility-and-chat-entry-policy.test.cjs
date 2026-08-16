@@ -22,10 +22,10 @@ test('diary background work waits until the current chat has rendered its first 
   assert.match(chat, /\[activeThreadId, isInitialMessageLoading/);
 });
 
-test('nonessential chat chrome waits for the first message page before querying local data', () => {
+test('chat chrome loads concurrently with the first message page to fix post-mask layout shift', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
-  assert.match(chat, /if \(isInitialMessageLoading\) \{\s*return;\s*\}[\s\S]{0,120}reloadModelLabel/);
+  assert.doesNotMatch(chat, /if \(isInitialMessageLoading\) \{\s*return;\s*\}[\s\S]{0,120}reloadModelLabel/);
   assert.match(chat, /void reloadModelLabel\(threadId \?\? null\);[\s\S]{0,300}reloadParticipantAppearance[\s\S]{0,300}reloadThreadTitle/);
 });
 
