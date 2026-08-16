@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, AppState, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -233,24 +233,6 @@ export function RhythmBars({
     let elapsed = 0;
     let hold = rand(HOLD_MIN, HOLD_MAX);
 
-    // 1. Independent random loop (diverges over time)
-    randomInterval = setInterval(() => {
-      if (busy.current) return;
-      elapsed += TICK;
-      if (elapsed < hold) return;
-
-      // Pick a random next waveform, avoiding repeats and avoiding the static sync waves if possible
-      let next = Math.floor(rand(0, WAVEFORMS.length));
-      if (next === seqIdx.current) {
-        next = (next + 1) % WAVEFORMS.length;
-      }
-      seqIdx.current = next;
-      goNext(next);
-      
-      elapsed = 0;
-      hold = rand(HOLD_MIN, HOLD_MAX);
-    }, TICK);
-
     // 2. Precise global sync clock (converges exactly at SYNC_INTERVAL_MS boundaries)
     function scheduleNextSync() {
       if (!active) return;
@@ -275,12 +257,54 @@ export function RhythmBars({
       }, timeToNextSync);
     }
 
-    scheduleNextSync();
+    function startTimers() {
+      if (!active) return;
+      stopTimers();
+      
+      // 1. Independent random loop (diverges over time)
+      randomInterval = setInterval(() => {
+        if (busy.current) return;
+        elapsed += TICK;
+        if (elapsed < hold) return;
+
+        // Pick a random next waveform, avoiding repeats and avoiding the static sync waves if possible
+        let next = Math.floor(rand(0, WAVEFORMS.length));
+        if (next === seqIdx.current) {
+          next = (next + 1) % WAVEFORMS.length;
+        }
+        seqIdx.current = next;
+        goNext(next);
+        
+        elapsed = 0;
+        hold = rand(HOLD_MIN, HOLD_MAX);
+      }, TICK);
+
+      scheduleNextSync();
+    }
+
+    function stopTimers() {
+      if (randomInterval) clearInterval(randomInterval);
+      if (syncTimeout) clearTimeout(syncTimeout);
+    }
+
+    // React Native timers can queue up massively when the app is in the background,
+    // freezing the JS thread upon returning to the foreground.
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        startTimers();
+      } else {
+        stopTimers();
+      }
+    });
+
+    if (AppState.currentState === 'active') {
+      startTimers();
+    }
 
     return () => {
       active = false;
-      clearInterval(randomInterval);
-      clearTimeout(syncTimeout);
+      stopTimers();
+      appStateSub.remove();
     };
   }, [goNext]);
 
