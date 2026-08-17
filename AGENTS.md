@@ -364,6 +364,7 @@ When the user requests a hot update or OTA update (e.g., `推热更新`), follow
 1. Always use `eas update` instead of `expo export`.
 2. Ensure you push the update to the `production` branch on EAS, as the app is configured to listen to the `production` channel (`app.json` has `"expo-channel-name": "production"`).
 3. The correct command is: `npx eas-cli update --branch production --message "<Your Message>" --non-interactive`. Do not use `--auto` unless you are certain the current git branch is `production`.
+4. Update `LOCAL_UPDATES_LOG.md` with detailed update items and information for this hot update. (Note: The content in `LOCAL_UPDATES_LOG.md` MUST be written in Chinese, and MUST include basic information: Update Type (OTA热更新), Version, Update Time, and Target Channel).
 
 ## Release And Packaging Workflow
 
@@ -384,12 +385,10 @@ Default release workflow:
    - `docs/download.html`
    - `docs/updates.html`
    - `docs/sitemap.xml`
+   - `LOCAL_UPDATES_LOG.md` (Add detailed update items and information for this release. Note: The content MUST be written in Chinese, and MUST include basic information: Update Type (正式版本发布), Version, Release Time, and Commit/Tag).
    - local Android Gradle release fields/output name when present
    - Expo `runtimeVersion` and Android `expo_runtime_version` (CRITICAL: Update `<string name="expo_runtime_version">` in `android/app/src/main/res/values/strings.xml`)
 5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, the About screen fallback/current version text, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
-6. Before verification and APK build, clean release-interfering temporary artifacts:
-   - Remove transient build/debug logs, stale local screenshots, temp exports, copied APK leftovers, cache snapshots, and one-off generated files that are not intended to be committed.
-   - Review completed requirement documents, temporary implementation plans, acceptance drafts, or handoff notes that were created only to guide finished work. If they may confuse future release work, either delete them when they are disposable or move them into an explicit archive/completed location.
    - Do not delete durable project documentation such as `README.md`, `AGENTS.md`, `.impeccable.md`, `docs/update-version.json`, `docs/announcement.json`, or intentionally maintained product/spec documents.
    - Never remove user-made unrelated work just to make the tree clean; if uncertain whether a document is disposable, keep it and mention the uncertainty in the release report.
 7. Do not maintain the old Gitee release path:

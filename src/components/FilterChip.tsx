@@ -3,45 +3,60 @@ import { BlurView } from 'expo-blur';
 
 import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
 import { LiquidGlassBezel } from './LiquidGlassBezel';
+import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 interface FilterChipProps {
   label: string;
   active: boolean;
   onPress: () => void;
   dense?: boolean;
+  withMagnet?: boolean;
 }
 
-export function FilterChip({ label, active, onPress, dense = false }: FilterChipProps) {
-  return (
+export function FilterChip({ label, active, onPress, dense = false, withMagnet = false }: FilterChipProps) {
+  const inner = (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.base,
+        dense ? styles.dense : null,
+        pressed && styles.pressed,
+      ]}
+    >
+      <BlurView intensity={50} style={styles.blur} tint="light">
+        <LiquidGlassBezel active={false} radius={componentTokens.filterChip.radius} />
+        {active ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.activeTint]} />
+        ) : null}
+        <View style={[styles.inner, dense ? styles.denseInner : null]}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.text,
+              dense ? styles.denseText : null,
+              active ? styles.activeText : styles.inactiveText,
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
+      </BlurView>
+    </Pressable>
+  );
+
+  return withMagnet ? (
+    <MagneticLiquidContainer 
+      magneticStrength={0.4} 
+      stretchFactor={0.03} 
+      damping={12}
+      style={[styles.wrapper, active && styles.wrapperActive]}
+    >
+      {inner}
+    </MagneticLiquidContainer>
+  ) : (
     <View style={[styles.wrapper, active && styles.wrapperActive]}>
-      <Pressable
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.base,
-          dense ? styles.dense : null,
-          pressed && styles.pressed,
-        ]}
-      >
-        <BlurView intensity={50} style={styles.blur} tint="light">
-          <LiquidGlassBezel active={false} radius={componentTokens.filterChip.radius} />
-          {active ? (
-            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.activeTint]} />
-          ) : null}
-          <View style={[styles.inner, dense ? styles.denseInner : null]}>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.text,
-                dense ? styles.denseText : null,
-                active ? styles.activeText : styles.inactiveText,
-              ]}
-            >
-              {label}
-            </Text>
-          </View>
-        </BlurView>
-      </Pressable>
+      {inner}
     </View>
   );
 }

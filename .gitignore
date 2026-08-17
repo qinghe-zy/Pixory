@@ -41,6 +41,9 @@ yarn-error.*
 /output/builds/*.apk
 /output/release/*.apk
 
+# Local update logs
+LOCAL_UPDATES_LOG.md
+
 # Local resumes and editable document exports
 /*.doc
 /*.docx

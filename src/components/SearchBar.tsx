@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
 
 import { LiquidGlassBezel } from './LiquidGlassBezel';
+import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 interface SearchBarProps {
   value: string;
@@ -13,9 +14,10 @@ interface SearchBarProps {
   onFocus?: () => void;
   onPress?: () => void;
   placeholder: string;
+  withMagnet?: boolean;
 }
 
-export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }: SearchBarProps) {
+export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder, withMagnet = false }: SearchBarProps) {
   const content = (
     <>
       <Ionicons color={colors.overlay.iconMuted} name="search-outline" size={componentTokens.searchBar.iconSize} />
@@ -41,12 +43,12 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }
   const innerStyle = [styles.inner];
 
   if (onPress) {
-    return (
+    const inner = (
       <Pressable
         accessibilityLabel={placeholder}
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [styles.wrapper, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.base, pressed && styles.pressed]}
       >
         <BlurView intensity={50} style={styles.blur} tint="light">
           <LiquidGlassBezel radius={componentTokens.searchBar.radius} />
@@ -56,16 +58,36 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }
         </BlurView>
       </Pressable>
     );
+
+    return withMagnet ? (
+      <MagneticLiquidContainer magneticStrength={0.35} stretchFactor={0.02} damping={14} style={styles.wrapper}>
+        {inner}
+      </MagneticLiquidContainer>
+    ) : (
+      <View style={styles.wrapper}>
+        {inner}
+      </View>
+    );
   }
 
-  return (
-    <View style={styles.wrapper}>
+  const inner = (
+    <View style={styles.base}>
       <BlurView intensity={50} style={styles.blur} tint="light">
         <View style={innerStyle}>
           {content}
         </View>
         <LiquidGlassBezel radius={componentTokens.searchBar.radius} />
       </BlurView>
+    </View>
+  );
+
+  return withMagnet ? (
+    <MagneticLiquidContainer magneticStrength={0.35} stretchFactor={0.02} damping={14} style={styles.wrapper}>
+      {inner}
+    </MagneticLiquidContainer>
+  ) : (
+    <View style={styles.wrapper}>
+      {inner}
     </View>
   );
 }
@@ -75,6 +97,9 @@ const styles = StyleSheet.create({
     ...shadows.sm,
     shadowColor: '#3A2E1D',
     shadowOpacity: 0.15,
+    borderRadius: componentTokens.searchBar.radius,
+  },
+  base: {
     borderRadius: componentTokens.searchBar.radius,
   },
   blur: {
