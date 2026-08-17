@@ -186,5 +186,6 @@ export function usePagedScreenLoad<TItem, TMeta>(
     errorMessage: isCurrentRequest ? errorMessage : null,
     loadMore,
     reload,
+    setData,
   };
 }

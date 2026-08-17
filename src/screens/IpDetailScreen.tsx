@@ -78,7 +78,7 @@ export function IpDetailScreen({
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GroupListItem | null>(null);
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<{
+  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{
     ip: IpDetailRecord;
     groups: GroupListItem[];
     recentImages: ImageListItem[];
@@ -210,7 +210,7 @@ export function IpDetailScreen({
     void (async () => {
       try {
         await runWithDatabaseSpace(space, (db) => ipRepository.setCoverBlurEnabled(db, ipId, enabled));
-        reload();
+        setData((current) => current ? { ...current, ip: { ...current.ip, coverBlurEnabled: enabled } } : undefined);
         onChanged();
       } catch (error) {
         showToast(error instanceof Error ? `更新封面模糊失败：${error.message}` : '更新封面模糊失败');
@@ -222,7 +222,7 @@ export function IpDetailScreen({
     void (async () => {
       try {
         await runWithDatabaseSpace(space, (db) => ipRepository.setCoverBlurRadius(db, ipId, radiusValue));
-        reload();
+        setData((current) => current ? { ...current, ip: { ...current.ip, coverBlurRadius: radiusValue } } : undefined);
         onChanged();
       } catch (error) {
         showToast(error instanceof Error ? `更新模糊强度失败：${error.message}` : '更新模糊强度失败');
@@ -494,7 +494,17 @@ export function IpDetailScreen({
             void (async () => {
               await runWithDatabaseSpace(space, (db) => groupRepository.updatePinned(db, actionGroup.id, !actionGroup.isPinned));
               showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
-              reload();
+              setData((current) => {
+                if (!current) return current;
+                const newGroups = current.groups.map(g => g.id === actionGroup.id ? { ...g, isPinned: !actionGroup.isPinned } : g);
+                newGroups.sort((a, b) => {
+                  if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+                  if (a.type !== b.type) return a.type.localeCompare(b.type);
+                  if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+                  return b.imageCount - a.imageCount;
+                });
+                return { ...current, groups: newGroups };
+              });
             })();
           },
         },
@@ -508,8 +518,12 @@ export function IpDetailScreen({
     <GroupRenameDialog
       group={renameGroup}
       onClose={() => setRenameGroup(null)}
-      onRenamed={() => {
-        reload();
+      onRenamed={(newName) => {
+        setData((current) => {
+          if (!current || !renameGroup) return current;
+          const newGroups = current.groups.map(g => g.id === renameGroup.id ? { ...g, name: newName } : g);
+          return { ...current, groups: newGroups };
+        });
         onChanged();
       }}
       space={space}

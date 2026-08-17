@@ -16,7 +16,7 @@ interface GroupRenameDialogProps {
   space?: PixorySpace;
   visible: boolean;
   onClose: () => void;
-  onRenamed: () => void;
+  onRenamed: (newName: string) => void;
 }
 
 export function GroupRenameDialog({
@@ -70,7 +70,7 @@ export function GroupRenameDialog({
         }
         showToast('已重命名分组');
         onClose();
-        onRenamed();
+        onRenamed(trimmedName);
       } catch (error) {
         const message = error instanceof Error ? error.message : '未知错误';
         setErrorMessage(`重命名失败：${message}`);

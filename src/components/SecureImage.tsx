@@ -15,7 +15,7 @@ export function SecureImage({ uri, space, blurRadius, contentFit = 'cover', styl
   return (
     <Image
       blurRadius={blurRadius}
-      cachePolicy={space === 'personal' ? 'none' : 'disk'}
+      cachePolicy={space === 'personal' ? 'memory' : 'disk'}
       contentFit={contentFit}
       source={{ uri }}
       style={style}

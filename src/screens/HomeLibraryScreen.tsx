@@ -76,28 +76,46 @@ export function HomeLibraryScreen({
     const hour = new Date().getHours();
     return hour >= 5 && hour < 18;
   }, [refreshKey]);
+  const [needsOrganizingCount, setNeedsOrganizingCount] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    void runWithDatabaseSpace(space, async (db) => {
+      try {
+        const count = await imageRepository.countNeedsOrganizing(db);
+        if (isMounted) {
+          setNeedsOrganizingCount(count);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch needsOrganizingCount', error);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [space, refreshKey]);
+
   const {
     items,
-    meta: needsOrganizingCount,
     isLoading,
     isLoadingMore,
     errorMessage,
     loadMore,
     reload,
-  } = usePagedScreenLoad<IpListItem, number>(
+    setData,
+  } = usePagedScreenLoad<IpListItem, undefined>(
     async (offset) => runWithDatabaseSpace(space, async (db) => {
       const page = await ipRepository.findLibraryItemsPage(db, {
         filter: activeFilter,
         limit: IP_LIBRARY_PAGE_SIZE,
         offset,
       });
-      const count = offset === 0 ? await imageRepository.countNeedsOrganizing(db) : undefined;
-      return { items: page.items, hasMore: page.hasMore, meta: count };
+      return { items: page.items, hasMore: page.hasMore };
     }),
     {
       requestKey: JSON.stringify([space, activeFilter, refreshKey]),
       getItemKey: (item) => item.id,
-      initialMeta: 0,
+      initialMeta: undefined,
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取 IP 资产失败：${message}`;
@@ -155,7 +173,7 @@ export function HomeLibraryScreen({
           throw new Error('没有找到这个 IP。');
         }
         showToast(`已移入回收站，包含 ${result.imageDeletedCount} 张图片`);
-        reload();
+        setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
       } catch (error) {
         showToast(error instanceof Error ? `移入回收站失败：${error.message}` : '移入回收站失败');
       }
@@ -176,7 +194,7 @@ export function HomeLibraryScreen({
           throw new Error('没有找到这个 IP。');
         }
         showToast(`已永久删除 ${result.imageDeletedCount} 张图片，文件失败 ${result.fileFailures.length} 个`);
-        reload();
+        setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
       } catch (error) {
         showToast(error instanceof Error ? `永久删除失败：${error.message}` : '永久删除失败');
       }
@@ -207,7 +225,7 @@ export function HomeLibraryScreen({
       showToast(`已${space === 'normal' ? '移入隐私空间' : '移出隐私空间'}，包含 ${result.assetCount} 个素材`);
       setSpaceMoveIp(null);
       setPersonalPassword('');
-      reload();
+      setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
     } catch (error) {
       showToast(error instanceof Error ? `空间迁移失败：${error.message}` : '空间迁移失败');
     } finally {
