@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
@@ -45,6 +45,7 @@ interface ImageViewerScreenProps {
   context: ImageViewerContext;
   refreshToken: number;
   onBack: () => void;
+  onRefreshed: () => void;
   onOpenDetail: (imageId: number) => void;
 }
 
@@ -53,6 +54,7 @@ export function ImageViewerScreen({
   context,
   refreshToken,
   onBack,
+  onRefreshed,
   onOpenDetail,
 }: ImageViewerScreenProps) {
   const listRef = useRef<FlatList<ImageListItem>>(null);
@@ -151,7 +153,8 @@ export function ImageViewerScreen({
     return () => {
       isMounted = false;
     };
-  }, [context, imageId, refreshToken]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context, imageId]);
 
   const activeImage = images[activeIndex] ?? null;
   const pageSize = Math.max(1, width);
@@ -187,7 +190,10 @@ export function ImageViewerScreen({
       return;
     }
 
-    void runWithDatabaseSpace(context.space, (db) => imageRepository.touchLastViewedAt(db, activeImage.id));
+    void runWithDatabaseSpace(context.space, async (db) => {
+      await imageRepository.touchLastViewedAt(db, activeImage.id);
+      onRefreshed();
+    });
   }, [activeImage, context.space]);
 
   const counterLabel = useMemo(() => {
@@ -202,14 +208,17 @@ export function ImageViewerScreen({
     setIsPagingEnabled(!zoomed);
   }, []);
 
+  const activeIndexRef = useRef(activeIndex);
+  activeIndexRef.current = activeIndex;
+
   const goToRelativeImage = useCallback(
     (offset: number) => {
-      if (images.length <= 1) {
+      if (imagesLengthRef.current <= 1) {
         return;
       }
-      jumpToImageIndex(activeIndex + offset);
+      jumpToImageIndex(activeIndexRef.current + offset);
     },
-    [activeIndex, images.length]
+    [jumpToImageIndex]
   );
 
   const handleReaderZonePress = useCallback(
@@ -250,7 +259,7 @@ export function ImageViewerScreen({
         width={pageSize}
       />
     ),
-    [context.space, fitMode, handleReaderZonePress, handleZoomStateChange, height, onPanAttemptBlockedByZoom, pageSize]
+    [context.space, fitMode, handleReaderZonePress, handleZoomStateChange, height, onPanAttemptBlockedByZoom, pageSize, handleImageLongPress]
   );
 
   const renderVerticalItem = useCallback(
@@ -267,7 +276,7 @@ export function ImageViewerScreen({
         width={pageSize}
       />
     ),
-    [context.space, fitMode, handleReaderZonePress, handleZoomStateChange, onPanAttemptBlockedByZoom, pageHeight, pageSize]
+    [context.space, fitMode, handleReaderZonePress, handleZoomStateChange, onPanAttemptBlockedByZoom, pageHeight, pageSize, handleImageLongPress]
   );
 
   function handleMomentumScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
@@ -284,16 +293,15 @@ export function ImageViewerScreen({
     }
   }
 
-  function handleImageLongPress(image: ImageListItem) {
+  const handleImageLongPress = useCallback((image: ImageListItem) => {
     setActionImage(image);
-  }
+  }, []);
 
   function handleReverseOrder() {
     setImages((currentImages) => {
       if (currentImages.length <= 1) {
         return currentImages;
       }
-
       const nextImages = [...currentImages].reverse();
       const nextIndex = activeIndex;
       setActiveIndex(nextIndex);
@@ -338,6 +346,7 @@ export function ImageViewerScreen({
     setImages((current) => current.map((item) => (item.id === image.id ? { ...item, isFavorite: nextFavorite } : item)));
     try {
       await runWithDatabaseSpace(context.space, (db) => imageRepository.updateFavorite(db, image.id, nextFavorite));
+      onRefreshed();
     } catch (error) {
       setImages((current) => current.map((item) => (item.id === image.id ? { ...item, isFavorite: image.isFavorite } : item)));
       showToast(error instanceof Error ? `更新收藏失败：${error.message}` : '更新收藏失败');
@@ -373,15 +382,18 @@ export function ImageViewerScreen({
     persistImageViewerPreferences({ showFilmstrip: nextVisible });
   }
 
-  function jumpToImageIndex(index: number) {
-    if (images.length === 0) {
+  const imagesLengthRef = useRef(images.length);
+  imagesLengthRef.current = images.length;
+
+  const jumpToImageIndex = useCallback((index: number) => {
+    if (imagesLengthRef.current === 0) {
       return;
     }
-    const nextIndex = Math.min(images.length - 1, Math.max(0, index));
+    const nextIndex = Math.min(imagesLengthRef.current - 1, Math.max(0, index));
     setActiveIndex(nextIndex);
     listRef.current?.scrollToIndex({ animated: false, index: nextIndex });
     verticalListRef.current?.scrollToIndex({ animated: false, index: nextIndex });
-  }
+  }, []);
 
   function jumpToProgressLocation(locationX: number) {
     if (images.length <= 1 || viewerProgressWidth <= 0) {
@@ -508,7 +520,7 @@ export function ImageViewerScreen({
             length: pageHeight,
             offset: pageHeight * index,
           })}
-          initialNumToRender={3}
+          initialNumToRender={5}
           key="vertical-continuous"
           keyExtractor={(item) => String(item.id)}
           onMomentumScrollEnd={handleVerticalMomentumScrollEnd}
@@ -530,7 +542,7 @@ export function ImageViewerScreen({
           scrollEnabled={isPagingEnabled}
           showsVerticalScrollIndicator={false}
           viewabilityConfig={viewerViewabilityConfig}
-          windowSize={5}
+          windowSize={7}
         />
       ) : (
         <FlatList
@@ -541,7 +553,7 @@ export function ImageViewerScreen({
             offset: pageSize * index,
           })}
           horizontal
-          initialNumToRender={3}
+          initialNumToRender={5}
           inverted={readerMode === 'horizontal-rtl'}
           key={readerMode}
           keyExtractor={(item) => String(item.id)}
@@ -565,7 +577,7 @@ export function ImageViewerScreen({
           scrollEnabled={isPagingEnabled}
           showsHorizontalScrollIndicator={false}
           viewabilityConfig={viewerViewabilityConfig}
-          windowSize={3}
+          windowSize={5}
         />
       )}
 
@@ -684,7 +696,7 @@ function Filmstrip({
   );
 }
 
-function ZoomableImage({
+const ZoomableImage = memo(function ZoomableImage({
   fitMode,
   height,
   image,
@@ -839,7 +851,7 @@ function ZoomableImage({
       </Animated.View>
     </Pressable>
   );
-}
+});
 
 function getTouchDistance(
   first: GestureResponderEvent['nativeEvent']['touches'][number],

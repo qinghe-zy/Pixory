@@ -4,7 +4,7 @@ import * as Brightness from 'expo-brightness';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
+import { Animated, AppState, InteractionManager, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VolumeManager } from 'react-native-volume-manager';
 
@@ -1011,7 +1011,7 @@ export function VideoPlayerScreen({
       setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
       videoSwitchTranslateY.setValue(direction * transitionHeight);
-      requestAnimationFrame(() => {
+      InteractionManager.runAfterInteractions(() => {
         Animated.timing(videoSwitchTranslateY, {
           toValue: 0,
           duration: VIDEO_SWITCH_ENTER_DURATION_MS,
@@ -1384,6 +1384,28 @@ export function VideoPlayerScreen({
     onBack();
   }
 
+  const topBarNode = useMemo(
+    () => (
+      <View style={[styles.topBar, isLandscape ? styles.landscapeTopBar : null, { paddingTop: insets.top + spacing[2] }]}>
+        <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
+          <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
+        </Pressable>
+        <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
+        <Pressable
+          accessibilityLabel="更多"
+          onPress={() => {
+            setMoreVisible((current) => !current);
+            showControls();
+          }}
+          style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}
+        >
+          <Ionicons color={colors.text.inverse} name="ellipsis-vertical" size={22} />
+        </Pressable>
+      </View>
+    ),
+    [insets.top, isLandscape, title]
+  );
+
   return (
     <View style={styles.shell}>
       <ExpoStatusBar hidden />
@@ -1451,22 +1473,7 @@ export function VideoPlayerScreen({
       ) : null}
 
       <Animated.View pointerEvents={controlsVisible && !isPlayerLocked ? 'box-none' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
-          <View style={[styles.topBar, isLandscape ? styles.landscapeTopBar : null, { paddingTop: insets.top + spacing[2] }]}>
-            <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
-              <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
-            </Pressable>
-            <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
-            <Pressable
-              accessibilityLabel="更多"
-              onPress={() => {
-                setMoreVisible((current) => !current);
-                showControls();
-              }}
-              style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}
-            >
-              <Ionicons color={colors.text.inverse} name="ellipsis-vertical" size={22} />
-            </Pressable>
-          </View>
+        {topBarNode}
 
           {moreVisible ? (
             <>
