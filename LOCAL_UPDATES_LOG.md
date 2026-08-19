@@ -3,6 +3,7 @@
 - **Version**: 2.8.1
 - **Update Time**: 2026-08-19
 - **Target Channel**: production
+- **Update Group ID**: 2152aeeb-42f3-46e2-b7ef-06fe0d20b164
 
 **更新内容**：
 1. **图片阅读器防闪烁优化**：大幅提升了横向和竖向滑动的预渲染窗口范围（`windowSize` 和 `initialNumToRender`），并在底层剥离了对当前索引（`activeIndex`）的闭包依赖，有效避免了在用户极速滑动图片时出现的短时白屏和丢帧。
