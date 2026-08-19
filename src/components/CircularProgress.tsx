@@ -95,7 +95,7 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
 const styles = StyleSheet.create({
   overlayContainer: {
     position: 'absolute',
-    top: spacing.xxl * 2, // Floating near the top like a toast
+    top: '40%', // Golden ratio center (slightly above exact center)
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
