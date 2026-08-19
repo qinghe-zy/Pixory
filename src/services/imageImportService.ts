@@ -50,6 +50,7 @@ export interface ImportImagesToIpParams {
   imageImportSourceMode?: ImageImportSourceMode;
   deferSourceDeletion?: boolean;
   taskToken?: PersonalTaskToken | null;
+  onProgress?: (current: number, total: number) => void;
 }
 
 export interface BuildImageAssetFromPickedFileParams {
@@ -666,8 +667,11 @@ export async function importImagesToIp(
   const errors: ImageImportError[] = [];
   const skippedItems: ImageImportError[] = [];
   let skippedCount = 0;
+  let currentIndex = 0;
 
   for (const pickedAsset of params.pickedAssets) {
+    currentIndex++;
+    params.onProgress?.(currentIndex, params.pickedAssets.length);
     let pendingImageAsset: PendingImageAssetImport | null = null;
     try {
       pendingImageAsset = await buildImageAssetFromPickedFile({

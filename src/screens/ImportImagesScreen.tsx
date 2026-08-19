@@ -12,6 +12,7 @@ import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
+import { ImportProgressBar, type ImportProgressBarRef } from '../components/ImportProgressBar';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
@@ -156,7 +157,7 @@ export function ImportImagesScreen({
   const [moveImportWarningDismissed, setMoveImportWarningDismissed] = useState(false);
   const [moveImportWarningVisible, setMoveImportWarningVisible] = useState(false);
   const [isIpConflictDialogVisible, setIsIpConflictDialogVisible] = useState(false);
-  const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
+  const progressBarRef = useRef<ImportProgressBarRef>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ImportTemplateRecord | null>(null);
   const [deleteTemplate, setDeleteTemplate] = useState<ImportTemplateRecord | null>(null);
@@ -513,7 +514,7 @@ export function ImportImagesScreen({
       const pendingSourceDeletionAssetIds: string[] = [];
 
       if (pickedAssets.length > 0) {
-        setImportProgressLabel(`正在导入 ${pickedAssets.length} 张图片`);
+        progressBarRef.current?.setProgress(0, pickedAssets.length, '正在准备导入图片...');
         const imageResult = await importImagesToIp({
           space,
           ipId,
@@ -527,6 +528,9 @@ export function ImportImagesScreen({
           imageImportSourceMode,
           deferSourceDeletion: true,
           taskToken,
+          onProgress: (current, total) => {
+            progressBarRef.current?.setProgress(current, total, '正在导入图片');
+          },
         });
 
         imageSuccessCount = imageResult.successCount;
@@ -560,7 +564,7 @@ export function ImportImagesScreen({
       }
 
       if (pickedVideos.length > 0) {
-        setImportProgressLabel(`正在导入 ${pickedVideos.length} 个视频`);
+        progressBarRef.current?.setProgress(0, pickedVideos.length, '正在准备导入视频...');
         const videoResult = await importVideosToIp({
           space,
           ipId,
@@ -574,6 +578,9 @@ export function ImportImagesScreen({
           videoImportNamingMode,
           deferSourceDeletion: true,
           taskToken,
+          onProgress: (current, total) => {
+            progressBarRef.current?.setProgress(current, total, '正在导入视频');
+          },
         });
 
         videoSuccessCount = videoResult.successCount;
@@ -601,7 +608,7 @@ export function ImportImagesScreen({
         }
       }
 
-      setImportProgressLabel(null);
+      progressBarRef.current?.reset();
 
       const skippedCount = imageSkippedCount + videoSkippedCount;
       const successCount = imageSuccessCount + videoSuccessCount;
@@ -624,7 +631,7 @@ export function ImportImagesScreen({
         showToast(`导入完成：${toastParts.join(' · ')}`);
         onImported(importedAssetIds, importBatchId);
       } finally {
-        setImportProgressLabel(null);
+        progressBarRef.current?.reset();
       }
     }, {
       formatError: (error) => {
@@ -768,12 +775,7 @@ export function ImportImagesScreen({
           </View>
         </LightFormSection>
 
-        {importProgressLabel ? (
-          <View style={styles.progressPanel}>
-            <Ionicons color={colors.primary.active} name="sync-outline" size={18} />
-            <Text style={styles.progressText}>{importProgressLabel}</Text>
-          </View>
-        ) : null}
+        <ImportProgressBar ref={progressBarRef} />
 
         <LightFormSection
           headerRight={
@@ -1296,23 +1298,6 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     width: 32,
-  },
-  progressPanel: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.hover,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.cardContentGap,
-    minHeight: 44,
-    paddingHorizontal: spacing[3],
-  },
-  progressText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-    flex: 1,
-    fontWeight: '700',
   },
   warningOptOutRow: {
     alignItems: 'center',

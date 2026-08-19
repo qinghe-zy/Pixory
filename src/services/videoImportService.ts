@@ -497,6 +497,7 @@ export async function importVideosToIp(params: {
   deferSourceDeletion?: boolean;
   videoImportNamingMode?: VideoImportNamingMode;
   taskToken?: PersonalTaskToken | null;
+  onProgress?: (current: number, total: number) => void;
 }): Promise<ImportVideosToIpResult> {
   const space = params.space ?? 'normal';
   assertPersonalTaskActive(params.taskToken);
@@ -550,7 +551,10 @@ export async function importVideosToIp(params: {
     const imageImportSourceMode = params.imageImportSourceMode ?? 'copy';
 
     try {
+      let currentIndex = 0;
       for (const pickedAsset of params.pickedAssets) {
+        currentIndex++;
+        params.onProgress?.(currentIndex, params.pickedAssets.length);
         try {
           assertPersonalTaskActive(params.taskToken);
           const importedVideo = await importSingleVideo({
