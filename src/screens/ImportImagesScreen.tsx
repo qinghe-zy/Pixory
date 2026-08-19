@@ -12,7 +12,7 @@ import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
-import { ImportProgressBar, type ImportProgressBarRef } from '../components/ImportProgressBar';
+import { CircularProgress, type CircularProgressRef } from '../components/CircularProgress';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
@@ -157,7 +157,7 @@ export function ImportImagesScreen({
   const [moveImportWarningDismissed, setMoveImportWarningDismissed] = useState(false);
   const [moveImportWarningVisible, setMoveImportWarningVisible] = useState(false);
   const [isIpConflictDialogVisible, setIsIpConflictDialogVisible] = useState(false);
-  const progressBarRef = useRef<ImportProgressBarRef>(null);
+  const progressBarRef = useRef<CircularProgressRef>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ImportTemplateRecord | null>(null);
   const [deleteTemplate, setDeleteTemplate] = useState<ImportTemplateRecord | null>(null);
@@ -775,7 +775,7 @@ export function ImportImagesScreen({
           </View>
         </LightFormSection>
 
-        <ImportProgressBar ref={progressBarRef} />
+        <CircularProgress ref={progressBarRef} />
 
         <LightFormSection
           headerRight={
