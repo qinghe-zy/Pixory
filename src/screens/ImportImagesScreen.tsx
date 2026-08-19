@@ -514,7 +514,7 @@ export function ImportImagesScreen({
       const pendingSourceDeletionAssetIds: string[] = [];
 
       if (pickedAssets.length > 0) {
-        progressBarRef.current?.setProgress(0, pickedAssets.length, '正在准备导入图片...');
+        progressBarRef.current?.setProgress(0, pickedAssets.length, '');
         const imageResult = await importImagesToIp({
           space,
           ipId,
@@ -529,7 +529,7 @@ export function ImportImagesScreen({
           deferSourceDeletion: true,
           taskToken,
           onProgress: (current, total) => {
-            progressBarRef.current?.setProgress(current, total, '正在导入图片');
+            progressBarRef.current?.setProgress(current, total, '');
           },
         });
 
@@ -564,7 +564,7 @@ export function ImportImagesScreen({
       }
 
       if (pickedVideos.length > 0) {
-        progressBarRef.current?.setProgress(0, pickedVideos.length, '正在准备导入视频...');
+        progressBarRef.current?.setProgress(0, pickedVideos.length, '');
         const videoResult = await importVideosToIp({
           space,
           ipId,
@@ -579,7 +579,7 @@ export function ImportImagesScreen({
           deferSourceDeletion: true,
           taskToken,
           onProgress: (current, total) => {
-            progressBarRef.current?.setProgress(current, total, '正在导入视频');
+            progressBarRef.current?.setProgress(current, total, '');
           },
         });
 
@@ -698,6 +698,7 @@ export function ImportImagesScreen({
   }
 
   return (
+    <>
     <FormScreenScaffold
       backgroundVariant="workflow"
       errorMessage={submitError ?? loadErrorMessage}
@@ -774,9 +775,6 @@ export function ImportImagesScreen({
             ) : null}
           </View>
         </LightFormSection>
-
-        <CircularProgress ref={progressBarRef} />
-
         <LightFormSection
           headerRight={
             <CompactSegmentedControl
@@ -1201,6 +1199,8 @@ export function ImportImagesScreen({
         visible={isIpConflictDialogVisible}
       />
     </FormScreenScaffold>
+    <CircularProgress ref={progressBarRef} />
+    </>
   );
 }
 
@@ -1591,4 +1591,5 @@ const styles = StyleSheet.create({
     color: colors.primary.default,
   },
 });
+
 

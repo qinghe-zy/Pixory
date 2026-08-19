@@ -1,5 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, { useAnimatedProps, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { colors, radius, spacing, typography } from '../design/tokens';
@@ -53,7 +54,7 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
     const percentageStr = total > 0 ? Math.round((current / total) * 100) : 0;
 
     return (
-      <View style={styles.overlayContainer}>
+      <BlurView intensity={80} tint='light' style={styles.overlayContainer}>
         <View style={styles.ringContainer}>
           <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Background Ring */}
@@ -86,7 +87,7 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
           </View>
         </View>
         {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
-      </View>
+      </BlurView>
     );
   }
 );
@@ -101,7 +102,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.90)', // semi-transparent
+    backgroundColor: 'rgba(255, 255, 255, 0.40)', // semi-transparent
     borderRadius: 999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -145,3 +146,5 @@ const styles = StyleSheet.create({
     maxWidth: 160,
   },
 });
+
+
