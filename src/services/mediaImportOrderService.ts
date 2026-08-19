@@ -24,9 +24,7 @@ export async function sortPickedAssetsByCreationTime<T extends PickedAssetWithId
         if (Number.isFinite(info.creationTime)) {
           creationTimes.set(assetId, info.creationTime);
         }
-        if (info.filename) {
-          asset.fileName = info.filename;
-        }
+
       } catch {
         // Limited/file-provider assets may not expose MediaLibrary metadata; keep picker order for them.
       }
@@ -51,3 +49,4 @@ export async function sortPickedAssetsByCreationTime<T extends PickedAssetWithId
     })
     .map(({ asset }) => asset);
 }
+

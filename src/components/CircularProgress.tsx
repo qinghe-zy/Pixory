@@ -17,7 +17,7 @@ interface CircularProgressProps {
 }
 
 export const CircularProgress = forwardRef<CircularProgressRef, CircularProgressProps>(
-  ({ size = 48, strokeWidth = 5 }, ref) => {
+  ({ size = 60, strokeWidth = 5 }, ref) => {
     const [state, setState] = useState<{ current: number; total: number; label?: string } | null>(null);
     const progress = useSharedValue(0);
 
@@ -82,12 +82,10 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
           </Svg>
           <View style={styles.centerContent}>
             <Text style={styles.percentageText}>{percentageStr}%</Text>
+            <Text style={styles.numbersText}>{current} / {total}</Text>
           </View>
         </View>
-        <View style={styles.textColumn}>
-          {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
-          <Text style={styles.numbersText}>{current} / {total}</Text>
-        </View>
+        {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
       </View>
     );
   }
@@ -96,24 +94,22 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
 const styles = StyleSheet.create({
   overlayContainer: {
     position: 'absolute',
-    bottom: spacing.xxl * 3, // Float above bottom buttons
+    top: spacing.xxl * 2, // Floating near the top like a toast
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    padding: spacing.sm,
-    paddingRight: spacing.xl,
-    backgroundColor: 'rgba(255, 253, 248, 0.95)', // elevated translucent
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.90)', // semi-transparent
     borderRadius: 999,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
-    zIndex: 100,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
+    zIndex: 9999, // Ensure it floats above everything and doesn't scroll
     gap: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.05)',
   },
   ringContainer: {
     position: 'relative',
@@ -124,6 +120,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   percentageText: {
     fontSize: 13,
@@ -132,18 +132,16 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.5,
   },
-  textColumn: {
-    justifyContent: 'center',
-  },
   numbersText: {
-    ...typography.textStyles.caption,
+    fontSize: 9,
     color: colors.text.tertiary,
     fontVariant: ['tabular-nums'],
-    marginTop: 2,
+    marginTop: 1,
   },
   label: {
     ...typography.textStyles.body2,
     color: colors.text.primary,
     fontWeight: '600',
+    maxWidth: 160,
   },
 });
