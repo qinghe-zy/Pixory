@@ -1,3 +1,4 @@
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -499,9 +500,11 @@ export async function importVideosToIp(params: {
   taskToken?: PersonalTaskToken | null;
   onProgress?: (current: number, total: number) => void;
 }): Promise<ImportVideosToIpResult> {
-  const space = params.space ?? 'normal';
-  assertPersonalTaskActive(params.taskToken);
-  await ensureAppDirectories(space);
+  await activateKeepAwakeAsync();
+  try {
+    const space = params.space ?? 'normal';
+    assertPersonalTaskActive(params.taskToken);
+    await ensureAppDirectories(space);
 
   return runWithDatabaseSpace(space, async (db) => {
     assertPersonalTaskActive(params.taskToken);
@@ -632,6 +635,9 @@ export async function importVideosToIp(params: {
       progressSubscription.remove();
     }
   });
+  } finally {
+    deactivateKeepAwake();
+  }
 }
 
 export async function saveVideoToSystemAlbum(videoUri: string, displayName: string): Promise<string> {

@@ -1,3 +1,4 @@
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as ImagePicker from 'expo-image-picker';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Image, Platform } from 'react-native';
@@ -636,12 +637,14 @@ export async function importSingleImage(
 export async function importImagesToIp(
   params: ImportImagesToIpParams
 ): Promise<ImportImagesToIpResult> {
-  const space = params.space ?? 'normal';
-  assertPersonalTaskActive(params.taskToken);
-  return runWithDatabaseSpace(space, async (db) => {
-  const groupIds = normalizeGroupIds(params.groupIds ?? (params.groupId != null ? [params.groupId] : []));
-  await ensureImportTargetExists(db, params.ipId, groupIds);
-  await ensureAppDirectories(space);
+  await activateKeepAwakeAsync();
+  try {
+    const space = params.space ?? 'normal';
+    assertPersonalTaskActive(params.taskToken);
+    return runWithDatabaseSpace(space, async (db) => {
+    const groupIds = normalizeGroupIds(params.groupIds ?? (params.groupId != null ? [params.groupId] : []));
+    await ensureImportTargetExists(db, params.ipId, groupIds);
+    await ensureAppDirectories(space);
 
   if (params.pickedAssets.length === 0) {
     return {
@@ -724,16 +727,19 @@ export async function importImagesToIp(
 
   const completedBatch = await importBatchRepository.complete(db, importBatch.id, importedImages.length, errors.length);
 
-  return {
-    successCount: importedImages.length,
-    skippedCount,
-    failedCount: errors.length,
-    importBatch: completedBatch ?? importBatch,
-    importedImages,
-    errors,
-    skippedItems,
-  };
-  });
+    return {
+      successCount: importedImages.length,
+      skippedCount,
+      failedCount: errors.length,
+      importBatch: completedBatch ?? importBatch,
+      importedImages,
+      errors,
+      skippedItems,
+    };
+    });
+  } finally {
+    deactivateKeepAwake();
+  }
 }
 
 export async function verifyImportedImageFiles(

@@ -17,7 +17,7 @@ interface CircularProgressProps {
 }
 
 export const CircularProgress = forwardRef<CircularProgressRef, CircularProgressProps>(
-  ({ size = 160, strokeWidth = 12 }, ref) => {
+  ({ size = 48, strokeWidth = 5 }, ref) => {
     const [state, setState] = useState<{ current: number; total: number; label?: string } | null>(null);
     const progress = useSharedValue(0);
 
@@ -53,7 +53,7 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
     const percentageStr = total > 0 ? Math.round((current / total) * 100) : 0;
 
     return (
-      <View style={styles.container}>
+      <View style={styles.overlayContainer}>
         <View style={styles.ringContainer}>
           <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Background Ring */}
@@ -82,26 +82,38 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
           </Svg>
           <View style={styles.centerContent}>
             <Text style={styles.percentageText}>{percentageStr}%</Text>
-            <Text style={styles.numbersText}>{current} / {total}</Text>
           </View>
         </View>
-        {label ? <Text style={styles.label}>{label}</Text> : null}
+        <View style={styles.textColumn}>
+          {label ? <Text style={styles.label} numberOfLines={1}>{label}</Text> : null}
+          <Text style={styles.numbersText}>{current} / {total}</Text>
+        </View>
       </View>
     );
   }
 );
 
 const styles = StyleSheet.create({
-  container: {
+  overlayContainer: {
+    position: 'absolute',
+    bottom: spacing.xxl * 3, // Float above bottom buttons
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.background.surface,
-    borderRadius: radius.lg,
-    marginVertical: spacing.md,
+    flexDirection: 'row',
+    padding: spacing.sm,
+    paddingRight: spacing.xl,
+    backgroundColor: 'rgba(255, 253, 248, 0.95)', // elevated translucent
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 8,
+    zIndex: 100,
+    gap: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.default,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
   ringContainer: {
     position: 'relative',
@@ -114,22 +126,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   percentageText: {
-    fontSize: 32,
+    fontSize: 13,
     fontWeight: '700',
-    color: colors.text.primary,
+    color: colors.primary.default,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.5,
+  },
+  textColumn: {
+    justifyContent: 'center',
   },
   numbersText: {
     ...typography.textStyles.caption,
     color: colors.text.tertiary,
-    marginTop: spacing.xs,
     fontVariant: ['tabular-nums'],
+    marginTop: 2,
   },
   label: {
     ...typography.textStyles.body2,
-    color: colors.text.secondary,
-    marginTop: spacing.lg,
-    fontWeight: '500',
+    color: colors.text.primary,
+    fontWeight: '600',
   },
 });

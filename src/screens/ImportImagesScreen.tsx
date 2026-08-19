@@ -818,7 +818,7 @@ export function ImportImagesScreen({
               {pickedVideos.slice(0, 5).map((video, index) => (
                 <View key={`${getPickedVideoKey(video)}-${index}`} style={styles.videoPreviewRow}>
                   <Ionicons color={colors.primary.default} name="play-circle-outline" size={18} />
-                  <Text numberOfLines={1} style={styles.videoPreviewName}>{video.fileName}</Text>
+                  <Text numberOfLines={1} style={styles.videoPreviewName}>{videoImportNamingMode === 'generated' ? '[将自动编号] 导入后生成' : video.fileName}</Text>
                   <Pressable
                     accessibilityLabel={`移除视频：${video.fileName}`}
                     accessibilityRole="button"
@@ -1591,3 +1591,4 @@ const styles = StyleSheet.create({
     color: colors.primary.default,
   },
 });
+
