@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -9,15 +9,16 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { useAssetListPreferences } from '../services/assetListPreferences';
-import { filterSimilarImages } from '../utils/batchSelectionRules';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface GroupImagesScreenProps {
@@ -73,53 +74,73 @@ export function GroupImagesScreen({
   const [activeFilters, setActiveFilters] = useState<GroupResultFilterState>(EMPTY_GROUP_RESULT_FILTERS);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<{
+  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
+  const { data, isLoading: isMetadataLoading, errorMessage: metadataErrorMessage, reload: reloadMetadata } = useScreenLoad<{
     ip: IpRecord | null;
     group: GroupRecord | null;
-    images: ImageListItem[];
     tags: TagUsageItem[];
   }>(
     async () => {
       return runWithDatabaseSpace(space, async (db) => {
-      const [ip, group, baseImages, tags] = await Promise.all([
+      const [ip, group, tags] = await Promise.all([
         ipRepository.findById(db, ipId),
         groupRepository.findById(db, groupId),
-        imageRepository.findByGroupId(db, groupId, {
-          mediaType: hasImageOnlyFilter(activeFilters) ? 'image' : 'all',
-          aspectRatio: activeFilters.aspectRatio ?? undefined,
-          favoritesOnly: activeFilters.favorite || undefined,
-          orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : sortOrder,
-          recentlyViewedOnly: activeFilters.recentViewed || undefined,
-          tagIds: activeFilters.tagIds,
-          untaggedOnly: activeFilters.untagged || undefined,
-          minFileSize: activeFilters.size?.minFileSize,
-          maxFileSize: activeFilters.size?.maxFileSize,
-        }),
         tagRepository.findUsageOverviewByIpId(db, ipId),
       ]);
-      const images = filterImagesBySimilarity(baseImages, activeFilters);
-
-      return { ip, group, images, tags };
+      return { ip, group, tags };
       });
     },
-    [activeFilters, groupId, ipId, refreshToken, sortOrder, space],
+    [groupId, ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取分组图片失败：${message}`;
       },
-      initialData: { group: null, images: [], ip: null, tags: [] },
+      initialData: { group: null, ip: null, tags: [] },
       deferUntilInteractions: true,
     }
   );
+  const mediaRequest = {
+    aspectRatio: activeFilters.aspectRatio ?? undefined,
+    favoritesOnly: activeFilters.favorite || undefined,
+    groupId,
+    maxFileSize: activeFilters.size?.maxFileSize,
+    mediaType: hasImageOnlyFilter(activeFilters) ? 'image' as const : 'all' as const,
+    minFileSize: activeFilters.size?.minFileSize,
+    orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' as const : sortOrder,
+    recentlyViewedOnly: activeFilters.recentViewed || undefined,
+    tagIds: activeFilters.tagIds,
+    untaggedOnly: activeFilters.untagged || undefined,
+  };
+  const { data: similarIds, isLoading: isSimilarityLoading, errorMessage: similarityErrorMessage, reload: reloadSimilarity } = useScreenLoad<number[] | null>(
+    async () => activeFilters.similarDuplicate
+      ? runWithDatabaseSpace(space, (db) => imageRepository.findSimilarImageIds(db, mediaRequest))
+      : null,
+    [activeFilters, groupId, refreshToken, space],
+    { initialData: null, deferUntilInteractions: true }
+  );
+  const similarityKey = activeFilters.similarDuplicate
+    ? similarIds == null ? 'pending' : `ready:${similarIds.length}:${similarIds[0] ?? 0}:${similarIds[similarIds.length - 1] ?? 0}`
+    : 'off';
+  const media = useMediaCursorCollection({
+    formatError: (error) => `读取分组图片失败：${error instanceof Error ? error.message : '未知错误'}`,
+    request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
+    requestKey: JSON.stringify([space, groupId, refreshToken, activeFilters, sortOrder, similarityKey]),
+    space,
+  });
 
   const ip = data?.ip ?? null;
   const group = data?.group ?? null;
-  const images = data?.images ?? [];
-  const imageAssets = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const images = media.items;
   const selectableAssets = images;
   const tags = data?.tags ?? [];
+  const isLoading = isMetadataLoading || media.isLoading || (activeFilters.similarDuplicate && isSimilarityLoading);
+  const errorMessage = metadataErrorMessage ?? similarityErrorMessage ?? media.errorMessage;
+  const reload = () => {
+    reloadMetadata();
+    reloadSimilarity();
+    media.reload();
+  };
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (activeFilters.favorite) labels.push('收藏');
@@ -180,7 +201,12 @@ export function GroupImagesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: imageAssets.map((image) => image.id), label: `${group?.name ?? '分组'} · ${filterLabel}`, space }
+        ? {
+            type: 'media-query',
+            request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
+            label: `${group?.name ?? '分组'} · ${filterLabel}`,
+            space,
+          }
         : { type: 'group', ipId, groupId, space }
     );
   }
@@ -251,9 +277,6 @@ export function GroupImagesScreen({
       decorativeTitle="Gallery"
       footer={footer}
       onBack={onBack}
-      onScroll={swipeSelection.onScroll}
-      scrollViewRef={scrollViewRef}
-      scrollable
       title={group ? group.name : '分组图片'}
     >
 
@@ -313,7 +336,8 @@ export function GroupImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reload}
       >
-        <View style={styles.galleryHeading}>
+        <VirtualizedAssetCollection
+          headerComponent={<View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
             {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
@@ -332,40 +356,36 @@ export function GroupImagesScreen({
               orderBy={sortOrder}
             />
           </View>
-        </View>
-        {viewMode === 'detail' ? (
-          <View {...swipeSelection.panHandlers} style={styles.detailList}>
-            {images.map((image) => (
+          </View>}
+          images={images}
+          isLoadingMore={media.isLoadingMore}
+          listRef={scrollViewRef}
+          onEndReached={media.loadMore}
+          onItemMeasured={swipeSelection.registerMeasuredItemLayout}
+          onScroll={swipeSelection.onScroll}
+          panHandlers={swipeSelection.panHandlers}
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
                 image={image}
-                key={image.id}
-                onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 space={space}
               />
-            ))}
-          </View>
-        ) : (
-          <View {...swipeSelection.panHandlers} style={styles.grid}>
-            {images.map((image) => (
+          ) : (
               <ThumbnailTile
                 aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                containerStyle={fillCell ? styles.fillCell : undefined}
                 image={image}
-                key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                index={index}
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 space={space}
               />
-            ))}
-            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
-              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-            ))}
-          </View>
-        )}
+          )}
+          viewMode={viewMode}
+        />
       </PageStateBlock>
     </ScreenScaffold>
     </View>
@@ -424,10 +444,6 @@ function getGroupResultFilterTitle(filter: GroupResultFilterDropdown) {
 
 function getGroupResultFilterMode(filter: GroupResultFilterDropdown): '多选' | '单选' {
   return filter === 'size' ? '单选' : '多选';
-}
-
-function filterImagesBySimilarity(images: ImageListItem[], filters: GroupResultFilterState): ImageListItem[] {
-  return filters.similarDuplicate ? filterSimilarImages(images) : images;
 }
 
 function hasImageOnlyFilter(filters: GroupResultFilterState): boolean {
@@ -600,6 +616,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: rhythm.compactGridGap,
+  },
+  fillCell: {
+    width: '100%',
   },
   detailList: {
     gap: rhythm.listCardGap,

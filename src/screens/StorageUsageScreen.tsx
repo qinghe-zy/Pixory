@@ -12,6 +12,7 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { cleanupAppCache } from '../services/cacheCleanupService';
 import { rebuildAllPreviews, regenerateMissingPreviews } from '../services/previewMaintenanceService';
 import { getStorageUsageSummary, type StorageUsageSummary, type StorageUsageSummaryItem } from '../services/storageUsageService';
+import { getCachedStorageUsageSummary, invalidateStorageUsageSnapshot } from '../services/storageUsageSnapshotCache';
 import { formatDateTime, formatFileSize } from '../utils/formatters';
 
 interface StorageUsageScreenProps {
@@ -47,6 +48,7 @@ export function StorageUsageScreen({
     [space, refreshToken],
     {
       formatError: (error) => error instanceof Error ? `统计存储失败：${error.message}` : '统计存储失败',
+      initialData: getCachedStorageUsageSummary(space),
     }
   );
 
@@ -85,6 +87,7 @@ export function StorageUsageScreen({
         tempMaxAgeMs: 0,
       });
       setTemporaryPanelVisible(false);
+      invalidateStorageUsageSnapshot(space);
       reload();
       showToast(`已释放 ${formatFileSize(result.deletedBytes)}`);
     } catch (error) {
@@ -112,6 +115,7 @@ export function StorageUsageScreen({
         : await rebuildAllPreviews(space);
       setPreviewConfirmMode(null);
       setPreviewPanelVisible(false);
+      invalidateStorageUsageSnapshot(space);
       reload();
       showToast(result.failedCount > 0 ? `已处理 ${result.processedCount} 项，${result.failedCount} 项失败` : `已处理 ${result.processedCount} 项预览`);
     } catch (error) {
@@ -147,7 +151,7 @@ export function StorageUsageScreen({
           emptyTitle="暂无存储数据"
           errorMessage={errorMessage}
           isEmpty={!isLoading && !summary}
-          loading={isLoading}
+          loading={isLoading && !data}
           loadingDescription="正在统计…"
           loadingTitle="正在统计…"
           onRetry={reload}

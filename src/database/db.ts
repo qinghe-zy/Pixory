@@ -176,6 +176,8 @@ async function ensureAiPerformanceIndexes(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
       ON ai_threads(space, archivedAt, roleCardId, updatedAt);
+    CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_updated_id
+      ON ai_documents(space, ownerType, ownerId, updatedAt DESC, id DESC);
   `);
 }
 

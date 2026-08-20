@@ -126,7 +126,7 @@ test('import history surfaces package item success, failed, and skipped details'
   const historySource = readProjectFile('src/screens/ImportBatchHistoryScreen.tsx');
   const reviewSource = readProjectFile('src/screens/ImportBatchReviewScreen.tsx');
 
-  assert.match(historySource, /findItemsByBatchId/);
+  assert.match(historySource, /countItemsByStatusForBatchIds/);
   assert.match(historySource, /itemCountsByBatchId/);
   assert.match(historySource, /成功 \{itemCounts\.success\}/);
   assert.match(historySource, /失败 \{itemCounts\.failed\}/);

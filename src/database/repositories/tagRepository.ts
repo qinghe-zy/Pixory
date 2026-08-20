@@ -404,6 +404,28 @@ export const tagRepository = {
     );
   },
 
+  async findNamesByImageIds(db: SQLiteDatabase, imageAssetIds: number[]): Promise<Map<number, string[]>> {
+    const result = new Map<number, string[]>();
+    for (const chunk of chunkValues([...new Set(imageAssetIds)])) {
+      if (chunk.length === 0) continue;
+      const inClause = buildInClause(chunk);
+      const rows = await db.getAllAsync<{ imageAssetId: number; name: string }>(
+        `SELECT image_tags.imageAssetId, tags.name
+         FROM image_tags
+         INNER JOIN tags ON tags.id = image_tags.tagId
+         WHERE image_tags.imageAssetId IN (${inClause.placeholders})
+         ORDER BY image_tags.imageAssetId ASC, tags.name COLLATE NOCASE ASC, tags.id ASC`,
+        ...inClause.values
+      );
+      for (const row of rows) {
+        const names = result.get(row.imageAssetId) ?? [];
+        names.push(row.name);
+        result.set(row.imageAssetId, names);
+      }
+    }
+    return result;
+  },
+
   async deleteById(db: SQLiteDatabase, id: number): Promise<number> {
     const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
       'SELECT imageAssetId FROM image_tags WHERE tagId = ?',

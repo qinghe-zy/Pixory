@@ -1132,7 +1132,7 @@ function resolveNextReaderBoundary(
 
 function createReaderCursor(
   item: ImageListItem,
-  orderBy: 'createdAtDesc' | 'lastViewedAtDesc' | 'sourceOrderAsc' | undefined
+  orderBy: import('../database').MediaCursorSortOrder | undefined
 ): MediaPageCursor {
   if (orderBy === 'lastViewedAtDesc') {
     return { id: item.id, sortValue: item.lastViewedAt };

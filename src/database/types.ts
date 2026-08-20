@@ -68,7 +68,7 @@ export interface PageResult<T> {
   hasMore: boolean;
 }
 
-export type MediaCursorSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'sourceOrderAsc';
+export type MediaCursorSortOrder = ImageSortOrder;
 
 export interface MediaPageCursor {
   sortValue: string | number | null;
@@ -321,6 +321,7 @@ export interface UpdateTagInput {
 }
 
 export interface ImageAssetQueryOptions {
+  deletedOnly?: boolean;
   includeDeleted?: boolean;
   mediaType?: AssetMediaTypeFilter;
 }

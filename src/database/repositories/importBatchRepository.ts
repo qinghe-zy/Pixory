@@ -180,6 +180,24 @@ export const importBatchRepository = {
     return this.findRecentByIpId(db, ipId, limit);
   },
 
+  async findByIpIds(db: SQLiteDatabase, ipIds: number[]): Promise<ImportBatchSummary[]> {
+    const uniqueIds = [...new Set(ipIds)];
+    if (uniqueIds.length === 0) return [];
+    const rows: ImportBatchSummaryRow[] = [];
+    for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+      const chunk = uniqueIds.slice(offset, offset + 400);
+      const placeholders = chunk.map(() => '?').join(', ');
+      rows.push(...await db.getAllAsync<ImportBatchSummaryRow>(
+        `${IMPORT_BATCH_SUMMARY_SELECT}
+         WHERE import_batches.ipId IN (${placeholders})
+         GROUP BY import_batches.id
+         ORDER BY import_batches.createdAt DESC, import_batches.id DESC`,
+        ...chunk
+      ));
+    }
+    return rows.map(mapImportBatchSummaryRow);
+  },
+
   async createItem(db: SQLiteDatabase, input: CreateImportBatchItemInput): Promise<ImportBatchItemRecord> {
     const now = createTimestamp();
     const result = await db.runAsync(
@@ -219,6 +237,28 @@ export const importBatchRepository = {
     return rows.map(mapImportBatchItemRow);
   },
 
+  async findItemsByBatchIds(db: SQLiteDatabase, importBatchIds: number[]): Promise<Map<number, ImportBatchItemRecord[]>> {
+    const result = new Map<number, ImportBatchItemRecord[]>();
+    const uniqueIds = [...new Set(importBatchIds)];
+    for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+      const chunk = uniqueIds.slice(offset, offset + 400);
+      if (chunk.length === 0) continue;
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = await db.getAllAsync<ImportBatchItemRow>(
+        `SELECT * FROM import_batch_items
+         WHERE importBatchId IN (${placeholders})
+         ORDER BY importBatchId ASC, id ASC`,
+        ...chunk
+      );
+      for (const row of rows) {
+        const items = result.get(row.importBatchId) ?? [];
+        items.push(mapImportBatchItemRow(row));
+        result.set(row.importBatchId, items);
+      }
+    }
+    return result;
+  },
+
   async countItemsByStatus(db: SQLiteDatabase, importBatchId: number): Promise<ImportBatchItemStatusCount[]> {
     const rows = await db.getAllAsync<ImportBatchItemStatusCount>(
       `SELECT status, COUNT(*) AS count
@@ -228,6 +268,32 @@ export const importBatchRepository = {
       importBatchId
     );
     return rows;
+  },
+
+  async countItemsByStatusForBatchIds(
+    db: SQLiteDatabase,
+    importBatchIds: number[]
+  ): Promise<Map<number, ImportBatchItemStatusCount[]>> {
+    const result = new Map<number, ImportBatchItemStatusCount[]>();
+    const uniqueIds = [...new Set(importBatchIds)];
+    if (uniqueIds.length === 0) return result;
+    for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+      const chunk = uniqueIds.slice(offset, offset + 400);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = await db.getAllAsync<ImportBatchItemStatusCount & { importBatchId: number }>(
+        `SELECT importBatchId, status, COUNT(*) AS count
+         FROM import_batch_items
+         WHERE importBatchId IN (${placeholders})
+         GROUP BY importBatchId, status`,
+        ...chunk
+      );
+      for (const row of rows) {
+        const counts = result.get(row.importBatchId) ?? [];
+        counts.push({ status: row.status, count: row.count });
+        result.set(row.importBatchId, counts);
+      }
+    }
+    return result;
   },
 };
 

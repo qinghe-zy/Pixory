@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, AppState, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   runOnJS,
   useAnimatedStyle,
@@ -159,6 +160,8 @@ const INDICES = Array.from({ length: BAR_COUNT }, (_, i) => i);
 // ─── Props ───────────────────────────────────────────────
 
 export interface RhythmBarsProps {
+  /** Whether the decorative loop should run. Hidden root tabs pass false. */
+  active?: boolean;
   /** Maximum bar height in px. @default 40 */
   maxBarHeight?: number;
   /** Minimum bar height in px. @default 12 */
@@ -178,6 +181,7 @@ export interface RhythmBarsProps {
 // ─── Main component ──────────────────────────────────────
 
 export function RhythmBars({
+  active = true,
   maxBarHeight = 40,
   minBarHeight = 12,
   barWidth = 4,
@@ -198,12 +202,21 @@ export function RhythmBars({
 
   // Start time loop
   useEffect(() => {
+    if (!active) {
+      cancelAnimation(time);
+      cancelAnimation(blend);
+      time.value = 0;
+      blend.value = 0;
+      busy.current = false;
+      return;
+    }
     time.value = withRepeat(
       withTiming(T_LOOP, { duration: (T_LOOP * 1000) / speedMultiplier, easing: Easing.linear }),
       -1,
       false,
     );
-  }, [time, speedMultiplier]);
+    return () => cancelAnimation(time);
+  }, [active, blend, time, speedMultiplier]);
 
   // Transition-complete handler: swap A = B, reset blend
   const onBlendDone = useCallback(() => {
@@ -226,7 +239,10 @@ export function RhythmBars({
 
   // Auto-scheduler: handles both independent random cycles and exact global resonance
   useEffect(() => {
-    let active = true;
+    if (!active) {
+      return;
+    }
+    let alive = true;
     let syncTimeout: ReturnType<typeof setTimeout>;
     let randomInterval: ReturnType<typeof setInterval>;
     
@@ -235,12 +251,12 @@ export function RhythmBars({
 
     // 2. Precise global sync clock (converges exactly at SYNC_INTERVAL_MS boundaries)
     function scheduleNextSync() {
-      if (!active) return;
+      if (!alive) return;
       const now = Date.now();
       const timeToNextSync = SYNC_INTERVAL_MS - (now % SYNC_INTERVAL_MS);
       
       syncTimeout = setTimeout(() => {
-        if (!active) return;
+        if (!alive) return;
         
         // Calculate a deterministic index based on the current global cycle epoch
         const currentCycle = Math.round(Date.now() / SYNC_INTERVAL_MS);
@@ -258,7 +274,7 @@ export function RhythmBars({
     }
 
     function startTimers() {
-      if (!active) return;
+      if (!alive) return;
       stopTimers();
       
       // 1. Independent random loop (diverges over time)
@@ -302,11 +318,11 @@ export function RhythmBars({
     }
 
     return () => {
-      active = false;
+      alive = false;
       stopTimers();
       appStateSub.remove();
     };
-  }, [goNext]);
+  }, [active, goNext]);
 
   return (
     <View style={[s.row, { gap: barGap, height: maxBarHeight }, style]}>

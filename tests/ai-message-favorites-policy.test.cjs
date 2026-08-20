@@ -109,7 +109,7 @@ test('Favorites Center includes AI message segment and opens source chat target'
   const app = read('App.tsx');
 
   assert.match(favorites, /onOpenAiMessageFavorite/);
-  assert.match(favorites, /listFavoriteAssistantMessages/);
+  assert.match(favorites, /listFavoriteAssistantMessagePage/);
   assert.match(favorites, /图片/);
   assert.match(favorites, /AI 消息/);
   assert.match(favorites, /还没有收藏 AI 消息/);

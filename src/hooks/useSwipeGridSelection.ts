@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import { useMemo, useRef } from 'react';
-import { Dimensions, PanResponder, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollView } from 'react-native';
+import { Dimensions, PanResponder, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import type { AssetMediaType } from '../database';
 
@@ -10,6 +10,7 @@ interface SwipeGridItem {
 }
 
 interface SwipeGridLayout {
+  coordinateSpace?: 'content' | 'window-content';
   x: number;
   y: number;
   width: number;
@@ -20,7 +21,10 @@ interface UseSwipeGridSelectionParams {
   items: SwipeGridItem[];
   selectedIds: number[];
   setSelectedIds: (updater: (current: number[]) => number[]) => void;
-  scrollViewRef: RefObject<ScrollView | null>;
+  scrollViewRef: RefObject<{
+    scrollTo?: (options: { y: number; animated: boolean }) => void;
+    scrollToOffset?: (options: { offset: number; animated: boolean }) => void;
+  } | null>;
   selectableMediaTypes?: AssetMediaType[];
 }
 
@@ -48,7 +52,15 @@ export function useSwipeGridSelection({
   selectedIdsRef.current = selectedIds;
 
   function registerItemLayout(imageId: number, layout: SwipeGridLayout) {
-    itemLayoutsRef.current.set(imageId, layout);
+    itemLayoutsRef.current.set(imageId, { ...layout, coordinateSpace: 'content' });
+  }
+
+  function registerMeasuredItemLayout(imageId: number, layout: SwipeGridLayout | null) {
+    if (!layout) {
+      itemLayoutsRef.current.delete(imageId);
+      return;
+    }
+    itemLayoutsRef.current.set(imageId, { ...layout, coordinateSpace: 'window-content' });
   }
 
   function addItemToSelection(itemId: number | null) {
@@ -60,8 +72,12 @@ export function useSwipeGridSelection({
     setSelectedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
   }
 
-  function findItemIdAtLocation(x: number, y: number): number | null {
+  function findItemIdAtLocation(event: GestureResponderEvent): number | null {
     for (const [itemId, layout] of itemLayoutsRef.current.entries()) {
+      const x = layout.coordinateSpace === 'window-content' ? event.nativeEvent.pageX : event.nativeEvent.locationX;
+      const y = layout.coordinateSpace === 'window-content'
+        ? event.nativeEvent.pageY + scrollYRef.current
+        : event.nativeEvent.locationY;
       if (x >= layout.x && x <= layout.x + layout.width && y >= layout.y && y <= layout.y + layout.height) {
         return itemId;
       }
@@ -86,7 +102,11 @@ export function useSwipeGridSelection({
     autoScrollDirectionRef.current = direction;
     autoScrollTimerRef.current = setInterval(() => {
       const nextY = Math.max(0, scrollYRef.current + direction * AUTO_SCROLL_STEP);
-      scrollViewRef.current?.scrollTo({ y: nextY, animated: false });
+      if (scrollViewRef.current?.scrollToOffset) {
+        scrollViewRef.current.scrollToOffset({ offset: nextY, animated: false });
+      } else {
+        scrollViewRef.current?.scrollTo?.({ y: nextY, animated: false });
+      }
       scrollYRef.current = nextY;
     }, AUTO_SCROLL_INTERVAL_MS);
   }
@@ -115,12 +135,10 @@ export function useSwipeGridSelection({
         onStartShouldSetPanResponder: () => isDraggingRef.current,
         onMoveShouldSetPanResponder: (_event, gestureState) => isDraggingRef.current && Math.abs(gestureState.dy) + Math.abs(gestureState.dx) > 2,
         onPanResponderGrant: (event) => {
-          const location = event.nativeEvent;
-          addItemToSelection(findItemIdAtLocation(location.locationX, location.locationY));
+          addItemToSelection(findItemIdAtLocation(event));
         },
         onPanResponderMove: (event) => {
-          const location = event.nativeEvent;
-          addItemToSelection(findItemIdAtLocation(location.locationX, location.locationY));
+          addItemToSelection(findItemIdAtLocation(event));
           updateAutoScroll(event);
         },
         onPanResponderRelease: () => {
@@ -151,5 +169,6 @@ export function useSwipeGridSelection({
     onScroll,
     panHandlers: panResponder.panHandlers,
     registerItemLayout,
+    registerMeasuredItemLayout,
   };
 }

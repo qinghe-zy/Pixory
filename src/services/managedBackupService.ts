@@ -6,6 +6,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import type { PixorySpace } from '../database';
 import { assertManagedManifestShape, isSafeBackupRelativePath } from './backupManifestProtocol';
+import { MAX_FILE_TASK_CONCURRENCY, settleFileTasksWithConcurrency } from './boundedFileConcurrency';
 import { appendManagedRestoreCollisionSuffix, createMappedLogicalId, remapManagedJsonReferences, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
 import {
   copyLocalFile,
@@ -228,14 +229,20 @@ export async function createManagedBackupManifestV2(input: {
     mimeType: 'application/vnd.sqlite3', originalUri: null, required: true, space: input.space,
   });
 
-  for (const candidate of candidates) {
+  const candidateDigests = await settleFileTasksWithConcurrency(candidates, MAX_FILE_TASK_CONCURRENCY, async (candidate) => {
     input.assertActive?.();
     const info = await FileSystem.getInfoAsync(candidate.sourceUri);
     if (!info.exists || info.isDirectory) {
       if (candidate.required) throw new Error(`备份失败，必需文件不可用：${candidate.logicalId}`);
-      continue;
+      return null;
     }
-    const digest = await hashManagedFile(candidate.sourceUri);
+    return { candidate, digest: await hashManagedFile(candidate.sourceUri) };
+  });
+  for (const result of candidateDigests) {
+    if (result.status === 'rejected') throw result.reason;
+    if (!result.value) continue;
+    const { candidate, digest } = result.value;
+    input.assertActive?.();
     const relativePath = relativePathByHash.get(digest.sha256) ?? `files/${digest.sha256}${safeExtension(candidate.sourceUri)}`;
     const destinationUri = resolveManagedBackupPath(input.backupDir, relativePath);
     if (!relativePathByHash.has(digest.sha256)) {

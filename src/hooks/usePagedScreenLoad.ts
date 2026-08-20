@@ -26,7 +26,7 @@ interface PagedScreenData<TItem, TMeta> {
 }
 
 export function usePagedScreenLoad<TItem, TMeta>(
-  loader: (offset: number) => Promise<PagedLoadResult<TItem, TMeta>>,
+  loader: (offset: number, meta: TMeta) => Promise<PagedLoadResult<TItem, TMeta>>,
   options: UsePagedScreenLoadOptions<TItem, TMeta>
 ) {
   const loaderRef = useRef(loader);
@@ -80,10 +80,10 @@ export function usePagedScreenLoad<TItem, TMeta>(
         const next = optionsRef.current.deferUntilInteractions
           ? await new Promise<PagedLoadResult<TItem, TMeta>>((resolve, reject) => {
               InteractionManager.runAfterInteractions(() => {
-                loaderRef.current(0).then(resolve).catch(reject);
+                loaderRef.current(0, optionsRef.current.initialMeta).then(resolve).catch(reject);
               });
             })
-          : await loaderRef.current(0);
+          : await loaderRef.current(0, optionsRef.current.initialMeta);
         if (!isMountedRef.current || !gate.isCurrent(request)) {
           return;
         }
@@ -138,7 +138,7 @@ export function usePagedScreenLoad<TItem, TMeta>(
 
     void (async () => {
       try {
-        const next = await loaderRef.current(currentData.items.length);
+        const next = await loaderRef.current(currentData.items.length, currentData.meta);
         if (!isMountedRef.current || !gate.isCurrent(request)) {
           return;
         }

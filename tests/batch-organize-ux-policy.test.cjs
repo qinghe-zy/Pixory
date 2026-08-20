@@ -187,7 +187,8 @@ test('import batch pile management scopes batch screen to the selected pile', ()
   assert.match(appSource, /scopeImageIds\?: number\[\]/);
   assert.match(appSource, /scopeImageIds: imageIds/);
   assert.match(batchSource, /scopeImageIds/);
-  assert.match(batchSource, /imageRepository\.findByIds\(db,\s*scopeImageIds/);
+  assert.match(batchSource, /imageIds:\s*scopeImageIds/);
+  assert.match(batchSource, /useMediaCursorCollection/);
   assert.match(batchSource, /type: 'image-scope'/);
   assert.match(batchSource, /当前堆/);
   assert.match(reviewSource, /管理这堆/);

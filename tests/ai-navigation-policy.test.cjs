@@ -515,7 +515,7 @@ test('AI history long-press enters batch mode while single actions stay in a com
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   const repository = fs.readFileSync(path.join(root, 'src/database/repositories/aiThreadRepository.ts'), 'utf8');
   const historyProjection = repository.slice(
-    repository.indexOf('async listHistoryItems('),
+    repository.indexOf('async listHistoryItemPage('),
     repository.indexOf('async createMessage('),
   );
 
@@ -599,7 +599,7 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(history, /搜索标题或最近消息/);
   assert.match(history, /historyGroupLabel/);
   assert.match(history, /过去 7 天/);
-  assert.match(repository, /\(item\.lastMessagePreview \?\? ''\)\.toLocaleLowerCase\(\)\.includes/);
+  assert.match(repository, /LOWER\(projected_history\.lastMessagePreview\) LIKE \? ESCAPE/);
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
   assert.match(drawer, /onLongPress=\{\(\) => openRecentActionPopover\(thread\)\}/);
   assert.match(drawer, /recentActionPopover/);

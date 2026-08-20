@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
@@ -8,11 +8,13 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { listFavoriteAssistantMessages, type AiMessageFavoriteListItem } from '../ai/aiChatService';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
+import { listFavoriteAssistantMessagePage, type AiMessageFavoriteListItem } from '../ai/aiChatService';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { useAssetListPreferences } from '../services/assetListPreferences';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
@@ -65,31 +67,23 @@ export function FavoritesScreen({
   const [aiMessages, setAiMessages] = useState<AiMessageFavoriteListItem[]>([]);
   const [aiFavoriteErrorMessage, setAiFavoriteErrorMessage] = useState<string | null>(null);
   const [aiFavoritesLoading, setAiFavoritesLoading] = useState(false);
+  const [aiFavoritesLoadingMore, setAiFavoritesLoadingMore] = useState(false);
+  const [aiFavoritesHasMore, setAiFavoritesHasMore] = useState(false);
+  const [aiFavoritesCursor, setAiFavoritesCursor] = useState<{ createdAt: string; id: string } | null>(null);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
-  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
-    images: ImageListItem[];
     ips: IpRecord[];
     groups: GroupRecord[];
     tags: TagUsageItem[];
   }>(
     async () => {
-      const [images, ips, groups, tags] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        imageRepository.findFavorites(db, {
-          mediaType: activeFilters.aspectRatio || activeFilters.size ? 'image' : 'all',
-          ipIds: activeFilters.ipIds,
-          groupIds: activeFilters.groupIds,
-          tagIds: activeFilters.tagIds,
-          aspectRatio: activeFilters.aspectRatio ?? undefined,
-          minFileSize: activeFilters.size?.minFileSize,
-          maxFileSize: activeFilters.size?.maxFileSize,
-          orderBy: sortOrder,
-        }),
+      const [ips, groups, tags] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findAll(db),
         groupRepository.findAll(db),
         tagRepository.findUsageOverview(db),
       ]));
-      return { images, ips, groups, tags };
+      return { ips, groups, tags };
     },
     [activeFilters, refreshToken, sortOrder, space],
     {
@@ -97,11 +91,33 @@ export function FavoritesScreen({
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取收藏图片失败：${message}`;
       },
-      initialData: { images: [], ips: [], groups: [], tags: [] },
+      initialData: { ips: [], groups: [], tags: [] },
     }
   );
-  const images = data?.images ?? [];
-  const imageAssets = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const favoriteMediaRequest = {
+    aspectRatio: activeFilters.aspectRatio ?? undefined,
+    favoritesOnly: true,
+    groupIds: activeFilters.groupIds,
+    ipIds: activeFilters.ipIds,
+    maxFileSize: activeFilters.size?.maxFileSize,
+    mediaType: activeFilters.aspectRatio || activeFilters.size ? 'image' as const : 'all' as const,
+    minFileSize: activeFilters.size?.minFileSize,
+    orderBy: sortOrder,
+    tagIds: activeFilters.tagIds,
+  };
+  const media = useMediaCursorCollection({
+    formatError: (loadError) => `读取收藏图片失败：${loadError instanceof Error ? loadError.message : '未知错误'}`,
+    request: favoriteMediaRequest,
+    requestKey: JSON.stringify([space, refreshToken, activeFilters, sortOrder]),
+    space,
+  });
+  const images = media.items;
+  const combinedLoading = isLoading || media.isLoading;
+  const combinedError = errorMessage ?? media.errorMessage;
+  const reloadAll = () => {
+    reload();
+    media.reload();
+  };
   const selectableAssets = images;
   const ips = data?.ips ?? [];
   const groups = data?.groups ?? [];
@@ -134,7 +150,10 @@ export function FavoritesScreen({
     setAiFavoritesLoading(true);
     setAiFavoriteErrorMessage(null);
     try {
-      setAiMessages(await listFavoriteAssistantMessages({ space }));
+      const page = await listFavoriteAssistantMessagePage({ space });
+      setAiMessages(page.items);
+      setAiFavoritesCursor(page.cursor);
+      setAiFavoritesHasMore(page.hasMore);
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       setAiFavoriteErrorMessage(`读取 AI 消息收藏失败：${message}`);
@@ -144,8 +163,25 @@ export function FavoritesScreen({
   }, [space]);
 
   useEffect(() => {
+    if (favoriteMode !== 'ai') return;
     void reloadAiFavorites();
-  }, [refreshToken, reloadAiFavorites]);
+  }, [favoriteMode, refreshToken, reloadAiFavorites]);
+
+  const loadMoreAiFavorites = useCallback(() => {
+    if (!aiFavoritesHasMore || aiFavoritesLoading || aiFavoritesLoadingMore || !aiFavoritesCursor) return;
+    setAiFavoritesLoadingMore(true);
+    void listFavoriteAssistantMessagePage({ space, cursor: aiFavoritesCursor })
+      .then((page) => {
+        setAiMessages((current) => {
+          const existing = new Set(current.map((item) => item.id));
+          return [...current, ...page.items.filter((item) => !existing.has(item.id))];
+        });
+        setAiFavoritesCursor(page.cursor);
+        setAiFavoritesHasMore(page.hasMore);
+      })
+      .catch((loadError) => setAiFavoriteErrorMessage(loadError instanceof Error ? loadError.message : '加载更多收藏失败'))
+      .finally(() => setAiFavoritesLoadingMore(false));
+  }, [aiFavoritesCursor, aiFavoritesHasMore, aiFavoritesLoading, aiFavoritesLoadingMore, space]);
 
   function handleOpenImage(imageId: number) {
     const asset = images.find((item) => item.id === imageId);
@@ -161,7 +197,7 @@ export function FavoritesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: imageAssets.map((image) => image.id), label: filterLabel, space }
+        ? { type: 'media-query', request: favoriteMediaRequest, label: filterLabel, space }
         : { type: 'favorites', space }
     );
   }
@@ -219,9 +255,9 @@ export function FavoritesScreen({
 
   const footer = favoriteMode === 'images' && multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
-      onChanged={reload}
+      onChanged={reloadAll}
       onClearSelection={multiSelect.clearSelection}
-      onDeleted={reload}
+      onDeleted={reloadAll}
       selectedImages={selectedAssets}
       space={space}
       totalCount={selectableAssets.length}
@@ -233,14 +269,15 @@ export function FavoritesScreen({
         emptyDescription="给图片加星标后，这里会展示当前所有收藏图片。"
         emptyIconName="star-outline"
         emptyTitle="还没有收藏图片"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && images.length === 0}
-        loading={isLoading}
+        errorMessage={combinedError}
+        isEmpty={!combinedLoading && images.length === 0}
+        loading={combinedLoading}
         loadingDescription="本地收藏索引读取完成后，这里会展示收藏图片。"
         loadingTitle="正在读取收藏图片"
-        onRetry={reload}
+        onRetry={reloadAll}
       >
-        <View style={styles.gridHeader}>
+        <VirtualizedAssetCollection
+          headerComponent={<View style={styles.gridHeader}>
           <Text style={styles.gridTitle}>图片</Text>
           <Pressable
             disabled={selectableAssets.length === 0}
@@ -256,42 +293,38 @@ export function FavoritesScreen({
             onFilterPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
             orderBy={sortOrder}
           />
-        </View>
-        {viewMode === 'detail' ? (
-          <View {...swipeSelection.panHandlers} style={styles.detailList}>
-            {images.map((image) => (
+          </View>}
+          images={images}
+          isLoadingMore={media.isLoadingMore}
+          listRef={scrollViewRef}
+          onEndReached={media.loadMore}
+          onItemMeasured={swipeSelection.registerMeasuredItemLayout}
+          onScroll={swipeSelection.onScroll}
+          panHandlers={swipeSelection.panHandlers}
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
                 image={image}
-                key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
-            ))}
-          </View>
-        ) : (
-          <View {...swipeSelection.panHandlers} style={styles.grid}>
-            {images.map((image) => (
+          ) : (
               <ThumbnailTile
                 aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                containerStyle={fillCell ? styles.fillCell : undefined}
                 image={image}
-                key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                index={index}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
-            ))}
-            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
-              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-            ))}
-          </View>
-        )}
+          )}
+          viewMode={viewMode}
+        />
       </PageStateBlock>
   );
   const aiFavoritesContent = (
@@ -306,8 +339,14 @@ export function FavoritesScreen({
       loadingTitle="正在读取收藏"
       onRetry={reloadAiFavorites}
     >
-      <View style={styles.aiFavoriteList}>
-        {aiMessages.map((favorite) => (
+      <FlatList
+        contentContainerStyle={styles.aiFavoriteList}
+        data={aiMessages}
+        keyExtractor={(favorite) => favorite.id}
+        ListFooterComponent={aiFavoritesLoadingMore ? <Text style={styles.aiFavoriteMeta}>正在加载更多…</Text> : null}
+        onEndReached={loadMoreAiFavorites}
+        onEndReachedThreshold={0.5}
+        renderItem={({ item: favorite }) => (
           <Pressable
             accessibilityLabel={`打开收藏消息，来自${favorite.threadTitle}`}
             accessibilityRole="button"
@@ -325,8 +364,9 @@ export function FavoritesScreen({
               {new Date(favorite.createdAt).toLocaleDateString()}
             </Text>
           </Pressable>
-        ))}
-      </View>
+        )}
+        windowSize={7}
+      />
     </PageStateBlock>
   );
   return (
@@ -335,9 +375,6 @@ export function FavoritesScreen({
       decorativeTitle="Favorites"
       footer={footer}
       onBack={onBack}
-      onScroll={swipeSelection.onScroll}
-      scrollViewRef={scrollViewRef}
-      scrollable
       title="收藏"
     >
       <View style={styles.summary}>
@@ -508,6 +545,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
+  },
+  fillCell: {
+    width: '100%',
   },
   detailList: {
     gap: rhythm.listCardGap,

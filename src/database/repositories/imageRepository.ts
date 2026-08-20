@@ -42,6 +42,17 @@ import { bumpDataEpoch } from '../../services/dataEpochService';
 import { getRegisteredDatabaseSpace } from '../databaseSpaceRegistry';
 
 const VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD = 6;
+const WEAK_REPOSITORY_FILENAME_PREFIXES = new Set(['img', 'image', 'dsc', 'pxl', 'photo', 'video', 'vid']);
+
+function getRepositoryFilenamePrefix(filename: string): string | null {
+  const baseName = filename.replace(/\.[^.]+$/, '');
+  const [prefix] = baseName.split(/[_\-\s.]+/);
+  const normalized = prefix?.trim();
+  if (!normalized || normalized.length < 2 || /^\d+$/.test(normalized) || WEAK_REPOSITORY_FILENAME_PREFIXES.has(normalized.toLowerCase())) {
+    return null;
+  }
+  return normalized;
+}
 
 function buildDeletedFilter(columnPrefix = '', options?: ImageAssetQueryOptions): string {
   const filters: string[] = [];
@@ -49,7 +60,9 @@ function buildDeletedFilter(columnPrefix = '', options?: ImageAssetQueryOptions)
   const mediaTypeColumn = columnPrefix ? `${columnPrefix}.mediaType` : 'mediaType';
   const mediaType = resolveMediaTypeFilter(options?.mediaType);
 
-  if (!options?.includeDeleted) {
+  if (options?.deletedOnly) {
+    filters.push(`${deletedColumn} IS NOT NULL`);
+  } else if (!options?.includeDeleted) {
     filters.push(`${deletedColumn} IS NULL`);
   }
 
@@ -559,21 +572,42 @@ function resolveMediaCursorSort(orderBy: MediaCursorPageRequest['orderBy']): Med
   if (orderBy == null || orderBy === 'createdAtDesc') {
     return { expression: 'image_assets.createdAt', orderBy: 'createdAtDesc', ascending: false };
   }
-  if (orderBy === 'lastViewedAtDesc') {
-    return { expression: 'image_assets.lastViewedAt', orderBy, ascending: false };
-  }
-  if (orderBy === 'sourceOrderAsc') {
-    return { expression: 'COALESCE(image_assets.sourceOrder, image_assets.id)', orderBy, ascending: true };
-  }
-  throw new Error(`Unsupported media cursor sort: ${String(orderBy)}`);
+  const sorts: Record<Exclude<MediaCursorSortOrder, 'createdAtDesc'>, Omit<MediaCursorSortSpec, 'orderBy'>> = {
+    createdAtAsc: { expression: 'image_assets.createdAt', ascending: true },
+    updatedAtDesc: { expression: 'image_assets.updatedAt', ascending: false },
+    updatedAtAsc: { expression: 'image_assets.updatedAt', ascending: true },
+    lastViewedAtDesc: { expression: 'image_assets.lastViewedAt', ascending: false },
+    lastViewedAtAsc: { expression: 'image_assets.lastViewedAt', ascending: true },
+    sourceOrderAsc: { expression: 'COALESCE(image_assets.sourceOrder, image_assets.id)', ascending: true },
+    sourceOrderDesc: { expression: 'COALESCE(image_assets.sourceOrder, image_assets.id)', ascending: false },
+    deletedAtDesc: { expression: 'image_assets.deletedAt', ascending: false },
+    filenameAsc: { expression: 'image_assets.originalFilename COLLATE NOCASE', ascending: true },
+    filenameDesc: { expression: 'image_assets.originalFilename COLLATE NOCASE', ascending: false },
+    fileSizeDesc: { expression: 'image_assets.fileSize', ascending: false },
+    fileSizeAsc: { expression: 'image_assets.fileSize', ascending: true },
+  };
+  const spec = sorts[orderBy];
+  return { ...spec, orderBy };
 }
 
 function createMediaCursor(item: ImageListItem, sort: MediaCursorSortSpec): MediaPageCursor {
-  if (sort.orderBy === 'lastViewedAtDesc') {
+  if (sort.orderBy === 'lastViewedAtDesc' || sort.orderBy === 'lastViewedAtAsc') {
     return { id: item.id, sortValue: item.lastViewedAt };
   }
-  if (sort.orderBy === 'sourceOrderAsc') {
+  if (sort.orderBy === 'sourceOrderAsc' || sort.orderBy === 'sourceOrderDesc') {
     return { id: item.id, sortValue: item.sourceOrder ?? item.id };
+  }
+  if (sort.orderBy === 'updatedAtDesc' || sort.orderBy === 'updatedAtAsc') {
+    return { id: item.id, sortValue: item.updatedAt };
+  }
+  if (sort.orderBy === 'deletedAtDesc') {
+    return { id: item.id, sortValue: item.deletedAt };
+  }
+  if (sort.orderBy === 'filenameAsc' || sort.orderBy === 'filenameDesc') {
+    return { id: item.id, sortValue: item.originalFilename };
+  }
+  if (sort.orderBy === 'fileSizeDesc' || sort.orderBy === 'fileSizeAsc') {
+    return { id: item.id, sortValue: item.fileSize };
   }
   return { id: item.id, sortValue: item.createdAt };
 }
@@ -597,8 +631,11 @@ function buildMediaCursorBase(
       values.push(...inClause.values);
     }
   }
-  if (sort.orderBy === 'lastViewedAtDesc') {
+  if (sort.orderBy === 'lastViewedAtDesc' || sort.orderBy === 'lastViewedAtAsc') {
     clauses.push('image_assets.lastViewedAt IS NOT NULL');
+  }
+  if (sort.orderBy === 'deletedAtDesc') {
+    clauses.push('image_assets.deletedAt IS NOT NULL');
   }
   return { clauses, values };
 }
@@ -883,6 +920,98 @@ export const imageRepository = {
     );
 
     return rows.map(mapImageListItemRow);
+  },
+
+  async getFilteredStorageSummary(
+    db: SQLiteDatabase,
+    options?: ImageListQueryOptions
+  ): Promise<{ count: number; totalBytes: number }> {
+    const queryParts = buildImageListQueryParts([], [], options);
+    const row = await db.getFirstAsync<{ count: number; totalBytes: number | null }>(
+      `SELECT COUNT(DISTINCT image_assets.id) AS count, COALESCE(SUM(image_assets.fileSize), 0) AS totalBytes
+       FROM image_assets
+       INNER JOIN ips ON ips.id = image_assets.ipId
+       ${queryParts.whereClause}`,
+      ...queryParts.values
+    );
+    return { count: row?.count ?? 0, totalBytes: row?.totalBytes ?? 0 };
+  },
+
+  async findSimilarImageIds(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<number[]> {
+    const queryParts = buildImageListQueryParts([], [], { ...options, mediaType: 'image' });
+    const rows = await db.getAllAsync<{ id: number; visualHash: string | null }>(
+      `SELECT image_assets.id, image_assets.visualHash
+       FROM image_assets
+       INNER JOIN ips ON ips.id = image_assets.ipId
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id`,
+      ...queryParts.values
+    );
+    const similarIds: number[] = [];
+    for (let leftIndex = 0; leftIndex < rows.length; leftIndex += 1) {
+      const left = rows[leftIndex];
+      if (!isVisualHash(left.visualHash)) {
+        continue;
+      }
+      for (let rightIndex = leftIndex + 1; rightIndex < rows.length; rightIndex += 1) {
+        const right = rows[rightIndex];
+        const distance = getVisualHashDistance(left.visualHash, right.visualHash);
+        if (distance != null && distance <= VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD) {
+          similarIds.push(left.id, right.id);
+        }
+      }
+    }
+    return [...new Set(similarIds)];
+  },
+
+  async findRepeatedAttributeImageIds(
+    db: SQLiteDatabase,
+    options: ImageListQueryOptions,
+    filters: { sameSize?: boolean; sameFileSignature?: boolean; filenamePrefix?: boolean }
+  ): Promise<number[]> {
+    if (!filters.sameSize && !filters.sameFileSignature && !filters.filenamePrefix) {
+      return [];
+    }
+    const queryParts = buildImageListQueryParts([], [], { ...options, mediaType: 'image' });
+    const rows = await db.getAllAsync<{
+      id: number;
+      width: number;
+      height: number;
+      fileSize: number;
+      originalFilename: string;
+    }>(
+      `SELECT image_assets.id, image_assets.width, image_assets.height, image_assets.fileSize, image_assets.originalFilename
+       FROM image_assets
+       INNER JOIN ips ON ips.id = image_assets.ipId
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id`,
+      ...queryParts.values
+    );
+    const sizeCounts = new Map<string, number>();
+    const signatureCounts = new Map<string, number>();
+    const prefixCounts = new Map<string, number>();
+    const prefixById = new Map<number, string | null>();
+    for (const row of rows) {
+      const sizeKey = `${row.width}x${row.height}`;
+      const signatureKey = `${sizeKey}:${row.fileSize}`;
+      const prefix = getRepositoryFilenamePrefix(row.originalFilename);
+      sizeCounts.set(sizeKey, (sizeCounts.get(sizeKey) ?? 0) + 1);
+      signatureCounts.set(signatureKey, (signatureCounts.get(signatureKey) ?? 0) + 1);
+      prefixById.set(row.id, prefix);
+      if (prefix) prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
+    }
+    return rows
+      .filter((row) => {
+        const sizeKey = `${row.width}x${row.height}`;
+        if (filters.sameSize && (sizeCounts.get(sizeKey) ?? 0) <= 1) return false;
+        if (filters.sameFileSignature && (signatureCounts.get(`${sizeKey}:${row.fileSize}`) ?? 0) <= 1) return false;
+        if (filters.filenamePrefix) {
+          const prefix = prefixById.get(row.id);
+          if (!prefix || (prefixCounts.get(prefix) ?? 0) <= 1) return false;
+        }
+        return true;
+      })
+      .map((row) => row.id);
   },
 
   async findFilteredPage(db: SQLiteDatabase, options?: ImageListQueryOptions & PageRequest): Promise<PageResult<ImageListItem>> {
@@ -1299,11 +1428,44 @@ export const imageRepository = {
   },
 
   async findExactDuplicateGroups(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<DuplicateImageGroup[]> {
-    const images = await this.findFiltered(db, {
+    const duplicateOptions = {
       ...options,
       includeDeleted: false,
       mediaType: options?.mediaType ?? 'all',
-    });
+    };
+    const hashQuery = buildImageListQueryParts(
+      ['image_assets.contentHash IS NOT NULL', "TRIM(image_assets.contentHash) <> ''"],
+      [],
+      duplicateOptions
+    );
+    const duplicateHashes = await db.getAllAsync<{ contentHash: string }>(
+      `SELECT image_assets.contentHash
+       FROM image_assets
+       INNER JOIN ips ON ips.id = image_assets.ipId
+       ${hashQuery.whereClause}
+       GROUP BY image_assets.contentHash
+       HAVING COUNT(*) > 1`,
+      ...hashQuery.values
+    );
+    const images: ImageListItem[] = [];
+    for (let offset = 0; offset < duplicateHashes.length; offset += 400) {
+      const hashes = duplicateHashes.slice(offset, offset + 400).map((row) => row.contentHash);
+      if (hashes.length === 0) continue;
+      const placeholders = hashes.map(() => '?').join(', ');
+      const query = buildImageListQueryParts(
+        [`image_assets.contentHash IN (${placeholders})`],
+        hashes,
+        duplicateOptions
+      );
+      const rows = await db.getAllAsync<ImageListItemRow>(
+        `${IMAGE_LIST_SELECT}
+         ${query.whereClause}
+         GROUP BY image_assets.id
+         ${query.orderByClause}`,
+        ...query.values
+      );
+      images.push(...rows.map(mapImageListItemRow));
+    }
     const groups = new Map<string, ImageListItem[]>();
 
     for (const image of images) {
@@ -1504,6 +1666,28 @@ export const imageRepository = {
       imageId
     );
     return rows.map((row) => row.groupId);
+  },
+
+  async findGroupIdsByImageIds(db: SQLiteDatabase, imageIds: number[]): Promise<Map<number, number[]>> {
+    const result = new Map<number, number[]>();
+    const uniqueIds = [...new Set(imageIds)];
+    for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+      const chunk = uniqueIds.slice(offset, offset + 400);
+      if (chunk.length === 0) continue;
+      const inClause = buildInClause(chunk);
+      const rows = await db.getAllAsync<{ imageAssetId: number; groupId: number }>(
+        `SELECT imageAssetId, groupId FROM image_groups
+         WHERE imageAssetId IN (${inClause.placeholders})
+         ORDER BY imageAssetId ASC, createdAt ASC, groupId ASC`,
+        ...inClause.values
+      );
+      for (const row of rows) {
+        const ids = result.get(row.imageAssetId) ?? [];
+        ids.push(row.groupId);
+        result.set(row.imageAssetId, ids);
+      }
+    }
+    return result;
   },
 
   async updateFavorite(db: SQLiteDatabase, id: number, isFavorite: boolean): Promise<ImageAssetRecord | null> {

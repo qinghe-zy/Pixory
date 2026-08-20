@@ -154,20 +154,21 @@ test('global material library is truly global and resolves thread owners by id, 
   const documentService = read('src/ai/aiDocumentService.ts');
   const materialList = read('src/screens/AiMaterialListScreen.tsx');
   const threadRepository = read('src/database/repositories/aiThreadRepository.ts');
-  const globalStart = documentService.indexOf('export async function listGlobalMaterialsGroupedByThread');
-  const globalEnd = documentService.indexOf('export async function importManualTextToThread');
+  const globalStart = documentService.indexOf('export async function listGlobalMaterialGroupPage');
+  const globalEnd = documentService.indexOf('export async function listGlobalMaterialsGroupedByThread');
   const globalBody = documentService.slice(globalStart, globalEnd);
 
-  assert.match(globalBody, /aiKnowledgeRepository\.listDocuments\(db,\s*\{\s*space:\s*input\.space,?\s*\}\)/s);
+  assert.match(globalBody, /aiKnowledgeRepository\.listDocumentOwnerGroupPage/);
+  assert.match(globalBody, /aiKnowledgeRepository\.listDocumentsByOwners/);
   assert.doesNotMatch(globalBody, /ownerType:\s*'thread'/);
   assert.doesNotMatch(globalBody, /limit:\s*500/);
   assert.match(globalBody, /findThreadsByIds\(db,\s*input\.space,\s*threadOwnerIds\)/);
   assert.match(threadRepository, /async findThreadsByIds/);
   assert.match(globalBody, /ownerType\s*===\s*'knowledge_base'/);
   assert.match(globalBody, /ownerType\s*===\s*'ip'/);
-  assert.doesNotMatch(globalBody, /\.slice\(0,\s*input\.limit \?\? 100\)/);
-  assert.match(globalBody, /input\.limit == null \? groups : groups\.slice\(0,\s*input\.limit\)/);
-  assert.match(materialList, /listGlobalMaterialsGroupedByThread\(\{ space \}\)/);
+  assert.match(globalBody, /nextCursor/);
+  assert.match(materialList, /listGlobalMaterialGroupPage\(\{ limit: MATERIAL_GROUP_PAGE_SIZE, space \}\)/);
+  assert.match(materialList, /before:\s*groupCursor/);
 });
 
 test('global material library supports row-level multi-select deletion with owner-aware confirmation', () => {

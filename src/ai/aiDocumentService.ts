@@ -18,6 +18,8 @@ import type {
   AiEmbeddingRecord,
   AiKnowledgeBaseRecord,
   CreateDocumentInput,
+  DocumentOwnerGroupCursor,
+  DocumentPageCursor,
 } from '../database/repositories/aiKnowledgeRepository';
 import type { AiReadableDocument } from './readers/readerTypes';
 import type {
@@ -45,6 +47,7 @@ import { generateMissingEmbeddingsForDocument, getEmbeddingProviderForSpace } fr
 
 export const MAX_CHUNK_CHARS = 1200;
 export const CHUNK_OVERLAP_CHARS = 160;
+export const MATERIAL_PREVIEW_LIMIT = 4;
 
 export interface ImportManualTextMaterialInput {
   space: PixorySpace;
@@ -117,6 +120,18 @@ export interface AiMaterialConversationGroup {
   updatedAt: string;
   materialCount: number;
   materials: AiDocumentRecord[];
+}
+
+export interface AiMaterialPage {
+  items: AiDocumentRecord[];
+  nextCursor: DocumentPageCursor | null;
+  hasMore: boolean;
+}
+
+export interface AiMaterialConversationGroupPage {
+  items: AiMaterialConversationGroup[];
+  nextCursor: DocumentOwnerGroupCursor | null;
+  hasMore: boolean;
 }
 
 export interface ParseAndChunkDocumentInput {
@@ -611,6 +626,34 @@ export async function listMaterials(input: {
   );
 }
 
+export async function listMaterialsPage(input: {
+  space: PixorySpace;
+  knowledgeBaseId?: string | null;
+  threadId?: string | null;
+  ownerType?: AiDocumentOwnerType | null;
+  ownerId?: string | null;
+  before?: DocumentPageCursor | null;
+  limit?: number;
+}): Promise<AiMaterialPage> {
+  const limit = Math.min(Math.max(input.limit ?? 40, 1), 100);
+  const rows = await runWithDatabaseSpace(input.space, (db) =>
+    aiKnowledgeRepository.listDocumentPage(db, {
+      before: input.before,
+      limit: limit + 1,
+      ownerId: input.ownerId ?? input.threadId ?? input.knowledgeBaseId ?? undefined,
+      ownerType: input.ownerType ?? (input.threadId ? 'thread' : input.knowledgeBaseId ? 'knowledge_base' : undefined),
+      space: input.space,
+    })
+  );
+  const items = rows.slice(0, limit);
+  const last = items[items.length - 1];
+  return {
+    hasMore: rows.length > limit,
+    items,
+    nextCursor: last ? { id: last.id, updatedAt: last.updatedAt } : null,
+  };
+}
+
 export async function listThreadMaterials(input: ThreadMaterialInput): Promise<AiDocumentRecord[]> {
   return runWithDatabaseSpace(input.space, (db) =>
     aiKnowledgeRepository.listDocuments(db, {
@@ -626,14 +669,29 @@ export async function countThreadMaterials(input: ThreadMaterialInput): Promise<
   return materials.length;
 }
 
-export async function listGlobalMaterialsGroupedByThread(input: {
+export async function listGlobalMaterialGroupPage(input: {
   space: PixorySpace;
+  before?: DocumentOwnerGroupCursor | null;
   limit?: number;
-}): Promise<AiMaterialConversationGroup[]> {
+}): Promise<AiMaterialConversationGroupPage> {
   return runWithDatabaseSpace(input.space, async (db) => {
-    const documents = await aiKnowledgeRepository.listDocuments(db, {
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+    const summaryRows = await aiKnowledgeRepository.listDocumentOwnerGroupPage(db, {
+      before: input.before,
+      limit: limit + 1,
       space: input.space,
     });
+    const pageSummaries = summaryRows.slice(0, limit);
+    const documents = await aiKnowledgeRepository.listDocumentsByOwners(
+      db,
+      input.space,
+      pageSummaries,
+      MATERIAL_PREVIEW_LIMIT
+    );
+    const summaryByOwner = new Map(pageSummaries.map((summary) => [
+      `${summary.ownerType}:${summary.ownerId}`,
+      summary,
+    ]));
     const threadOwnerIds = [...new Set(documents.filter((document) => document.ownerType === 'thread').map((document) => document.ownerId))];
     const knowledgeBaseOwnerIds = [...new Set(documents.filter((document) => document.ownerType === 'knowledge_base').map((document) => document.ownerId))];
     const ipOwnerIds = [...new Set(documents.filter((document) => document.ownerType === 'ip').map((document) => document.ownerId))];
@@ -692,10 +750,8 @@ export async function listGlobalMaterialsGroupedByThread(input: {
           : first.ownerType === 'knowledge_base'
             ? knowledgeBase?.name?.trim() || '已删除知识库'
             : ip?.name?.trim() || '已删除 IP';
-        const updatedAt = materials.reduce(
-          (latest, material) => (material.updatedAt > latest ? material.updatedAt : latest),
-          materials[0]?.updatedAt ?? ''
-        );
+        const summary = summaryByOwner.get(`${first.ownerType}:${first.ownerId}`);
+        const updatedAt = summary?.updatedAt ?? materials[0]?.updatedAt ?? '';
         return {
           ownerType: first.ownerType,
           ownerId: first.ownerId,
@@ -705,13 +761,34 @@ export async function listGlobalMaterialsGroupedByThread(input: {
           threadTitle: ownerLabel,
           contextType,
           updatedAt,
-          materialCount: materials.length,
+          materialCount: summary?.materialCount ?? materials.length,
           materials,
         };
       })
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    return input.limit == null ? groups : groups.slice(0, input.limit);
+      .sort((left, right) => {
+        const byUpdatedAt = right.updatedAt.localeCompare(left.updatedAt);
+        if (byUpdatedAt !== 0) {
+          return byUpdatedAt;
+        }
+        const byOwnerType = left.ownerType.localeCompare(right.ownerType);
+        return byOwnerType !== 0 ? byOwnerType : left.ownerId.localeCompare(right.ownerId);
+      });
+    const last = pageSummaries[pageSummaries.length - 1];
+    return {
+      hasMore: summaryRows.length > limit,
+      items: groups,
+      nextCursor: last
+        ? { ownerId: last.ownerId, ownerType: last.ownerType, updatedAt: last.updatedAt }
+        : null,
+    };
   });
+}
+
+export async function listGlobalMaterialsGroupedByThread(input: {
+  space: PixorySpace;
+  limit?: number;
+}): Promise<AiMaterialConversationGroup[]> {
+  return (await listGlobalMaterialGroupPage(input)).items;
 }
 
 export async function importManualTextToThread(input: ImportManualThreadMaterialInput): Promise<AiDocumentRecord> {

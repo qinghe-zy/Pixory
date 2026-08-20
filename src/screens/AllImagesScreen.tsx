@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -8,15 +8,16 @@ import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { useAssetListPreferences } from '../services/assetListPreferences';
-import { filterSimilarImages } from '../utils/batchSelectionRules';
 import type { ImageAspectRatioFilter } from '../database';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
@@ -79,10 +80,9 @@ export function AllImagesScreen({
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<{
+  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
+  const { data, isLoading: isMetadataLoading, errorMessage: metadataErrorMessage, reload: reloadMetadata } = useScreenLoad<{
     ip: IpRecord | null;
-    images: ImageListItem[];
     groups: GroupRecord[];
     tags: TagUsageItem[];
   }>(
@@ -94,42 +94,65 @@ export function AllImagesScreen({
         tagRepository.findUsageOverviewByIpId(db, ipId),
       ]);
 
-      const baseImages = await imageRepository.findByIpId(db, ipId, {
-        mediaType: hasImageOnlyFilter(activeFilters) ? 'image' : 'all',
-        favoritesOnly: activeFilters.favorite || undefined,
-        ungroupedOnly: activeFilters.ungrouped || undefined,
-        untaggedOnly: activeFilters.untagged || undefined,
-        recentlyViewedOnly: activeFilters.recentViewed || undefined,
-        orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : sortOrder,
-        mimeType: activeFilters.mimeType ?? undefined,
-        aspectRatio: activeFilters.aspectRatio ?? undefined,
-        minFileSize: activeFilters.size?.minFileSize,
-        maxFileSize: activeFilters.size?.maxFileSize,
-        groupIds: activeFilters.groupIds,
-        tagIds: activeFilters.tagIds,
-      });
-      const images = filterImagesBySimilarity(baseImages, activeFilters);
-
-      return { ip, images, groups, tags };
+      return { ip, groups, tags };
       });
     },
-    [activeFilters, ipId, refreshToken, sortOrder, space],
+    [ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取图片库失败：${message}`;
       },
-      initialData: { ip: null, images: [], groups: [], tags: [] },
+      initialData: { ip: null, groups: [], tags: [] },
       deferUntilInteractions: true,
     }
   );
 
+  const mediaRequest = {
+    aspectRatio: activeFilters.aspectRatio ?? undefined,
+    favoritesOnly: activeFilters.favorite || undefined,
+    groupIds: activeFilters.groupIds,
+    imageIds: undefined as number[] | undefined,
+    ipId,
+    maxFileSize: activeFilters.size?.maxFileSize,
+    mediaType: hasImageOnlyFilter(activeFilters) ? 'image' as const : 'all' as const,
+    mimeType: activeFilters.mimeType ?? undefined,
+    minFileSize: activeFilters.size?.minFileSize,
+    orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' as const : sortOrder,
+    recentlyViewedOnly: activeFilters.recentViewed || undefined,
+    tagIds: activeFilters.tagIds,
+    ungroupedOnly: activeFilters.ungrouped || undefined,
+    untaggedOnly: activeFilters.untagged || undefined,
+  };
+  const { data: similarIds, isLoading: isSimilarityLoading, errorMessage: similarityErrorMessage, reload: reloadSimilarity } = useScreenLoad<number[] | null>(
+    async () => activeFilters.similarDuplicate
+      ? runWithDatabaseSpace(space, (db) => imageRepository.findSimilarImageIds(db, mediaRequest))
+      : null,
+    [activeFilters, ipId, refreshToken, space],
+    { initialData: null, deferUntilInteractions: true }
+  );
+  const similarityKey = activeFilters.similarDuplicate
+    ? similarIds == null ? 'pending' : `ready:${similarIds.length}:${similarIds[0] ?? 0}:${similarIds[similarIds.length - 1] ?? 0}`
+    : 'off';
+  const media = useMediaCursorCollection({
+    formatError: (error) => `读取图片库失败：${error instanceof Error ? error.message : '未知错误'}`,
+    request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
+    requestKey: JSON.stringify([space, ipId, refreshToken, activeFilters, sortOrder, similarityKey]),
+    space,
+  });
+
   const ip = data?.ip ?? null;
-  const images = data?.images ?? [];
-  const imageAssets = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const images = media.items;
   const selectableAssets = images;
   const groups = data?.groups ?? [];
   const tags = data?.tags ?? [];
+  const isLoading = isMetadataLoading || media.isLoading || (activeFilters.similarDuplicate && isSimilarityLoading);
+  const errorMessage = metadataErrorMessage ?? similarityErrorMessage ?? media.errorMessage;
+  const reload = () => {
+    reloadMetadata();
+    reloadSimilarity();
+    media.reload();
+  };
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (activeFilters.favorite) labels.push('收藏');
@@ -203,7 +226,12 @@ export function AllImagesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: imageAssets.map((image) => image.id), label: activeFilterLabel, space }
+        ? {
+            type: 'media-query',
+            request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
+            label: activeFilterLabel,
+            space,
+          }
         : { type: 'ip-all', ipId, filter: { type: 'all' }, space }
     );
   }
@@ -301,8 +329,6 @@ export function AllImagesScreen({
       onBack={onBack}
       onScroll={swipeSelection.onScroll}
       rightAction={rightAction}
-      scrollViewRef={scrollViewRef}
-      scrollable
       title={ip ? `全部素材 · ${ip.name}` : '全部素材'}
     >
 
@@ -378,7 +404,8 @@ export function AllImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reload}
       >
-        <View style={styles.galleryHeading}>
+        <VirtualizedAssetCollection
+          headerComponent={<View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
             {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
@@ -397,42 +424,38 @@ export function AllImagesScreen({
               orderBy={sortOrder}
             />
           </View>
-        </View>
-        {viewMode === 'detail' ? (
-          <View {...swipeSelection.panHandlers} style={styles.detailList}>
-            {images.map((image) => (
+          </View>}
+          images={images}
+          isLoadingMore={media.isLoadingMore}
+          listRef={scrollViewRef}
+          onEndReached={media.loadMore}
+          onItemMeasured={swipeSelection.registerMeasuredItemLayout}
+          onScroll={swipeSelection.onScroll}
+          panHandlers={swipeSelection.panHandlers}
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
                 image={image}
-                key={image.id}
-                onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
-            ))}
-          </View>
-        ) : (
-          <View {...swipeSelection.panHandlers} style={styles.grid}>
-            {images.map((image) => (
+          ) : (
               <ThumbnailTile
                 aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                containerStyle={fillCell ? styles.fillCell : undefined}
                 image={image}
-                key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                index={index}
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
-            ))}
-            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
-              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-            ))}
-          </View>
-        )}
+          )}
+          viewMode={viewMode}
+        />
       </PageStateBlock>
     </ScreenScaffold>
     </View>
@@ -493,10 +516,6 @@ function getAllImagesFilterTitle(filter: AllImagesFilterDropdown) {
 
 function getAllImagesFilterMode(filter: AllImagesFilterDropdown): '多选' | '单选' {
   return filter === 'status' || filter === 'group' || filter === 'tag' ? '多选' : '单选';
-}
-
-function filterImagesBySimilarity(images: ImageListItem[], filters: AllImagesFilterState): ImageListItem[] {
-  return filters.similarDuplicate ? filterSimilarImages(images) : images;
 }
 
 function hasImageOnlyFilter(filters: AllImagesFilterState): boolean {
@@ -800,5 +819,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: rhythm.compactGridGap,
+  },
+  fillCell: {
+    width: '100%',
   },
 });

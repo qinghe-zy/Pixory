@@ -61,3 +61,18 @@ test('bounded ip-recent context remains an explicit small-list load', () => {
   const { buildMediaReaderCursorRequest } = loadQuery();
   assert.equal(buildMediaReaderCursorRequest({ type: 'ip-recent', space: 'normal', ipId: 5, limit: 12 }), null);
 });
+
+test('filtered collection context preserves the query instead of truncating to currently loaded ids', () => {
+  const { buildMediaReaderCursorRequest } = loadQuery();
+  assert.deepEqual(plain(buildMediaReaderCursorRequest({
+    type: 'media-query',
+    space: 'normal',
+    request: { favoritesOnly: true, groupIds: [2, 4], orderBy: 'filenameAsc' },
+  })), {
+    favoritesOnly: true,
+    groupIds: [2, 4],
+    limit: 81,
+    mediaType: 'image',
+    orderBy: 'filenameAsc',
+  });
+});

@@ -402,6 +402,18 @@ export interface AiThreadHistoryItem extends AiThreadRecord {
   lastMessageAt: string | null;
 }
 
+export interface AiThreadHistoryPageCursor {
+  lastMessageAt: string;
+  createdAt: string;
+  id: string;
+}
+
+export interface AiThreadHistoryPage {
+  items: AiThreadHistoryItem[];
+  nextCursor: AiThreadHistoryPageCursor | null;
+  hasMore: boolean;
+}
+
 export type UpdateAiThreadPatch = Partial<
   Pick<
     CreateAiThreadInput,
@@ -2479,10 +2491,22 @@ export const aiThreadRepository = {
     return rows.map(mapThreadRow);
   },
 
-  async listHistoryItems(db: SQLiteDatabase, space: PixorySpace, filter: AiThreadHistoryFilter = 'all', limit = 100, searchText = ''): Promise<AiThreadHistoryItem[]> {
+  async listHistoryItemPage(
+    db: SQLiteDatabase,
+    input: {
+      space: PixorySpace;
+      filter?: AiThreadHistoryFilter;
+      limit?: number;
+      searchText?: string;
+      before?: AiThreadHistoryPageCursor | null;
+    }
+  ): Promise<AiThreadHistoryPage> {
+    const { space } = input;
+    const filter = input.filter ?? 'all';
+    const limit = Math.min(Math.max(input.limit ?? 40, 1), 100);
     const clauses = ['ai_threads.space = ?'];
     const values: (string | number)[] = [space];
-    const normalizedSearch = searchText.trim();
+    const normalizedSearch = input.searchText?.trim().toLocaleLowerCase() ?? '';
     if (filter === 'archived') {
       clauses.push('ai_threads.archivedAt IS NOT NULL');
     } else {
@@ -2496,7 +2520,31 @@ export const aiThreadRepository = {
         clauses.push("ai_knowledge_bases.category = 'customer_project'");
       }
     }
-    const normalizedSearchLower = normalizedSearch.toLocaleLowerCase();
+    if (normalizedSearch) {
+      const escapedSearch = normalizedSearch.replace(/[\\%_]/g, '\\$&');
+      const searchPattern = `%${escapedSearch}%`;
+      clauses.push(`(
+        LOWER(ai_threads.title) LIKE ? ESCAPE '\\'
+        OR LOWER(projected_history.lastMessagePreview) LIKE ? ESCAPE '\\'
+      )`);
+      values.push(searchPattern, searchPattern);
+    }
+    if (input.before) {
+      clauses.push(`(
+        projected_history.lastMessageAt < ?
+        OR (projected_history.lastMessageAt = ? AND ai_threads.createdAt < ?)
+        OR (projected_history.lastMessageAt = ? AND ai_threads.createdAt = ? AND ai_threads.id < ?)
+      )`);
+      values.push(
+        input.before.lastMessageAt,
+        input.before.lastMessageAt,
+        input.before.createdAt,
+        input.before.lastMessageAt,
+        input.before.createdAt,
+        input.before.id
+      );
+    }
+    values.push(limit + 1);
     // Resolve every persisted route in one recursive query. This keeps hidden
     // sibling branches out of recent-history ordering without the per-thread
     // async statement loop that crashed expo-sqlite on Android.
@@ -2572,24 +2620,37 @@ export const aiThreadRepository = {
        JOIN projected_history ON projected_history.threadId = ai_threads.id
        WHERE ${clauses.join(' AND ')}
        ORDER BY projected_history.lastMessageAt DESC,
-                ai_threads.createdAt DESC`,
+                ai_threads.createdAt DESC,
+                ai_threads.id DESC
+       LIMIT ?`,
       ...values,
     );
-    return rows
+    const items = rows
+      .slice(0, limit)
       .map((row) => ({
         ...mapThreadRow(row),
         knowledgeCategory: row.knowledgeCategory ?? null,
         lastMessageAt: row.lastMessageAt ?? null,
         lastMessagePreview: row.projectedLastMessagePreview?.trim() || row.lastMessagePreview,
-      }))
-      .filter((item) => {
-        if (!normalizedSearchLower) return true;
-        return (
-          item.title.toLocaleLowerCase().includes(normalizedSearchLower)
-          || (item.lastMessagePreview ?? '').toLocaleLowerCase().includes(normalizedSearchLower)
-        );
-      })
-      .slice(0, limit);
+      }));
+    const last = items[items.length - 1];
+    return {
+      hasMore: rows.length > limit,
+      items,
+      nextCursor: last?.lastMessageAt
+        ? { createdAt: last.createdAt, id: last.id, lastMessageAt: last.lastMessageAt }
+        : null,
+    };
+  },
+
+  async listHistoryItems(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    filter: AiThreadHistoryFilter = 'all',
+    limit = 100,
+    searchText = ''
+  ): Promise<AiThreadHistoryItem[]> {
+    return (await this.listHistoryItemPage(db, { filter, limit, searchText, space })).items;
   },
 
   async createMessage(db: SQLiteDatabase, input: CreateAiMessageInput): Promise<AiMessageRecord> {
@@ -3524,10 +3585,11 @@ export const aiThreadRepository = {
 
   async listFavoriteAssistantMessages(
     db: SQLiteDatabase,
-    input: { space: PixorySpace; limit?: number; offset?: number }
+    input: { space: PixorySpace; limit?: number; beforeCreatedAt?: string | null; beforeId?: string | null }
   ): Promise<AiMessageFavoriteListItem[]> {
     const limit = Math.max(1, Math.min(input.limit ?? 80, 200));
-    const offset = Math.max(0, input.offset ?? 0);
+    const beforeCreatedAt = input.beforeCreatedAt ?? null;
+    const beforeId = input.beforeId ?? null;
     const rows = await db.getAllAsync<AiMessageFavoriteRecord & {
       threadTitle: string;
       contextType: AiContextType;
@@ -3575,15 +3637,23 @@ export const aiThreadRepository = {
        WHERE ai_message_favorites.space = ?
          AND ai_messages.role = 'assistant'
          AND (
+           ? IS NULL
+           OR ai_message_favorites.createdAt < ?
+           OR (ai_message_favorites.createdAt = ? AND ai_message_favorites.id < ?)
+         )
+         AND (
            ai_message_favorites.messageVersionIndex IS NULL
            OR ai_message_versions.id IS NOT NULL
            OR ai_message_favorites.messageVersionIndex = COALESCE(version_counts.versionTotal, 1)
          )
        ORDER BY ai_message_favorites.createdAt DESC, ai_message_favorites.id DESC
-       LIMIT ? OFFSET ?`,
+       LIMIT ?`,
       input.space,
-      limit,
-      offset
+      beforeCreatedAt,
+      beforeCreatedAt,
+      beforeCreatedAt,
+      beforeId,
+      limit
     );
     return rows.map((row) => ({
       ...row,

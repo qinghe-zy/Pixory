@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
@@ -8,16 +8,19 @@ import { AiMaterialSourceSheet, type AiMaterialSourceKind } from '../components/
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
 import {
-  listGlobalMaterialsGroupedByThread,
-  listMaterials,
-  listThreadMaterials,
+  listGlobalMaterialGroupPage,
+  listMaterialsPage,
   removeMaterial,
   removeMaterials,
   retryMaterialParsing,
   type AiMaterialConversationGroup,
 } from '../ai/aiDocumentService';
-import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
-import type { AiDocumentStatus } from '../ai/types';
+import type {
+  AiDocumentRecord,
+  DocumentOwnerGroupCursor,
+  DocumentPageCursor,
+} from '../database/repositories/aiKnowledgeRepository';
+import type { AiDocumentOwnerType, AiDocumentStatus } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -25,10 +28,13 @@ interface AiMaterialListScreenProps {
   space: PixorySpace;
   knowledgeBaseId?: string;
   threadId?: string;
+  ownerType?: AiDocumentOwnerType;
+  ownerId?: string;
+  ownerTitle?: string;
   onBack: () => void;
   onOpenDocument: (documentId: string, title: string) => void;
   onImportMaterial?: (threadId?: string, source?: AiMaterialSourceKind) => void;
-  onOpenThreadMaterials?: (threadId: string, title: string) => void;
+  onOpenMaterialOwner?: (group: AiMaterialConversationGroup) => void;
 }
 
 const STATUS_LABELS: Record<AiDocumentStatus, string> = {
@@ -43,32 +49,96 @@ const STATUS_LABELS: Record<AiDocumentStatus, string> = {
 };
 
 const RECOVERABLE_PARSE_ACTION = '重试解析';
+const MATERIAL_PAGE_SIZE = 40;
+const MATERIAL_GROUP_PAGE_SIZE = 20;
 
-export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack, onOpenDocument, onImportMaterial, onOpenThreadMaterials }: AiMaterialListScreenProps) {
+export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerType, ownerId, ownerTitle, onBack, onOpenDocument, onImportMaterial, onOpenMaterialOwner }: AiMaterialListScreenProps) {
   const [items, setItems] = useState<AiDocumentRecord[]>([]);
   const [conversationGroups, setConversationGroups] = useState<AiMaterialConversationGroup[]>([]);
+  const [itemCursor, setItemCursor] = useState<DocumentPageCursor | null>(null);
+  const [groupCursor, setGroupCursor] = useState<DocumentOwnerGroupCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmingBatchRemove, setConfirmingBatchRemove] = useState(false);
   const [sourceSheetVisible, setSourceSheetVisible] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
-  const isGlobalView = !knowledgeBaseId && !threadId;
-  const screenTitle = threadId ? '会话资料库' : knowledgeBaseId ? '知识库资料' : '总资料库';
+  const isGlobalView = !knowledgeBaseId && !threadId && !ownerId;
+  const screenTitle = threadId ? '会话资料库' : knowledgeBaseId ? '知识库资料' : ownerTitle ?? '总资料库';
 
   const reload = useCallback(async () => {
     if (threadId) {
       setConversationGroups([]);
-      setItems(await listThreadMaterials({ space, threadId }));
+      const page = await listMaterialsPage({ limit: MATERIAL_PAGE_SIZE, space, threadId });
+      setItems(page.items);
+      setItemCursor(page.nextCursor);
+      setGroupCursor(null);
+      setHasMore(page.hasMore);
       return;
     }
     if (isGlobalView) {
       setItems([]);
-      setConversationGroups(await listGlobalMaterialsGroupedByThread({ space }));
+      const page = await listGlobalMaterialGroupPage({ limit: MATERIAL_GROUP_PAGE_SIZE, space });
+      setConversationGroups(page.items);
+      setGroupCursor(page.nextCursor);
+      setItemCursor(null);
+      setHasMore(page.hasMore);
       return;
     }
     setConversationGroups([]);
-    setItems(await listMaterials({ knowledgeBaseId, space }));
-  }, [isGlobalView, knowledgeBaseId, space, threadId]);
+    const page = await listMaterialsPage({
+      knowledgeBaseId,
+      limit: MATERIAL_PAGE_SIZE,
+      ownerId,
+      ownerType,
+      space,
+    });
+    setItems(page.items);
+    setItemCursor(page.nextCursor);
+    setGroupCursor(null);
+    setHasMore(page.hasMore);
+  }, [isGlobalView, knowledgeBaseId, ownerId, ownerType, space, threadId]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loadingMore) {
+      return;
+    }
+    setLoadingMore(true);
+    try {
+      if (isGlobalView) {
+        const page = await listGlobalMaterialGroupPage({
+          before: groupCursor,
+          limit: MATERIAL_GROUP_PAGE_SIZE,
+          space,
+        });
+        setConversationGroups((current) => {
+          const existing = new Set(current.map((group) => `${group.ownerType}:${group.ownerId}`));
+          return [...current, ...page.items.filter((group) => !existing.has(`${group.ownerType}:${group.ownerId}`))];
+        });
+        setGroupCursor(page.nextCursor);
+        setHasMore(page.hasMore);
+        return;
+      }
+      const page = await listMaterialsPage({
+        before: itemCursor,
+        knowledgeBaseId,
+        limit: MATERIAL_PAGE_SIZE,
+        ownerId,
+        ownerType,
+        space,
+        threadId,
+      });
+      setItems((current) => {
+        const existing = new Set(current.map((item) => item.id));
+        return [...current, ...page.items.filter((item) => !existing.has(item.id))];
+      });
+      setItemCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [groupCursor, hasMore, isGlobalView, itemCursor, knowledgeBaseId, loadingMore, ownerId, ownerType, space, threadId]);
 
   useEffect(() => {
     void reload();
@@ -173,10 +243,10 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
 
   return (
     <AiLightScaffold
+      bodyStyle={styles.body}
       footer={selectionFooter}
       onBack={onBack}
-      scrollable
-      subtitle={`${spaceLabel} · ${threadId ? '当前会话' : knowledgeBaseId ? '当前知识库' : '按对话展示'}`}
+      subtitle={`${spaceLabel} · ${threadId ? '当前会话' : knowledgeBaseId ? '当前知识库' : ownerId ? '当前来源' : '按来源展示'}`}
       title={screenTitle}
     >
       <View style={styles.contentStack}>
@@ -184,12 +254,17 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
         {threadId && onImportMaterial ? (
           <AiLightButton label="添加资料" onPress={() => setSourceSheetVisible(true)} />
         ) : null}
-        <View style={styles.list}>
-          {isGlobalView ? (
-            conversationGroups.length ? (
-              conversationGroups.map((group) => (
+        {isGlobalView ? (
+          <FlatList
+            contentContainerStyle={styles.list}
+            data={conversationGroups}
+            keyExtractor={(group) => `${group.ownerType}:${group.ownerId}`}
+            ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.title}>还没有资料</Text></View>}
+            ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
+            onEndReached={() => { void loadMore(); }}
+            onEndReachedThreshold={0.6}
+            renderItem={({ item: group }) => (
                 <View
-                  key={group.threadId}
                   style={styles.groupRow}
                 >
                   <View style={styles.groupHeader}>
@@ -197,12 +272,12 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
                       <Text numberOfLines={1} style={styles.title}>{group.threadTitle}</Text>
                       <Text style={styles.meta}>{group.ownerLabel} · {group.materialCount} 份资料 · 最近更新 {group.updatedAt.slice(5, 10)}</Text>
                     </View>
-                    {group.canOpenThreadMaterials ? (
+                    {onOpenMaterialOwner ? (
                       <Pressable
                         accessibilityRole="button"
                         onPress={() => {
                           if (!selectedIds.length) {
-                            onOpenThreadMaterials?.(group.threadId, group.threadTitle);
+                            onOpenMaterialOwner(group);
                           }
                         }}
                         style={({ pressed }) => [styles.openGroupButton, pressed && styles.pressed]}
@@ -214,21 +289,26 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
                   <View style={styles.groupMaterialList}>
                     {group.materials.map((material) => renderMaterialRow(material, true))}
                   </View>
+                  {group.materialCount > group.materials.length ? (
+                    <Text style={styles.previewNote}>仅预览最近 {group.materials.length} 份，进入后可查看全部</Text>
+                  ) : null}
                 </View>
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.title}>还没有资料</Text>
-              </View>
-            )
-          ) : items.length ? (
-            items.map((item) => renderMaterialRow(item))
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.title}>还没有材料</Text>
-            </View>
-          )}
-        </View>
+            )}
+            windowSize={7}
+          />
+        ) : (
+          <FlatList
+            contentContainerStyle={styles.list}
+            data={items}
+            keyExtractor={(item) => item.id}
+            ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.title}>还没有材料</Text></View>}
+            ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
+            onEndReached={() => { void loadMore(); }}
+            onEndReachedThreshold={0.6}
+            renderItem={({ item }) => renderMaterialRow(item)}
+            windowSize={7}
+          />
+        )}
       </View>
       <AppDialog
         accent="ai"
@@ -263,12 +343,22 @@ function iconForStatus(status: AiDocumentStatus): keyof typeof Ionicons.glyphMap
 }
 
 const styles = StyleSheet.create({
+  body: {
+    flex: 1,
+  },
   contentStack: {
+    flex: 1,
     gap: rhythm.entryCardGap,
   },
   status: {
     ...typography.textStyles.caption,
     color: aiLightColors.primaryActive,
+  },
+  loadingMore: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    paddingVertical: spacing[3],
+    textAlign: 'center',
   },
   list: {
     gap: rhythm.listCardGap,
@@ -349,6 +439,10 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
     fontSize: 14,
     lineHeight: 19,
+  },
+  previewNote: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   meta: {
     ...typography.textStyles.caption,

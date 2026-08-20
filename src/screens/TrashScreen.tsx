@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -8,9 +8,11 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { clearTrash, clearTrashItems, TRASH_RETENTION_DAYS } from '../services/trashService';
 import { formatDateTime, formatDuration, formatFileSize } from '../utils/formatters';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
@@ -31,13 +33,21 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
   const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
   const [isClearSelectedDialogVisible, setIsClearSelectedDialogVisible] = useState(false);
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ images: ImageListItem[]; ips: IpRecord[] }>(
+  const listRef = useRef<FlatList<ImageListItem> | null>(null);
+  const { data, isLoading, errorMessage, reload } = useScreenLoad<{
+    ips: IpRecord[];
+    summary: { count: number; totalBytes: number };
+  }>(
     async () => {
-      const [images, ips] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        activeIpId == null ? imageRepository.findDeleted(db, { mediaType: 'all' }) : imageRepository.findDeletedByIpId(db, activeIpId, { mediaType: 'all' }),
+      const [ips, summary] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findAllIncludingDeleted(db),
+        imageRepository.getFilteredStorageSummary(db, {
+          deletedOnly: true,
+          ipId: activeIpId ?? undefined,
+          mediaType: 'all',
+        }),
       ]));
-      return { images, ips };
+      return { ips, summary };
     },
     [activeIpId, refreshToken, space],
     {
@@ -45,17 +55,32 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取回收站失败：${message}`;
       },
-      initialData: { images: [], ips: [] },
+      initialData: { ips: [], summary: { count: 0, totalBytes: 0 } },
     }
   );
-  const images = data?.images ?? [];
   const storageSortMode = storageMode ? 'fileSizeDesc' : 'deletedAtDesc';
-  const visibleImages = useMemo(
-    () => storageSortMode === 'fileSizeDesc' ? [...images].sort((left, right) => right.fileSize - left.fileSize || left.id - right.id) : images,
-    [images, storageSortMode]
-  );
+  const media = useMediaCursorCollection({
+    formatError: (loadError) => `读取回收站失败：${loadError instanceof Error ? loadError.message : '未知错误'}`,
+    request: {
+      deletedOnly: true,
+      ipId: activeIpId ?? undefined,
+      mediaType: 'all',
+      orderBy: storageSortMode,
+    },
+    requestKey: JSON.stringify([space, activeIpId, refreshToken, storageSortMode]),
+    space,
+  });
+  const images = media.items;
+  const visibleImages = images;
   const ips = data?.ips ?? [];
-  const trashBytes = images.reduce((sum, image) => sum + image.fileSize, 0);
+  const trashBytes = data?.summary.totalBytes ?? 0;
+  const trashCount = data?.summary.count ?? 0;
+  const combinedLoading = isLoading || media.isLoading;
+  const combinedError = errorMessage ?? media.errorMessage;
+  const reloadAll = () => {
+    reload();
+    media.reload();
+  };
   const multiSelect = useImageMultiSelect(useMemo(() => visibleImages.map((image) => image.id), [visibleImages]));
   const selectedImages = useMemo(
     () => visibleImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
@@ -71,7 +96,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         }
 
         onChanged();
-        reload();
+        reloadAll();
         showToast('已恢复');
       } catch (error) {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -90,7 +115,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         }
         multiSelect.clearSelection();
         onChanged();
-        reload();
+        reloadAll();
         showToast(`已恢复 ${restoredCount} 个素材`);
       } catch (error) {
         showToast(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败');
@@ -105,7 +130,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         const result = await clearTrash(space);
         multiSelect.clearSelection();
         onChanged();
-        reload();
+        reloadAll();
 
         if (result.databaseDeletedCount !== result.requestedCount) {
           showToast(`数据库已删除 ${result.databaseDeletedCount}/${result.requestedCount} 张，本地文件已保留待核验`);
@@ -133,7 +158,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         const result = await clearTrashItems(ids, space);
         multiSelect.clearSelection();
         onChanged();
-        reload();
+        reloadAll();
         if (result.fileFailures.length > 0) {
           showToast(`已删除 ${result.databaseDeletedCount} 条记录，${result.fileFailures.length} 个文件需核验`);
           return;
@@ -147,7 +172,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
   }
 
   const rightAction =
-    images.length > 0 ? (
+    trashCount > 0 ? (
       <Pressable onPress={() => setIsClearDialogVisible(true)} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
         <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
       </Pressable>
@@ -163,14 +188,14 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="trash" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} rightAction={rightAction} scrollable title={titleSlot ? '' : "回收站"} titleSlot={titleSlot}>
+    <ScreenScaffold backgroundVariant="trash" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} rightAction={rightAction} title={titleSlot ? '' : "回收站"} titleSlot={titleSlot}>
       <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
         <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
         <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
       </Pressable>
       {storageMode ? (
         <View style={styles.storageNotice}>
-          <Text style={styles.storageNoticeTitle}>{formatFileSize(trashBytes)} · {images.length} 项</Text>
+          <Text style={styles.storageNoticeTitle}>{formatFileSize(trashBytes)} · {trashCount} 项</Text>
         </View>
       ) : null}
 
@@ -179,17 +204,20 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         emptyDescription="当前没有处于软删除状态的图片或视频。"
         emptyIconName="trash-outline"
         emptyTitle="回收站是空的"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && images.length === 0}
-        loading={isLoading}
+        errorMessage={combinedError}
+        isEmpty={!combinedLoading && images.length === 0}
+        loading={combinedLoading}
         loadingDescription="本地回收站索引读取完成后，这里会展示已软删除图片和视频。"
         loadingTitle="正在读取回收站"
-        onRetry={reload}
+        onRetry={reloadAll}
       >
-        <View style={styles.list}>
-          {visibleImages.map((image) => (
+        <VirtualizedAssetCollection
+          images={visibleImages}
+          isLoadingMore={media.isLoadingMore}
+          listRef={listRef}
+          onEndReached={media.loadMore}
+          renderAsset={(image) => (
             <Pressable
-              key={image.id}
               onLongPress={() => multiSelect.enterSelection(image.id)}
               onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
               style={({ pressed }) => [styles.itemCard, multiSelect.selectedImageIds.includes(image.id) ? styles.selectedItem : null, pressed && styles.pressed]}
@@ -224,8 +252,9 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
                 </Pressable>
               </View>
             </Pressable>
-          ))}
-        </View>
+          )}
+          viewMode="detail"
+        />
       </PageStateBlock>
     </ScreenScaffold>
     <AppActionSheet

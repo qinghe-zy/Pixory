@@ -3,7 +3,7 @@
 日期：2026-08-20
 适用版本：Pixory 2.8.1 工作树
 范围：首页、IP 卡片、图片阅读器、视频播放器、AI 聊天、SQLite/缓存、缩略图、图片/视频导入、批量整理、系统相册保存与 Personal 隔离。
-执行约束：未使用子智能体；每个模块完成后单独测试和 review；未执行打包、发布、提交、推送或数据库破坏性操作。
+执行约束：未使用子智能体；每个模块完成后单独测试和 review；未执行压力测试、打包、发布、推送或数据库破坏性操作。
 
 ## 1. 结论与声明边界
 
@@ -38,6 +38,13 @@
 | RV-17 | P0 | 混合导入虽共享预检，但图片与视频服务仍各自创建实际写入账本；若两类源文件都在预检后变大，累计值可被分开计算 | 页面在混合 gate 后只创建一个 `MediaImportCommitBudget`，向图片/视频服务传同一对象；独立服务调用仍兼容自动创建 | import/preflight/Personal 聚焦 19/19 |
 | RV-18 | P1 | 图片预取的 high-pressure 策略仍保留当前 decoded ref，且只有宽度限制；Android low-memory/trim 无法主动让 reader 收缩 | Android 媒体模块注册 `ComponentCallbacks2` 并发 typed event；reader 在本屏会话内 sticky high、释放全部 speculative decoded ref、禁止新预解码，`loadAsync` 同时限制 viewport pixel width/height | media/reader 聚焦 21/21；`:app:compileDebugKotlin` 成功 |
 | RV-19 | P1 | 聊天 around-anchor 在同一 Expo SQLite 连接上并发执行 anchor/latest/before/after，多数组合后又在 JS 建 Map 和 sort | 单条 CTE statement 读取并去重四个窗口，最终按 `(createdAt,id)` 排序；缺失 anchor 同一 statement 自然只返回 latest | 聊天聚焦 69 pass/0 fail/2 skipped；6000 消息 DB benchmark |
+| RV-20 | P1 | React 首帧会在数据库和六套字体完成前接管原生 Splash，正常启动可显示文字加载卡；300ms 后四个根页同时挂载 | 主动控制 Splash 到关键字体和 DB ready 后的 React commit；正常启动 fallback 无文字；日记字体延迟加载；根页按相邻顺序错峰预热 | `app-startup-performance-policy`、Android splash policy |
+| RV-21 | P1 | 根页常驻后，首页轨道/波形、“我的”轨道/火花线和 AI 频谱在不可见时继续无限运行 | 根页传递 `isActive`，隐藏时 cancel 主动画、波形 blend、timer 和频谱 bar，显示时从稳定初值恢复 | 启动 policy、TypeScript、逐文件 diff review |
+| RV-22 | P1 | Playfair 仅用于关于/日记/梦境等次级页面，却与首页 JetBrains 一起阻塞 Splash；目录创建与 SQLite 初始化串行 | 关键字体只保留首页所需 JetBrains；Playfair/手写字体首屏后加载；目录与 normal DB 通过 `Promise.all` 并行 | 启动/Splash/首页 10 pass；TypeScript |
+| RV-23 | P1 | AI 资料页换成 FlatList 后仍全量查库；总库按来源分组时单一来源仍可展开上千行 | document 与 owner group 分别增加稳定 keyset；总库 20 来源/页、每来源 4 份预览，任意 thread/knowledge-base/IP 来源均可进入 40 条/页完整列表 | AI policy/regression/normal+personal SQLite 21 pass |
+| RV-24 | P1 | AI 收藏默认读取前 80 条，用户无法继续浏览；内心生活初次进入并发读取日记、梦境、独白 | AI 收藏按分段懒加载并使用 `(createdAt,id)` keyset；内心生活只查询当前 tab | AI 长列表 policy |
+| RV-25 | P1 | 导入历史逐批读取明细计数；批量软删除逐项查库/无界文件核验；exact duplicate 先把所有 hash 行装入 JS | 状态按 batch/status 分块聚合；删除记录批量回读且文件最多 4 worker；exact hash 由 SQL `HAVING` 先缩小候选 | 批次/重复 policy 3 pass |
+| RV-26 | P1 | AI 会话历史先生成完整投影再由 JS 截断/渲染；快速切换搜索或筛选时旧 load-more 可能晚返回并混入新列表；`onEndReached` 可在 state commit 前重复请求同一 cursor | 搜索下推 SQLite；`(lastMessageAt,createdAt,id)` keyset 每页 40 条；`FlatList` 有界渲染；request generation 丢弃旧响应；同步 in-flight 门闩阻止重复页请求 | history/projection/navigation 44 pass / 0 fail / 2 skipped |
 
 ## 3. 逐项修改清单
 
@@ -126,6 +133,23 @@
 | UX-04 | 搜索栏可点击模式禁用内部输入命中；FilterChip/SearchBar 降低阴影 | 避免点击被 TextInput 截获并降低叠层绘制成本 | `SearchBar.tsx`, `FilterChip.tsx` |
 | UX-05 | 进度浮层适配安全区并使用 token | 避免状态栏遮挡和非法设计 token | `CircularProgress.tsx` |
 
+### 3.8 启动交接与大数据素材页补强
+
+| 编号 | 修改内容 | 性能/体验影响 | 文件 |
+| --- | --- | --- | --- |
+| SCALE-01 | 原生 Splash 由 React 在数据库、关键字体和首屏提交后主动隐藏；正常启动不再出现文字加载页 | 避免原生图提前消失后的二次提示和明暗闪烁 | `App.tsx` |
+| SCALE-02 | Playfair/手写字体延迟加载；目录与 DB 并行初始化；四个根页按相邻顺序分阶段预热；隐藏页动画由 `isActive` gate 停止 | 缩短 Splash 关键路径并降低启动期字体解析、同帧挂载与隐藏动画开销 | `App.tsx`, `HomeLibraryScreen.tsx`, `AiHomeScreen.tsx`, `MeScreen.tsx` |
+| SCALE-03 | 六个大素材入口统一使用 48 项 cursor 页和 bounded FlatList window | 素材量增长时不再全量查询、全量创建 React 元素 | `VirtualizedAssetCollection.tsx`, `useMediaCursorCollection.ts`, 六个素材页面 |
+| SCALE-04 | cursor 覆盖全部排序与回收站 deleted-only；回收站总容量改为 SQL aggregate | 排序稳定无 OFFSET 漂移，容量不因只加载首屏而显示错误 | `imageRepository.ts`, `TrashScreen.tsx` |
+| SCALE-05 | 标签相似属性只投影轻量列并生成 ID 集；筛选 reader 携带查询 scope 而非当前页 ID | 避免筛选全量缩略图，阅读器可越过首个分页继续浏览 | `imageRepository.ts`, `mediaReaderContextQuery.ts`, 素材结果页 |
+| SCALE-06 | 备份的分组、标签、批次和批次项改为 400 ID 分块 bulk map | 消除素材数/批次数线性增长的数据库往返 N+1 | repositories, `backupService.ts` |
+| SCALE-07 | 托管备份文件读取/哈希和备份包枚举使用最多 4 worker；复制去重仍顺序提交 | 提升大备份吞吐且限制 FD/I/O 峰值，避免同 hash 复制竞态 | `managedBackupService.ts`, `storageUsageService.ts` |
+| SCALE-08 | 预览目录一次 inventory 同时计算总量/图片/视频；存储页按空间复用 epoch+TTL 快照 | 避免同一预览树重复扫描，返回存储页立即显示稳定旧值再刷新 | `storageUsageService.ts`, `storageUsageSnapshotCache.ts`, `StorageUsageScreen.tsx` |
+| SCALE-09 | AI 消息收藏使用 `(createdAt,id)` keyset，切换到 AI 分段后才加载 | 不再默认 80 条静默截断，也不让图片收藏页预先承担聊天查询 | `aiThreadRepository.ts`, `aiChatService.ts`, `FavoritesScreen.tsx` |
+| SCALE-10 | AI 材料增加 document/owner group 双游标与已有库幂等复合索引；总库 bulk hydrate 且每来源只取 4 份预览 | 资料库增长时限制 SQL 返回、React state 和单卡子项；点击来源后仍可分页查看全部 | `aiKnowledgeRepository.ts`, `aiDocumentService.ts`, `AiMaterialListScreen.tsx`, `db.ts`, `schema.ts`, `App.tsx` |
+| SCALE-11 | 内心生活只读当前 tab；导入批次状态聚合；批量删除有界核验；exact duplicate SQL 预筛 | 降低初次进入、批次历史、批量操作和精确重复检测的数据库与 I/O 峰值 | `CompanionInnerLifeScreen.tsx`, `ImportBatchHistoryScreen.tsx`, `BatchManageImagesScreen.tsx`, repositories |
+| SCALE-12 | AI 会话历史使用 SQL keyset 与 `FlatList`；筛选请求按代际隔离 | 超长线程数量下只返回/渲染当前页；快速搜索、换筛选时旧页不会闪回或混入 | `aiThreadRepository.ts`, `aiChatService.ts`, `AiHistoryScreen.tsx` |
+
 ## 4. 文件级交付索引
 
 ### 4.1 新增生产文件
@@ -171,17 +195,14 @@
 
 | 门禁 | 最终结果 |
 | --- | --- |
-| `node --check fix_tests.js` | 通过，exit 0 |
 | `pnpm typecheck` | 通过，TypeScript 0 error |
-| `pnpm test` | 通过：1138 tests；1123 pass；0 fail；15 skipped |
-| `pnpm bench:ai-chat` | 通过：59,890 字符/200 patch replay 中位数 140.022ms；1MiB token estimate 7.516ms；小输入 0.187µs（Node v24.13.1/Windows host 基线） |
-| `pnpm bench:media-db` | 通过：100,000 行；seed+index 499.357ms；created 0.094ms、recent 0.062ms、video 0.056ms；每页 40 条；31 次采样；均命中 covering index、无 temp B-tree |
-| `pnpm bench:chat-db` | 通过：6000 消息；60 条/页；100 页完整遍历 6000 个唯一 ID；latest 0.223ms、before 0.226ms、around-anchor 5.237ms、遍历 64.827ms；查询均命中 `idx_ai_messages_thread_created_id` |
-| `android\\gradlew.bat :app:compileDebugKotlin` | 通过：BUILD SUCCESSFUL in 33s；317 tasks（4 executed/313 up-to-date）；只有 Gradle/第三方既有提示 |
+| 16 个本轮性能聚焦测试文件 | 通过：104 tests；102 pass；0 fail；2 skipped |
+| AI history/projection/navigation | 通过：46 tests；44 pass；0 fail；2 skipped |
+| `pnpm test` | 通过：1161 tests；1146 pass；0 fail；15 skipped |
 | `git diff --check` | 通过；仅输出 Git 的 LF→CRLF 提示，无 whitespace error |
-| ADB 设备探测 | `adb devices -l` 只有表头、无设备；所有 Android 门禁保持待验证 |
+| 压力 benchmark / 真机 / APK | 按用户要求本轮未执行；已有历史 host benchmark 不作为本轮完成证据 |
 
-本轮只执行 Android Kotlin 编译，没有构建 APK、安装、发布、提交或对用户数据库做写入式压力测试。`node:sqlite` 输出 experimental warning，因此上述数据库数据只作为可重复 host 回归基线，不代表 Android 绝对 SLA。
+本轮没有构建 APK、安装或发布，也没有对用户数据库做写入式压力测试。SQLite integration 使用临时内存数据库；`node:sqlite` 会输出 experimental warning，因此只证明查询语义和稳定分页，不代表 Android 绝对 SLA。
 
 ## 6. Android 真机验收清单（当前不能伪报通过）
 
@@ -197,7 +218,7 @@
 
 本次 follow-up 已完成原 review 中所有可由源码确定的补强项：图片双维像素预算与 Android memory trim、normal/personal 独立 media epoch、混合导入共享实际字节账本、6000 消息 repository benchmark 及 around-anchor 单 statement。
 
-仍需设备证据的加强项：
+完整的未实施项已移入 `docs/superpowers/plans/2026-08-20-performance-enhancement-backlog.md`。其中仍需设备证据的加强项包括：
 
 - 接入 Android Macrobenchmark/JankStats、Perfetto 和 `adb shell dumpsys meminfo`，把首屏、reader、short-feed 和 6000 条聊天变成可重复门禁。
 - 在真实设备按 RAM/codec 能力分档调整视频准备并发；只有 3 路并行仍不能覆盖目标时，再评估 Media3 原生 preload manager。

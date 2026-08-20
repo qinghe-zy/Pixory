@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -9,13 +9,14 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
 import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { useAssetListPreferences } from '../services/assetListPreferences';
-import { getFilenamePrefix } from '../utils/batchSelectionRules';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface TagResultScreenProps {
@@ -74,28 +75,15 @@ export function TagResultScreen({
   const [activeFilters, setActiveFilters] = useState<TagResultFilterState>(EMPTY_TAG_RESULT_FILTERS);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
-  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     tag: TagRecord | null;
-    images: ImageListItem[];
     ips: IpRecord[];
     groups: GroupRecord[];
   }>(
     async () => {
-      const [tag, baseImages, ips, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
+      const [tag, ips, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
         tagRepository.findById(db, tagId),
-        imageRepository.findByTagId(db, tagId, {
-          mediaType: hasImageOnlyFilter(activeFilters) ? 'image' : 'all',
-          aspectRatio: activeFilters.aspectRatio ?? undefined,
-          favoritesOnly: activeFilters.favorite || undefined,
-          groupIds: activeFilters.groupIds,
-          ipIds: activeFilters.ipIds,
-          orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : sortOrder,
-          recentlyViewedOnly: activeFilters.recentViewed || undefined,
-          ungroupedOnly: activeFilters.ungrouped || undefined,
-          minFileSize: activeFilters.size?.minFileSize,
-          maxFileSize: activeFilters.size?.maxFileSize,
-        }),
         ipRepository.findAll(db),
         groupRepository.findAll(db),
       ]));
@@ -103,9 +91,7 @@ export function TagResultScreen({
       if (!tag) {
         throw new Error('没有找到这个标签。');
       }
-      const images = filterImagesBySimilarity(baseImages, activeFilters);
-
-      return { tag, images, ips, groups };
+      return { tag, ips, groups };
     },
     [activeFilters, tagId, refreshToken, sortOrder, space],
     {
@@ -113,16 +99,57 @@ export function TagResultScreen({
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取标签结果失败：${message}`;
       },
-      initialData: { tag: null, images: [], ips: [], groups: [] },
+      initialData: { tag: null, ips: [], groups: [] },
     }
   );
 
+  const mediaRequest = {
+    aspectRatio: activeFilters.aspectRatio ?? undefined,
+    favoritesOnly: activeFilters.favorite || undefined,
+    groupIds: activeFilters.groupIds,
+    ipIds: activeFilters.ipIds,
+    maxFileSize: activeFilters.size?.maxFileSize,
+    mediaType: hasImageOnlyFilter(activeFilters) ? 'image' as const : 'all' as const,
+    minFileSize: activeFilters.size?.minFileSize,
+    orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' as const : sortOrder,
+    recentlyViewedOnly: activeFilters.recentViewed || undefined,
+    tagId,
+    ungroupedOnly: activeFilters.ungrouped || undefined,
+  };
+  const hasRepeatedFilter = activeFilters.similarSameSize || activeFilters.similarFilenamePrefix || activeFilters.similarDuplicate;
+  const repeated = useScreenLoad<number[] | null>(
+    async () => hasRepeatedFilter
+      ? runWithDatabaseSpace(space, (db) => imageRepository.findRepeatedAttributeImageIds(db, mediaRequest, {
+          filenamePrefix: activeFilters.similarFilenamePrefix,
+          sameFileSignature: activeFilters.similarDuplicate,
+          sameSize: activeFilters.similarSameSize,
+        }))
+      : null,
+    [activeFilters, refreshToken, sortOrder, space, tagId],
+    { initialData: null, deferUntilInteractions: true }
+  );
+  const repeatedKey = hasRepeatedFilter
+    ? repeated.data == null ? 'pending' : `ready:${repeated.data.length}:${repeated.data[0] ?? 0}:${repeated.data[repeated.data.length - 1] ?? 0}`
+    : 'off';
+  const media = useMediaCursorCollection({
+    formatError: (loadError) => `读取标签结果失败：${loadError instanceof Error ? loadError.message : '未知错误'}`,
+    request: { ...mediaRequest, imageIds: hasRepeatedFilter ? repeated.data ?? [] : undefined },
+    requestKey: JSON.stringify([space, tagId, refreshToken, activeFilters, sortOrder, repeatedKey]),
+    space,
+  });
+
   const tag = data?.tag ?? null;
-  const images = data?.images ?? [];
-  const imageAssets = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const images = media.items;
   const selectableAssets = images;
   const ips = data?.ips ?? [];
   const groups = data?.groups ?? [];
+  const combinedLoading = isLoading || media.isLoading || (hasRepeatedFilter && repeated.isLoading);
+  const combinedError = errorMessage ?? repeated.errorMessage ?? media.errorMessage;
+  const reloadAll = () => {
+    reload();
+    repeated.reload();
+    media.reload();
+  };
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (activeFilters.favorite) labels.push('收藏');
@@ -186,7 +213,12 @@ export function TagResultScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: imageAssets.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}`, space }
+        ? {
+            type: 'media-query',
+            request: { ...mediaRequest, imageIds: hasRepeatedFilter ? repeated.data ?? [] : undefined },
+            label: `#${tag?.name ?? '标签'} · ${filterLabel}`,
+            space,
+          }
         : { type: 'tag', tagId, space }
     );
   }
@@ -197,9 +229,9 @@ export function TagResultScreen({
 
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
-      onChanged={reload}
+      onChanged={reloadAll}
       onClearSelection={multiSelect.clearSelection}
-      onDeleted={reload}
+      onDeleted={reloadAll}
       selectedImages={selectedAssets}
       space={space}
       totalCount={selectableAssets.length}
@@ -268,9 +300,6 @@ export function TagResultScreen({
       backgroundVariant="tags"
       footer={footer}
       onBack={onBack}
-      onScroll={swipeSelection.onScroll}
-      scrollViewRef={scrollViewRef}
-      scrollable
       title={tag ? `#${tag.name}` : '标签结果'}
     >
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
@@ -330,14 +359,15 @@ export function TagResultScreen({
         emptyDescription="这个标签当前没有关联中的图片，可能都已移入回收站或还没被使用。"
         emptyIconName="search-outline"
         emptyTitle="暂无标签结果"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && images.length === 0}
-        loading={isLoading}
+        errorMessage={combinedError}
+        isEmpty={!combinedLoading && images.length === 0}
+        loading={combinedLoading}
         loadingDescription="本地标签结果读取完成后，这里会展示关联图片。"
         loadingTitle="正在读取标签结果"
-        onRetry={reload}
+        onRetry={reloadAll}
       >
-        <View style={styles.galleryHeading}>
+        <VirtualizedAssetCollection
+          headerComponent={<View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
             {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
@@ -356,42 +386,38 @@ export function TagResultScreen({
               orderBy={sortOrder}
             />
           </View>
-        </View>
-        {viewMode === 'detail' ? (
-          <View {...swipeSelection.panHandlers} style={styles.detailList}>
-            {images.map((image) => (
+          </View>}
+          images={images}
+          isLoadingMore={media.isLoadingMore}
+          listRef={scrollViewRef}
+          onEndReached={media.loadMore}
+          onItemMeasured={swipeSelection.registerMeasuredItemLayout}
+          onScroll={swipeSelection.onScroll}
+          panHandlers={swipeSelection.panHandlers}
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
                 image={image}
-                key={image.id}
-                onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
-            ))}
-          </View>
-        ) : (
-          <View {...swipeSelection.panHandlers} style={styles.grid}>
-            {images.map((image) => (
+          ) : (
               <ThumbnailTile
                 aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                containerStyle={fillCell ? styles.fillCell : undefined}
                 image={image}
-                key={image.id}
-                onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                index={index}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
-            ))}
-            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
-              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-            ))}
-          </View>
-        )}
+          )}
+          viewMode={viewMode}
+        />
       </PageStateBlock>
     </ScreenScaffold>
     </View>
@@ -451,44 +477,6 @@ function getTagResultFilterTitle(filter: TagResultFilterDropdown) {
 
 function getTagResultFilterMode(filter: TagResultFilterDropdown): '多选' | '单选' {
   return filter === 'size' ? '单选' : '多选';
-}
-
-function filterImagesBySimilarity(images: ImageListItem[], filters: TagResultFilterState): ImageListItem[] {
-  if (!filters.similarSameSize && !filters.similarFilenamePrefix && !filters.similarDuplicate) {
-    return images;
-  }
-
-  const sameSizeCounts = new Map<string, number>();
-  const prefixCounts = new Map<string, number>();
-  const duplicateCounts = new Map<string, number>();
-
-  for (const image of images) {
-    const sizeKey = `${image.width}x${image.height}`;
-    const duplicateKey = `${sizeKey}:${image.fileSize}`;
-    sameSizeCounts.set(sizeKey, (sameSizeCounts.get(sizeKey) ?? 0) + 1);
-    duplicateCounts.set(duplicateKey, (duplicateCounts.get(duplicateKey) ?? 0) + 1);
-
-    const prefix = getFilenamePrefix(image.originalFilename);
-    if (prefix) {
-      prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
-    }
-  }
-
-  return images.filter((image) => {
-    if (filters.similarSameSize && (sameSizeCounts.get(`${image.width}x${image.height}`) ?? 0) <= 1) {
-      return false;
-    }
-    if (filters.similarDuplicate && (duplicateCounts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) <= 1) {
-      return false;
-    }
-    if (filters.similarFilenamePrefix) {
-      const prefix = getFilenamePrefix(image.originalFilename);
-      if (!prefix || (prefixCounts.get(prefix) ?? 0) <= 1) {
-        return false;
-      }
-    }
-    return true;
-  });
 }
 
 function hasImageOnlyFilter(filters: TagResultFilterState): boolean {
@@ -666,6 +654,9 @@ const styles = StyleSheet.create({
   detailList: {
     gap: rhythm.listCardGap,
     marginTop: rhythm.microGap,
+  },
+  fillCell: {
+    width: '100%',
   },
   galleryHeading: {
     alignItems: 'center',

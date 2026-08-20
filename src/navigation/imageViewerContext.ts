@@ -1,4 +1,4 @@
-import type { PixorySpace } from '../database';
+import type { MediaCursorPageRequest, PixorySpace } from '../database';
 
 export type SpacedId = {
   id: number;
@@ -30,6 +30,11 @@ export type ImageViewerContext =
   | (ImageViewerContextBase & { type: 'ip-recent'; ipId: number; limit: number })
   | (ImageViewerContextBase & { type: 'import-batch'; ipId: number; importBatchId: number })
   | (ImageViewerContextBase & { type: 'image-scope'; imageIds: number[]; label?: string })
+  | (ImageViewerContextBase & {
+      type: 'media-query';
+      label?: string;
+      request: Omit<MediaCursorPageRequest, 'cursor' | 'direction' | 'limit' | 'mediaType'>;
+    })
   | (ImageViewerContextBase & { type: 'ip-all'; ipId: number; filter: ImageViewerIpAllFilter })
   | (ImageViewerContextBase & { type: 'group'; ipId: number; groupId: number })
   | (ImageViewerContextBase & { type: 'tag'; tagId: number })

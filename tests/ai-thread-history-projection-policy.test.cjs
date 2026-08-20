@@ -73,7 +73,7 @@ function insertMessage(db, input) {
 }
 
 test('recent-chat history is projected from each thread’s adopted route', () => {
-  const historyBody = source.slice(source.indexOf('async listHistoryItems('), source.indexOf('async createMessage('));
+  const historyBody = source.slice(source.indexOf('async listHistoryItemPage('), source.indexOf('async listHistoryItems('));
   assert.match(historyBody, /WITH RECURSIVE adopted_scopes/);
   assert.match(historyBody, /ranked_visible_messages/);
   assert.match(historyBody, /projected_history/);
@@ -81,7 +81,7 @@ test('recent-chat history is projected from each thread’s adopted route', () =
   assert.match(historyBody, /projectedLastMessagePreview/);
   assert.doesNotMatch(historyBody, /for \(const row of rows\)/);
   assert.doesNotMatch(historyBody, /MAX\(COALESCE\(completedAt, updatedAt, createdAt\)\)/);
-  assert.doesNotMatch(historyBody, /LIMIT \?/, 'the final visible-route ordering must happen after route projection');
+  assert.match(historyBody, /LIMIT \?/, 'the final visible-route ordering should be bounded after route projection');
 });
 
 test('branch tree does not synthesize a different route when no route was supplied', () => {
@@ -162,5 +162,40 @@ test('history ignores a newer sibling and previews the newest message on the ado
   assert.deepEqual(items.map((item) => item.id), ['other-thread', 'adopted-thread']);
   assert.equal(items[1].lastMessagePreview, 'adopted route latest');
   assert.equal(items.some((item) => item.id === 'empty-thread'), false);
+  db.close();
+});
+
+test('history pages keep equal activity timestamps stable and search wildcards literal', async () => {
+  const db = new AsyncDatabase();
+  createHistorySchema(db);
+  for (const suffix of ['a', 'b', 'c', 'd', 'e']) {
+    insertThread(db, `thread-${suffix}`, { title: suffix === 'c' ? '100%_match' : `Thread ${suffix}` });
+    insertMessage(db, {
+      id: `message-${suffix}`,
+      threadId: `thread-${suffix}`,
+      role: 'assistant',
+      content: `content ${suffix}`,
+      createdAt: '2026-01-02T00:00:00.000Z',
+    });
+  }
+
+  const repository = loadRepository();
+  const first = await repository.listHistoryItemPage(db, { limit: 2, space: 'normal' });
+  const second = await repository.listHistoryItemPage(db, {
+    before: first.nextCursor,
+    limit: 2,
+    space: 'normal',
+  });
+  assert.deepEqual(first.items.map((item) => item.id), ['thread-e', 'thread-d']);
+  assert.deepEqual(second.items.map((item) => item.id), ['thread-c', 'thread-b']);
+  assert.equal(new Set([...first.items, ...second.items].map((item) => item.id)).size, 4);
+  assert.equal(first.hasMore, true);
+
+  const search = await repository.listHistoryItemPage(db, {
+    limit: 10,
+    searchText: '%_',
+    space: 'normal',
+  });
+  assert.deepEqual(search.items.map((item) => item.id), ['thread-c']);
   db.close();
 });

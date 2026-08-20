@@ -35,6 +35,7 @@ function getCachedHomeRoleCards(space: PixorySpace): AiRoleCardRecord[] {
 
 interface AiHomeScreenProps {
   footer?: ReactNode;
+  isActive?: boolean;
   space: PixorySpace;
   /** Increment to trigger a fresh data reload without unmounting the screen. */
   refreshToken?: number;
@@ -57,6 +58,7 @@ interface RoleShortcut {
 
 export function AiHomeScreen({
   footer,
+  isActive = true,
   space,
   refreshToken,
   onStartNormalChat,
@@ -153,7 +155,7 @@ export function AiHomeScreen({
               <Text style={styles.primaryTitle}>开始聊天</Text>
               <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
             </View>
-            <AiActiveSpectrum />
+            <AiActiveSpectrum active={isActive} />
             <View style={styles.primaryArrow}>
               <Ionicons color={aiLightColors.onDark} name="chevron-forward" size={22} />
             </View>
@@ -195,7 +197,7 @@ export function AiHomeScreen({
       </View>
 
       <View style={styles.section}>
-        <SectionTitle actionLabel="全部" title="最近聊天" showDecoration onPress={onOpenHistory} />
+        <SectionTitle actionLabel="全部" isActive={isActive} title="最近聊天" showDecoration onPress={onOpenHistory} />
         <View style={[styles.recentChatPanel, threads.length ? styles.recentChatPanelFilled : styles.recentChatPanelEmpty]}>
           <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={threads.length > RECENT_CHAT_VISIBLE_ROWS} style={styles.recentChatScroll}>
             {threads.length ? (
@@ -287,18 +289,19 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
 
 interface SectionTitleProps {
   actionLabel?: string;
+  isActive?: boolean;
   title: string;
   onPress?: () => void;
   showDecoration?: boolean;
 }
 
-function SectionTitle({ actionLabel, title, onPress, showDecoration }: SectionTitleProps) {
+function SectionTitle({ actionLabel, isActive = true, title, onPress, showDecoration }: SectionTitleProps) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleBlock}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
           <Text style={styles.sectionTitle}>{title}</Text>
-          {showDecoration && <AiActiveSpectrum mini />}
+          {showDecoration && <AiActiveSpectrum active={isActive} mini />}
         </View>
         {!showDecoration && <View style={styles.sectionUnderline} />}
       </View>

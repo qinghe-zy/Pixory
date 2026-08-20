@@ -42,12 +42,12 @@ class TestDatabase {
     `);
     this.db.prepare("INSERT INTO ips (id, name) VALUES (1, 'IP')").run();
     const insert = this.db.prepare(`INSERT INTO image_assets
-      (id, ipId, sourceOrder, mediaType, originalFilename, internalFilename, createdAt, updatedAt, lastViewedAt)
-      VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)`);
+      (id, ipId, sourceOrder, mediaType, originalFilename, internalFilename, fileSize, deletedAt, createdAt, updatedAt, lastViewedAt)
+      VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     for (let id = 1; id <= 8; id += 1) {
       const createdAt = id <= 4 ? '2026-01-01T00:00:00.000Z' : '2026-01-02T00:00:00.000Z';
       const viewedAt = id === 1 ? null : `2026-01-${String(Math.ceil(id / 2)).padStart(2, '0')}T00:00:00.000Z`;
-      insert.run(id, Math.ceil(id / 2), [2, 5, 8].includes(id) ? 'video' : 'image', `${id}.jpg`, `${id}.jpg`, createdAt, createdAt, viewedAt);
+      insert.run(id, Math.ceil(id / 2), [2, 5, 8].includes(id) ? 'video' : 'image', `${9 - id}.jpg`, `${id}.jpg`, id * 10, null, createdAt, createdAt, viewedAt);
     }
     this.db.exec(`
       INSERT INTO groups (id, name, updatedAt) VALUES (1, 'G', '2026-01-01');
@@ -71,6 +71,38 @@ test('created-time cursor pages keep equal timestamps stable without duplicates 
     assert.equal(new Set([...first.items, ...second.items].map((item) => item.id)).size, 6);
     assert.doesNotMatch(db.lastQuery.sql, /OFFSET/i);
     assert.equal(db.lastQuery.params.at(-1), 4);
+  } finally { db.close(); }
+});
+
+test('cursor pages support every asset-list sort and deleted-only scopes', async () => {
+  const db = new TestDatabase();
+  try {
+    const cases = [
+      ['createdAtAsc', [1, 2, 3]],
+      ['updatedAtDesc', [8, 7, 6]],
+      ['updatedAtAsc', [1, 2, 3]],
+      ['lastViewedAtAsc', [2, 3, 4]],
+      ['sourceOrderDesc', [8, 7, 6]],
+      ['filenameAsc', [8, 7, 6]],
+      ['filenameDesc', [1, 2, 3]],
+      ['fileSizeDesc', [8, 7, 6]],
+      ['fileSizeAsc', [1, 2, 3]],
+    ];
+    for (const [orderBy, expected] of cases) {
+      const page = await imageRepository.findFilteredCursorPage(db, { direction: 'after', limit: 3, mediaType: 'all', orderBy });
+      assert.deepEqual(page.items.map((item) => item.id), expected, orderBy);
+      assert.doesNotMatch(db.lastQuery.sql, /OFFSET/i);
+    }
+    db.db.exec("UPDATE image_assets SET deletedAt = createdAt WHERE id IN (7, 8)");
+    const trash = await imageRepository.findFilteredCursorPage(db, {
+      deletedOnly: true,
+      direction: 'after',
+      includeDeleted: true,
+      limit: 3,
+      mediaType: 'all',
+      orderBy: 'deletedAtDesc',
+    });
+    assert.deepEqual(trash.items.map((item) => item.id), [8, 7]);
   } finally { db.close(); }
 });
 

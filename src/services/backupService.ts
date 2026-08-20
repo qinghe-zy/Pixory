@@ -33,6 +33,7 @@ import {
 } from './fileStorageService';
 import { verifyPersonalPassword } from './personalSystemService';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
+import { invalidateStorageUsageSnapshot } from './storageUsageSnapshotCache';
 import {
   createManagedBackupManifestV2,
   mergeManagedDatabaseRecords,
@@ -244,18 +245,21 @@ async function buildExportData(db: SQLiteDatabase, ipId?: number): Promise<Expor
   const filteredIpIds = new Set(filteredIps.map((ip) => ip.id));
   const filteredGroups = groups.filter((group) => filteredIpIds.has(group.ipId));
   const filteredImages = images.filter((image) => filteredIpIds.has(image.ipId));
-  const imagesWithRelations = await Promise.all(
-    filteredImages.map(async (image) => ({
-      ...image,
-      groupIds: await imageRepository.findGroupIdsByImageId(db, image.id),
-      tagNames: (await tagRepository.findByImageId(db, image.id)).map((tag) => tag.name),
-    }))
+  const imageIds = filteredImages.map((image) => image.id);
+  const [groupIdsByImageId, tagNamesByImageId, importBatches] = await Promise.all([
+    imageRepository.findGroupIdsByImageIds(db, imageIds),
+    tagRepository.findNamesByImageIds(db, imageIds),
+    importBatchRepository.findByIpIds(db, filteredIps.map((ip) => ip.id)),
+  ]);
+  const imagesWithRelations = filteredImages.map((image) => ({
+    ...image,
+    groupIds: groupIdsByImageId.get(image.id) ?? [],
+    tagNames: tagNamesByImageId.get(image.id) ?? [],
+  }));
+  const batchItems = await importBatchRepository.findItemsByBatchIds(db, importBatches.map((batch) => batch.id));
+  const importBatchItemsByBatchId = Object.fromEntries(
+    importBatches.map((batch) => [String(batch.id), batchItems.get(batch.id) ?? []])
   );
-  const importBatches = (await Promise.all(filteredIps.map((ip) => importBatchRepository.findByIpId(db, ip.id, 1000)))).flat();
-  const importBatchItemsByBatchId: ExportData['importBatchItemsByBatchId'] = {};
-  for (const batch of importBatches) {
-    importBatchItemsByBatchId[String(batch.id)] = await importBatchRepository.findItemsByBatchId(db, batch.id);
-  }
 
   return { ips: filteredIps, groups: filteredGroups, tags, images: imagesWithRelations, importBatches, importBatchItemsByBatchId };
 }
@@ -314,6 +318,7 @@ async function createBackupShell(prefix: string, space: PixorySpace = 'normal') 
   await ensureLocalDirectory(`${joinStoragePath(backupDir, 'database')}/`);
   await ensureLocalDirectory(`${joinStoragePath(backupDir, 'originals')}/`);
   await ensureLocalDirectory(`${joinStoragePath(backupDir, 'thumbnails')}/`);
+  invalidateStorageUsageSnapshot(space);
 
   return { backupDir, createdAt };
 }

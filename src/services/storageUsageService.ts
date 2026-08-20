@@ -4,6 +4,8 @@ import * as SecureStore from 'expo-secure-store';
 import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { getExportsDir, getOriginalsDir, getTempDir, getThumbnailsDir, joinStoragePath } from './fileStorageService';
 import { getLocalEntrySize } from './cacheCleanupService';
+import { MAX_FILE_TASK_CONCURRENCY, settleFileTasksWithConcurrency } from './boundedFileConcurrency';
+import { invalidateStorageUsageSnapshot, setCachedStorageUsageSummary } from './storageUsageSnapshotCache';
 
 export type StorageUsageCategoryKey =
   | 'original-assets'
@@ -114,32 +116,50 @@ async function safeGetLocalEntrySize(uri: string | null | undefined): Promise<{ 
   }
 }
 
-async function getPreviewBreakdown(space: PixorySpace): Promise<{ imageBytes: number; videoBytes: number }> {
-  return runWithDatabaseSpace(space, async (db) => {
-    const assets = await imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' });
-    const imageUris = new Set<string>();
-    const videoUris = new Set<string>();
+async function scanPreviewInventory(space: PixorySpace): Promise<{
+  bytes: number;
+  imageBytes: number;
+  videoBytes: number;
+  failed: boolean;
+}> {
+  const videoUris = await runWithDatabaseSpace(space, (db) => db.getAllAsync<{
+    thumbnailFileUri: string | null;
+    coverThumbnailFileUri: string | null;
+  }>(`SELECT thumbnailFileUri, coverThumbnailFileUri FROM image_assets WHERE mediaType = 'video'`));
+  const videoPreviewSet = new Set(videoUris.flatMap((row) => [row.thumbnailFileUri, row.coverThumbnailFileUri].filter(Boolean) as string[]));
+  const pendingDirectories = [normalizeDirectoryUri(getThumbnailsDir(space))];
+  let imageBytes = 0;
+  let videoBytes = 0;
+  let failed = false;
 
-    for (const asset of assets) {
-      const targetSet = asset.mediaType === 'video' ? videoUris : imageUris;
-      if (asset.thumbnailFileUri) {
-        targetSet.add(asset.thumbnailFileUri);
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.shift()!;
+    let names: string[];
+    try {
+      names = await FileSystem.readDirectoryAsync(directory);
+    } catch {
+      failed = true;
+      continue;
+    }
+    const settled = await settleFileTasksWithConcurrency(names, MAX_FILE_TASK_CONCURRENCY, async (name) => {
+      const uri = `${directory}${name}`;
+      return { uri, info: await FileSystem.getInfoAsync(uri) };
+    });
+    for (const item of settled) {
+      if (item.status === 'rejected' || !item.value.info.exists) {
+        failed = true;
+        continue;
       }
-      if (asset.coverThumbnailFileUri) {
-        targetSet.add(asset.coverThumbnailFileUri);
+      if (item.value.info.isDirectory) {
+        pendingDirectories.push(normalizeDirectoryUri(item.value.uri));
+      } else if (videoPreviewSet.has(item.value.uri)) {
+        videoBytes += item.value.info.size ?? 0;
+      } else {
+        imageBytes += item.value.info.size ?? 0;
       }
     }
-
-    const [imageSizes, videoSizes] = await Promise.all([
-      Promise.all([...imageUris].map((uri) => safeGetLocalEntrySize(uri))),
-      Promise.all([...videoUris].map((uri) => safeGetLocalEntrySize(uri))),
-    ]);
-
-    return {
-      imageBytes: imageSizes.reduce((sum, item) => sum + item.bytes, 0),
-      videoBytes: videoSizes.reduce((sum, item) => sum + item.bytes, 0),
-    };
-  });
+  }
+  return { bytes: imageBytes + videoBytes, imageBytes, videoBytes, failed };
 }
 
 async function readPreviousSummary(space: PixorySpace): Promise<StoredStorageSummary | null> {
@@ -172,11 +192,8 @@ async function writePreviousSummary(space: PixorySpace, summary: StoredStorageSu
 
 async function getTrashStats(space: PixorySpace): Promise<{ bytes: number; count: number }> {
   return runWithDatabaseSpace(space, async (db) => {
-    const deleted = await imageRepository.findDeleted(db, { mediaType: 'all' });
-    return {
-      bytes: deleted.reduce((sum, item) => sum + item.fileSize, 0),
-      count: deleted.length,
-    };
+    const summary = await imageRepository.getFilteredStorageSummary(db, { deletedOnly: true, mediaType: 'all' });
+    return { bytes: summary.totalBytes, count: summary.count };
   });
 }
 
@@ -208,12 +225,11 @@ export async function getChatHistoryStats(space: PixorySpace): Promise<{ bytes: 
 
 export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Promise<StorageUsageSummary> {
   const previous = await readPreviousSummary(space);
-  const [original, preview, temp, backup, previewBreakdown, trash, assetStats, backupEntries, chatStats] = await Promise.all([
+  const [original, previewInventory, temp, backup, trash, assetStats, backupEntries, chatStats] = await Promise.all([
     safeGetLocalEntrySize(getOriginalsDir(space)),
-    safeGetLocalEntrySize(getThumbnailsDir(space)),
+    scanPreviewInventory(space),
     safeGetLocalEntrySize(getTempDir(space)),
     safeGetLocalEntrySize(getExportsDir(space)),
-    getPreviewBreakdown(space),
     getTrashStats(space),
     getAssetStats(space),
     listBackupExportEntries(space),
@@ -222,7 +238,7 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
   const expoCache = await safeGetLocalEntrySize(FileSystem.cacheDirectory);
 
   const originalBytes = original.bytes;
-  const previewBytes = preview.bytes;
+  const previewBytes = previewInventory.bytes;
   const temporaryBytes = temp.bytes + expoCache.bytes;
   const backupExportBytes = backup.bytes;
   const trashBytes = trash.bytes;
@@ -234,8 +250,8 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
     totalBytes,
     originalBytes,
     previewBytes,
-    previewImageBytes: previewBreakdown.imageBytes,
-    previewVideoBytes: previewBreakdown.videoBytes,
+    previewImageBytes: previewInventory.imageBytes,
+    previewVideoBytes: previewInventory.videoBytes,
     temporaryBytes,
     backupExportBytes,
     trashBytes,
@@ -262,8 +278,8 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
         label: '预览缓存',
         bytes: previewBytes,
         actionLabel: '重建',
-        subtitle: `图片缩略图 ${previewBreakdown.imageBytes} · 视频封面 ${previewBreakdown.videoBytes}`,
-        failed: preview.failed,
+        subtitle: `图片缩略图 ${previewInventory.imageBytes} · 视频封面 ${previewInventory.videoBytes}`,
+        failed: previewInventory.failed,
       },
       {
         key: 'temporary-cache',
@@ -299,6 +315,7 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
   };
 
   await writePreviousSummary(space, { totalBytes, scannedAt });
+  setCachedStorageUsageSummary(space, summary);
   return summary;
 }
 
@@ -526,7 +543,7 @@ export async function listBackupExportEntries(space: PixorySpace = 'normal'): Pr
     .filter((uri) => normalizeDirectoryUri(uri) !== backupRoot)
     .concat(backupChildren);
 
-  const entries = await Promise.all(candidates.map(async (uri) => {
+  const settledEntries = await settleFileTasksWithConcurrency(candidates, MAX_FILE_TASK_CONCURRENCY, async (uri) => {
     const name = getFileName(uri);
     const size = await safeGetLocalEntrySize(uri);
     const manifestCounts = await readBackupManifestCounts(uri);
@@ -540,7 +557,8 @@ export async function listBackupExportEntries(space: PixorySpace = 'normal'): Pr
       assetCount: manifestCounts.assetCount,
       ipCount: manifestCounts.ipCount,
     };
-  }));
+  });
+  const entries = settledEntries.flatMap((entry) => entry.status === 'fulfilled' ? [entry.value] : []);
 
   return entries
     .filter((entry) => entry.sizeBytes > 0)
@@ -554,4 +572,5 @@ export async function deleteBackupExportEntry(space: PixorySpace, entryUri: stri
   }
 
   await FileSystem.deleteAsync(entryUri, { idempotent: true });
+  invalidateStorageUsageSnapshot(space);
 }

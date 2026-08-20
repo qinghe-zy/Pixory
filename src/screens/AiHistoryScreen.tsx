@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { AiLightChip } from '../components/ai/AiLightChip';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, permanentlyDeleteAiThreads, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
-import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import { archiveAiThread, deleteAiThreads, listAiHistoryThreadPage, moveAiThreadsBetweenSpaces, permanentlyDeleteAiThreads, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
+import type { AiThreadHistoryFilter, AiThreadHistoryItem, AiThreadHistoryPageCursor } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
@@ -32,6 +32,7 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
 ];
 const ARCHIVE_ACTION_WIDTH = 96;
 const ARCHIVE_SWIPE_THRESHOLD = 72;
+const HISTORY_PAGE_SIZE = 40;
 
 function historyGroupLabel(value: string): string {
   const date = new Date(value);
@@ -66,6 +67,9 @@ export function AiHistoryScreen({
 }: AiHistoryScreenProps) {
   const [filter, setFilter] = useState<AiThreadHistoryFilter>(forcedFilter ?? 'all');
   const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<AiThreadHistoryPageCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
   const [status, setStatus] = useState<string | null>(null);
@@ -79,6 +83,8 @@ export function AiHistoryScreen({
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const swipeAnimatedValuesRef = useRef(new Map<string, Animated.Value>());
+  const historyRequestGenerationRef = useRef(0);
+  const historyPageRequestInFlightRef = useRef(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
   const isSelecting = selectedIds.length > 0;
@@ -109,8 +115,61 @@ export function AiHistoryScreen({
   ) : undefined;
 
   const reload = useCallback(async () => {
-    setItems(await listAiHistoryThreads({ filter, searchText: debouncedSearchText, space }));
+    const generation = historyRequestGenerationRef.current + 1;
+    historyRequestGenerationRef.current = generation;
+    historyPageRequestInFlightRef.current = true;
+    setLoadingMore(false);
+    try {
+      const page = await listAiHistoryThreadPage({
+        filter,
+        limit: HISTORY_PAGE_SIZE,
+        searchText: debouncedSearchText,
+        space,
+      });
+      if (generation !== historyRequestGenerationRef.current) {
+        return;
+      }
+      setItems(page.items);
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+    } finally {
+      if (generation === historyRequestGenerationRef.current) {
+        historyPageRequestInFlightRef.current = false;
+      }
+    }
   }, [debouncedSearchText, filter, space]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || historyPageRequestInFlightRef.current || !nextCursor) {
+      return;
+    }
+    const generation = historyRequestGenerationRef.current;
+    historyPageRequestInFlightRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await listAiHistoryThreadPage({
+        before: nextCursor,
+        filter,
+        limit: HISTORY_PAGE_SIZE,
+        searchText: debouncedSearchText,
+        space,
+      });
+      if (generation !== historyRequestGenerationRef.current) {
+        return;
+      }
+      setItems((current) => {
+        const existing = new Set(current.map((thread) => thread.id));
+        return [...current, ...page.items.filter((thread) => !existing.has(thread.id))];
+      });
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+    } finally {
+      if (generation === historyRequestGenerationRef.current) {
+        historyPageRequestInFlightRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [debouncedSearchText, filter, hasMore, nextCursor, space]);
   const actionSheetItems: AppActionSheetItem[] = actionThread
     ? [
         {
@@ -321,9 +380,9 @@ export function AiHistoryScreen({
   return (
     <>
       <AiLightScaffold
+        bodyStyle={styles.body}
         footer={selectionFooter}
         onBack={onBack}
-        scrollable
         subtitle={titleSlot ? undefined : spaceLabel}
         title={titleSlot ? '' : '历史会话'}
         titleSlot={titleSlot}
@@ -342,9 +401,22 @@ export function AiHistoryScreen({
         </View>
         {status ? <Text style={styles.status}>{status}</Text> : null}
 
-        <View style={[styles.list, styles.threadList]}>
-          {items.length ? (
-            items.map((thread, index) => {
+        <FlatList
+          contentContainerStyle={[styles.list, styles.threadList]}
+          data={items}
+          initialNumToRender={10}
+          keyExtractor={(thread) => thread.id}
+          ListEmptyComponent={(
+            <View style={styles.emptyState}>
+              <Text style={styles.title}>{searchText.trim() ? '没有找到匹配会话' : '没有历史会话'}</Text>
+              <Text style={styles.meta}>{searchText.trim() ? '换个关键词试试。' : '开始聊天后，最近会话会出现在这里。'}</Text>
+            </View>
+          )}
+          ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
+          maxToRenderPerBatch={10}
+          onEndReached={() => { void loadMore(); }}
+          onEndReachedThreshold={0.6}
+          renderItem={({ item: thread, index }) => {
               const selected = selectedIds.includes(thread.id);
               const swipeTranslateX = getSwipeAnimatedValue(thread.id);
               const swipeActionProgress = Animated.multiply(swipeTranslateX, -1);
@@ -356,7 +428,7 @@ export function AiHistoryScreen({
               const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
               const previousGroupLabel = index > 0 ? historyGroupLabel(items[index - 1].lastMessageAt ?? items[index - 1].updatedAt) : null;
               return (
-                <View key={thread.id}>
+                <View>
                   {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
                   <View style={styles.swipeWrap}>
                     {!isSelecting ? (
@@ -416,14 +488,10 @@ export function AiHistoryScreen({
                   </View>
                 </View>
               );
-            })
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.title}>{searchText.trim() ? '没有找到匹配会话' : '没有历史会话'}</Text>
-              <Text style={styles.meta}>{searchText.trim() ? '换个关键词试试。' : '开始聊天后，最近会话会出现在这里。'}</Text>
-            </View>
-          )}
-        </View>
+          }}
+          style={styles.threadListViewport}
+          windowSize={7}
+        />
       </AiLightScaffold>
 
       <AppDialog
@@ -530,6 +598,10 @@ function labelForContext(thread: AiThreadHistoryItem): string {
 }
 
 const styles = StyleSheet.create({
+  body: {
+    flex: 1,
+    gap: rhythm.listCardGap,
+  },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -543,7 +615,18 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
   },
   threadList: {
+    flexGrow: 1,
+    paddingBottom: spacing[3],
     paddingTop: rhythm.listCardGap,
+  },
+  threadListViewport: {
+    flex: 1,
+  },
+  loadingMore: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    paddingVertical: spacing[3],
+    textAlign: 'center',
   },
   searchBox: {
     alignItems: 'center',

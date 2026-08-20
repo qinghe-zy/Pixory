@@ -20,6 +20,9 @@ export function buildMediaReaderCursorRequest(context: ImageViewerContext): Medi
   if (context.type === 'image-scope') {
     return { ...BASE_CURSOR_REQUEST, imageIds: context.imageIds };
   }
+  if (context.type === 'media-query') {
+    return { ...BASE_CURSOR_REQUEST, ...context.request, mediaType: 'image' };
+  }
   if (context.type === 'ip-all') {
     return applyIpAllFilter({ ...BASE_CURSOR_REQUEST, ipId: context.ipId }, context.filter);
   }

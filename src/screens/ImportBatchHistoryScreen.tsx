@@ -34,16 +34,12 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
     () =>
       runWithDatabaseSpace(space, async (db): Promise<ImportBatchHistoryData> => {
         const batches = await importBatchRepository.findByIpId(db, ipId, 30);
-        const itemCountEntries = await Promise.all(
-          batches.map(async (batch) => {
-            const counts: ImportBatchItemCounts = { ...EMPTY_ITEM_COUNTS };
-            const items = await importBatchRepository.findItemsByBatchId(db, batch.id);
-            for (const item of items) {
-              counts[item.status] += 1;
-            }
-            return [batch.id, counts] as const;
-          })
-        );
+        const statusRows = await importBatchRepository.countItemsByStatusForBatchIds(db, batches.map((batch) => batch.id));
+        const itemCountEntries = batches.map((batch) => {
+          const counts: ImportBatchItemCounts = { ...EMPTY_ITEM_COUNTS };
+          for (const item of statusRows.get(batch.id) ?? []) counts[item.status] = item.count;
+          return [batch.id, counts] as const;
+        });
 
         return {
           batches,

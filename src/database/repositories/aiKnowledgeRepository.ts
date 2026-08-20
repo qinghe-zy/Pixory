@@ -102,6 +102,32 @@ export interface DocumentListQuery {
   status?: AiDocumentStatus;
 }
 
+export interface DocumentPageCursor {
+  updatedAt: string;
+  id: string;
+}
+
+export interface DocumentPageQuery extends DocumentListQuery {
+  before?: DocumentPageCursor | null;
+  limit?: number;
+}
+
+export interface DocumentOwnerKey {
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+}
+
+export interface DocumentOwnerGroupCursor {
+  updatedAt: string;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+}
+
+export interface DocumentOwnerGroupRecord extends DocumentOwnerKey {
+  updatedAt: string;
+  materialCount: number;
+}
+
 export interface ReplaceChunkInput {
   id: string;
   space: PixorySpace;
@@ -324,6 +350,104 @@ export const aiKnowledgeRepository = {
       `SELECT * FROM ai_documents
        WHERE ${clauses.join(' AND ')}
        ORDER BY updatedAt DESC, title ASC`,
+      ...values
+    );
+  },
+
+  async listDocumentPage(db: SQLiteDatabase, query: DocumentPageQuery): Promise<AiDocumentRecord[]> {
+    const clauses = ['space = ?'];
+    const values: Array<string | number> = [query.space];
+    if (query.ownerType) {
+      clauses.push('ownerType = ?');
+      values.push(query.ownerType);
+    }
+    if (query.ownerId) {
+      clauses.push('ownerId = ?');
+      values.push(query.ownerId);
+    }
+    if (query.status) {
+      clauses.push('parserStatus = ?');
+      values.push(query.status);
+    }
+    if (query.before) {
+      clauses.push('(updatedAt < ? OR (updatedAt = ? AND id < ?))');
+      values.push(query.before.updatedAt, query.before.updatedAt, query.before.id);
+    }
+    values.push(Math.min(Math.max(query.limit ?? 40, 1), 100));
+    return db.getAllAsync<AiDocumentRecord>(
+      `SELECT * FROM ai_documents
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY updatedAt DESC, id DESC
+       LIMIT ?`,
+      ...values
+    );
+  },
+
+  async listDocumentOwnerGroupPage(
+    db: SQLiteDatabase,
+    input: { space: PixorySpace; before?: DocumentOwnerGroupCursor | null; limit?: number }
+  ): Promise<DocumentOwnerGroupRecord[]> {
+    const values: Array<string | number> = [input.space];
+    const having = input.before
+      ? `HAVING MAX(updatedAt) < ?
+           OR (MAX(updatedAt) = ? AND (ownerType > ? OR (ownerType = ? AND ownerId > ?)))`
+      : '';
+    if (input.before) {
+      values.push(
+        input.before.updatedAt,
+        input.before.updatedAt,
+        input.before.ownerType,
+        input.before.ownerType,
+        input.before.ownerId
+      );
+    }
+    values.push(Math.min(Math.max(input.limit ?? 20, 1), 50));
+    return db.getAllAsync<DocumentOwnerGroupRecord>(
+      `SELECT ownerType, ownerId, MAX(updatedAt) AS updatedAt, COUNT(*) AS materialCount
+       FROM ai_documents
+       WHERE space = ?
+       GROUP BY ownerType, ownerId
+       ${having}
+       ORDER BY updatedAt DESC, ownerType ASC, ownerId ASC
+       LIMIT ?`,
+      ...values
+    );
+  },
+
+  async listDocumentsByOwners(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    owners: DocumentOwnerKey[],
+    perOwnerLimit?: number
+  ): Promise<AiDocumentRecord[]> {
+    if (!owners.length) {
+      return [];
+    }
+    const ownerClauses = owners.map(() => '(ownerType = ? AND ownerId = ?)');
+    const values = owners.flatMap((owner) => [owner.ownerType, owner.ownerId]);
+    if (perOwnerLimit != null) {
+      return db.getAllAsync<AiDocumentRecord>(
+        `SELECT * FROM (
+           SELECT ai_documents.*,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY ownerType, ownerId
+                    ORDER BY updatedAt DESC, id DESC
+                  ) AS ownerRowNumber
+           FROM ai_documents
+           WHERE space = ? AND (${ownerClauses.join(' OR ')})
+         )
+         WHERE ownerRowNumber <= ?
+         ORDER BY updatedAt DESC, id DESC`,
+        space,
+        ...values,
+        Math.min(Math.max(perOwnerLimit, 1), 20)
+      );
+    }
+    return db.getAllAsync<AiDocumentRecord>(
+      `SELECT * FROM ai_documents
+       WHERE space = ? AND (${ownerClauses.join(' OR ')})
+       ORDER BY updatedAt DESC, id DESC`,
+      space,
       ...values
     );
   },

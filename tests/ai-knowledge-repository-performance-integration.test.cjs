@@ -36,7 +36,23 @@ class CountedDB {
     this.db = new DatabaseSync(':memory:');
     this.db.exec(`
       PRAGMA foreign_keys=ON;
-      CREATE TABLE ai_documents(id TEXT PRIMARY KEY, space TEXT NOT NULL);
+      CREATE TABLE ai_documents(
+        id TEXT PRIMARY KEY,
+        space TEXT NOT NULL,
+        ownerType TEXT,
+        ownerId TEXT,
+        sourceType TEXT,
+        title TEXT,
+        originalFilename TEXT,
+        localUri TEXT,
+        mimeType TEXT,
+        fileSize INTEGER,
+        parserStatus TEXT,
+        parserError TEXT,
+        metadataJson TEXT,
+        createdAt TEXT,
+        updatedAt TEXT
+      );
       CREATE TABLE ai_chunks(
         id TEXT PRIMARY KEY,
         documentId TEXT NOT NULL,
@@ -70,6 +86,7 @@ class CountedDB {
   }
 
   async getAllAsync(sql, ...params) {
+    this.getAllStatements = (this.getAllStatements ?? 0) + 1;
     return this.db.prepare(sql).all(...params);
   }
 
@@ -216,6 +233,46 @@ for (const space of ['normal', 'personal']) {
         db.scalar("SELECT COUNT(*) AS value FROM ai_embeddings WHERE id = 'replacement-last' AND vectorJson = '[7,7]'"),
         1,
       );
+    } finally {
+      db.close();
+    }
+  });
+
+  test(`${space} material pages keep equal timestamps stable and hydrate owner pages in one query`, async () => {
+    const db = new CountedDB(space);
+    try {
+      const insert = db.db.prepare(`INSERT INTO ai_documents
+        (id, space, ownerType, ownerId, sourceType, title, parserStatus, metadataJson, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, 'manual_text', ?, 'searchable', '{}', ?, ?)`);
+      for (let index = 1; index <= 6; index += 1) {
+        const ownerId = index <= 4 ? 'thread-a' : 'thread-b';
+        const updatedAt = index <= 3 ? '2026-08-20T10:00:00.000Z' : '2026-08-20T11:00:00.000Z';
+        insert.run(`document-${index}`, space, 'thread', ownerId, `Document ${index}`, updatedAt, updatedAt);
+      }
+
+      const first = await repository.listDocumentPage(db, {
+        limit: 2,
+        ownerId: 'thread-a',
+        ownerType: 'thread',
+        space,
+      });
+      const second = await repository.listDocumentPage(db, {
+        before: { id: first.at(-1).id, updatedAt: first.at(-1).updatedAt },
+        limit: 2,
+        ownerId: 'thread-a',
+        ownerType: 'thread',
+        space,
+      });
+      assert.deepEqual(first.map((item) => item.id), ['document-4', 'document-3']);
+      assert.deepEqual(second.map((item) => item.id), ['document-2', 'document-1']);
+      assert.equal(new Set([...first, ...second].map((item) => item.id)).size, 4);
+
+      const ownerPage = await repository.listDocumentOwnerGroupPage(db, { limit: 2, space });
+      assert.deepEqual(ownerPage.map((item) => item.ownerId), ['thread-a', 'thread-b']);
+      const beforeHydrationQueries = db.getAllStatements;
+      const hydrated = await repository.listDocumentsByOwners(db, space, ownerPage);
+      assert.equal(db.getAllStatements - beforeHydrationQueries, 1);
+      assert.equal(hydrated.length, 6);
     } finally {
       db.close();
     }

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
+import { FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { AppDialog } from '../components/AppDialog';
@@ -13,16 +13,19 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton } from '../components/SortMenuButton';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy } from '../constants/copy';
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type ImageSortOrder, type ImportTemplateRecord, type IpRecord, type PixorySpace } from '../database';
 import { colors, componentTokens, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { getFileInfo } from '../services/fileStorageService';
 import { captureBatchUndoSnapshot, restoreBatchUndoSnapshot } from '../services/batchUndoService';
+import { MAX_FILE_TASK_CONCURRENCY, settleFileTasksWithConcurrency } from '../services/boundedFileConcurrency';
 import { isDevToolsEnabled } from '../utils/dev';
 import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
@@ -76,32 +79,24 @@ export function BatchManageImagesScreen({
   onDeleted,
 }: BatchManageImagesScreenProps) {
   const { showToast, showUndoSnackbar } = useToast();
-  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
   const [sortOrder, setSortOrder] = useState<ImageSortOrder>(() => (importBatchId != null ? 'sourceOrderAsc' : 'createdAtDesc'));
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     groups: GroupRecord[];
-    images: ImageListItem[];
     importTemplates: ImportTemplateRecord[];
     tags: Awaited<ReturnType<typeof tagRepository.findUsageOverviewByIpId>>;
   }>(
     async () => {
       return runWithDatabaseSpace(space, async (db) => {
-      const [ip, groups, importTemplates, tags, images] = await Promise.all([
+      const [ip, groups, importTemplates, tags] = await Promise.all([
         ipRepository.findById(db, ipId),
         groupRepository.findByIpId(db, ipId),
         importTemplateRepository.findAll(db),
         tagRepository.findUsageOverviewByIpId(db, ipId),
-        scopeImageIds != null
-          ? imageRepository.findByIds(db, scopeImageIds, { orderBy: sortOrder, mediaType: 'all' })
-          : importBatchId != null
-          ? imageRepository.findByImportBatchId(db, importBatchId, { orderBy: sortOrder, mediaType: 'all' })
-          : groupId != null
-            ? imageRepository.findByGroupId(db, groupId, { orderBy: sortOrder, mediaType: 'all' })
-            : imageRepository.findByIpId(db, ipId, { orderBy: sortOrder, mediaType: 'all' }),
       ]);
 
-      return { ip, groups, importTemplates, tags, images };
+      return { ip, groups, importTemplates, tags };
       });
     },
     [groupId, importBatchId, ipId, refreshToken, scopeImageIds?.join(',') ?? '', sortOrder, space],
@@ -110,7 +105,7 @@ export function BatchManageImagesScreen({
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取批量管理数据失败：${message}`;
       },
-      initialData: { ip: null, groups: [], images: [], importTemplates: [], tags: [] },
+      initialData: { ip: null, groups: [], importTemplates: [], tags: [] },
       deferUntilInteractions: true,
     }
   );
@@ -129,7 +124,26 @@ export function BatchManageImagesScreen({
   const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
   const [isAlbumDialogVisible, setIsAlbumDialogVisible] = useState(false);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
-  const images = data?.images ?? [];
+  const media = useMediaCursorCollection({
+    formatError: (loadError) => `读取批量管理数据失败：${loadError instanceof Error ? loadError.message : '未知错误'}`,
+    request: {
+      groupId: groupId ?? undefined,
+      imageIds: scopeImageIds,
+      importBatchId: importBatchId ?? undefined,
+      ipId: scopeImageIds == null && importBatchId == null && groupId == null ? ipId : undefined,
+      mediaType: 'all',
+      orderBy: sortOrder,
+    },
+    requestKey: JSON.stringify([space, ipId, groupId, importBatchId, scopeImageIds, refreshToken, sortOrder]),
+    space,
+  });
+  const images = media.items;
+  const combinedLoading = isLoading || media.isLoading;
+  const combinedError = errorMessage ?? media.errorMessage;
+  const reloadAll = () => {
+    reload();
+    media.reload();
+  };
   const groups = data?.groups ?? [];
   const importTemplates = data?.importTemplates ?? [];
   const tags = data?.tags ?? [];
@@ -306,7 +320,7 @@ export function BatchManageImagesScreen({
         setNewGroupName('');
         setNewGroupType(null);
         setIsCreateGroupDialogVisible(false);
-        reload();
+        reloadAll();
         onChanged();
         showToast('已新建分组');
       } catch (error) {
@@ -334,7 +348,7 @@ export function BatchManageImagesScreen({
           const restoredCount = await runWithDatabaseSpace(space, (db) => restoreBatchUndoSnapshot(db, undoSnapshot));
           if (restoredCount > 0) {
             onChanged();
-            reload();
+            reloadAll();
             showToast(`已撤销 ${restoredCount} 张`);
           }
         })();
@@ -501,8 +515,16 @@ export function BatchManageImagesScreen({
           throw new Error('没有可删除的图片。');
         }
 
-        const verification = await Promise.all(
-          imageCopies.map(async (image) => {
+        const deletedRows = await runWithDatabaseSpace(space, (db) => imageRepository.findByIds(
+          db,
+          imageCopies.map((image) => image.id),
+          { includeDeleted: true, mediaType: 'all' }
+        ));
+        const deletedAtById = new Map(deletedRows.map((image) => [image.id, image.deletedAt]));
+        const settledVerification = await settleFileTasksWithConcurrency(
+          imageCopies,
+          MAX_FILE_TASK_CONCURRENCY,
+          async (image) => {
             const [originalInfo, thumbnailInfo] = await Promise.all([
               getFileInfo(image.originalFileUri),
               image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
@@ -518,10 +540,22 @@ export function BatchManageImagesScreen({
                 : true,
               originalSize: originalInfo.size,
               thumbnailSize: thumbnailInfo?.size ?? null,
-              deletedAt: (await runWithDatabaseSpace(space, (db) => imageRepository.findById(db, image.id, { includeDeleted: true })))?.deletedAt ?? null,
+              deletedAt: deletedAtById.get(image.id) ?? null,
             };
-          })
+          }
         );
+        const verification = settledVerification.map((result, index) => result.status === 'fulfilled'
+          ? result.value
+          : {
+              imageId: imageCopies[index].id,
+              originalFileUri: imageCopies[index].originalFileUri,
+              thumbnailFileUri: imageCopies[index].thumbnailFileUri,
+              originalExists: false,
+              thumbnailExists: false,
+              originalSize: null,
+              thumbnailSize: null,
+              deletedAt: deletedAtById.get(imageCopies[index].id) ?? null,
+            });
 
         devLog('Pixory batch delete verification JSON:', JSON.stringify(verification));
 
@@ -552,7 +586,7 @@ export function BatchManageImagesScreen({
     <View style={styles.footerWrap}>
       <View style={styles.footerHeader}>
         <Text style={styles.footerTitle}>已选择 {selectedCount} 张</Text>
-        <Text style={styles.footerMeta}>共 {images.length} 张</Text>
+        <Text style={styles.footerMeta}>当前已加载 {images.length} 张</Text>
       </View>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       {isGroupMode(mode) ? (
@@ -671,13 +705,13 @@ export function BatchManageImagesScreen({
   return (
     <>
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
-    <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batch" footer={footer} onBack={onBack} onScroll={swipeSelection.onScroll} scrollViewRef={scrollViewRef} scrollable title={data?.ip ? `批量管理 · ${data.ip.name}` : '批量管理'}>
+    <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batch" footer={footer} onBack={onBack} title={data?.ip ? `批量管理 · ${data.ip.name}` : '批量管理'}>
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>快捷选择</Text>
           <View style={styles.filterOptionGrid}>
-            <FilterOptionChip label="当前所有" selected={false} onPress={() => { selectByRule('visible'); setIsFilterDrawerOpen(false); }} />
+            <FilterOptionChip label="当前已加载" selected={false} onPress={() => { selectByRule('visible'); setIsFilterDrawerOpen(false); }} />
             <FilterOptionChip label="反选" selected={false} onPress={() => { selectByRule('invert'); setIsFilterDrawerOpen(false); }} />
           </View>
         </View>
@@ -714,14 +748,16 @@ export function BatchManageImagesScreen({
         emptyDescription="导入图片后，这里可以用于批量移动分组、加标签、收藏和软删除。"
         emptyIconName="albums-outline"
         emptyTitle="还没有可管理的图片"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && images.length === 0}
-        loading={isLoading}
+        errorMessage={combinedError}
+        isEmpty={!combinedLoading && images.length === 0}
+        loading={combinedLoading}
         loadingDescription="SQLite 图片列表加载完成后，这里会展示可批量操作的图片。"
         loadingTitle="正在读取批量管理列表"
         onEmptyAction={onImportImages}
-        onRetry={reload}
+        onRetry={reloadAll}
       >
+        <VirtualizedAssetCollection
+          headerComponent={<View>
         <View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>已选择 {selectedCount} 张</Text>
           <View style={styles.galleryActions}>
@@ -840,14 +876,20 @@ export function BatchManageImagesScreen({
             </View>
           </LightFormSection>
         ) : null}
-
-        <View {...swipeSelection.panHandlers} style={[styles.grid, mode !== 'idle' ? styles.gridAfterPanel : null]}>
-          {images.map((image) => (
+          </View>}
+          images={images}
+          isLoadingMore={media.isLoadingMore}
+          listRef={scrollViewRef}
+          onEndReached={media.loadMore}
+          onItemMeasured={swipeSelection.registerMeasuredItemLayout}
+          onScroll={swipeSelection.onScroll}
+          panHandlers={swipeSelection.panHandlers}
+          renderAsset={(image, index, fillCell) => (
             <ThumbnailTile
               aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+              containerStyle={fillCell ? styles.fillCell : undefined}
               image={image}
-              key={image.id}
-              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+              index={index}
               onLongPress={() => {
                 enterImageSelection(image.id);
                 swipeSelection.beginSwipeSelection(image.id);
@@ -856,11 +898,9 @@ export function BatchManageImagesScreen({
               selected={selectedImageIds.includes(image.id)}
               space={space}
             />
-          ))}
-          {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
-            <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-          ))}
-        </View>
+          )}
+          viewMode="grid"
+        />
       </PageStateBlock>
     </ScreenScaffold>
     </View>
@@ -1242,6 +1282,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: rhythm.compactGridGap,
+  },
+  fillCell: {
+    width: '100%',
   },
   gridAfterPanel: {
     marginTop: rhythm.listCardGap,

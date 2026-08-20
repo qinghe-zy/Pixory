@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Reanimated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing as REasing } from 'react-native-reanimated';
+import Reanimated, { cancelAnimation, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing as REasing } from 'react-native-reanimated';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -18,6 +18,7 @@ import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
 
 interface MeScreenProps {
   refreshToken: number;
+  isActive?: boolean;
   space?: PixorySpace;
   personalSessionState: PersonalSessionState;
   footer?: ReactNode;
@@ -48,7 +49,7 @@ interface MeStats {
 
 // ENTRY_ITEMS removed for dashboard layout
 
-function ProfileMemoryCore() {
+function ProfileMemoryCore({ isActive }: { isActive: boolean }) {
   const rot1 = useSharedValue(0);
   const rot2 = useSharedValue(0);
   const rot3 = useSharedValue(0);
@@ -56,12 +57,32 @@ function ProfileMemoryCore() {
   const pulse = useSharedValue(1);
 
   useEffect(() => {
+    if (!isActive) {
+      cancelAnimation(rot1);
+      cancelAnimation(rot2);
+      cancelAnimation(rot3);
+      cancelAnimation(rot4);
+      cancelAnimation(pulse);
+      rot1.value = 0;
+      rot2.value = 0;
+      rot3.value = 0;
+      rot4.value = 0;
+      pulse.value = 1;
+      return;
+    }
     rot1.value = withRepeat(withTiming(360, { duration: 8000, easing: REasing.linear }), -1, false);
     rot2.value = withRepeat(withTiming(-360, { duration: 12000, easing: REasing.linear }), -1, false);
     rot3.value = withRepeat(withTiming(360, { duration: 18000, easing: REasing.linear }), -1, false);
     rot4.value = withRepeat(withTiming(-360, { duration: 30000, easing: REasing.linear }), -1, false);
     pulse.value = withRepeat(withTiming(0.7, { duration: 3000, easing: REasing.inOut(REasing.ease) }), -1, true);
-  }, [rot1, rot2, rot3, rot4, pulse]);
+    return () => {
+      cancelAnimation(rot1);
+      cancelAnimation(rot2);
+      cancelAnimation(rot3);
+      cancelAnimation(rot4);
+      cancelAnimation(pulse);
+    };
+  }, [isActive, rot1, rot2, rot3, rot4, pulse]);
 
   const style1 = useAnimatedStyle(() => {
     const a = (rot1.value * Math.PI) / 180;
@@ -121,6 +142,7 @@ function ProfileMemoryCore() {
 
 export function MeScreen({
   refreshToken,
+  isActive = true,
   space = 'normal',
   personalSessionState,
   footer,
@@ -357,7 +379,7 @@ export function MeScreen({
                   <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
                 </MagneticLiquidContainer>
               </Pressable>
-              <ProfileMemoryCore />
+              <ProfileMemoryCore isActive={isActive} />
             </View>
           </View>
         </View>
@@ -415,7 +437,7 @@ export function MeScreen({
                 <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
                   <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
                 </MagneticLiquidContainer>
-                <AnimatedSparkline heights={[6, 12, 4, 9]} />
+                <AnimatedSparkline active={isActive} heights={[6, 12, 4, 9]} />
               </View>
               <Text style={styles.coreAssetTitle}>收藏图片</Text>
             </View>
@@ -440,7 +462,7 @@ export function MeScreen({
                 <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
                   <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
                 </MagneticLiquidContainer>
-                <AnimatedSparkline heights={[4, 9, 11, 5]} />
+                <AnimatedSparkline active={isActive} heights={[4, 9, 11, 5]} />
               </View>
               <Text style={styles.coreAssetTitle}>最近查看</Text>
             </View>
@@ -529,10 +551,15 @@ export function MeScreen({
 }
 
 
-function AnimatedSparklineBar({ baseHeight, delay }: { baseHeight: number; delay: number }) {
+function AnimatedSparklineBar({ active, baseHeight, delay }: { active: boolean; baseHeight: number; delay: number }) {
   const currentHeight = useSharedValue(baseHeight);
   
   useEffect(() => {
+    if (!active) {
+      cancelAnimation(currentHeight);
+      currentHeight.value = baseHeight;
+      return;
+    }
     const max = 13;
     const min = 3;
     const gen = () => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -552,7 +579,8 @@ function AnimatedSparklineBar({ baseHeight, delay }: { baseHeight: number; delay
       -1, // infinite
       true // reverse
     ));
-  }, [baseHeight, delay, currentHeight]);
+    return () => cancelAnimation(currentHeight);
+  }, [active, baseHeight, delay, currentHeight]);
 
   const style = useAnimatedStyle(() => ({
     height: currentHeight.value,
@@ -561,11 +589,11 @@ function AnimatedSparklineBar({ baseHeight, delay }: { baseHeight: number; delay
   return <Reanimated.View style={[styles.sparklineBar, style]} />;
 }
 
-function AnimatedSparkline({ heights }: { heights: number[] }) {
+function AnimatedSparkline({ active, heights }: { active: boolean; heights: number[] }) {
   return (
     <View style={styles.sparkline}>
       {heights.map((h, i) => (
-        <AnimatedSparklineBar key={i} baseHeight={h} delay={i * 200} />
+        <AnimatedSparklineBar active={active} key={i} baseHeight={h} delay={i * 200} />
       ))}
     </View>
   );

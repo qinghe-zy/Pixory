@@ -20,7 +20,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiBranchScope, AiMemoryRecord, AiMessagePageCursor, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessagePageCursor, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiThreadHistoryPage, AiThreadHistoryPageCursor, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
@@ -6355,10 +6355,46 @@ export async function listFavoriteAssistantMessageKeys(input: {
 export async function listFavoriteAssistantMessages(input: {
   space: PixorySpace;
   limit?: number;
-  offset?: number;
+  beforeCreatedAt?: string | null;
+  beforeId?: string | null;
 }): Promise<AiMessageFavoriteListItem[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
     const rows = await aiThreadRepository.listFavoriteAssistantMessages(db, input);
     return rows.map(mapFavoriteListItem);
   });
+}
+
+export async function listAiHistoryThreadPage(input: {
+  space: PixorySpace;
+  filter?: AiThreadHistoryFilter;
+  limit?: number;
+  searchText?: string;
+  before?: AiThreadHistoryPageCursor | null;
+}): Promise<AiThreadHistoryPage> {
+  return runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listHistoryItemPage(db, input));
+}
+
+export async function listFavoriteAssistantMessagePage(input: {
+  space: PixorySpace;
+  limit?: number;
+  cursor?: { createdAt: string; id: string } | null;
+}): Promise<{
+  items: AiMessageFavoriteListItem[];
+  hasMore: boolean;
+  cursor: { createdAt: string; id: string } | null;
+}> {
+  const limit = Math.max(1, Math.min(input.limit ?? 40, 100));
+  const rows = await listFavoriteAssistantMessages({
+    space: input.space,
+    limit: limit + 1,
+    beforeCreatedAt: input.cursor?.createdAt,
+    beforeId: input.cursor?.id,
+  });
+  const items = rows.slice(0, limit);
+  const last = items.at(-1);
+  return {
+    items,
+    hasMore: rows.length > limit,
+    cursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+  };
 }

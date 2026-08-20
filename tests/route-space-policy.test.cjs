@@ -56,7 +56,7 @@ test('every ID-bearing AppRoute carries PixorySpace as part of route identity', 
 test('ImageViewerContext requires top-level space and exposes shared spaced helper types', () => {
   const contextSource = readProjectFile('src/navigation/imageViewerContext.ts');
 
-  assert.match(contextSource, /import type \{ PixorySpace \} from '..\/database'/);
+  assert.match(contextSource, /import type \{[^}]*PixorySpace[^}]*\} from '..\/database'/);
   assert.match(contextSource, /export type SpacedId = \{\s*id: number;\s*space: PixorySpace;\s*\}/);
   assert.match(contextSource, /export type SpacedRecord<T> = \{\s*space: PixorySpace;\s*record: T;\s*\}/);
   assert.match(contextSource, /type ImageViewerContextBase = \{\s*space: PixorySpace;\s*\}/);

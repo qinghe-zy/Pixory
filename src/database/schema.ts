@@ -551,6 +551,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_version
 CREATE INDEX IF NOT EXISTS idx_ai_message_attachments_message ON ai_message_attachments(messageId, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_knowledge_space_updated_at ON ai_knowledge_bases(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status ON ai_documents(space, ownerType, ownerId, parserStatus);
+CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_updated_id ON ai_documents(space, ownerType, ownerId, updatedAt DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_chunks_owner ON ai_chunks(space, ownerType, ownerId);
 CREATE INDEX IF NOT EXISTS idx_ai_chunks_document_index ON ai_chunks(documentId, chunkIndex);
 CREATE INDEX IF NOT EXISTS idx_ai_embeddings_chunk ON ai_embeddings(chunkId);

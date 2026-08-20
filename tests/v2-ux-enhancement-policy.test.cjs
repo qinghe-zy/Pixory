@@ -138,7 +138,7 @@ test('swipe grid selection supports image and video tiles across media and batch
   assert.match(batchSource, /useSwipeGridSelection/);
   assert.match(batchSource, /selectableMediaTypes:\s*\['image', 'video'\]/);
   assert.match(batchSource, /swipeSelection\.panHandlers/);
-  assert.match(batchSource, /registerItemLayout/);
+  assert.match(batchSource, /onItemMeasured=\{swipeSelection\.registerMeasuredItemLayout\}/);
 });
 
 test('undo snackbar is a global four second feedback path distinct from short toast', () => {

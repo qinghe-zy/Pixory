@@ -1,11 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Font from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
 import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 import { MaShanZheng_400Regular } from '@expo-google-fonts/ma-shan-zheng';
 import { ZCOOLXiaoWei_400Regular } from '@expo-google-fonts/zcool-xiaowei';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, ScrollView, Dimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
+import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +67,7 @@ import { CompanionRuntimeManagerScreen } from './src/screens/CompanionRuntimeMan
 import { applyRoleCardToThread, createNormalThreadFromRoleCard, type AiMessageFavoriteListItem } from './src/ai/aiChatService';
 import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
+import type { AiDocumentOwnerType } from './src/ai/types';
 import { resumeCompanionMemoryMaintenance, scheduleCompanionMemoryMaintenance, suspendCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { reconcileThoughtSessions, settleActiveThoughtSessions } from './src/ai/thought/thoughtSessionCoordinator';
 import { resumeDiaryBackgroundTasks, suspendDiaryBackgroundTasks } from './src/ai/diary/diaryGenerationManager';
@@ -130,6 +133,8 @@ import { StorageUsageScreen } from './src/screens/StorageUsageScreen';
 import { ChatStorageUsageScreen } from './src/screens/ChatStorageUsageScreen';
 import { MilestonesDetailScreen } from './src/screens/MilestonesDetailScreen';
 import type { AiDocumentReaderLocator } from './src/ai/readers/readerTypes';
+
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
@@ -237,7 +242,7 @@ type AppRoute =
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string; initialSource?: 'ip' | 'file' | 'manual_text' }
-  | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string }
+  | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string; ownerType?: AiDocumentOwnerType; ownerId?: string; ownerTitle?: string }
   | { name: 'ai-thread-material-list'; space: PixorySpace; threadId: string; title?: string }
   | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
   | { name: 'ai-history'; space: PixorySpace }
@@ -257,6 +262,17 @@ type SpaceSession = {
 };
 
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
+const ROOT_TABS: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
+
+function buildRootTabWarmupOrder(activeTab: RootTabKey): RootTabKey[] {
+  const activeIndex = ROOT_TABS.indexOf(activeTab);
+  return ROOT_TABS
+    .filter((tab) => tab !== activeTab)
+    .sort((left, right) => {
+      const distance = Math.abs(ROOT_TABS.indexOf(left) - activeIndex) - Math.abs(ROOT_TABS.indexOf(right) - activeIndex);
+      return distance || ROOT_TABS.indexOf(left) - ROOT_TABS.indexOf(right);
+    });
+}
 const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 60 * 1000;
 const APPLIED_UPDATE_NOTICE_DURATION_MS = 2200;
 const OTA_UPDATE_FETCH_NOTICE_DURATION_MS = 2200;
@@ -467,14 +483,9 @@ export default function App() {
   const globalScrollOffset = useSharedValue(0);
 
   const [fontsLoaded, fontError] = useFonts({
-    PlayfairDisplay_400Regular,
-    PlayfairDisplay_400Regular_Italic,
     JetBrainsMono_400Regular,
     JetBrainsMono_700Bold,
-    DiaryHandwriting: MaShanZheng_400Regular,
-    DiaryKai: ZCOOLXiaoWei_400Regular,
   });
-  const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
   const [isReady, setIsReady] = useState(false);
   const [routeStack, setRouteStack] = useState<AppRoute[]>([INITIAL_ROUTE]);
   const routeStackRef = useRef(routeStack);
@@ -503,8 +514,6 @@ export default function App() {
   const currentRouteRef = useRef(currentRoute);
   currentRouteRef.current = currentRoute;
 
-  const rootTabsScrollViewRef = useRef<any>(null);
-  const ROOT_TABS: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
   const currentTab = currentRoute.name === 'root' ? currentRoute.tab : undefined;
   const [renderedTabs, setRenderedTabs] = useState<Set<RootTabKey>>(
     new Set([currentTab ?? 'home'])
@@ -514,16 +523,44 @@ export default function App() {
   const [aiHomeRefreshToken, setAiHomeRefreshToken] = useState(0);
   const prevOverlayDepthRef = useRef(routeStack.length);
 
-  const previousRouteNameRef = useRef<string | null>(null);
-
   useEffect(() => {
-    if (currentRoute.name === 'root') {
-      const timer = setTimeout(() => {
-        setRenderedTabs(new Set(['home', 'organize', 'ai', 'me']));
-      }, 300);
-      return () => clearTimeout(timer);
+    if (currentRoute.name !== 'root' || !currentTab) {
+      return;
     }
-  }, [currentRoute.name]);
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const pendingTabs = buildRootTabWarmupOrder(currentTab);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      const warmNextTab = () => {
+        if (cancelled) {
+          return;
+        }
+        const nextTab = pendingTabs.shift();
+        if (!nextTab) {
+          return;
+        }
+        setRenderedTabs((previous) => {
+          if (previous.has(nextTab)) {
+            return previous;
+          }
+          const next = new Set(previous);
+          next.add(nextTab);
+          return next;
+        });
+        timer = setTimeout(warmNextTab, 450);
+      };
+      warmNextTab();
+    });
+
+    return () => {
+      cancelled = true;
+      interaction.cancel();
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [currentRoute.name, currentTab]);
 
   useEffect(() => {
     if (currentRoute.name === 'root' && currentTab) {
@@ -533,14 +570,7 @@ export default function App() {
         next.add(currentTab);
         return next;
       });
-      
-      const index = ROOT_TABS.indexOf(currentTab);
-      if (index !== -1 && rootTabsScrollViewRef.current) {
-        const shouldAnimate = previousRouteNameRef.current === 'root';
-        rootTabsScrollViewRef.current.scrollTo({ x: index * Dimensions.get('window').width, animated: shouldAnimate });
-      }
     }
-    previousRouteNameRef.current = currentRoute.name;
   }, [currentRoute.name, currentTab]);
 
   // Refresh AI home data when returning from any overlay to root.
@@ -551,17 +581,6 @@ export default function App() {
     }
     prevOverlayDepthRef.current = depth;
   }, [routeStack.length]);
-
-  const handleRootScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (currentRoute.name !== 'root') return;
-    const offsetX = e.nativeEvent.contentOffset.x;
-    const width = e.nativeEvent.layoutMeasurement.width;
-    const index = Math.round(offsetX / width);
-    const tab = ROOT_TABS[index];
-    if (tab && currentRoute.tab !== tab) {
-      switchRootTab(tab);
-    }
-  };
 
   async function checkRemoteNotices(isStillActive: () => boolean = () => true) {
     const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
@@ -619,11 +638,12 @@ export default function App() {
     async function initialize() {
       setInitializationError(null);
       setIsReady(false);
-      setStatus('正在初始化 Pixory 本地数据库与文件目录...');
 
       try {
-        await ensureAppDirectories();
-        await initDatabase();
+        await Promise.all([
+          ensureAppDirectories(),
+          initDatabase(),
+        ]);
         void coordinateDiaryRuntime({ space: 'normal' }).catch(() => undefined);
         void aiGenerationManager.reconcileInterruptedGenerations('normal').catch(() => undefined);
         void reconcileThoughtSessions('normal').catch(() => undefined);
@@ -650,14 +670,12 @@ export default function App() {
 
         if (isMounted) {
           setIsReady(true);
-          setStatus('Pixory 本地数据环境已就绪。');
         }
       } catch (error) {
         if (isMounted) {
           setIsReady(false);
           const message = error instanceof Error ? error.message : '未知错误';
           setInitializationError(message);
-          setStatus(`Pixory 初始化失败：${message}`);
         }
       }
     }
@@ -668,6 +686,35 @@ export default function App() {
       isMounted = false;
     };
   }, [initializationKey]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void Font.loadAsync({
+        PlayfairDisplay_400Regular,
+        PlayfairDisplay_400Regular_Italic,
+        DiaryHandwriting: MaShanZheng_400Regular,
+        DiaryKai: ZCOOLXiaoWei_400Regular,
+      }).catch((error) => {
+        console.warn('Pixory deferred diary font load failed.', {
+          message: error instanceof Error ? error.message : 'unknown diary font load error',
+        });
+      });
+    });
+    return () => interaction.cancel();
+  }, [isReady]);
+
+  useEffect(() => {
+    if (!initializationError && (!isReady || (!fontsLoaded && !fontError))) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      void SplashScreen.hideAsync().catch(() => undefined);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fontError, fontsLoaded, initializationError, isReady]);
 
   useEffect(() => {
     if (!isReady) {
@@ -1254,16 +1301,16 @@ export default function App() {
   if (!isReady || (!fontsLoaded && !fontError)) {
     return (
       <SafeAreaProvider>
-        <AppScreen contentStyle={styles.stateScreen}>
-          <View style={styles.stateCard}>
-            <Text style={styles.title}>Pixory</Text>
-            <Text style={styles.message}>{status}</Text>
-            {initializationError ? (
+        <View style={styles.startupFallback}>
+          {initializationError ? (
+            <View style={styles.stateCard}>
+              <Text style={styles.title}>Pixory</Text>
+              <Text style={styles.message}>初始化失败：{initializationError}</Text>
               <PrimaryButton label="重新初始化" onPress={() => setInitializationKey((current) => current + 1)} variant="outline" />
-            ) : null}
-          </View>
-          <StatusBar style="dark" />
-        </AppScreen>
+            </View>
+          ) : null}
+          <StatusBar style="light" />
+        </View>
       </SafeAreaProvider>
     );
   }
@@ -1296,6 +1343,7 @@ export default function App() {
           {renderedTabs.has('home') ? (
             <HomeLibraryScreen
               initialFilter={baseRootRoute.initialFilter ?? 'all'}
+              isActive={currentTab === 'home'}
               onCreateIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
               onOpenGlobalSearch={() => {
                 setGlobalSearchQuery('');
@@ -1326,6 +1374,7 @@ export default function App() {
         <View style={{ width: sw, flex: 1 }}>
           {renderedTabs.has('ai') ? (
             <AiHomeScreen
+              isActive={currentTab === 'ai'}
               onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
               onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
               onOpenIpChatPicker={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
@@ -1362,6 +1411,7 @@ export default function App() {
         <View style={{ width: sw, flex: 1 }}>
           {renderedTabs.has('me') ? (
             <MeScreen
+              isActive={currentTab === 'me'}
               space={activeSpace}
               onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
               onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
@@ -2159,7 +2209,22 @@ export default function App() {
         knowledgeBaseId={currentRoute.knowledgeBaseId}
         onBack={popRoute}
         onOpenDocument={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
-        onOpenThreadMaterials={(threadId, title) => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId, title })}
+        onOpenMaterialOwner={(group) => {
+          if (group.ownerType === 'thread') {
+            pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: group.ownerId, title: group.ownerLabel });
+            return;
+          }
+          pushRoute({
+            name: 'ai-material-list',
+            ownerId: group.ownerId,
+            ownerTitle: group.ownerLabel,
+            ownerType: group.ownerType,
+            space: currentRoute.space,
+          });
+        }}
+        ownerId={currentRoute.ownerId}
+        ownerTitle={currentRoute.ownerTitle}
+        ownerType={currentRoute.ownerType}
         space={currentRoute.space}
       />
     );
@@ -2441,6 +2506,13 @@ const styles = StyleSheet.create({
   stateScreen: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  startupFallback: {
+    alignItems: 'center',
+    backgroundColor: '#4a7bf7', // Matches the native Android splash during the React hand-off.
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing[5],
   },
   stateCard: {
     alignSelf: 'stretch',

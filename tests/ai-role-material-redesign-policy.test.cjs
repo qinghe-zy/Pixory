@@ -56,10 +56,11 @@ test('session settings opens current thread material library near provider accou
 test('material list separates global grouped view from current thread view', () => {
   const source = read('src/screens/AiMaterialListScreen.tsx');
 
-  assert.match(source, /listGlobalMaterialsGroupedByThread/);
-  assert.match(source, /listThreadMaterials/);
+  assert.match(source, /listGlobalMaterialGroupPage/);
+  assert.match(source, /listMaterialsPage/);
   assert.match(source, /conversationGroups/);
-  assert.match(source, /onOpenThreadMaterials/);
+  assert.match(source, /onOpenMaterialOwner/);
+  assert.match(source, /onEndReached/);
   assert.match(source, /添加资料/);
 });
 

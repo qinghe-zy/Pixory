@@ -56,21 +56,21 @@ export function CompanionInnerLifeScreen({
     try {
       const result = await runWithDatabaseSpace(space, async (db) => {
         const thread = await aiThreadRepository.findThreadById(db, threadId);
-        if (!thread?.roleCardId) return { diaryGroups: [], dreamGroups: [], thoughts: [] };
-        const nextDiaryGroups = await diaryRepository.listVersionGroupsForRole(db, thread.roleCardId);
-        const nextDreamGroups = await dreamRepository.listVersionGroupsForRole(db, thread.roleCardId);
-        const roleThoughts = await thoughtRepository.listForRole(db, thread.roleCardId, true);
-        return { diaryGroups: nextDiaryGroups, dreamGroups: nextDreamGroups, thoughts: roleThoughts };
+        if (!thread?.roleCardId) return [];
+        if (activeKind === 'diary') return diaryRepository.listVersionGroupsForRole(db, thread.roleCardId);
+        if (activeKind === 'dream') return dreamRepository.listVersionGroupsForRole(db, thread.roleCardId);
+        if (activeKind === 'thought') return thoughtRepository.listForRole(db, thread.roleCardId, true);
+        return [];
       });
-      setDiaryGroups(result.diaryGroups);
-      setDreamGroups(result.dreamGroups);
-      setThoughts(result.thoughts);
+      if (activeKind === 'diary') setDiaryGroups(result as RoleDiaryVersionGroup[]);
+      if (activeKind === 'dream') setDreamGroups(result as DreamVersionGroup[]);
+      if (activeKind === 'thought') setThoughts(result as ThoughtRecord[]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '内心独白加载失败。');
     } finally {
       setLoading(false);
     }
-  }, [space, threadId]);
+  }, [activeKind, space, threadId]);
 
   useEffect(() => { void load(); }, [load]);
 

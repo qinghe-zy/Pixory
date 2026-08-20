@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, Platform, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -37,6 +37,7 @@ const IP_LIBRARY_PAGE_SIZE = 20;
 
 interface HomeLibraryScreenProps {
   refreshKey: number;
+  isActive?: boolean;
   initialFilter?: IpLibraryFilter;
   space?: PixorySpace;
   footer?: ReactNode;
@@ -48,6 +49,7 @@ interface HomeLibraryScreenProps {
 
 export function HomeLibraryScreen({
   refreshKey,
+  isActive = true,
   initialFilter = 'all',
   space = 'normal',
   footer,
@@ -314,7 +316,7 @@ export function HomeLibraryScreen({
       backgroundVariant="home"
       footer={footer}
       rightAction={rightSlot}
-      titleSlot={<HomeBrandHeader />}
+      titleSlot={<HomeBrandHeader isActive={isActive} />}
       titleVariant="brand"
     >
       <View style={styles.topArea}>
@@ -322,6 +324,7 @@ export function HomeLibraryScreen({
           <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
             <View style={styles.rhythmDecorRow}>
               <RhythmBars
+                active={isActive}
                 barGap={5}
                 barWidth={3}
                 maxBarHeight={24}
@@ -329,6 +332,7 @@ export function HomeLibraryScreen({
                 speedMultiplier={isDaytime ? 1.5 : 1}
               />
               <RhythmBars
+                active={isActive}
                 barGap={5}
                 barWidth={3}
                 maxBarHeight={24}
@@ -506,12 +510,12 @@ export function HomeLibraryScreen({
       title={actionIp?.name ?? 'IP 操作'}
       visible={Boolean(actionIp)}
     />
-      <ParallaxLightSweep fadeOutDuration={750} opacity={0.35} visible={showSweep || isLoading} />
+      <ParallaxLightSweep fadeOutDuration={750} opacity={0.35} visible={isActive && (showSweep || isLoading)} />
     </>
   );
 }
 
-function HomeBrandHeader() {
+function HomeBrandHeader({ isActive }: { isActive: boolean }) {
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 9) return '早上好';
@@ -528,11 +532,28 @@ function HomeBrandHeader() {
   const rot3 = useSharedValue(0);
 
   useEffect(() => {
+    if (!isActive) {
+      cancelAnimation(timeT);
+      cancelAnimation(rot1);
+      cancelAnimation(rot2);
+      cancelAnimation(rot3);
+      timeT.value = 0;
+      rot1.value = 0;
+      rot2.value = 0;
+      rot3.value = 0;
+      return;
+    }
     timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
     rot1.value = withRepeat(withTiming(Math.PI * 2, { duration: 10000, easing: Easing.linear }), -1, false);
     rot2.value = withRepeat(withTiming(-Math.PI * 2, { duration: 14000, easing: Easing.linear }), -1, false);
     rot3.value = withRepeat(withTiming(Math.PI * 2, { duration: 18000, easing: Easing.linear }), -1, false);
-  }, [timeT, rot1, rot2, rot3]);
+    return () => {
+      cancelAnimation(timeT);
+      cancelAnimation(rot1);
+      cancelAnimation(rot2);
+      cancelAnimation(rot3);
+    };
+  }, [isActive, timeT, rot1, rot2, rot3]);
 
   const textStyle = useAnimatedStyle(() => {
     const color = interpolateColor(
