@@ -1328,7 +1328,9 @@ export function VideoPlayerScreen({
     }
 
     committedSeekTargetRef.current = null;
-    player.currentTime = targetTime;
+    // Defer native seek out of the timeUpdate callback to avoid a
+    // JSI / ExoPlayer concurrent-modification crash on Android.
+    setTimeout(() => { player.currentTime = targetTime; }, 0);
     currentTimeRef.current = targetTime;
     setCurrentTime(targetTime);
     return true;
