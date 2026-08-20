@@ -36,12 +36,3 @@ test('provider connection import parser rejects unsafe or ambiguous shapes', () 
   assert.doesNotMatch(source, /api_key/);
   assert.doesNotMatch(source, /match\(\/https\?:/);
 });
-
-test('provider connection import policy documents New API example and non-mutating failure', () => {
-  const spec = read('docs/superpowers/specs/2026-06-22-ai-provider-gateway-compatibility-design.md');
-
-  assert.match(spec, /newapi_channel_conn/);
-  assert.match(spec, /不自动保存/);
-  assert.match(spec, /不自动测试连接/);
-  assert.match(spec, /解析失败不得改写已有 Base URL、API Key、模型 ID/);
-});

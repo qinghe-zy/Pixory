@@ -43,6 +43,7 @@ yarn-error.*
 
 # Local update logs
 LOCAL_UPDATES_LOG.md
+/版本文档/
 
 # Local resumes and editable document exports
 /*.doc

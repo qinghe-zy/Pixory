@@ -6,7 +6,7 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 本地素材库仍然是 Pixory 的地基。图片、视频、IP 设定、文档、记忆和角色资产都优先落在本地 SQLite 与应用私有文件目录中，方便备份、迁移、回溯和继续喂给 AI 使用。
 
-当前功能状态与实现边界以 [`docs/feature-matrix.md`](docs/feature-matrix.md) 为索引；2026-07-13 的源码级扫描证据、已知风险和后续增量复核方法保存在 [`docs/product-capability-baseline.md`](docs/product-capability-baseline.md)。
+当前功能状态、实现边界、验证证据和后续增量复核方法统一以 [`docs/feature-matrix.md`](docs/feature-matrix.md) 为准；历史 Spec、Plan、Review、规划、算法和调研资料按版本保存在本地忽略的 `版本文档/` 中。
 
 [访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.8.1.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.8.1`
 
@@ -271,7 +271,6 @@ plugins/                     Android 集成相关的 Expo config plugin
 patches/                     项目依赖补丁
 docs/                        官网、远程更新 JSON、公告 JSON 和静态站点文件
 docs/feature-matrix.md       当前功能状态、入口、边界和维护规则
-docs/product-capability-baseline.md  源码审计基线、已知风险和增量复核方法
 docs/update-version.json     应用内更新信息
 docs/announcement.json       应用内公告信息
 app.json                     Expo 应用配置

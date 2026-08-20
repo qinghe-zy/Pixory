@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-20（启动交接、长素材页、备份/存储与 AI 长期数据性能补强）
-适用版本：Pixory 2.8.1
+最后更新：2026-08-20（性能加固与本地版本文档工作流完成）
+适用版本：Pixory 2.8.1 → 2.8.2 开发基线
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -17,7 +17,7 @@
 
 本文档依据当前源码、测试和发布配置整理。若与代码冲突，以代码和可运行行为为准，并优先修正文档。
 
-详细审计证据、架构观察、已知风险和下次增量复核方法见 [`docs/product-capability-baseline.md`](product-capability-baseline.md)。独立开发的新 AI 软件不属于 Pixory 功能矩阵，两者不默认共享产品定位、数据或发布计划。
+本文档同时承担最新能力基线；Git 中不再保留功能矩阵快照或旧版 Spec、Plan、Review、规划、算法、调研文档。版本过程证据由本地忽略的 `版本文档/` 按正式版本归档，独立开发的新 AI 软件不属于 Pixory 功能矩阵，两者不默认共享产品定位、数据或发布计划。
 
 ### 状态定义
 
@@ -61,7 +61,7 @@
 
 ### 2.1 2026-08-20 性能加固逐项索引
 
-完整根因、文件级清单、review 新发现、验证结果与 Android 门禁见 [`docs/reviews/2026-08-20-performance-hardening-review.md`](reviews/2026-08-20-performance-hardening-review.md)。下表中的“源码/自动化已验”不等同于真机帧率、内存、codec 或声学验收。
+完整根因、文件级清单、Review、Spec 与 Plan 已归入本地 `版本文档/当前版本文档/`，正式打包成功后随 v2.8.2 移入历史目录。下表中的“源码/自动化已验”不等同于真机帧率、内存、codec 或声学验收。
 
 | ID | 功能/能力变化 | 实现边界 | 当前验证状态 |
 | --- | --- | --- | --- |
@@ -110,7 +110,7 @@
 | 聊天输入与安全区 | Android 聊天页锁定进入页面时的底部安全区，键盘开合不重复推高输入框；仅减少输入框到屏幕底部的外部留白 `8dp`，不改变输入框内部 padding；顶部安全留白减少 `8dp`；聊天标题使用系统字体并与正文同为 `14px/22px`，模型名称保持 `12px/18px` | `AiChatScreen`, `AiChatComposer`, `AppScreen`, `SafeAreaProvider` |
 | 回到最新交互 | 右下角 18px 低干扰圆钮，保留 44px 触控热区；离开最新位置 200px 后显示，生成中使用连续三点动效，结束后切回箭头；只有手势明确向下至少 8px 且进入 160px 时提前吸底，上滑手势不会被流式布局波动误吸附；原有 32/48/70px 流式尾部规则保持不变 | `AiChatScreen`, `AiScrollToLatestButton`, `aiScrollToLatestPolicy` |
 | 生成指标 | prompt/memory/retrieval/provider/first delta/UI patch/final persist 等 content-free metrics；记录对话覆盖是否完整、已验证摘要数、原文桥/本地临时摘要数量、分支路线 hash 与动态段 token 估算，不记录正文 | `aiGenerationMetrics` |
-| 回复呈现计划与多正文气泡 | 规划/暂缓；当前保持单一思考区和连续正文渲染，不启用 `ResponsePresentationPlan`、多气泡拆分或模型输出格式约束。重新启动前需先完成输出协议、思考区布局、终态恢复和 Android 性能验收 | `docs/ai-chat-research/pixory-companion-runtime-v1-spec.md`, `docs/ai-chat-research/pixory-companion-runtime-v1-handoff.md` |
+| 回复呈现计划与多正文气泡 | 规划/暂缓；当前保持单一思考区和连续正文渲染，不启用 `ResponsePresentationPlan`、多气泡拆分或模型输出格式约束。重新启动前需先完成输出协议、思考区布局、终态恢复和 Android 性能验收；历史研究资料已移入本地版本档案，不作为当前能力证据 | `AiChatScreen`, `src/ai/` |
 | Prompt | stable/dynamic layer、角色卡 frame、material rules、history window、current user request；发送前按当前分支和消息版本精确编译“已验证摘要 + 无重复桥接 + 最近完整轮次”，历史滑杆仅改变最近原文窗口，不会静默留下上下文空洞 | `promptBuilder`, `conversationCoverage`, `conversationCoverageService` |
 | Prompt/cache | stable prefix hash、retrieval hash、cache key、Anthropic breakpoint、禁止 diagnostics 污染 prompt/cache；稳定摘要参与 stable hash，角色观察/用户画像等自动变化内容处于 dynamic layer，避免污染可复用前缀；DeepSeek 官方 V4 使用服务商原生前缀缓存并在流式请求中开启 usage 观测，不发送 OpenAI `prompt_cache_key`，其他 provider 策略保持原样 | `aiPromptCache`, `openAiCompatibleProvider` |
 | 首 token pipeline | fast-path classifier、normal skip retrieval、资料模糊引用 fail-closed、keyword/full retrieval 分层 | `aiChatFastPath`, `aiRetrievalService` |
@@ -265,7 +265,7 @@
 | 远程公告 | `announcement.json` 拉取、一次性公告 id | `announcementService`, `docs/announcement.json` |
 | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
-| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用 transparent compact 前景和 `#4a7bf7` 纯色底，原素材缩小 12.5% 后按实际内容居中并保留至少 24% 透明边距，中心聊天气泡及图库、视频、相机、爱心、轨道和星点外围装饰完整保留；Expo 配置与原生五档密度资源由同一脚本/compact master 生成，避免 clean prebuild 与直接 Gradle 构建效果分叉 | `AGENTS.md`, `app.json`, `icons/splash_foreground_compact.png`, `scripts/generate-android-splash-assets.cjs`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
+| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；打包前预览本次本地过程文档，只有 APK 成功复制后才将当前文档平铺归档到对应版本、固化版本更新说明并开启下一补丁区间，失败不移动、重复执行不覆盖；功能矩阵只保留本文件最新版，待办目录不随打包移动；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用 transparent compact 前景和 `#4a7bf7` 纯色底，原素材缩小 12.5% 后按实际内容居中并保留至少 24% 透明边距，中心聊天气泡及图库、视频、相机、爱心、轨道和星点外围装饰完整保留；Expo 配置与原生五档密度资源由同一脚本/compact master 生成，避免 clean prebuild 与直接 Gradle 构建效果分叉 | `AGENTS.md`, `.gitignore`, `app.json`, `icons/splash_foreground_compact.png`, `scripts/version-document-workflow.ps1`, `scripts/generate-android-splash-assets.cjs`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
 | Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、可取消 direct speech recognition、share/open intent、`ComponentCallbacks2` memory-pressure event；原生 Activity/主题/媒体模块均由版本化 Expo config-plugin 模板生成 | `src/native/pixoryMediaModule.ts`, `plugins/withPixoryAndroidIntents.js`, `plugins/pixory-android-intents/templates/` |
 | UI 基础组件 | toast、dialog、action sheet、empty state、form、header、cards、chips、sort menu | `src/components/` |
 | 设计 tokens | spacing、rhythm、colors、radius、typography、metrics | `src/design/tokens/` |
@@ -288,6 +288,7 @@
 | 启动与大数据页 | `app-startup-performance-policy.test.cjs`, `media-collection-virtualization-policy.test.cjs`, `media-cursor-pagination-integration.test.cjs`, `ai-long-list-performance-policy.test.cjs`, `ai-knowledge-repository-performance-integration.test.cjs`, `batch-import-duplicate-performance-policy.test.cjs` |
 | 媒体体验 | `mature-media-experience-policy.test.cjs`, `privacy-cover-viewer-policy.test.cjs`, `media-prefetch-policy-unit.test.cjs`, `media-reader-session-cache-unit.test.cjs`, `video-swipe-policy-unit.test.cjs`, `video-preload-pool-unit.test.cjs`, `video-pitch-preservation-unit.test.cjs`, `media-db-benchmark-policy.test.cjs` |
 | 更新与官网 | `update-check-policy.test.cjs`, `website-flow-policy.test.cjs` |
+| 版本文档与打包交接 | `version-document-workflow-policy.test.cjs`（本地归档隔离、单层目录、拒绝覆盖、幂等归档、APK 成功后交接） |
 | 安全风险 | `security-risk-mitigation.test.cjs` |
 | 可访问性/UX | `accessibility-policy.test.cjs`, `v2-ux-enhancement-policy.test.cjs`, `current-ux-fixes-policy.test.cjs` |
 
@@ -313,11 +314,11 @@
 
 ### 下次升级的增量复核方法
 
-1. 先读取本矩阵和 `docs/product-capability-baseline.md`，不要默认重新全仓扫描。
+1. 先读取本矩阵；如需历史决策证据，再读取本地 `版本文档/历史文档/vX.Y.Z/` 对应版本目录，不要默认重新全仓扫描。
 2. 从基线提交到当前提交列出变更文件：`git diff --name-only <baseline-commit>..HEAD`。
 3. 优先核对变更涉及的页面/导航、service/repository、数据库迁移、原生桥、导入导出、隐私/存储/发布配置和测试。
 4. 对每项用户可见变化更新矩阵状态、入口、边界和证据；代码存在但未发布的功能必须保持“实验/不上线”。
-5. 运行 `pnpm typecheck`、`pnpm test` 和 `git diff --check`，并把结果与未验证项写入能力基线。
+5. 运行 `pnpm typecheck`、`pnpm test` 和 `git diff --check`，并把结果与未验证项写入当前 `LOCAL_UPDATES_LOG.md` 和必要的版本过程文档。
 6. 只有基线缺失、可信度不足、发生大规模架构重写或增量范围无法确定时，才重新进行全仓扫描。
 
 ## 14. 留给未来的数据拓展接口

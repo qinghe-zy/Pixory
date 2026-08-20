@@ -344,6 +344,20 @@ When adding, removing, renaming, or materially changing any user-visible feature
 
 Before packaging or writing release notes, review `docs/feature-matrix.md` against the changed files and tests. If the matrix is intentionally not updated, explain why in the final report.
 
+## Local Version Documentation Workflow
+
+- `docs/feature-matrix.md` is the only feature matrix and always describes the latest repository state. Keep it in Git; do not create version snapshots.
+- `LOCAL_UPDATES_LOG.md` records the current released-version → target-version interval in Chinese. Keep it at the repository root for the active cycle, but never track it in Git.
+- Keep all Spec, Plan, Review, planning, algorithm, research, and other version-process documents under the local ignored `版本文档/` tree instead of Git:
+  - `当前版本文档/`: direct files for the active version only; no nested folders.
+  - `历史文档/vX.Y.Z/`: one direct, flat folder per final version; never overwrite or delete an older version.
+  - `版本更新说明/`: one `Pixory-vX.Y.Z-版本更新说明.md` file per final version; no version subfolders.
+  - `待办/`: only files the user explicitly asks to place in a todo/backlog list; packaging never moves this directory.
+- Before Gradle starts, run `scripts/version-document-workflow.ps1 -Action PreviewRelease -ReleasedVersion <version>` and show the exact current documents, history target, and release-note target.
+- Only after the new APK has been generated and copied to `output/release/`, run `FinalizeRelease` with the APK path. A failed build must leave current documentation untouched.
+- Finalization must append final version, time, Commit, Tag, and APK information; move current direct files into `历史文档/vX.Y.Z/`; rename the root log into the release-note folder; and create a new root log/current index for the next patch interval.
+- The workflow must be additive, reject collisions, and be idempotent for repeated packaging of an already archived version.
+
 ## Codex Command Timeout And Retry
 
 For every Codex-run command, including code-writing operations, tests, builds, device commands, deployments, and release commands:
@@ -385,7 +399,7 @@ Default release workflow:
    - `docs/download.html`
    - `docs/updates.html`
    - `docs/sitemap.xml`
-   - `LOCAL_UPDATES_LOG.md` (Add detailed update items and information for this release. Note: The content MUST be written in Chinese, and MUST include basic information: Update Type (正式版本发布), Version, Release Time, and Commit/Tag).
+   - `LOCAL_UPDATES_LOG.md` (Update the current release interval in Chinese. Final Version, Release Time, Commit/Tag, and APK are written by the local version-document finalization step after the APK succeeds; this file stays outside Git).
    - local Android Gradle release fields/output name when present
    - Expo `runtimeVersion` and Android `expo_runtime_version` (CRITICAL: Update `<string name="expo_runtime_version">` in `android/app/src/main/res/values/strings.xml`)
 5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, the About screen fallback/current version text, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.

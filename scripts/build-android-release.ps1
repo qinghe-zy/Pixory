@@ -10,9 +10,15 @@ $appDir = Join-Path $androidDir "app"
 $nativeBuildDir = Join-Path $appDir ".cxx"
 $packageJsonPath = Join-Path $repoRoot "package.json"
 $gradleWrapper = Join-Path $androidDir "gradlew.bat"
+$versionDocumentWorkflow = Join-Path $PSScriptRoot "version-document-workflow.ps1"
 
 if (-not $Version) {
   $Version = (Get-Content -Raw -LiteralPath $packageJsonPath | ConvertFrom-Json).version
+}
+
+& $versionDocumentWorkflow -Action PreviewRelease -ReleasedVersion $Version
+if ($LASTEXITCODE -ne 0) {
+  throw "Version document preflight failed with exit code $LASTEXITCODE."
 }
 
 # React Native New Architecture can leave a CMake clean graph that references
@@ -67,5 +73,10 @@ $outputDir = Join-Path $repoRoot "output\release"
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 $outputApk = Join-Path $outputDir "Pixory-v$Version.apk"
 Copy-Item -LiteralPath $builtApk -Destination $outputApk -Force
+
+& $versionDocumentWorkflow -Action FinalizeRelease -ReleasedVersion $Version -ApkPath $outputApk
+if ($LASTEXITCODE -ne 0) {
+  throw "Version document finalization failed with exit code $LASTEXITCODE."
+}
 
 Write-Host "Built physical-device release APK: $outputApk"
