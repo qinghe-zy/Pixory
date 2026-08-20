@@ -53,6 +53,7 @@ interface BatchManageImagesScreenProps {
   onBack: () => void;
   onImportImages: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail: (imageId: number) => void;
   onChanged: () => void;
   onDeleted: () => void;
 }
@@ -70,6 +71,7 @@ export function BatchManageImagesScreen({
   onBack,
   onImportImages,
   onOpenImage,
+  onOpenImageDetail,
   onChanged,
   onDeleted,
 }: BatchManageImagesScreenProps) {
@@ -91,12 +93,12 @@ export function BatchManageImagesScreen({
         importTemplateRepository.findAll(db),
         tagRepository.findUsageOverviewByIpId(db, ipId),
         scopeImageIds != null
-          ? imageRepository.findByIds(db, scopeImageIds, { orderBy: sortOrder })
+          ? imageRepository.findByIds(db, scopeImageIds, { orderBy: sortOrder, mediaType: 'all' })
           : importBatchId != null
-          ? imageRepository.findByImportBatchId(db, importBatchId, { orderBy: sortOrder })
+          ? imageRepository.findByImportBatchId(db, importBatchId, { orderBy: sortOrder, mediaType: 'all' })
           : groupId != null
-            ? imageRepository.findByGroupId(db, groupId, { orderBy: sortOrder })
-            : imageRepository.findByIpId(db, ipId, { orderBy: sortOrder }),
+            ? imageRepository.findByGroupId(db, groupId, { orderBy: sortOrder, mediaType: 'all' })
+            : imageRepository.findByIpId(db, ipId, { orderBy: sortOrder, mediaType: 'all' }),
       ]);
 
       return { ip, groups, importTemplates, tags, images };
@@ -148,7 +150,7 @@ export function BatchManageImagesScreen({
       setSelectedImageIds(updater);
     },
     scrollViewRef,
-    selectableMediaTypes: ['image'],
+    selectableMediaTypes: ['image', 'video'],
   });
 
   const swipeFilterDrawerPanResponder = useRef(
@@ -201,6 +203,12 @@ export function BatchManageImagesScreen({
   function handleOpenImage(imageId: number) {
     if (selectedCount > 0) {
       toggleImageSelection(imageId);
+      return;
+    }
+
+    const asset = images.find((i) => i.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
       return;
     }
 

@@ -24,6 +24,9 @@ import type { AiBranchScope, AiMemoryRecord, AiMessagePageCursor, AiMessageRecor
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
+import { settleWithConcurrency } from './aiBoundedConcurrency';
+import { assertAiChatAttachments } from './aiAttachmentPolicy';
+import { AI_CHAT_ATTACHMENT_READ_CONCURRENCY } from '../constants/limits';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
 import { assertAiThreadSpaceMoveAllowed } from './aiThreadSpaceMovePolicy';
@@ -1378,6 +1381,8 @@ function buildAttachmentPromptContext(input: {
   attachments: AiOutgoingAttachment[];
   documentContexts: string[];
   imageCount: number;
+  imageReadFailureCount: number;
+  sentImageCount: number;
   visionEnabled: boolean;
 }): string {
   if (input.attachments.length === 0) {
@@ -1391,10 +1396,13 @@ function buildAttachmentPromptContext(input: {
       return `${index + 1}. ${describeOutgoingAttachmentKind(attachment.kind)}：${attachment.name}${type}${size}`;
     }),
   ];
-  if (input.imageCount > 0 && input.visionEnabled) {
-    lines.push(`图片附件：已随本轮请求作为视觉输入发送 ${input.imageCount} 张。`);
+  if (input.sentImageCount > 0 && input.visionEnabled) {
+    lines.push(`图片附件：已随本轮请求作为视觉输入发送 ${input.sentImageCount} 张。`);
   } else if (input.imageCount > 0) {
     lines.push(`图片附件：用户发送了 ${input.imageCount} 张图片，但视觉传入未就绪，仅可基于文件名和用户描述讨论。`);
+  }
+  if (input.imageReadFailureCount > 0) {
+    lines.push(`图片附件：有 ${input.imageReadFailureCount} 张读取失败，未加入本轮视觉输入。`);
   }
   if (input.attachments.some((attachment) => attachment.kind === 'video')) {
     lines.push('视频附件：当前版本不会直接把视频帧或音轨发送给模型；只能基于文件名、类型、大小和用户描述讨论。');
@@ -1415,17 +1423,51 @@ async function prepareOutgoingAttachments(input: {
   if (attachments.length === 0) {
     return { promptContext: '', providerAttachments: [] };
   }
-  const [providerAttachments, documentContexts] = await Promise.all([
+  const sizeResults = await settleWithConcurrency(
+    attachments,
+    AI_CHAT_ATTACHMENT_READ_CONCURRENCY,
+    async (attachment) => {
+      if (typeof attachment.size === 'number' && Number.isFinite(attachment.size) && attachment.size >= 0) {
+        return attachment;
+      }
+      const info = await FileSystem.getInfoAsync(attachment.uri);
+      if (!info.exists || info.isDirectory) {
+        throw new Error(`附件 ${attachment.name} 已失效，请重新选择。`);
+      }
+      return { ...attachment, size: info.size };
+    },
+  );
+  const rejectedSize = sizeResults.find((result) => result.status === 'rejected');
+  if (rejectedSize?.status === 'rejected') {
+    throw rejectedSize.reason;
+  }
+  const resolvedAttachments = sizeResults
+    .filter((result): result is PromiseFulfilledResult<AiOutgoingAttachment> => result.status === 'fulfilled')
+    .map((result) => result.value);
+  assertAiChatAttachments(resolvedAttachments);
+
+  const imageAttachments = resolvedAttachments.filter((attachment) => attachment.kind === 'image');
+  const [imageResults, documentContexts] = await Promise.all([
     input.visionEnabled
-      ? Promise.all(attachments.filter((attachment) => attachment.kind === 'image').map(readImageAttachment))
+      ? settleWithConcurrency(
+          imageAttachments,
+          AI_CHAT_ATTACHMENT_READ_CONCURRENCY,
+          readImageAttachment,
+        )
       : Promise.resolve([]),
-    buildDocumentAttachmentContext({ attachments, space: input.space, threadId: input.threadId }),
+    buildDocumentAttachmentContext({ attachments: resolvedAttachments, space: input.space, threadId: input.threadId }),
   ]);
+  const providerAttachments = imageResults
+    .filter((result): result is PromiseFulfilledResult<AiChatAttachment> => result.status === 'fulfilled')
+    .map((result) => result.value);
+  const imageReadFailureCount = imageResults.filter((result) => result.status === 'rejected').length;
   return {
     promptContext: buildAttachmentPromptContext({
-      attachments,
+      attachments: resolvedAttachments,
       documentContexts,
-      imageCount: attachments.filter((attachment) => attachment.kind === 'image').length,
+      imageCount: imageAttachments.length,
+      imageReadFailureCount,
+      sentImageCount: providerAttachments.length,
       visionEnabled: input.visionEnabled,
     }),
     providerAttachments,
@@ -1653,6 +1695,7 @@ async function persistOutgoingAttachments(input: {
   if (attachments.length === 0) {
     return [];
   }
+  assertAiChatAttachments(attachments);
   const persisted: AiOutgoingAttachment[] = [];
   for (const attachment of attachments) {
     if (attachment.kind === 'video') {

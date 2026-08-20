@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -64,6 +64,10 @@ export function ImageDetailScreen({
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const onRefreshedRef = useRef(onRefreshed);
+  onRefreshedRef.current = onRefreshed;
+
+  useEffect(() => () => onRefreshedRef.current(), []);
 
   useEffect(() => {
     let isMounted = true;

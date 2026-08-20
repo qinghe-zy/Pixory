@@ -98,7 +98,7 @@ test('video player portrait center vertical zone switches videos without stealin
 
   assert.match(playerSource, /CENTER_VIDEO_SWITCH_LEFT_RATIO\s*=\s*0\.28/);
   assert.match(playerSource, /CENTER_VIDEO_SWITCH_RIGHT_RATIO\s*=\s*0\.72/);
-  assert.match(playerSource, /CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX\s*=\s*72/);
+  assert.match(playerSource, /resolveVideoSwipe/);
   assert.match(playerSource, /surfaceGestureModeRef = useRef<'pending' \| 'scrub' \| 'vertical' \| 'video-switch' \| 'hold' \| null>/);
   assert.match(playerSource, /function shouldSwitchVideoFromCenterVerticalGesture/);
   assert.match(playerSource, /if \(isLandscape \|\| externalSource \|\| queue\.length <= 1\) \{/);

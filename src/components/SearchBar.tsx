@@ -24,6 +24,7 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder, 
       <TextInput
         accessibilityLabel={placeholder}
         editable={!onPress}
+        pointerEvents={onPress ? 'none' : 'auto'}
         onChangeText={onChangeText}
         onFocus={onFocus}
         placeholder={placeholder}
@@ -50,7 +51,7 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder, 
         onPress={onPress}
         style={({ pressed }) => [styles.base, pressed && styles.pressed]}
       >
-        <BlurView intensity={50} style={styles.blur} tint="light">
+        <BlurView intensity={50} style={styles.blurBg} tint="light">
           <LiquidGlassBezel radius={componentTokens.searchBar.radius} />
           <View style={innerStyle}>
             {content}
@@ -72,7 +73,7 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder, 
 
   const inner = (
     <View style={styles.base}>
-      <BlurView intensity={50} style={styles.blur} tint="light">
+      <BlurView intensity={50} style={styles.blurBg} tint="light">
         <View style={innerStyle}>
           {content}
         </View>
@@ -96,13 +97,13 @@ const styles = StyleSheet.create({
   wrapper: {
     ...shadows.sm,
     shadowColor: '#3A2E1D',
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.05,
     borderRadius: componentTokens.searchBar.radius,
   },
   base: {
     borderRadius: componentTokens.searchBar.radius,
   },
-  blur: {
+  blurBg: {
     borderRadius: componentTokens.searchBar.radius,
     overflow: 'hidden',
   },

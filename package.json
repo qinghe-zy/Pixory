@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.cjs",
     "bench:ai-chat": "node scripts/benchmark-ai-chat-performance.cjs",
+    "bench:chat-db": "node scripts/benchmark-ai-message-repository.cjs",
+    "bench:media-db": "node scripts/benchmark-media-database-performance.cjs",
     "doctor": "expo install --check",
     "acceptance:android": "expo start --android -c",
     "release:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android-release.ps1"

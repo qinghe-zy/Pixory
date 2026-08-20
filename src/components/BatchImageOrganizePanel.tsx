@@ -146,10 +146,7 @@ export function BatchImageOrganizePanel({
       showToast('请先选择至少一个素材');
       return;
     }
-    if (selectedImages.some((image) => image.mediaType === 'video')) {
-      showToast('当前选择包含视频，暂只支持保存图片到相册');
-      return;
-    }
+    // Videos are supported, saving native videos to system Movies album.
 
     setIsAlbumDialogVisible(true);
   }
@@ -442,9 +439,9 @@ export function BatchImageOrganizePanel({
               onPress={() => handleFavoriteUpdate(!allFavorite)}
             />
             <PanelAction
-              disabled={isSubmitting || isSavingToAlbum || selectedImages.some((image) => image.mediaType === 'video')}
+              disabled={isSubmitting || isSavingToAlbum}
               icon="download-outline"
-              label={selectedImages.some((image) => image.mediaType === 'video') ? '仅图片可保存' : isSavingToAlbum ? '保存中' : '保存相册'}
+              label={isSavingToAlbum ? '保存中' : '保存相册'}
               onPress={handleSaveToAlbum}
             />
             <PanelAction disabled={isSubmitting || moveTargetIps.length === 0} icon="trail-sign-outline" label="移动到 IP" onPress={() => resetMode('move-asset-ip')} />

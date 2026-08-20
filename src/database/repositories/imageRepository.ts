@@ -15,6 +15,10 @@ import type {
   GroupRecord,
   GroupRow,
   IpOrganizationProgress,
+  MediaCursorPageRequest,
+  MediaCursorSortOrder,
+  MediaPageCursor,
+  MediaPageResult,
   NeedsOrganizingScope,
   PageRequest,
   PageResult,
@@ -34,6 +38,8 @@ import {
   requireNonEmptyText,
 } from '../utils';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { bumpDataEpoch } from '../../services/dataEpochService';
+import { getRegisteredDatabaseSpace } from '../databaseSpaceRegistry';
 
 const VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD = 6;
 
@@ -543,6 +549,84 @@ const IMAGE_LIST_SELECT = `
   INNER JOIN ips ON ips.id = image_assets.ipId
 `;
 
+interface MediaCursorSortSpec {
+  expression: string;
+  orderBy: MediaCursorSortOrder;
+  ascending: boolean;
+}
+
+function resolveMediaCursorSort(orderBy: MediaCursorPageRequest['orderBy']): MediaCursorSortSpec {
+  if (orderBy == null || orderBy === 'createdAtDesc') {
+    return { expression: 'image_assets.createdAt', orderBy: 'createdAtDesc', ascending: false };
+  }
+  if (orderBy === 'lastViewedAtDesc') {
+    return { expression: 'image_assets.lastViewedAt', orderBy, ascending: false };
+  }
+  if (orderBy === 'sourceOrderAsc') {
+    return { expression: 'COALESCE(image_assets.sourceOrder, image_assets.id)', orderBy, ascending: true };
+  }
+  throw new Error(`Unsupported media cursor sort: ${String(orderBy)}`);
+}
+
+function createMediaCursor(item: ImageListItem, sort: MediaCursorSortSpec): MediaPageCursor {
+  if (sort.orderBy === 'lastViewedAtDesc') {
+    return { id: item.id, sortValue: item.lastViewedAt };
+  }
+  if (sort.orderBy === 'sourceOrderAsc') {
+    return { id: item.id, sortValue: item.sourceOrder ?? item.id };
+  }
+  return { id: item.id, sortValue: item.createdAt };
+}
+
+function normalizeMediaCursorLimit(limit?: number): number {
+  return Math.max(1, Math.min(100, Math.floor(limit ?? 40)));
+}
+
+function buildMediaCursorBase(
+  request: MediaCursorPageRequest,
+  sort: MediaCursorSortSpec
+): { clauses: string[]; values: Array<number | string> } {
+  const clauses: string[] = [];
+  const values: Array<number | string> = [];
+  if (request.imageIds) {
+    if (request.imageIds.length === 0) {
+      clauses.push('1 = 0');
+    } else {
+      const inClause = buildInClause(request.imageIds);
+      clauses.push(`image_assets.id IN (${inClause.placeholders})`);
+      values.push(...inClause.values);
+    }
+  }
+  if (sort.orderBy === 'lastViewedAtDesc') {
+    clauses.push('image_assets.lastViewedAt IS NOT NULL');
+  }
+  return { clauses, values };
+}
+
+function buildMediaCursorBoundary(
+  cursor: MediaPageCursor,
+  direction: 'before' | 'after',
+  sort: MediaCursorSortSpec
+): { clause: string; values: Array<number | string>; orderByClause: string } {
+  if (cursor.sortValue == null) {
+    throw new Error('Media cursor sortValue cannot be null for this sort.');
+  }
+  const followsNaturalOrder = direction === 'after';
+  const valueOperator = sort.ascending === followsNaturalOrder ? '>' : '<';
+  const idOperator = sort.ascending === followsNaturalOrder ? '>' : '<';
+  const queryAscending = direction === 'after' ? sort.ascending : !sort.ascending;
+  const queryDirection = queryAscending ? 'ASC' : 'DESC';
+  return {
+    clause: `(${sort.expression} ${valueOperator} ? OR (${sort.expression} = ? AND image_assets.id ${idOperator} ?))`,
+    values: [cursor.sortValue, cursor.sortValue, cursor.id],
+    orderByClause: `ORDER BY ${sort.expression} ${queryDirection}, image_assets.id ${queryDirection}`,
+  };
+}
+
+function emptyMediaPage<T>(): MediaPageResult<T> {
+  return { items: [], olderCursor: null, newerCursor: null, hasOlder: false, hasNewer: false };
+}
+
 export const imageRepository = {
   async create(db: SQLiteDatabase, input: CreateImageAssetInput): Promise<ImageAssetRecord> {
     const now = createTimestamp();
@@ -626,6 +710,7 @@ export const imageRepository = {
       throw new Error(`Image asset ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
 
+    bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
     return record;
   },
 
@@ -723,7 +808,9 @@ export const imageRepository = {
       await touchParentRecords(db, current.ipId, current.groupId);
     }
 
-    return this.findById(db, id, { includeDeleted: true, mediaType: input.mediaType ?? current.mediaType });
+    const record = await this.findById(db, id, { includeDeleted: true, mediaType: input.mediaType ?? current.mediaType });
+    bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+    return record;
   },
 
   async findById(db: SQLiteDatabase, id: number, options?: ImageAssetQueryOptions): Promise<ImageAssetRecord | null> {
@@ -815,6 +902,96 @@ export const imageRepository = {
     return {
       items: rows.slice(0, limit).map(mapImageListItemRow),
       hasMore: rows.length > limit,
+    };
+  },
+
+  async findFilteredCursorPage(
+    db: SQLiteDatabase,
+    request: MediaCursorPageRequest = {}
+  ): Promise<MediaPageResult<ImageListItem>> {
+    const limit = normalizeMediaCursorLimit(request.limit);
+    const direction = request.direction ?? 'after';
+    const sort = resolveMediaCursorSort(request.orderBy);
+    const base = buildMediaCursorBase(request, sort);
+    let orderByClause = `ORDER BY ${sort.expression} ${sort.ascending ? 'ASC' : 'DESC'}, image_assets.id ${sort.ascending ? 'ASC' : 'DESC'}`;
+    if (request.cursor) {
+      const boundary = buildMediaCursorBoundary(request.cursor, direction, sort);
+      base.clauses.push(boundary.clause);
+      base.values.push(...boundary.values);
+      orderByClause = boundary.orderByClause;
+    }
+    const queryParts = buildImageListQueryParts(base.clauses, base.values, {
+      ...request,
+      orderBy: sort.orderBy,
+    });
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${orderByClause}
+       LIMIT ?`,
+      ...queryParts.values,
+      limit + 1
+    );
+    const hasMore = rows.length > limit;
+    const pageRows = rows.slice(0, limit);
+    if (direction === 'before') {
+      pageRows.reverse();
+    }
+    const items = pageRows.map(mapImageListItemRow);
+    if (items.length === 0) {
+      return emptyMediaPage();
+    }
+    return {
+      items,
+      olderCursor: createMediaCursor(items[items.length - 1], sort),
+      newerCursor: createMediaCursor(items[0], sort),
+      hasOlder: direction === 'after' ? hasMore : Boolean(request.cursor),
+      hasNewer: direction === 'before' ? hasMore : Boolean(request.cursor),
+    };
+  },
+
+  async findCursorPageAroundId(
+    db: SQLiteDatabase,
+    anchorId: number,
+    request: Omit<MediaCursorPageRequest, 'cursor' | 'direction'> = {}
+  ): Promise<MediaPageResult<ImageListItem>> {
+    const limit = normalizeMediaCursorLimit(request.limit);
+    const sort = resolveMediaCursorSort(request.orderBy);
+    const base = buildMediaCursorBase(request, sort);
+    base.clauses.push('image_assets.id = ?');
+    base.values.push(anchorId);
+    const anchorQuery = buildImageListQueryParts(base.clauses, base.values, {
+      ...request,
+      orderBy: sort.orderBy,
+    });
+    const anchorRow = await db.getFirstAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${anchorQuery.whereClause}
+       GROUP BY image_assets.id
+       LIMIT 1`,
+      ...anchorQuery.values
+    );
+    if (!anchorRow) {
+      throw new Error(`Media anchor ${anchorId} was not found in the requested context.`);
+    }
+    const anchor = mapImageListItemRow(anchorRow);
+    const anchorCursor = createMediaCursor(anchor, sort);
+    const beforeLimit = Math.floor((limit - 1) / 2);
+    const afterLimit = limit - beforeLimit - 1;
+    const beforePage = beforeLimit > 0
+      ? await this.findFilteredCursorPage(db, { ...request, cursor: anchorCursor, direction: 'before', limit: beforeLimit })
+      : emptyMediaPage<ImageListItem>();
+    const afterPage = afterLimit > 0
+      ? await this.findFilteredCursorPage(db, { ...request, cursor: anchorCursor, direction: 'after', limit: afterLimit })
+      : emptyMediaPage<ImageListItem>();
+    const items = [...beforePage.items, anchor, ...afterPage.items];
+    return {
+      items,
+      olderCursor: createMediaCursor(items[items.length - 1], sort),
+      newerCursor: createMediaCursor(items[0], sort),
+      hasOlder: afterPage.hasOlder,
+      hasNewer: beforePage.hasNewer,
     };
   },
 
@@ -1308,7 +1485,9 @@ export const imageRepository = {
         );
       });
 
-      return this.findById(db, id, { includeDeleted: true });
+      const record = await this.findById(db, id, { includeDeleted: true });
+      bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      return record;
     } catch (error) {
       console.error('Pixory imageRepository.setImageGroups failed.', {
         imageId: id,
@@ -1357,11 +1536,28 @@ export const imageRepository = {
     return this.findById(db, id);
   },
 
+  async touchLastViewedAtMany(db: SQLiteDatabase, ids: number[]): Promise<number> {
+    const normalizedIds = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+    if (normalizedIds.length === 0) {
+      return 0;
+    }
+    const inClause = buildInClause(normalizedIds);
+    const result = await db.runAsync(
+      `UPDATE image_assets SET lastViewedAt = ? WHERE id IN (${inClause.placeholders}) AND deletedAt IS NULL`,
+      createTimestamp(),
+      ...inClause.values
+    );
+    return result.changes;
+  },
+
   async clearRecentViewed(db: SQLiteDatabase): Promise<number> {
     const result = await db.runAsync(
       'UPDATE image_assets SET lastViewedAt = NULL WHERE deletedAt IS NULL AND lastViewedAt IS NOT NULL'
     );
 
+    if (result.changes > 0) {
+      bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+    }
     return result.changes;
   },
 
@@ -1415,6 +1611,9 @@ export const imageRepository = {
         );
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.updateManyGroup failed.', {
@@ -1466,6 +1665,9 @@ export const imageRepository = {
         await touchParentRecordsByGroupIds(db, ipIds, [groupId]);
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.addManyToGroup failed.', {
@@ -1516,6 +1718,9 @@ export const imageRepository = {
         );
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.removeManyFromGroup failed.', {
@@ -1555,6 +1760,9 @@ export const imageRepository = {
         await touchManyParentRecords(db, currentImages);
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.updateManyFavorite failed.', {
@@ -1594,6 +1802,9 @@ export const imageRepository = {
         await touchManyParentRecords(db, currentImages);
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.updateManyNote failed.', {
@@ -1632,6 +1843,9 @@ export const imageRepository = {
         await touchManyParentRecords(db, currentImages);
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.softDeleteMany failed.', {
@@ -1673,6 +1887,9 @@ export const imageRepository = {
         await ipRepository.restoreById(db, ipId);
       }
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.restoreMany failed.', {
@@ -1706,6 +1923,9 @@ export const imageRepository = {
         await touchManyParentRecords(db, currentImages);
       });
 
+      if (changedCount > 0) {
+        bumpDataEpoch('media', getRegisteredDatabaseSpace(db));
+      }
       return changedCount;
     } catch (error) {
       console.error('Pixory imageRepository.deletePermanentlyMany failed.', {

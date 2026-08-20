@@ -23,6 +23,7 @@ import { StrictPager } from './src/components/StrictPager';
 import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { clearPersonalImageCache } from './src/components/SecureImage';
+import { clearPersonalMediaReaderSessions } from './src/media/mediaReaderSessionCache';
 import { colors, spacing, typography, componentTokens, layout, radius, shadows } from './src/design/tokens';
 import { imageRepository, initDatabase, resetDatabaseSpaceCache, runWithDatabaseSpace, settingsRepository, type IpLibraryFilter, type PixorySpace } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
@@ -70,6 +71,7 @@ import { resumeDiaryBackgroundTasks, suspendDiaryBackgroundTasks } from './src/a
 import { coordinateDiaryRuntime } from './src/ai/diary/diaryRuntimeCoordinator';
 import { resumePersonalCompanionMaintenance, runCompanionMaintenancePass, suspendCompanionMaintenance } from './src/ai/companion/companionMaintenanceQueue';
 import { aiGenerationManager } from './src/ai/aiGenerationManager';
+import { clearThreadMessagePrefetch, prefetchThreadMessages } from './src/ai/aiThreadMessagePrefetch';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
@@ -959,8 +961,10 @@ export default function App() {
     setPersonalUnlockVisible(false);
     setGlobalSearchQuery('');
     setLibraryRefreshToken((current) => current + 1);
+    clearThreadMessagePrefetch('personal');
 
     const cleanupResults = await Promise.allSettled([
+      clearPersonalMediaReaderSessions(),
       clearPersonalImageCache(),
       cleanupOldTempFiles('personal', 0),
       resetDatabaseSpaceCache('personal'),
@@ -980,6 +984,9 @@ export default function App() {
 
   function pushRoute(route: AppRoute) {
     if (route.name === 'ai-chat') {
+      if (route.threadId) {
+        prefetchThreadMessages(route.space, route.threadId);
+      }
       scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
       const nextRoute = prepareAiChatRouteForPush(route);
       setRouteStack((current) => [...current, nextRoute]);
@@ -989,6 +996,9 @@ export default function App() {
   }
 
   function openAiChatRoute(route: Extract<AppRoute, { name: 'ai-chat' }>) {
+    if (route.threadId) {
+      prefetchThreadMessages(route.space, route.threadId);
+    }
     scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
     const nextRoute = prepareAiChatRouteForPush(route);
     setRouteStack((current) => {
@@ -1138,6 +1148,9 @@ export default function App() {
   }
 
   function replaceCurrentRoute(route: AppRoute) {
+    if (route.name === 'ai-chat' && route.threadId) {
+      prefetchThreadMessages(route.space, route.threadId);
+    }
     setRouteStack((current) => {
       const previousRoute = current[current.length - 1];
       const nextRoute = route.name === 'ai-chat' ? prepareAiChatRouteForReplace(route, previousRoute) : route;
@@ -1146,6 +1159,9 @@ export default function App() {
   }
 
   function replaceAiChatFlowWithRoute(route: Extract<AppRoute, { name: 'ai-chat' }>) {
+    if (route.threadId) {
+      prefetchThreadMessages(route.space, route.threadId);
+    }
     const nextRoute = prepareAiChatRouteForPush(route);
     setRouteStack((current) => {
       const stableRoutes = current.filter((entry) => ![
@@ -1533,6 +1549,7 @@ export default function App() {
           })
         }
         onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
         scopeImageIds={currentRoute.scopeImageIds}
         source={currentRoute.source}
@@ -1637,6 +1654,7 @@ export default function App() {
         imageId={currentRoute.imageId}
         onBack={popRoute}
         onOpenDetail={(imageId) => openImageDetail(imageId, currentRoute.context)}
+        onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -1782,6 +1800,7 @@ export default function App() {
         onBack={popRoute}
         onOpenImage={openImageViewer}
         onOpenImageDetail={openImageDetail}
+        onRefreshed={refreshLibrary}
         onStartBatchManagement={(ipId, imageId) =>
           pushRoute({
             name: 'batch-manage-images',

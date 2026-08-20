@@ -1,7 +1,7 @@
 import * as MediaLibrary from 'expo-media-library';
 
 import { getFileInfo } from './fileStorageService';
-import { saveNativeImageToMediaStore } from '../native/pixoryMediaModule';
+import { saveNativeImageToMediaStore, saveNativeVideoToMediaStore } from '../native/pixoryMediaModule';
 
 let hasMediaLibrarySavePermission = false;
 
@@ -69,10 +69,15 @@ export async function saveImageToSystemAlbum(
 ): Promise<void> {
   const fileInfo = await getFileInfo(originalFileUri);
   if (!fileInfo.exists || fileInfo.isDirectory) {
-    throw new Error('原图文件不存在，无法保存到系统相册。');
+    throw new Error('原始素材文件不存在，无法保存到系统相册。');
   }
 
-  await saveNativeImageToMediaStore(originalFileUri, getDisplayNameFromUri(originalFileUri), albumTitle?.trim() || null);
+  const isVideo = /\.(mp4|mov|mkv|webm|avi|m4v|3gp)(?:\?|$)/i.test(originalFileUri);
+  if (isVideo) {
+    await saveNativeVideoToMediaStore(originalFileUri, getDisplayNameFromUri(originalFileUri));
+  } else {
+    await saveNativeImageToMediaStore(originalFileUri, getDisplayNameFromUri(originalFileUri), albumTitle?.trim() || null);
+  }
 }
 
 export interface SaveImagesToSystemAlbumResult {

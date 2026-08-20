@@ -111,7 +111,7 @@ test('app startup routes share, external video, archive, and unsupported package
   assert.match(appSource, /Pixory 资源包暂时需要在应用内导入/);
 });
 
-test('swipe grid selection supports media tiles while batch image management can stay image-only', () => {
+test('swipe grid selection supports image and video tiles across media and batch management lists', () => {
   const hookSource = readProjectFile('src/hooks/useSwipeGridSelection.ts');
   const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
   const allImagesSource = readProjectFile('src/screens/AllImagesScreen.tsx');
@@ -136,7 +136,7 @@ test('swipe grid selection supports media tiles while batch image management can
     assert.match(longPressBlock, /beginSwipeSelection/);
   }
   assert.match(batchSource, /useSwipeGridSelection/);
-  assert.match(batchSource, /selectableMediaTypes:\s*\['image'\]/);
+  assert.match(batchSource, /selectableMediaTypes:\s*\['image', 'video'\]/);
   assert.match(batchSource, /swipeSelection\.panHandlers/);
   assert.match(batchSource, /registerItemLayout/);
 });

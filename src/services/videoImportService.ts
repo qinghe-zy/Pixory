@@ -50,6 +50,13 @@ import {
   type MoveDeletionNotice,
 } from './mediaImportSourcePolicy';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
+import {
+  assertMediaImportCommitBudget,
+  assertMediaImportPreflight,
+  createMediaImportCommitBudget,
+  MEDIA_IMPORT_COMMIT_RECHECK_INTERVAL,
+  type MediaImportCommitBudget,
+} from './mediaImportPreflightRuntime';
 
 const VIDEO_IMPORT_PROGRESS_WRITE_INTERVAL_MS = 750;
 
@@ -61,6 +68,7 @@ export interface PickedVideoAsset {
   fileSize: number | null;
   sourceKind?: MediaPickerSource;
   sourceOrder?: number | null;
+  temporaryInput?: boolean;
 }
 
 export interface PickVideosForImportResult {
@@ -110,6 +118,7 @@ interface ImportSingleVideoParams {
   duplicateDecision?: DuplicateImportDecision;
   progressWriter: VideoImportProgressWriter;
   taskToken?: PersonalTaskToken | null;
+  commitBudget: MediaImportCommitBudget;
 }
 
 interface VideoImportProgressWriter {
@@ -315,6 +324,7 @@ async function importSingleVideo({
   duplicateDecision,
   progressWriter,
   taskToken,
+  commitBudget,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
   assertPersonalTaskActive(taskToken);
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
@@ -382,6 +392,19 @@ async function importSingleVideo({
       status: 'writingDatabase',
       currentLabel: originalFilename,
     });
+    const actualFileSize = originalInfo.size ?? metadata.fileSize ?? pickedAsset.fileSize ?? 0;
+    const shouldRecheckCommitBudget = actualFileSize !== (pickedAsset.fileSize ?? 0)
+      || commitBudget.committedCount % MEDIA_IMPORT_COMMIT_RECHECK_INTERVAL === 0;
+    const nextCommittedBytes = shouldRecheckCommitBudget
+      ? await assertMediaImportCommitBudget({
+          assertActive: () => assertPersonalTaskActive(taskToken),
+          committedBytes: commitBudget.committedBytes,
+          kind: 'video',
+          name: originalFilename,
+          size: actualFileSize,
+          space,
+        })
+      : commitBudget.committedBytes + actualFileSize;
     const createdVideo = await assetRepository.createVideo(db, {
       ipId,
       importBatchId,
@@ -404,10 +427,12 @@ async function importSingleVideo({
       note: normalizeOptionalText(note) ?? null,
       previewStatus,
     });
-    assertPersonalTaskActive(taskToken);
     createdVideoId = createdVideo.id;
+    assertPersonalTaskActive(taskToken);
     await tagRepository.replaceImageTags(db, createdVideo.id, tags.map((tag) => tag.id));
     assertPersonalTaskActive(taskToken);
+    commitBudget.committedBytes = nextCommittedBytes;
+    commitBudget.committedCount += 1;
 
     let sourceDeletionNotice: MoveDeletionNotice | null = null;
     let pendingSourceDeletionAssetId: string | null = null;
@@ -498,12 +523,23 @@ export async function importVideosToIp(params: {
   deferSourceDeletion?: boolean;
   videoImportNamingMode?: VideoImportNamingMode;
   taskToken?: PersonalTaskToken | null;
+  commitBudget?: MediaImportCommitBudget;
   onProgress?: (current: number, total: number) => void;
 }): Promise<ImportVideosToIpResult> {
   await activateKeepAwakeAsync();
   try {
     const space = params.space ?? 'normal';
     assertPersonalTaskActive(params.taskToken);
+    const preflight = params.pickedAssets.length > 0
+      ? await assertMediaImportPreflight({
+          assertActive: () => assertPersonalTaskActive(params.taskToken),
+          assets: params.pickedAssets,
+          kind: 'video',
+          space,
+        })
+      : null;
+    const pickedAssets = preflight?.resolvedAssets ?? params.pickedAssets;
+    const commitBudget = params.commitBudget ?? createMediaImportCommitBudget();
     await ensureAppDirectories(space);
 
   return runWithDatabaseSpace(space, async (db) => {
@@ -511,7 +547,7 @@ export async function importVideosToIp(params: {
     const groupIds = normalizeGroupIds(params.groupIds);
     await ensureImportTargetExists(db, params.ipId, groupIds);
 
-    if (params.pickedAssets.length === 0) {
+    if (pickedAssets.length === 0) {
       return {
         task: null,
         importBatch: null,
@@ -528,7 +564,7 @@ export async function importVideosToIp(params: {
       type: 'video-import',
       space,
       title: params.title ?? '导入视频',
-      totalCount: params.pickedAssets.length,
+      totalCount: pickedAssets.length,
       currentLabel: '准备导入视频',
     });
     const progressWriter = createVideoImportProgressWriter(db, task.id);
@@ -542,7 +578,7 @@ export async function importVideosToIp(params: {
     const importBatch = await importBatchRepository.create(db, {
       ipId: params.ipId,
       name: `${new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}视频导入`,
-      totalCount: params.pickedAssets.length,
+      totalCount: pickedAssets.length,
     });
     const tags = await resolveTags(db, params.tagNames);
     assertPersonalTaskActive(params.taskToken);
@@ -555,9 +591,9 @@ export async function importVideosToIp(params: {
 
     try {
       let currentIndex = 0;
-      for (const pickedAsset of params.pickedAssets) {
+      for (const pickedAsset of pickedAssets) {
         currentIndex++;
-        params.onProgress?.(currentIndex, params.pickedAssets.length);
+        params.onProgress?.(currentIndex, pickedAssets.length);
         try {
           assertPersonalTaskActive(params.taskToken);
           const importedVideo = await importSingleVideo({
@@ -577,6 +613,7 @@ export async function importVideosToIp(params: {
             videoImportNamingMode,
             progressWriter,
             taskToken: params.taskToken ?? null,
+            commitBudget,
           });
           importedVideos.push(importedVideo);
           await importBatchRepository.createItem(db, {
@@ -591,6 +628,7 @@ export async function importVideosToIp(params: {
             failedCount: errors.length,
           });
         } catch (error) {
+          assertPersonalTaskActive(params.taskToken);
           const importError = formatVideoImportError(pickedAsset, error, videoImportNamingMode);
           if (importError.skipped) {
             skippedCount += 1;

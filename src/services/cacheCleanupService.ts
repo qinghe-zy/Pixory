@@ -3,6 +3,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 
 import type { PixorySpace } from '../database';
+import { MEDIA_IMPORT_FILE_CONCURRENCY } from '../constants/limits';
+import { settleFileTasksWithConcurrency } from './boundedFileConcurrency';
 import { getTempDir } from './fileStorageService';
 
 export const BACKGROUND_MEMORY_CACHE_CLEAR_DELAY_MS = 5 * 60 * 1000;
@@ -67,18 +69,40 @@ function normalizeDirectoryUri(directoryUri: string): string {
 }
 
 export async function getLocalEntrySize(uri: string): Promise<number> {
-  const info = await FileSystem.getInfoAsync(uri);
-  if (!info.exists) {
-    return 0;
+  let pendingUris = [uri];
+  let totalBytes = 0;
+
+  while (pendingUris.length > 0) {
+    const results = await settleFileTasksWithConcurrency(
+      pendingUris,
+      MEDIA_IMPORT_FILE_CONCURRENCY,
+      async (entryUri) => {
+        const info = await FileSystem.getInfoAsync(entryUri);
+        if (!info.exists) {
+          return { childUris: [] as string[], size: 0 };
+        }
+        if (!info.isDirectory) {
+          return { childUris: [] as string[], size: info.size ?? 0 };
+        }
+        const names = await FileSystem.readDirectoryAsync(entryUri);
+        const normalizedEntryUri = normalizeDirectoryUri(entryUri);
+        return {
+          childUris: names.map((name) => `${normalizedEntryUri}${name}`),
+          size: 0,
+        };
+      },
+    );
+    const nextUris: string[] = [];
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        totalBytes += result.value.size;
+        nextUris.push(...result.value.childUris);
+      }
+    });
+    pendingUris = nextUris;
   }
 
-  if (!info.isDirectory) {
-    return info.size ?? 0;
-  }
-
-  const names = await FileSystem.readDirectoryAsync(uri);
-  const childSizes = await Promise.all(names.map((name) => getLocalEntrySize(`${uri.endsWith('/') ? uri : `${uri}/`}${name}`)));
-  return childSizes.reduce((sum, size) => sum + size, 0);
+  return totalBytes;
 }
 
 export async function cleanupDirectoryChildren({

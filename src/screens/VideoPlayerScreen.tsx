@@ -1,18 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { createVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
 import * as Brightness from 'expo-brightness';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, InteractionManager, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, AppState, FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View, type GestureResponderEvent, type ListRenderItemInfo } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VolumeManager } from 'react-native-volume-manager';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { SecureImage } from '../components/SecureImage';
-import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, type ImageDetailRecord, type ImageListItem, type IpListItem, type PixorySpace } from '../database';
+import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, type ImageDetailRecord, type ImageListItem, type IpListItem, type MediaPageCursor, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { applyPitchPreservingRate } from '../media/videoPlaybackRate';
+import { VideoPreloadPool } from '../media/videoPreloadPool';
+import { resolveVideoSwipe } from '../media/videoSwipePolicy';
 import { useToast } from '../components/AppToast';
 import { importVideosToIp, saveVideoToSystemAlbum, type PickedVideoAsset } from '../services/videoImportService';
 import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlaybackOrder } from '../services/mediaExperiencePreferences';
@@ -29,11 +32,12 @@ const VERTICAL_GESTURE_ACTIVATION_PX = 8;
 const VERTICAL_GESTURE_FULL_HEIGHT_RATIO = 0.58;
 const CENTER_VIDEO_SWITCH_LEFT_RATIO = 0.28;
 const CENTER_VIDEO_SWITCH_RIGHT_RATIO = 0.72;
-const CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX = 72;
 const CENTER_VIDEO_SWITCH_DOMINANCE_RATIO = 1.25;
 const VIDEO_SWITCH_EXIT_DURATION_MS = 170;
-const VIDEO_SWITCH_ENTER_DURATION_MS = 210;
 const VIDEO_SWITCH_CANCEL_DURATION_MS = 140;
+const VIDEO_QUEUE_INITIAL_WINDOW_SIZE = 61;
+const VIDEO_QUEUE_BOUNDARY_PAGE_SIZE = 40;
+const VIDEO_QUEUE_BOUNDARY_THRESHOLD = 8;
 const COMPLETED_PLAYBACK_RESTART_THRESHOLD_MS = 1500;
 const COMMITTED_SEEK_SETTLE_TIMEOUT_MS = 1400;
 const COMMITTED_SEEK_TOLERANCE_SECONDS = 0.35;
@@ -77,6 +81,12 @@ interface VideoPlayerScreenProps {
 }
 
 type VideoSwitchHistoryMode = 'append' | 'back';
+
+interface VideoQueueBoundary {
+  cursor: MediaPageCursor | null;
+  direction: 'before' | 'after';
+  hasMore: boolean;
+}
 
 function getLandscapeStateFromOrientation(orientation: ScreenOrientation.Orientation): boolean | null {
   if (orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT) {
@@ -142,12 +152,12 @@ export function VideoPlayerScreen({
   const [newIpName, setNewIpName] = useState('');
   const [isSavingToIp, setIsSavingToIp] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
-  const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] = useState(false);
   const [switchPreviewVideo, setSwitchPreviewVideo] = useState<ImageListItem | null>(null);
   const [loadingCoverVideo, setLoadingCoverVideo] = useState<ImageListItem | ImageDetailRecord | null>(null);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
+  const [preloadRevision, setPreloadRevision] = useState(0);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -180,17 +190,180 @@ export function VideoPlayerScreen({
   const floatingMenuOpacity = useRef(new Animated.Value(0)).current;
   const floatingMenuTranslateY = useRef(new Animated.Value(10)).current;
   const videoSwitchTranslateY = useRef(new Animated.Value(0)).current;
+  const videoSwitchOffsetRef = useRef(0);
+  const videoSwitchGestureStartOffsetRef = useRef(0);
+  const videoSwitchReleaseVelocityRef = useRef(0);
+  const lastSwipeDirectionRef = useRef<1 | -1>(1);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const activeVideoIdRef = useRef(activeVideoId);
+  activeVideoIdRef.current = activeVideoId;
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const queueIpIdRef = useRef<number | null>(null);
+  const queueLoadGenerationRef = useRef(0);
+  const queueBoundaryLoadRef = useRef<'leading' | 'trailing' | null>(null);
+  const leadingQueueBoundaryRef = useRef<VideoQueueBoundary>({ cursor: null, direction: 'before', hasMore: false });
+  const trailingQueueBoundaryRef = useRef<VideoQueueBoundary>({ cursor: null, direction: 'after', hasMore: false });
+  const initialPlayerReadyIdRef = useRef<number | null>(null);
+  const isScreenMountedRef = useRef(true);
 
   const activeVideoSource = switchPreviewVideo ?? video;
   const sourceUri = externalSource?.uri ?? activeVideoSource?.originalFileUri ?? null;
   const sourceFileName = externalSource?.fileName ?? activeVideoSource?.originalFilename ?? 'video.mp4';
 
-  const player = useVideoPlayer(null, (instance) => {
+  const [initialPlayer] = useState<VideoPlayer>(() => {
+    const instance = createVideoPlayer(null);
+    instance.loop = false;
     instance.timeUpdateEventInterval = 0.25;
-    instance.playbackRate = speed;
-    instance.loop = true;
+    applyPitchPreservingRate(instance, speedRef.current);
+    return instance;
   });
+  const initialPlayerRef = useRef<VideoPlayer>(initialPlayer);
+  const [player, setPlayer] = useState<VideoPlayer>(initialPlayer);
+  const playerRef = useRef(player);
+  playerRef.current = player;
+  const videoPreloadPoolRef = useRef<VideoPreloadPool<ImageListItem, VideoPlayer, number> | null>(null);
+  const initialPlayerOwnedByPoolRef = useRef(false);
+  if (!videoPreloadPoolRef.current) {
+    videoPreloadPoolRef.current = new VideoPreloadPool({
+      createPlayer: () => createVideoPlayer(null),
+      getItemId: (item) => item.id,
+      preparePlayer: async (instance, item) => {
+        try {
+          instance.pause();
+          instance.muted = true;
+          instance.loop = false;
+          instance.timeUpdateEventInterval = 0;
+          applyPitchPreservingRate(instance, speedRef.current);
+          await instance.replaceAsync({ uri: item.originalFileUri });
+          instance.currentTime = resolveInitialPlaybackTimeSeconds(item.lastPlaybackPositionMs, item.durationMs);
+        } finally {
+          if (isScreenMountedRef.current && activeVideoIdRef.current === item.id) {
+            setPreloadRevision((current) => current + 1);
+          }
+        }
+      },
+      releasePlayer: (instance) => {
+        try {
+          instance.pause();
+          instance.release();
+        } catch {
+          // The native shared object may already be released during teardown.
+        }
+      },
+      setPlayerActive: (instance, active) => {
+        if (!active) {
+          try {
+            instance.pause();
+            instance.muted = true;
+          } catch {
+            // Ignore a stale player while the pool is rotating.
+          }
+          return;
+        }
+        instance.muted = false;
+        instance.timeUpdateEventInterval = 0.25;
+        applyPitchPreservingRate(instance, speedRef.current);
+        setPlayer(instance);
+      },
+    });
+  }
+  const videoPreloadPool = videoPreloadPoolRef.current;
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
+
+  const loadVideoQueueBoundary = useCallback(async (placement: 'leading' | 'trailing') => {
+    if (queueBoundaryLoadRef.current) {
+      return;
+    }
+    const ipId = queueIpIdRef.current;
+    const boundaryRef = placement === 'leading' ? leadingQueueBoundaryRef : trailingQueueBoundaryRef;
+    const boundary = boundaryRef.current;
+    if (!ipId || !boundary.hasMore || !boundary.cursor) {
+      return;
+    }
+
+    queueBoundaryLoadRef.current = placement;
+    const generation = queueLoadGenerationRef.current;
+    try {
+      const page = await runWithDatabaseSpace(space, (db) => assetRepository.findVideoQueuePageByIpId(db, ipId, {
+        cursor: boundary.cursor,
+        direction: boundary.direction,
+        limit: VIDEO_QUEUE_BOUNDARY_PAGE_SIZE,
+        orderBy: 'createdAtDesc',
+      }));
+      if (generation !== queueLoadGenerationRef.current || ipId !== queueIpIdRef.current) {
+        return;
+      }
+      boundaryRef.current = boundary.direction === 'before'
+        ? { cursor: page.newerCursor, direction: 'before', hasMore: page.hasNewer }
+        : { cursor: page.olderCursor, direction: 'after', hasMore: page.hasOlder };
+      if (page.items.length === 0) {
+        return;
+      }
+      setQueue((current) => {
+        const existingIds = new Set(current.map((item) => item.id));
+        const uniqueItems = page.items.filter((item) => !existingIds.has(item.id));
+        return placement === 'leading'
+          ? [...uniqueItems, ...current]
+          : [...current, ...uniqueItems];
+      });
+    } catch (error) {
+      console.warn('Pixory video queue boundary load failed.', {
+        message: error instanceof Error ? error.message : 'unknown queue boundary error',
+        placement,
+      });
+    } finally {
+      if (generation === queueLoadGenerationRef.current) {
+        queueBoundaryLoadRef.current = null;
+      }
+    }
+  }, [space]);
+
+  useEffect(() => {
+    const listenerId = videoSwitchTranslateY.addListener(({ value }) => {
+      videoSwitchOffsetRef.current = value;
+    });
+    return () => videoSwitchTranslateY.removeListener(listenerId);
+  }, [videoSwitchTranslateY]);
+
+  useEffect(() => {
+    if (externalSource || queue.length === 0 || activeVideoId <= 0) {
+      return;
+    }
+    const currentItem = queue.find((item) => item.id === activeVideoId);
+    if (!currentItem) {
+      return;
+    }
+    if (
+      videoPreloadPool.size === 0
+      && currentPlaybackVideoIdRef.current === activeVideoId
+      && playerRef.current === initialPlayerRef.current
+    ) {
+      if (initialPlayerReadyIdRef.current !== activeVideoId) {
+        return;
+      }
+      videoPreloadPool.adoptPlayer(currentItem, playerRef.current, true);
+      initialPlayerOwnedByPoolRef.current = true;
+    }
+    void videoPreloadPool.update({
+      currentId: activeVideoId,
+      direction: lastSwipeDirectionRef.current,
+      items: queue,
+    });
+  }, [activeVideoId, externalSource, preloadRevision, queue, videoPreloadPool]);
+
+  useEffect(() => {
+    if (currentIndex < 0 || queue.length === 0) {
+      return;
+    }
+    if (currentIndex <= VIDEO_QUEUE_BOUNDARY_THRESHOLD) {
+      void loadVideoQueueBoundary('leading');
+    }
+    if (currentIndex >= queue.length - VIDEO_QUEUE_BOUNDARY_THRESHOLD - 1) {
+      void loadVideoQueueBoundary('trailing');
+    }
+  }, [currentIndex, loadVideoQueueBoundary, queue.length]);
 
   useEffect(() => {
     spaceRef.current = space;
@@ -284,6 +457,12 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     if (externalSource) {
+      queueLoadGenerationRef.current += 1;
+      queueBoundaryLoadRef.current = null;
+      queueIpIdRef.current = null;
+      leadingQueueBoundaryRef.current = { cursor: null, direction: 'before', hasMore: false };
+      trailingQueueBoundaryRef.current = { cursor: null, direction: 'after', hasMore: false };
+      void videoPreloadPool.update({ currentId: 0, direction: 1, items: [] });
       setVideo(null);
       setSwitchPreviewVideo(null);
       setLoadingCoverVideo(null);
@@ -316,22 +495,55 @@ export function VideoPlayerScreen({
       const savedTime = resolveInitialPlaybackTimeSeconds(detail.lastPlaybackPositionMs, detail.durationMs);
       currentTimeRef.current = savedTime;
       setCurrentTime(savedTime);
-      const queueItems = await runWithDatabaseSpace(space, (db) => assetRepository.findQueueVideosByIpId(db, detail.ipId));
+      const hasCurrentQueueWindow = queueIpIdRef.current === detail.ipId
+        && queueRef.current.some((item) => item.id === detail.id);
+      if (!hasCurrentQueueWindow) {
+        const queueGeneration = queueLoadGenerationRef.current + 1;
+        queueLoadGenerationRef.current = queueGeneration;
+        queueBoundaryLoadRef.current = null;
+        queueIpIdRef.current = detail.ipId;
+        setQueue([]);
+        void videoPreloadPool.update({ currentId: detail.id, direction: lastSwipeDirectionRef.current, items: [] });
+        const queuePage = await runWithDatabaseSpace(space, (db) => imageRepository.findCursorPageAroundId(db, detail.id, {
+          ipId: detail.ipId,
+          limit: VIDEO_QUEUE_INITIAL_WINDOW_SIZE,
+          mediaType: 'video',
+          orderBy: 'createdAtDesc',
+        }));
+        if (isMounted && queueGeneration === queueLoadGenerationRef.current) {
+          leadingQueueBoundaryRef.current = { cursor: queuePage.newerCursor, direction: 'before', hasMore: queuePage.hasNewer };
+          trailingQueueBoundaryRef.current = { cursor: queuePage.olderCursor, direction: 'after', hasMore: queuePage.hasOlder };
+          setQueue(queuePage.items);
+        }
+      }
       if (isMounted) {
-        setQueue(queueItems);
         void runWithDatabaseSpace(space, (db) => imageRepository.touchLastViewedAt(db, detail.id));
       }
     }
 
-    load();
+    void load().catch((error) => {
+      console.warn('Pixory video player data load failed.', {
+        message: error instanceof Error ? error.message : 'unknown video data error',
+        videoId: activeVideoId,
+      });
+      if (isMounted) {
+        showToast('视频数据加载失败，请重试');
+      }
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [activeVideoId, externalSource, onBack, refreshToken, showToast, space]);
+  }, [activeVideoId, externalSource, onBack, refreshToken, showToast, space, videoPreloadPool]);
 
   useEffect(() => {
     if (!sourceUri) {
+      return;
+    }
+    const pooledPlayer = !externalSource && activeVideoSource && videoPreloadPool.size > 0
+      ? videoPreloadPool.getPlayer(activeVideoSource.id)
+      : undefined;
+    if (pooledPlayer && pooledPlayer !== player) {
       return;
     }
     let isActive = true;
@@ -348,19 +560,40 @@ export function VideoPlayerScreen({
     committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
     setLoadingCoverVideo(activeVideoSource);
+    if (pooledPlayer && activeVideoSource && !videoPreloadPool.isReady(activeVideoSource.id)) {
+      return () => {
+        isActive = false;
+      };
+    }
+    if (pooledPlayer && activeVideoSource && videoPreloadPool.isReady(activeVideoSource.id)) {
+      player.muted = false;
+      player.timeUpdateEventInterval = 0.25;
+      applyPitchPreservingRate(player, speed);
+      player.loop = queue.length <= 1;
+      currentTimeRef.current = player.currentTime;
+      setCurrentTime(player.currentTime);
+      setDuration(Number.isFinite(player.duration) ? player.duration : 0);
+      safePlayPlayer();
+      return () => {
+        isActive = false;
+      };
+    }
     void player.replaceAsync({ uri: sourceUri }).then(() => {
       if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
         return;
       }
       player.timeUpdateEventInterval = 0.25;
-      player.playbackRate = speed;
+      applyPitchPreservingRate(player, speed);
       player.loop = Boolean(externalSource) || queue.length <= 1;
       if (initialDisplayTime > 0) {
         player.currentTime = initialDisplayTime;
         currentTimeRef.current = initialDisplayTime;
       }
+      if (player === initialPlayerRef.current && activeVideoSource?.id) {
+        initialPlayerReadyIdRef.current = activeVideoSource.id;
+        setPreloadRevision((current) => current + 1);
+      }
       safePlayPlayer();
-      setLoadingCoverVideo(null);
     }).catch((error) => {
       if (isActive) {
         setLoadingCoverVideo(null);
@@ -370,14 +603,14 @@ export function VideoPlayerScreen({
     return () => {
       isActive = false;
     };
-  }, [activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
+  }, [activeVideoSource?.id, externalSource, player, preloadRevision, queue.length, showToast, sourceUri, videoPreloadPool]);
 
   useEffect(() => {
     player.loop = Boolean(externalSource) || queue.length <= 1;
   }, [externalSource, player, queue.length]);
 
   useEffect(() => {
-    player.playbackRate = speed;
+    applyPitchPreservingRate(player, speed);
     if (videoPreferencesLoadedRef.current) {
       void saveVideoPlayerPreferences({ speed });
     }
@@ -424,12 +657,22 @@ export function VideoPlayerScreen({
   }, [activeVideoId, currentIndex, duration, externalSource, playbackOrder, player, queue]);
 
   useEffect(() => {
+    isScreenMountedRef.current = true;
     resetHideTimer();
     return () => {
+      isScreenMountedRef.current = false;
       clearHideTimer();
       clearLongPressTimer();
       clearPreviewSeekTimer();
       safePausePlayer();
+      videoPreloadPool.dispose();
+      if (!initialPlayerOwnedByPoolRef.current) {
+        try {
+          initialPlayerRef.current?.release();
+        } catch {
+          // Direct external-source player may already be released.
+        }
+      }
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
       if (currentPlaybackVideoIdRef.current) {
         void runWithDatabaseSpace(spaceRef.current, (db) => assetRepository.updatePlaybackPosition(db, currentPlaybackVideoIdRef.current as number, Math.round(currentTimeRef.current * 1000)));
@@ -516,7 +759,7 @@ export function VideoPlayerScreen({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_event, gestureState) => {
-          if (isPlayerLocked || isVideoSwitchTransitioning) {
+          if (isPlayerLocked) {
             return false;
           }
           const absDx = Math.abs(gestureState.dx);
@@ -529,9 +772,14 @@ export function VideoPlayerScreen({
         onPanResponderGrant: (event) => {
           surfaceGestureModeRef.current = 'pending';
           lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
-          if (isPlayerLocked || isVideoSwitchTransitioning) {
+          if (isPlayerLocked) {
             return;
           }
+          videoSwitchGestureStartOffsetRef.current = videoSwitchOffsetRef.current;
+          videoSwitchTranslateY.stopAnimation((value) => {
+            videoSwitchGestureStartOffsetRef.current = value;
+            videoSwitchOffsetRef.current = value;
+          });
           longPressTimerRef.current = setTimeout(() => {
             if (surfaceGestureModeRef.current !== 'pending') {
               return;
@@ -541,7 +789,7 @@ export function VideoPlayerScreen({
           }, 260);
         },
         onPanResponderMove: (event, gestureState) => {
-          if (isPlayerLocked || isVideoSwitchTransitioning) {
+          if (isPlayerLocked) {
             return;
           }
           const absDx = Math.abs(gestureState.dx);
@@ -600,6 +848,7 @@ export function VideoPlayerScreen({
           }
           if (surfaceGestureModeRef.current === 'video-switch') {
             surfaceGestureModeRef.current = null;
+            videoSwitchReleaseVelocityRef.current = gestureState.vy;
             finishCenterVideoSwitchGesture(gestureState.dy);
             return;
           }
@@ -631,7 +880,7 @@ export function VideoPlayerScreen({
         },
         onShouldBlockNativeResponder: () => true,
       }),
-    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, isVideoSwitchTransitioning, playbackOrder, player, queue.length, speed, surfaceWidth, surfaceHeight]
+    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, playbackOrder, player, queue.length, speed, surfaceWidth, surfaceHeight]
   );
 
   async function handleSaveLocal() {
@@ -794,20 +1043,20 @@ export function VideoPlayerScreen({
     holdWasPlayingRef.current = isPlaying;
     setHoldSpeedVisible(true);
     const previousSpeed = player.playbackRate;
-    player.playbackRate = holdSpeed;
+    applyPitchPreservingRate(player, holdSpeed);
     safePlayPlayer();
     longPressTimerRef.current = setInterval(() => {
       currentTimeRef.current = player.currentTime;
       setCurrentTime(player.currentTime);
     }, 150);
     return () => {
-      player.playbackRate = previousSpeed;
+      applyPitchPreservingRate(player, previousSpeed);
       clearLongPressTimer();
     };
   }
 
   function finishHoldFastForward() {
-    player.playbackRate = speed;
+    applyPitchPreservingRate(player, speed);
     if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
       safePausePlayer();
     }
@@ -958,22 +1207,28 @@ export function VideoPlayerScreen({
   }
 
   function finishCenterVideoSwitchGesture(deltaY: number) {
-    const offset = deltaY < 0 ? 1 : -1;
+    const totalOffset = videoSwitchGestureStartOffsetRef.current + deltaY;
+    const offset = totalOffset < 0 ? 1 : -1;
     const nextVideo = getVideoByOffset(offset);
-    if (Math.abs(deltaY) < CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX) {
+    const resolution = resolveVideoSwipe({
+      canGoNext: Boolean(getVideoByOffset(1)),
+      canGoPrevious: Boolean(getVideoByOffset(-1)),
+      translationY: totalOffset,
+      velocityY: videoSwitchReleaseVelocityRef.current,
+      viewportHeight: surfaceHeight,
+    });
+    if (resolution.action === 'cancel' || !nextVideo || resolution.direction !== offset) {
       resetVideoSwitchDrag();
       return;
     }
-    if (!nextVideo) {
-      resetVideoSwitchDrag();
-      return;
-    }
+    lastSwipeDirectionRef.current = resolution.direction;
     switchVideoWithTransition(nextVideo, offset, getVideoSwitchHistoryMode(offset));
   }
 
   function updateVideoSwitchDrag(deltaY: number) {
     const maxTranslate = Math.max(1, surfaceHeight);
-    videoSwitchTranslateY.setValue(Math.max(-maxTranslate, Math.min(maxTranslate, deltaY)));
+    const nextOffset = videoSwitchGestureStartOffsetRef.current + deltaY;
+    videoSwitchTranslateY.setValue(Math.max(-maxTranslate, Math.min(maxTranslate, nextOffset)));
   }
 
   function resetVideoSwitchDrag() {
@@ -982,45 +1237,39 @@ export function VideoPlayerScreen({
       duration: VIDEO_SWITCH_CANCEL_DURATION_MS,
       useNativeDriver: true,
     }).start(() => {
+      videoSwitchGestureStartOffsetRef.current = 0;
+      videoSwitchOffsetRef.current = 0;
+      setLoadingCoverVideo((current) => (current?.id === activeVideoIdRef.current ? current : null));
       resetHideTimer();
     });
   }
 
   function switchVideoWithTransition(nextVideo: ImageListItem, direction: 1 | -1, historyMode: VideoSwitchHistoryMode = 'append') {
-    if (isVideoSwitchTransitioning) {
-      return;
-    }
-    setIsVideoSwitchTransitioning(true);
+    setLoadingCoverVideo(nextVideo);
     clearHideTimer();
     clearLongPressTimer();
     setSpeedMenuVisible(false);
     setQueueVisible(false);
     setMoreVisible(false);
     const transitionHeight = Math.max(1, surfaceHeight);
+    const targetOffset = -direction * transitionHeight;
     Animated.timing(videoSwitchTranslateY, {
-      toValue: -direction * transitionHeight,
+      toValue: targetOffset,
       duration: VIDEO_SWITCH_EXIT_DURATION_MS,
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (!finished) {
-        videoSwitchTranslateY.setValue(0);
-        setIsVideoSwitchTransitioning(false);
-        resetHideTimer();
         return;
       }
-      setLoadingCoverVideo(nextVideo);
-      switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
-      videoSwitchTranslateY.setValue(direction * transitionHeight);
-      InteractionManager.runAfterInteractions(() => {
-        Animated.timing(videoSwitchTranslateY, {
-          toValue: 0,
-          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
-          useNativeDriver: true,
-        }).start(() => {
-          setIsVideoSwitchTransitioning(false);
-          resetHideTimer();
-        });
+      void videoPreloadPool.update({ currentId: nextVideo.id, direction, items: queue }).then(() => {
+        if (isScreenMountedRef.current && activeVideoIdRef.current === nextVideo.id) {
+          setPreloadRevision((current) => current + 1);
+        }
       });
+      switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
+      videoSwitchTranslateY.setValue(0);
+      videoSwitchGestureStartOffsetRef.current = 0;
+      resetHideTimer();
     });
   }
 
@@ -1311,6 +1560,15 @@ export function VideoPlayerScreen({
     if (queue.length === 0 || currentIndex < 0) {
       return null;
     }
+    const adjacentIndex = currentIndex + offset;
+    if (adjacentIndex < 0 && leadingQueueBoundaryRef.current.hasMore) {
+      void loadVideoQueueBoundary('leading');
+      return null;
+    }
+    if (adjacentIndex >= queue.length && trailingQueueBoundaryRef.current.hasMore) {
+      void loadVideoQueueBoundary('trailing');
+      return null;
+    }
     const nextIndex = (currentIndex + offset + queue.length) % queue.length;
     const nextVideo = queue[nextIndex];
     return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
@@ -1378,6 +1636,35 @@ export function VideoPlayerScreen({
   }
 
   const title = sourceFileName;
+  const previousSwitchVideo = !externalSource && !isLandscape ? getVideoByOffset(-1) : null;
+  const nextSwitchVideo = !externalSource && !isLandscape ? getVideoByOffset(1) : null;
+  const loadingCoverUri = loadingCoverVideo && activeVideoSource && loadingCoverVideo.id === activeVideoSource.id
+    ? loadingCoverVideo.coverThumbnailFileUri ?? loadingCoverVideo.thumbnailFileUri
+    : null;
+
+  const renderQueueItem = useCallback(({ item }: ListRenderItemInfo<ImageListItem>) => (
+    <Pressable
+      onPress={() => switchVideo(item.id, item)}
+      style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}
+    >
+      <View style={styles.queueCover}>
+        {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
+          <SecureImage
+            contentFit="cover"
+            recyclingKey={`video-queue-${item.id}`}
+            space={space}
+            style={styles.queueCoverImage}
+            uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string}
+          />
+        ) : (
+          <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
+        )}
+      </View>
+      <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
+      {item.id === activeVideoId ? <Text style={styles.queueNowPlaying}>当前视频</Text> : null}
+      <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
+    </Pressable>
+  ), [activeVideoId, space]);
 
   function handleBack() {
     safePausePlayer();
@@ -1416,22 +1703,35 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
+        {previousSwitchVideo ? (
+          <View pointerEvents="none" style={[styles.videoAdjacentSlot, { transform: [{ translateY: -surfaceHeight }] }]}>
+            <VideoSwitchCover space={space} video={previousSwitchVideo} />
+          </View>
+        ) : null}
+        {nextSwitchVideo ? (
+          <View pointerEvents="none" style={[styles.videoAdjacentSlot, { transform: [{ translateY: surfaceHeight }] }]}>
+            <VideoSwitchCover space={space} video={nextSwitchVideo} />
+          </View>
+        ) : null}
         <VideoView
           allowsPictureInPicture={false}
           contentFit="contain"
           fullscreenOptions={{ enable: false }}
           nativeControls={false}
+          onFirstFrameRender={() => {
+            setLoadingCoverVideo((current) => (current?.id === activeVideoId ? null : current));
+          }}
           player={player}
           startsPictureInPictureAutomatically={false}
           style={styles.videoView}
         />
-        {loadingCoverVideo?.coverThumbnailFileUri ?? loadingCoverVideo?.thumbnailFileUri ? (
+        {loadingCoverUri ? (
           <View pointerEvents="none" style={styles.videoLoadingCover}>
             <SecureImage
               contentFit="contain"
               space={space}
               style={styles.videoLoadingCoverImage}
-              uri={(loadingCoverVideo.coverThumbnailFileUri ?? loadingCoverVideo.thumbnailFileUri) as string}
+              uri={loadingCoverUri}
             />
           </View>
         ) : null}
@@ -1500,22 +1800,20 @@ export function VideoPlayerScreen({
           {queueVisible ? (
             <Animated.View style={[styles.queuePanel, { bottom: insets.bottom + 152 }, floatingPanelAnimatedStyle]}>
               <Text style={styles.queueTitle}>待播放</Text>
-              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={styles.queueScroll} contentContainerStyle={styles.queueScrollContent}>
-                {queue.map((item) => (
-                  <Pressable key={item.id} onPress={() => switchVideo(item.id, item)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
-                    <View style={styles.queueCover}>
-                      {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
-                        <SecureImage contentFit="cover" space={space} style={styles.queueCoverImage} uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string} />
-                      ) : (
-                        <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
-                      )}
-                    </View>
-                    <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
-                    {item.id === activeVideoId ? <Text style={styles.queueNowPlaying}>当前视频</Text> : null}
-                    <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <FlatList
+                contentContainerStyle={styles.queueScrollContent}
+                data={queue}
+                initialNumToRender={10}
+                keyExtractor={(item) => String(item.id)}
+                maxToRenderPerBatch={8}
+                nestedScrollEnabled
+                onEndReached={() => void loadVideoQueueBoundary('trailing')}
+                onEndReachedThreshold={0.6}
+                renderItem={renderQueueItem}
+                showsVerticalScrollIndicator={false}
+                style={styles.queueScroll}
+                windowSize={7}
+              />
             </Animated.View>
           ) : null}
 
@@ -1668,6 +1966,19 @@ export function VideoPlayerScreen({
   );
 }
 
+function VideoSwitchCover({ video, space }: { video: ImageListItem; space: PixorySpace }) {
+  const coverUri = video.coverThumbnailFileUri ?? video.thumbnailFileUri;
+  return (
+    <View style={styles.videoAdjacentCover}>
+      {coverUri ? (
+        <SecureImage contentFit="contain" priority="high" space={space} style={styles.videoAdjacentCoverImage} uri={coverUri} />
+      ) : (
+        <Ionicons color={colors.text.inverse} name="play-circle-outline" size={40} />
+      )}
+    </View>
+  );
+}
+
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
@@ -1702,6 +2013,21 @@ const styles = StyleSheet.create({
   },
   videoSurface: {
     flex: 1,
+    overflow: 'hidden',
+  },
+  videoAdjacentSlot: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#050607',
+  },
+  videoAdjacentCover: {
+    alignItems: 'center',
+    backgroundColor: '#050607',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  videoAdjacentCoverImage: {
+    height: '100%',
+    width: '100%',
   },
   videoGestureLayer: {
     ...StyleSheet.absoluteFillObject,

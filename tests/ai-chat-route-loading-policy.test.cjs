@@ -79,7 +79,7 @@ test('chat shows a recoverable load error instead of treating failed history rea
   assert.match(chat, /setMessageLoadError\([^)]*聊天记录加载失败/);
   assert.match(
     chat,
-    /invertedMessageItems\.length === 0 && !isInitialMessageLoading && !errorMessage && !messageLoadError/,
+    /invertedMessageItems\.length === 0 && isMessageListReady && !errorMessage && !messageLoadError/,
   );
 });
 

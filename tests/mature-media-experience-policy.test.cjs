@@ -50,7 +50,8 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /getRandomQueueVideo/);
   assert.match(playerSource, /watchedVideoIdsRef/);
   assert.match(playerSource, /getPreviousWatchedVideo/);
-  assert.match(playerSource, /const offset = deltaY < 0 \? 1 : -1/);
+  assert.match(playerSource, /const totalOffset = videoSwitchGestureStartOffsetRef\.current \+ deltaY/);
+  assert.match(playerSource, /resolveVideoSwipe\(\{/);
   assert.match(playerSource, /playbackOrder === 'shuffle'[\s\S]*offset === -1 \? getPreviousWatchedVideo\(\) : getRandomQueueVideo\(\)/);
   assert.match(playerSource, /rememberWatchedVideo\(nextVideoId/);
   assert.match(playerSource, /forgetCurrentWatchedVideo\(\)/);
@@ -59,9 +60,10 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /\(currentIndex \+ offset \+ queue\.length\) % queue\.length/);
   assert.doesNotMatch(playerSource, /Math\.max\(0,\s*Math\.min\(queue\.length - 1,\s*currentIndex \+ offset\)\)/);
   assert.doesNotMatch(playerSource, /function switchVideoWithTransition[\s\S]*setSwitchPreviewVideo\(nextVideo\)[\s\S]*Animated\.timing\(videoSwitchTranslateY/);
-  assert.doesNotMatch(playerSource, /setIsVideoSwitchTransitioning\(true\);\s*setLoadingCoverVideo\(nextVideo\);\s*clearHideTimer\(\);/);
-  assert.match(playerSource, /Animated\.timing\(videoSwitchTranslateY,[\s\S]*\.start\(\(\{ finished \}\) => \{[\s\S]*setLoadingCoverVideo\(nextVideo\);\s*switchVideo\(nextVideo\.id, nextVideo, \{ historyMode, pauseBeforeSwitch: false, showControls: false \}\);/);
-  assert.match(playerSource, /loadingCoverVideo\?\.coverThumbnailFileUri \?\? loadingCoverVideo\?\.thumbnailFileUri/);
+  assert.match(playerSource, /setLoadingCoverVideo\(nextVideo\);\s*clearHideTimer\(\);/);
+  assert.match(playerSource, /setLoadingCoverVideo\(nextVideo\)[\s\S]*Animated\.timing\(videoSwitchTranslateY/);
+  assert.match(playerSource, /loadingCoverVideo\.id === activeVideoSource\.id/);
+  assert.match(playerSource, /loadingCoverVideo\.coverThumbnailFileUri \?\? loadingCoverVideo\.thumbnailFileUri/);
   assert.match(playerSource, /<View pointerEvents="none" style=\{styles\.videoLoadingCover\}>/);
   assert.match(playerSource, /style=\{styles\.videoLoadingCoverImage\}/);
   assert.match(playerSource, /COMPLETED_PLAYBACK_RESTART_THRESHOLD_MS\s*=\s*1500/);
@@ -70,9 +72,9 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /resolveInitialPlaybackTimeSeconds\(activeVideoSource\?\.lastPlaybackPositionMs, activeVideoSource\?\.durationMs\)/);
   assert.match(playerSource, /const spaceRef = useRef\(space\)/);
   assert.match(playerSource, /useEffect\(\(\) => \{\s*spaceRef\.current = space;\s*\}, \[space\]\)/);
-  assert.match(playerSource, /if \(externalSource\) \{[\s\S]*currentPlaybackVideoIdRef\.current = null;[\s\S]*setLoadingCoverVideo\(null\)/);
+  assert.match(playerSource, /if \(externalSource\) \{[\s\S]*setLoadingCoverVideo\(null\);[\s\S]*currentPlaybackVideoIdRef\.current = null/);
   assert.match(playerSource, /runWithDatabaseSpace\(spaceRef\.current/);
-  assert.match(playerSource, /useEffect\(\(\) => \{\s*resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[\]\)/);
+  assert.match(playerSource, /useEffect\(\(\) => \{\s*isScreenMountedRef\.current = true;\s*resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[\]\)/);
   assert.doesNotMatch(playerSource, /resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[externalSource, space, video\]\)/);
   assert.match(playerSource, /player\.addListener\('playToEnd'/);
   assert.match(playerSource, /player\.loop = Boolean\(externalSource\) \|\| queue\.length <= 1/);
@@ -109,4 +111,19 @@ test('image viewer supports reader modes settings filmstrip and zoom-safe paging
   assert.match(viewerSource, /filmstripRef/);
   assert.match(viewerSource, /viewPosition:\s*0\.5/);
   assert.match(viewerSource, /onPanAttemptBlockedByZoom/);
+});
+
+test('image viewer callbacks are declared before dependent render callbacks', () => {
+  const viewerSource = readProjectFile('src/screens/ImageViewerScreen.tsx');
+  const jumpDeclaration = viewerSource.indexOf('const jumpToImageIndex = useCallback');
+  const relativeNavigationDeclaration = viewerSource.indexOf('const goToRelativeImage = useCallback');
+  const longPressDeclaration = viewerSource.indexOf('const handleImageLongPress = useCallback');
+  const renderItemDeclaration = viewerSource.indexOf('const renderItem = useCallback');
+
+  assert.notEqual(jumpDeclaration, -1);
+  assert.notEqual(relativeNavigationDeclaration, -1);
+  assert.notEqual(longPressDeclaration, -1);
+  assert.notEqual(renderItemDeclaration, -1);
+  assert.ok(jumpDeclaration < relativeNavigationDeclaration, 'jumpToImageIndex must exist before goToRelativeImage captures it');
+  assert.ok(longPressDeclaration < renderItemDeclaration, 'handleImageLongPress must exist before renderItem captures it');
 });

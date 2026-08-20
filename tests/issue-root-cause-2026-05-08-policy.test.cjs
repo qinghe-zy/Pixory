@@ -144,5 +144,5 @@ test('global search and image viewer expose confirmable suggestions and immersiv
   assert.doesNotMatch(favoriteBlock, /showToast\(nextFavorite \? '已收藏' : '已取消收藏'\)/);
   assert.match(favoriteBlock, /showToast\(error instanceof Error \? `更新收藏失败/);
   assert.match(viewerSource, /animateScaleTo/);
-  assert.match(viewerSource, /const nextIndex = activeIndex/);
+  assert.match(viewerSource, /const nextIndex = images\.length - 1 - activeIndexRef\.current/);
 });

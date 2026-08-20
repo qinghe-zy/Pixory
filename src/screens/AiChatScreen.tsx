@@ -250,6 +250,8 @@ import {
 import { formatAiMessageMinute } from "../utils/aiTimeFormatters";
 import { AiChatMessageSkeleton } from "../components/ai/AiChatMessageSkeleton";
 import { consumeThreadMessagePrefetch } from "../ai/aiThreadMessagePrefetch";
+import { mergeOrderedMessagePages } from "../ai/aiMessagePageMerge";
+import { validateAiChatAttachments } from "../ai/aiAttachmentPolicy";
 import {
   isAdoptedThreadRouteSnapshotCurrent,
   loadPersistedAdoptedThreadBranchScopes,
@@ -1143,9 +1145,6 @@ export function AiChatScreen({
   const composerEntranceProgress = useRef(
     new Animated.Value(shouldPrimeComposerEntrance ? 0 : 1),
   ).current;
-  // Fades the message list in from 0→1 once initial data is ready, hiding
-  // any layout repositioning that happens before the first paint.
-  const messageAreaFadeAnim = useRef(new Animated.Value(0)).current;
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
     threadId ?? null,
   );
@@ -1516,6 +1515,8 @@ export function AiChatScreen({
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
   const [isInitialMessageLoading, setIsInitialMessageLoading] = useState(true);
+  const [isMessageListReady, setIsMessageListReady] = useState(false);
+  const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
 
   const [showSweep, setShowSweep] = useState(true);
 
@@ -2947,27 +2948,6 @@ export function AiChatScreen({
     [],
   );
 
-  /** Fade the message area in from transparent to opaque.
-   *  The mask holds for ~250ms while FlatList renders silently,
-   *  then fades in over 50ms so the reveal finishes by ~300ms. */
-  const fadeInMessageArea = useCallback(
-    (delay = 0) => {
-      const run = () =>
-        Animated.timing(messageAreaFadeAnim, {
-          toValue: 1,
-          duration: 50,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }).start();
-      if (delay > 0) {
-        setTimeout(run, delay);
-      } else {
-        run();
-      }
-    },
-    [messageAreaFadeAnim],
-  );
-
   const followLatestMessage = useCallback(
     (animated = true) => {
       userScrolledAwayFromBottomRef.current = false;
@@ -3008,6 +2988,12 @@ export function AiChatScreen({
     messageTouchStartYRef.current = null;
     messageTouchDirectionRef.current = 'undetermined';
   }, []);
+
+  const handleMessageListContentSizeChange = useCallback(() => {
+    if (!isInitialMessageLoading && invertedMessageItems.length > 0) {
+      setIsMessageListReady(true);
+    }
+  }, [invertedMessageItems.length, isInitialMessageLoading]);
 
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -3855,16 +3841,10 @@ export function AiChatScreen({
         ) {
           return;
         }
-        const mergedMessagesById = new Map(
-          page.messages.map((message) => [message.id, message]),
+        const mergedMessages = mergeOrderedMessagePages(
+          page.messages,
+          messagesRef.current,
         );
-        messagesRef.current.forEach((message) => {
-          mergedMessagesById.set(message.id, message);
-        });
-        const mergedMessages = [...mergedMessagesById.values()]
-          .sort((left, right) =>
-            left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
-          );
         olderMessageCursorRef.current = page.olderCursor;
         setHasEarlierMessages(page.hasEarlierMessages);
         replaceMessages(mergedMessages);
@@ -4383,16 +4363,16 @@ export function AiChatScreen({
     olderMessageCursorRef.current = null;
     setHasEarlierMessages(false);
     setSearchHighlightMessageId(null);
+    replaceMessages([]);
+    visibleMessagesRef.current = [];
     if (!nextThreadId) {
-      replaceMessages([]);
-      visibleMessagesRef.current = [];
       setMemoryCaptures([]);
     }
     userScrolledAwayFromBottomRef.current = false;
     bottomLockedRef.current = true;
     setScrollToLatestVisible(false);
     setIsInitialMessageLoading(true);
-    messageAreaFadeAnim.setValue(0);
+    setIsMessageListReady(false);
     applyDisplayTitle(nextDisplayTitle);
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
@@ -4400,10 +4380,9 @@ export function AiChatScreen({
   useEffect(() => {
     const targetThreadId = threadId ?? null;
     if (!targetThreadId) {
-      scrollToLatestMessage(false, true);
       void reloadMessages(null, true);
       setIsInitialMessageLoading(false);
-      fadeInMessageArea();
+      setIsMessageListReady(true);
       return;
     }
     let cancelled = false;
@@ -4427,8 +4406,8 @@ export function AiChatScreen({
           prefetched
           && !cancelled
         ) {
-          // Apply data while the FlatList is still opacity-0 so the user
-          // never sees the layout repositioning.
+          // Apply data behind the readiness skeleton. The inverted list owns
+          // offset zero and reveals only after its first non-empty layout.
           userScrolledAwayFromBottomRef.current = false;
           bottomLockedRef.current = true;
           messageScrollOffsetRef.current = 0;
@@ -4444,11 +4423,9 @@ export function AiChatScreen({
           setMessageLoadError(null);
           replaceMessages(prefetched.messages);
           setIsInitialMessageLoading(false);
-          // Give the FlatList time to position itself at offset 0.
-          // scheduleIntentionalLatestJump retries at 50/120/180ms (all before
-          // the 250ms mask lift) as hard snaps, plus 400/700ms as soft animated safety nets.
-          scheduleIntentionalLatestJump(false);
-          fadeInMessageArea(250);
+          if (prefetched.messages.length === 0) {
+            setIsMessageListReady(true);
+          }
           return;
         }
       }
@@ -4463,20 +4440,16 @@ export function AiChatScreen({
       });
       if (!cancelled) {
         setIsInitialMessageLoading(false);
-        if (hasSearchTarget) {
-          fadeInMessageArea();
-          return;
+        if (messagesRef.current.length === 0) {
+          setIsMessageListReady(true);
         }
-        scrollToLatestMessage(false, true);
-        fadeInMessageArea(250);
-        scheduleIntentionalLatestJump(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fadeInMessageArea, reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, searchTargetMessageId, space, threadId]);
+  }, [reloadMessages, searchTargetBranchScopes, searchTargetMessageId, space, threadId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -4778,6 +4751,7 @@ export function AiChatScreen({
     // prettier-ignore
     const subscription = AppState.addEventListener('change', (state) => {
       appActiveRef.current = state === "active";
+      setAppIsActive(state === "active");
       if (state === 'active') {
         void reloadRoleDiaries().catch(() => undefined);
         scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
@@ -5095,7 +5069,12 @@ export function AiChatScreen({
           uri: asset.uri,
         }),
       );
-      setPendingAttachments((current) => [...current, ...picked]);
+      const nextAttachments = [...pendingAttachments, ...picked];
+      const validation = validateAiChatAttachments(nextAttachments);
+      if (!validation.ok) {
+        throw new Error(validation.message);
+      }
+      setPendingAttachments(nextAttachments);
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "选择图片失败");
@@ -5124,7 +5103,12 @@ export function AiChatScreen({
           uri: asset.uri,
         }),
       );
-      setPendingAttachments((current) => [...current, ...picked]);
+      const nextAttachments = [...pendingAttachments, ...picked];
+      const validation = validateAiChatAttachments(nextAttachments);
+      if (!validation.ok) {
+        throw new Error(validation.message);
+      }
+      setPendingAttachments(nextAttachments);
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "选择文档失败");
@@ -6967,7 +6951,7 @@ export function AiChatScreen({
             }}
             style={styles.messageArea}
           >
-            <Animated.View style={[styles.messageListFade, { opacity: messageAreaFadeAnim }]}>
+            <View style={styles.messageListFade}>
               <FlatList
                 ref={messageListRef}
                 data={invertedMessageItems}
@@ -7020,6 +7004,7 @@ export function AiChatScreen({
                 onScroll={handleMessageScroll}
                 onMomentumScrollBegin={handleMessageMomentumScrollBegin}
                 onMomentumScrollEnd={handleMessageMomentumScrollEnd}
+                onContentSizeChange={handleMessageListContentSizeChange}
                 onScrollEndDrag={handleMessageScrollEnd}
                 onScrollToIndexFailed={handleMessageScrollToIndexFailed}
                 onTouchCancel={resetMessageTouchGesture}
@@ -7033,16 +7018,15 @@ export function AiChatScreen({
                 contentContainerStyle={styles.messageScrollContent}
                 viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairsRef.current}
               />
-            </Animated.View>
-            {/* Skeleton — visible while data is loading, hidden once the
-                FlatList fades in.  Sits in the same slot as the list so
-                layout doesn't shift. */}
-            {isInitialMessageLoading ? (
+            </View>
+            {/* Skeleton shares the list slot and stays until the first
+                non-empty FlatList layout commits, so no correction frame is visible. */}
+            {!isMessageListReady ? (
               <View style={styles.skeletonOverlay} pointerEvents="none">
                 <AiChatMessageSkeleton />
               </View>
             ) : null}
-            {invertedMessageItems.length === 0 && !isInitialMessageLoading && !errorMessage && !messageLoadError ? (
+            {invertedMessageItems.length === 0 && isMessageListReady && !errorMessage && !messageLoadError ? (
               <View style={styles.starterOverlay}>
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
               </View>
@@ -7407,6 +7391,7 @@ export function AiChatScreen({
         </View>
       </Modal>
       <ParallaxLightSweep
+        active={showSweep && appIsActive}
         color1="#A7F3D0"
         color2="#BAE6FD"
         fadeDuration={500}

@@ -1,5 +1,8 @@
 import * as MediaLibrary from 'expo-media-library';
 
+import { MEDIA_IMPORT_FILE_CONCURRENCY } from '../constants/limits';
+import { settleFileTasksWithConcurrency } from './boundedFileConcurrency';
+
 interface PickedAssetWithId {
   assetId?: string | null;
   fileName?: string | null;
@@ -13,7 +16,7 @@ export async function sortPickedAssetsByCreationTime<T extends PickedAssetWithId
 
   for (let start = 0; start < assets.length; start += METADATA_BATCH_SIZE) {
     const batch = assets.slice(start, start + METADATA_BATCH_SIZE);
-    await Promise.all(batch.map(async (asset) => {
+    await settleFileTasksWithConcurrency(batch, MEDIA_IMPORT_FILE_CONCURRENCY, async (asset) => {
       const assetId = asset.assetId?.trim();
       if (!assetId || creationTimes.has(assetId)) {
         return;
@@ -28,7 +31,7 @@ export async function sortPickedAssetsByCreationTime<T extends PickedAssetWithId
       } catch {
         // Limited/file-provider assets may not expose MediaLibrary metadata; keep picker order for them.
       }
-    }));
+    });
   }
 
   return assets

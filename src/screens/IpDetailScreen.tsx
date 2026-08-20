@@ -532,7 +532,7 @@ export function IpDetailScreen({
     <AppActionSheet
       items={actionImage ? [
         { key: 'detail', label: '查看详情', icon: 'information-circle-outline', onPress: () => onOpenImageDetail(actionImage.id) },
-        ...(actionImage.mediaType === 'video' ? [] : [{ key: 'organize', label: '整理', icon: 'albums-outline' as const, onPress: () => onOpenBatchManagement(actionImage.id) }]),
+        { key: 'organize', label: '整理', icon: 'albums-outline' as const, onPress: () => onOpenBatchManagement(actionImage.id) },
       ] : []}
       onClose={() => setActionImage(null)}
       title={actionImage?.originalFilename ?? '图片操作'}

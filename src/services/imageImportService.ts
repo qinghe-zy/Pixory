@@ -25,10 +25,18 @@ import {
   toMoveDeletionNotice,
   type MoveDeletionNotice,
 } from './mediaImportSourcePolicy';
+import {
+  assertMediaImportCommitBudget,
+  assertMediaImportPreflight,
+  createMediaImportCommitBudget,
+  MEDIA_IMPORT_COMMIT_RECHECK_INTERVAL,
+  type MediaImportCommitBudget,
+} from './mediaImportPreflightRuntime';
 
 export interface PickedImageAsset extends ImagePicker.ImagePickerAsset {
   sourceKind?: MediaPickerSource;
   sourceOrder?: number | null;
+  temporaryInput?: boolean;
 }
 export type DuplicateImportDecision = 'importAll' | 'skipExact' | 'skipSimilar' | 'cancelImport';
 
@@ -51,6 +59,7 @@ export interface ImportImagesToIpParams {
   imageImportSourceMode?: ImageImportSourceMode;
   deferSourceDeletion?: boolean;
   taskToken?: PersonalTaskToken | null;
+  commitBudget?: MediaImportCommitBudget;
   onProgress?: (current: number, total: number) => void;
 }
 
@@ -67,6 +76,7 @@ export interface BuildImageAssetFromPickedFileParams {
   imageImportSourceMode?: ImageImportSourceMode;
   deferSourceDeletion?: boolean;
   taskToken?: PersonalTaskToken | null;
+  commitBudget?: MediaImportCommitBudget;
 }
 
 export interface ImportSingleImageParams {
@@ -106,6 +116,7 @@ export interface PendingImageAssetImport {
   isFavorite: boolean;
   note: string | null;
   taskToken?: PersonalTaskToken | null;
+  commitBudget: MediaImportCommitBudget;
 }
 
 export interface ImportedImageResult {
@@ -398,6 +409,9 @@ async function performSingleImageImport(
     assertPersonalTaskActive(pendingImageAsset.taskToken);
 
     const originalFileInfo = await getFileInfo(originalFileUri);
+    if (!originalFileInfo.exists || originalFileInfo.isDirectory || (originalFileInfo.size ?? 0) <= 0) {
+      throw new Error('图片复制后文件不可用。');
+    }
     const contentHash = await computeFileSha256(originalFileUri);
     const visualHash = await computeImageDHash(originalFileUri).catch(() => null);
     const shouldSkip = await shouldSkipDuplicateImport(db, pendingImageAsset, contentHash, visualHash);
@@ -414,6 +428,20 @@ async function performSingleImageImport(
       pendingImageAsset.space
     );
     assertPersonalTaskActive(pendingImageAsset.taskToken);
+
+    const actualFileSize = originalFileInfo.size ?? pendingImageAsset.fileSize;
+    const shouldRecheckCommitBudget = actualFileSize !== pendingImageAsset.fileSize
+      || pendingImageAsset.commitBudget.committedCount % MEDIA_IMPORT_COMMIT_RECHECK_INTERVAL === 0;
+    const nextCommittedBytes = shouldRecheckCommitBudget
+      ? await assertMediaImportCommitBudget({
+          assertActive: () => assertPersonalTaskActive(pendingImageAsset.taskToken),
+          committedBytes: pendingImageAsset.commitBudget.committedBytes,
+          kind: 'image',
+          name: pendingImageAsset.originalFilename,
+          size: actualFileSize,
+          space: pendingImageAsset.space,
+        })
+      : pendingImageAsset.commitBudget.committedBytes + actualFileSize;
 
     const createdImage = await imageRepository.create(db, {
       ipId: pendingImageAsset.ipId,
@@ -434,8 +462,8 @@ async function performSingleImageImport(
       isFavorite: pendingImageAsset.isFavorite,
       note: pendingImageAsset.note,
     });
-    assertPersonalTaskActive(pendingImageAsset.taskToken);
     createdImageId = createdImage.id;
+    assertPersonalTaskActive(pendingImageAsset.taskToken);
 
     await tagRepository.replaceImageTags(db,
       createdImage.id,
@@ -444,6 +472,8 @@ async function performSingleImageImport(
 
     const persistedImageRecord = await imageRepository.findById(db, createdImage.id, { includeDeleted: true });
     const persistedImageTags = await tagRepository.findByImageId(db, createdImage.id);
+    pendingImageAsset.commitBudget.committedBytes = nextCommittedBytes;
+    pendingImageAsset.commitBudget.committedCount += 1;
 
     devLog('Pixory import persisted image asset:', {
       imageAssetId: createdImage.id,
@@ -599,6 +629,7 @@ export async function buildImageAssetFromPickedFile(
     isFavorite: Boolean(isFavorite),
     note: normalizeOptionalText(note) ?? null,
     taskToken: params.taskToken ?? null,
+    commitBudget: params.commitBudget ?? createMediaImportCommitBudget(),
   };
 }
 
@@ -607,8 +638,16 @@ export async function importSingleImage(
 ): Promise<ImportedImageResult> {
   const space = params.space ?? 'normal';
   assertPersonalTaskActive(params.taskToken);
+  const preflight = await assertMediaImportPreflight({
+    assertActive: () => assertPersonalTaskActive(params.taskToken),
+    assets: [params.pickedAsset],
+    kind: 'image',
+    space,
+  });
+  const pickedAsset = preflight.resolvedAssets[0];
+  const commitBudget = createMediaImportCommitBudget();
   return runWithDatabaseSpace(space, async (db) => {
-  const { groupId, ipId, pickedAsset } = params;
+  const { groupId, ipId } = params;
   const groupIds = normalizeGroupIds(params.groupIds ?? (groupId != null ? [groupId] : []));
   await ensureImportTargetExists(db, ipId, groupIds);
   await ensureAppDirectories(space);
@@ -628,6 +667,7 @@ export async function importSingleImage(
     imageImportSourceMode: params.imageImportSourceMode,
     deferSourceDeletion: params.deferSourceDeletion,
     taskToken: params.taskToken ?? null,
+    commitBudget,
   });
 
   return performSingleImageImport(db, pendingImageAsset, resolvedTags);
@@ -641,12 +681,22 @@ export async function importImagesToIp(
   try {
     const space = params.space ?? 'normal';
     assertPersonalTaskActive(params.taskToken);
+    const preflight = params.pickedAssets.length > 0
+      ? await assertMediaImportPreflight({
+          assertActive: () => assertPersonalTaskActive(params.taskToken),
+          assets: params.pickedAssets,
+          kind: 'image',
+          space,
+        })
+      : null;
+    const pickedAssets = preflight?.resolvedAssets ?? params.pickedAssets;
+    const commitBudget = params.commitBudget ?? createMediaImportCommitBudget();
     return runWithDatabaseSpace(space, async (db) => {
     const groupIds = normalizeGroupIds(params.groupIds ?? (params.groupId != null ? [params.groupId] : []));
     await ensureImportTargetExists(db, params.ipId, groupIds);
     await ensureAppDirectories(space);
 
-  if (params.pickedAssets.length === 0) {
+  if (pickedAssets.length === 0) {
     return {
       successCount: 0,
       failedCount: 0,
@@ -662,7 +712,7 @@ export async function importImagesToIp(
     ipId: params.ipId,
     name: `${new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}导入`,
     templateKey: params.templateKey,
-    totalCount: params.pickedAssets.length,
+    totalCount: pickedAssets.length,
   });
   assertPersonalTaskActive(params.taskToken);
   const resolvedTags = await resolveTags(db, params.tagNames);
@@ -672,9 +722,9 @@ export async function importImagesToIp(
   let skippedCount = 0;
   let currentIndex = 0;
 
-  for (const pickedAsset of params.pickedAssets) {
+  for (const pickedAsset of pickedAssets) {
     currentIndex++;
-    params.onProgress?.(currentIndex, params.pickedAssets.length);
+    params.onProgress?.(currentIndex, pickedAssets.length);
     let pendingImageAsset: PendingImageAssetImport | null = null;
     try {
       pendingImageAsset = await buildImageAssetFromPickedFile({
@@ -690,6 +740,7 @@ export async function importImagesToIp(
         imageImportSourceMode: params.imageImportSourceMode,
         deferSourceDeletion: params.deferSourceDeletion,
         taskToken: params.taskToken ?? null,
+        commitBudget,
       });
       const importedImage = await performSingleImageImport(db, pendingImageAsset, resolvedTags);
       importedImages.push(importedImage);
@@ -701,6 +752,7 @@ export async function importImagesToIp(
         imageAssetId: importedImage.image.id,
       });
     } catch (error) {
+      assertPersonalTaskActive(params.taskToken);
       const formattedError = formatImportError(pickedAsset, error);
       if (formattedError.skipped) {
         skippedCount += 1;

@@ -28,6 +28,12 @@ interface PrefetchEntry {
 
 let activeEntry: PrefetchEntry | null = null;
 
+export function clearThreadMessagePrefetch(space?: PixorySpace): void {
+  if (!space || activeEntry?.space === space) {
+    activeEntry = null;
+  }
+}
+
 /**
  * Start prefetching messages for a thread immediately (fire-and-forget).
  * Call this the moment the user taps a thread row, before navigation begins.
@@ -44,7 +50,7 @@ export function prefetchThreadMessages(
     limit: CHAT_PREFETCH_PAGE_SIZE,
     space,
     threadId,
-  });
+  }).catch(() => null);
   activeEntry = { space, threadId, promise };
 }
 

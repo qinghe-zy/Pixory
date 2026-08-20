@@ -249,7 +249,10 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
   assert.doesNotMatch(chat, /scrollToEnd/);
   assert.doesNotMatch(chat, /setTimeout\(scroll/);
-  assert.doesNotMatch(chat, /onContentSizeChange=/);
+  assert.match(chat, /onContentSizeChange=\{handleMessageListContentSizeChange\}/);
+  const contentSizeReadyHandler = /const handleMessageListContentSizeChange = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
+  assert.match(contentSizeReadyHandler, /setIsMessageListReady\(true\)/);
+  assert.doesNotMatch(contentSizeReadyHandler, /scrollToOffset|scrollToIndex|scrollToEnd/);
   assert.doesNotMatch(chat, /onLayout=\{\(\) => \{/);
   assert.match(chat, /const handleComposerHeightChange = useCallback/);
   assert.match(chat, /hasPendingStreamingReadBuffer\(\)[\s\S]{0,80}userScrolledAwayFromBottomRef\.current[\s\S]{0,80}!bottomLockedRef\.current/);
@@ -315,7 +318,9 @@ test('AI chat attachment pipeline is replayable and budget-safe', () => {
 
   assert.match(service, /const canSendVisionAttachments = hasImageAttachments \|\| \(provider\.visionEnabled && resolvedModel\.model\.supportsVision\);/);
   assert.match(service, /canSendVisionAttachments/);
-  assert.match(service, /input\.visionEnabled\s*\?\s*Promise\.all/);
+  assert.match(service, /settleWithConcurrency/);
+  assert.match(service, /AI_CHAT_ATTACHMENT_READ_CONCURRENCY/);
+  assert.doesNotMatch(service, /input\.visionEnabled\s*\?\s*Promise\.all/);
 
   assert.match(service, /attachmentPromptContext/);
   assert.match(service, /buildDocumentAttachmentContext/);
@@ -407,7 +412,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
 
 test('AI chat route reloads do not fall back to stale active thread state', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[fadeInMessageArea, reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
+  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
 
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
@@ -778,7 +783,9 @@ test('AI chat uses configurable complete rounds and avoids full reload for every
   assert.match(chat, /isLoadingEarlierRef/);
   assert.match(chat, /maintainVisibleContentPosition=\{MESSAGE_LIST_ANCHOR_CONFIG\}/);
   assert.doesNotMatch(chat, /maintainVisibleContentPosition=\{\{ minIndexForVisible: 0 \}\}/);
-  assert.doesNotMatch(chat, /onContentSizeChange=/);
+  assert.match(chat, /onContentSizeChange=\{handleMessageListContentSizeChange\}/);
+  const contentSizeReadyHandler = /const handleMessageListContentSizeChange = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
+  assert.doesNotMatch(contentSizeReadyHandler, /scrollToOffset|scrollToIndex|scrollToEnd/);
   assert.doesNotMatch(chat, /onLayout=\{\(\) => \{/);
   assert.match(service, /signal\?: AbortSignal/);
   assert.match(service, /signal: input\.signal/);

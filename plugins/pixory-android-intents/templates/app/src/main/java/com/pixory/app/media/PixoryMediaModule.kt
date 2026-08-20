@@ -5,10 +5,12 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.Manifest
 import android.content.Context
+import android.content.ComponentCallbacks2
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.ContentUris
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -53,10 +55,14 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.zip.ZipFile
 
-class PixoryMediaModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), LifecycleEventListener {
+private const val MEMORY_PRESSURE_RUNNING_LOW_LEVEL = 10
+private const val MEMORY_PRESSURE_COMPLETE_LEVEL = 80
+
+class PixoryMediaModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), LifecycleEventListener, ComponentCallbacks2 {
   init {
     latestInstance = this
     reactContext.addLifecycleEventListener(this)
+    reactContext.registerComponentCallbacks(this)
   }
 
   override fun getName(): String = "PixoryMediaModule"
@@ -281,9 +287,32 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   override fun onHostPause() = cancelDirectSpeechRecognizer(false)
   override fun onHostDestroy() = cancelDirectSpeechRecognizer(false)
 
+  override fun onConfigurationChanged(newConfig: Configuration) = Unit
+
+  override fun onTrimMemory(level: Int) {
+    if (level >= MEMORY_PRESSURE_RUNNING_LOW_LEVEL) {
+      emitMemoryPressure(level)
+    }
+  }
+
+  @Suppress("OVERRIDE_DEPRECATION")
+  override fun onLowMemory() = emitMemoryPressure(MEMORY_PRESSURE_COMPLETE_LEVEL)
+
+  private fun emitMemoryPressure(level: Int) {
+    val payload = Arguments.createMap().apply {
+      putBoolean("high", true)
+      putInt("level", level)
+    }
+    reactContext.runOnJSQueueThread {
+      reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("PixoryMediaMemoryPressure", payload)
+    }
+  }
+
   override fun invalidate() {
     cancelDirectSpeechRecognizer(false)
     reactContext.removeLifecycleEventListener(this)
+    reactContext.unregisterComponentCallbacks(this)
     ioExecutor.shutdownNow()
     if (latestInstance === this) latestInstance = null
     super.invalidate()

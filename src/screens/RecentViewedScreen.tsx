@@ -22,8 +22,9 @@ interface RecentViewedScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
+  onRefreshed: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
-  onOpenImageDetail: (imageId: number) => void;
+  onOpenImageDetail: (imageId: number, context?: ImageViewerContext) => void;
   onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
@@ -33,6 +34,7 @@ export function RecentViewedScreen({
   space = 'normal',
   refreshToken,
   onBack,
+  onRefreshed,
   onOpenImage,
   onOpenImageDetail,
   onStartBatchManagement,
@@ -92,6 +94,7 @@ export function RecentViewedScreen({
       multiSelect.clearSelection();
       setClearConfirmVisible(false);
       reload();
+      onRefreshed();
       showToast(clearedCount > 0 ? `已清除 ${clearedCount} 条最近查看记录` : '没有需要清除的最近查看记录');
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -10,6 +11,8 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 
 export interface ParallaxLightSweepProps {
+  /** 是否运行循环动画；默认跟随 visible，隐藏后不会继续占用 UI 线程 */
+  active?: boolean;
   /** 整体动画的不透明度，默认 0.3，不要设置太高以免喧宾夺主 */
   opacity?: number;
   /** 光带 1 的颜色，默认为非常淡的冷色 */
@@ -37,6 +40,7 @@ export interface ParallaxLightSweepProps {
  * 它通过数学公式驱动巨大的渐变背景进行无规则的扫动，营造边缘发光、深邃的空间感。
  */
 export function ParallaxLightSweep({
+  active,
   opacity = 0.8,
   color1 = '#00f2fe', // 极光青蓝
   color2 = '#fe5196', // 极光紫粉
@@ -47,7 +51,8 @@ export function ParallaxLightSweep({
   fadeOutDuration,
   variant = 'default',
 }: ParallaxLightSweepProps) {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
+  const animationActive = active ?? visible;
   
   const p1 = useSharedValue(0);
   const p2 = useSharedValue(0);
@@ -61,17 +66,29 @@ export function ParallaxLightSweep({
   }, [visible, opacity, opacityVal, fadeDuration, fadeInDuration, fadeOutDuration]);
 
   useEffect(() => {
+    if (!animationActive) {
+      cancelAnimation(p1);
+      cancelAnimation(p2);
+      p1.value = 0;
+      p2.value = 0;
+      return undefined;
+    }
+    const normalizedSpeed = Math.max(0.1, speedMultiplier);
     p1.value = withRepeat(
-      withTiming(Math.PI * 2, { duration: 16000 / speedMultiplier, easing: Easing.linear }),
+      withTiming(Math.PI * 2, { duration: 16000 / normalizedSpeed, easing: Easing.linear }),
       -1,
       false
     );
     p2.value = withRepeat(
-      withTiming(Math.PI * 2, { duration: 22000 / speedMultiplier, easing: Easing.linear }),
+      withTiming(Math.PI * 2, { duration: 22000 / normalizedSpeed, easing: Easing.linear }),
       -1,
       false
     );
-  }, [p1, p2, speedMultiplier]);
+    return () => {
+      cancelAnimation(p1);
+      cancelAnimation(p2);
+    };
+  }, [animationActive, p1, p2, speedMultiplier]);
 
   const layer1Style = useAnimatedStyle(() => {
     // 顶部极光左右轻微扫动并带有倾斜

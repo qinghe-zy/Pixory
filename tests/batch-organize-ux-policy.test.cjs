@@ -181,6 +181,7 @@ test('import batch pile management scopes batch screen to the selected pile', ()
   const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
   const viewerContextSource = readProjectFile('src/navigation/imageViewerContext.ts');
   const viewerSource = readProjectFile('src/screens/ImageViewerScreen.tsx');
+  const viewerQuerySource = readProjectFile('src/media/mediaReaderContextQuery.ts');
   const detailSource = readProjectFile('src/screens/ImageDetailScreen.tsx');
 
   assert.match(appSource, /scopeImageIds\?: number\[\]/);
@@ -191,8 +192,16 @@ test('import batch pile management scopes batch screen to the selected pile', ()
   assert.match(batchSource, /当前堆/);
   assert.match(reviewSource, /管理这堆/);
   assert.match(viewerContextSource, /type: 'image-scope'/);
-  assert.match(viewerSource, /context\.type === 'image-scope'/);
+  assert.match(viewerSource, /buildMediaReaderCursorRequest\(context\)/);
+  assert.match(viewerQuerySource, /context\.type === 'image-scope'/);
   assert.match(detailSource, /context\.type === 'image-scope'/);
+});
+
+test('mixed batch album export routes all supported video extensions to the native video bridge', () => {
+  const service = readProjectFile('src/services/mediaLibraryService.ts');
+  assert.match(service, /\(mp4\|mov\|mkv\|webm\|avi\|m4v\|3gp\)/);
+  assert.match(service, /saveNativeVideoToMediaStore/);
+  assert.match(service, /原始素材文件不存在/);
 });
 
 test('organization progress treats grouped images as organized while preserving untagged reminders', () => {

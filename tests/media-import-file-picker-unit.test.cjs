@@ -7,7 +7,7 @@ const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
 
-function loadPickerWithDocumentResult(result, calls) {
+function loadPickerWithDocumentResult(result, calls, deletes = []) {
   const filename = path.join(root, 'src/services/mediaFilePickerService.ts');
   const originalExtension = require.extensions['.ts'];
   const originalLoad = Module._load;
@@ -28,6 +28,14 @@ function loadPickerWithDocumentResult(result, calls) {
         getDocumentAsync: async (options) => {
           calls.push(options);
           return result;
+        },
+      };
+    }
+    if (request === 'expo-file-system/legacy') {
+      return {
+        cacheDirectory: 'file:///cache/',
+        deleteAsync: async (uri, options) => {
+          deletes.push({ options, uri });
         },
       };
     }
@@ -63,6 +71,7 @@ test('image file picker requests readable cached multi-selection', async () => {
   assert.equal(result.pickedFiles.length, 2);
   assert.equal(result.pickedFiles[0].sourceKind, 'files');
   assert.equal(result.pickedFiles[0].assetId, null);
+  assert.equal(result.pickedFiles[0].temporaryInput, true);
 });
 
 test('video file picker uses video MIME filtering and preserves cancellation', async () => {
@@ -73,4 +82,18 @@ test('video file picker uses video MIME filtering and preserves cancellation', a
 
   assert.deepEqual(calls, [{ type: 'video/*', multiple: true, copyToCacheDirectory: true }]);
   assert.deepEqual(result, { canceled: true, pickedFiles: [] });
+});
+
+test('temporary input cleanup deletes only explicitly owned Expo cache files', async () => {
+  const calls = [];
+  const deletes = [];
+  const picker = loadPickerWithDocumentResult({ canceled: true, assets: [] }, calls, deletes);
+
+  await picker.cleanupTemporaryMediaInputs([
+    { temporaryInput: true, uri: 'file:///cache/owned.jpg' },
+    { temporaryInput: false, uri: 'file:///cache/not-owned.jpg' },
+    { temporaryInput: true, uri: 'file:///documents/original.jpg' },
+  ]);
+
+  assert.deepEqual(deletes, [{ uri: 'file:///cache/owned.jpg', options: { idempotent: true } }]);
 });

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
   PanResponder,
+  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
@@ -18,19 +20,41 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { imageRepository, runWithDatabaseSpace, type ImageListItem } from '../database';
+import {
+  imageRepository,
+  runWithDatabaseSpace,
+  type ImageListItem,
+  type MediaPageCursor,
+  type MediaPageResult,
+} from '../database';
 import { SecureImage } from '../components/SecureImage';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { AppActionSheet } from '../components/AppActionSheet';
 import { useToast } from '../components/AppToast';
+import { addNativeMemoryPressureListener } from '../native/pixoryMediaModule';
 import {
   loadImageViewerPreferences,
   saveImageViewerPreferences,
   type ImageFitMode,
   type ImageReaderMode,
 } from '../services/mediaExperiencePreferences';
+import { getDataEpoch } from '../services/dataEpochService';
+import { MediaImagePrefetchCoordinator } from '../media/mediaImagePrefetchCoordinator';
+import type { MediaMemoryPressure } from '../media/mediaPrefetchPolicy';
+import { MediaLastViewedQueue } from '../media/mediaLastViewedQueue';
+import {
+  buildMediaReaderCursorRequest,
+  MEDIA_READER_INITIAL_WINDOW_SIZE,
+  MEDIA_READER_PAGE_SIZE,
+} from '../media/mediaReaderContextQuery';
+import {
+  createMediaReaderContextKey,
+  getMediaReaderSession,
+  setMediaReaderSession,
+  type MediaReaderSessionBoundary,
+} from '../media/mediaReaderSessionCache';
 
 const DOUBLE_TAP_ZOOM_SCALE = 2.5;
 const DOUBLE_TAP_INTERVAL_MS = 260;
@@ -39,6 +63,13 @@ const MIN_ZOOM_SCALE = 1;
 const READER_ZONE_EDGE_RATIO = 0.34;
 const FILMSTRIP_ITEM_WIDTH = 44;
 const FILMSTRIP_ITEM_GAP = spacing[2];
+const MEDIA_READER_BOUNDARY_THRESHOLD = 10;
+
+interface ReaderWindowResult {
+  items: ImageListItem[];
+  leadingBoundary: MediaReaderSessionBoundary;
+  trailingBoundary: MediaReaderSessionBoundary;
+}
 
 interface ImageViewerScreenProps {
   imageId: number;
@@ -52,7 +83,6 @@ interface ImageViewerScreenProps {
 export function ImageViewerScreen({
   imageId,
   context,
-  refreshToken,
   onBack,
   onRefreshed,
   onOpenDetail,
@@ -64,6 +94,7 @@ export function ImageViewerScreen({
   const { width, height } = useWindowDimensions();
   const [images, setImages] = useState<ImageListItem[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [initialListIndex, setInitialListIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [isPagingEnabled, setIsPagingEnabled] = useState(true);
@@ -75,8 +106,52 @@ export function ImageViewerScreen({
   const [fitMode, setFitMode] = useState<ImageFitMode>('contain');
   const [showFilmstrip, setShowFilmstrip] = useState(false);
   const [readerSettingsVisible, setReaderSettingsVisible] = useState(false);
+  const [memoryPressure, setMemoryPressure] = useState<MediaMemoryPressure>('normal');
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const filmstripSwitchProgress = useRef(new Animated.Value(0)).current;
+  const leadingBoundaryRef = useRef<MediaReaderSessionBoundary>({ cursor: null, direction: 'before', hasMore: false });
+  const trailingBoundaryRef = useRef<MediaReaderSessionBoundary>({ cursor: null, direction: 'after', hasMore: false });
+  const isLoadingBoundaryRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const pendingRetainedImageIdRef = useRef<number | null>(null);
+  const lastScrollSampleRef = useRef<{ direction: -1 | 1; velocity: number }>({ direction: 1, velocity: 0 });
+  const onRefreshedRef = useRef(onRefreshed);
+  onRefreshedRef.current = onRefreshed;
+  const sessionContextKey = useMemo(
+    () => createMediaReaderContextKey(context),
+    [context]
+  );
+  const mediaEpoch = useMemo(
+    () => getDataEpoch('media', context.space),
+    [context.space, imageId, sessionContextKey]
+  );
+  const decodeMaxWidth = Math.max(1, Math.ceil(width * PixelRatio.get()));
+  const decodeMaxHeight = Math.max(1, Math.ceil(height * PixelRatio.get()));
+  const prefetchCoordinator = useMemo(
+    () => new MediaImagePrefetchCoordinator({
+      decodeImage: (uri) => ExpoImage.loadAsync(uri, { maxWidth: decodeMaxWidth, maxHeight: decodeMaxHeight }),
+      prefetchEncoded: (uri, cachePolicy) => ExpoImage.prefetch(uri, { cachePolicy }),
+    }),
+    [decodeMaxHeight, decodeMaxWidth]
+  );
+  const lastViewedQueue = useMemo(
+    () => new MediaLastViewedQueue({
+      flushIds: (ids) => runWithDatabaseSpace(context.space, (db) => imageRepository.touchLastViewedAtMany(db, [...ids])),
+      onFlushed: () => onRefreshedRef.current(),
+    }),
+    [context.space]
+  );
+
+  useEffect(() => () => prefetchCoordinator.dispose(), [prefetchCoordinator]);
+  useEffect(() => () => { void lastViewedQueue.dispose(); }, [lastViewedQueue]);
+  useEffect(() => {
+    const subscription = addNativeMemoryPressureListener((event) => {
+      if (event.high) {
+        setMemoryPressure('high');
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     Animated.timing(filmstripSwitchProgress, {
@@ -109,33 +184,41 @@ export function ImageViewerScreen({
 
   useEffect(() => {
     let isMounted = true;
+    const generation = ++loadGenerationRef.current;
 
     async function loadImages() {
       setIsLoading(true);
       setErrorMessage(null);
 
       try {
-        const items = await loadImagesForContext(context);
-        if (!isMounted) {
+        const cached = getMediaReaderSession<ImageListItem>(context.space, sessionContextKey, mediaEpoch);
+        const restored = cached?.entryId === imageId ? cached : undefined;
+        const window = restored
+          ? {
+              items: [...restored.items],
+              leadingBoundary: restored.leadingBoundary ?? {
+                cursor: restored.newerCursor,
+                direction: 'before' as const,
+                hasMore: restored.hasNewer,
+              },
+              trailingBoundary: restored.trailingBoundary ?? {
+                cursor: restored.olderCursor,
+                direction: 'after' as const,
+                hasMore: restored.hasOlder,
+              },
+            }
+          : await loadImageReaderWindow(context, imageId);
+        if (!isMounted || generation !== loadGenerationRef.current) {
           return;
         }
 
-        const initialIndex = Math.max(0, items.findIndex((item) => item.id === imageId));
-        setImages(items);
+        const targetId = restored?.currentId ?? imageId;
+        const initialIndex = Math.max(0, window.items.findIndex((item) => item.id === targetId));
+        leadingBoundaryRef.current = window.leadingBoundary;
+        trailingBoundaryRef.current = window.trailingBoundary;
+        setInitialListIndex(initialIndex);
+        setImages(window.items);
         setActiveIndex(initialIndex);
-
-        if (items.length > 0) {
-          requestAnimationFrame(() => {
-            listRef.current?.scrollToIndex({
-              animated: false,
-              index: initialIndex,
-            });
-            verticalListRef.current?.scrollToIndex({
-              animated: false,
-              index: initialIndex,
-            });
-          });
-        }
       } catch (error) {
         if (isMounted) {
           const message = error instanceof Error ? error.message : '未知错误';
@@ -153,8 +236,7 @@ export function ImageViewerScreen({
     return () => {
       isMounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context, imageId]);
+  }, [context, imageId, mediaEpoch, sessionContextKey]);
 
   const activeImage = images[activeIndex] ?? null;
   const pageSize = Math.max(1, width);
@@ -189,12 +271,62 @@ export function ImageViewerScreen({
     if (!activeImage) {
       return;
     }
+    lastViewedQueue.enqueue(activeImage.id);
+  }, [activeImage, lastViewedQueue]);
 
-    void runWithDatabaseSpace(context.space, async (db) => {
-      await imageRepository.touchLastViewedAt(db, activeImage.id);
-      onRefreshed();
+  useEffect(() => {
+    if (images.length === 0) {
+      return;
+    }
+    prefetchCoordinator.updateTarget({
+      items: images,
+      index: activeIndex,
+      direction: lastScrollSampleRef.current.direction,
+      memoryPressure,
+      velocity: lastScrollSampleRef.current.velocity,
+      space: context.space,
     });
-  }, [activeImage, context.space]);
+  }, [activeIndex, context.space, images, memoryPressure, prefetchCoordinator]);
+
+  useEffect(() => {
+    if (!activeImage || images.length === 0) {
+      return;
+    }
+    const halfWindow = Math.floor(MEDIA_READER_INITIAL_WINDOW_SIZE / 2);
+    const start = Math.max(0, activeIndex - halfWindow);
+    const end = Math.min(images.length, start + MEDIA_READER_INITIAL_WINDOW_SIZE);
+    const adjustedStart = Math.max(0, end - MEDIA_READER_INITIAL_WINDOW_SIZE);
+    const sessionItems = images.slice(adjustedStart, end);
+    const sessionIndex = Math.max(0, sessionItems.findIndex((item) => item.id === activeImage.id));
+    const cursorRequest = buildMediaReaderCursorRequest(context);
+    const leadingBoundary = adjustedStart > 0 && sessionItems[0] && cursorRequest
+      ? {
+          cursor: createReaderCursor(sessionItems[0], cursorRequest.orderBy),
+          direction: leadingBoundaryRef.current.direction,
+          hasMore: true,
+        }
+      : leadingBoundaryRef.current;
+    const trailingBoundary = end < images.length && sessionItems[sessionItems.length - 1] && cursorRequest
+      ? {
+          cursor: createReaderCursor(sessionItems[sessionItems.length - 1], cursorRequest.orderBy),
+          direction: trailingBoundaryRef.current.direction,
+          hasMore: true,
+        }
+      : trailingBoundaryRef.current;
+
+    setMediaReaderSession(context.space, sessionContextKey, mediaEpoch, {
+      currentId: activeImage.id,
+      currentIndex: sessionIndex,
+      entryId: imageId,
+      hasNewer: leadingBoundary.hasMore,
+      hasOlder: trailingBoundary.hasMore,
+      items: sessionItems,
+      leadingBoundary,
+      newerCursor: leadingBoundary.cursor,
+      olderCursor: trailingBoundary.cursor,
+      trailingBoundary,
+    });
+  }, [activeImage, activeIndex, context, context.space, imageId, images, mediaEpoch, sessionContextKey]);
 
   const counterLabel = useMemo(() => {
     if (images.length === 0) {
@@ -208,8 +340,108 @@ export function ImageViewerScreen({
     setIsPagingEnabled(!zoomed);
   }, []);
 
+  const imagesLengthRef = useRef(images.length);
+  imagesLengthRef.current = images.length;
+
+  const jumpToImageIndex = useCallback((index: number) => {
+    if (imagesLengthRef.current === 0) {
+      return;
+    }
+    const nextIndex = Math.min(imagesLengthRef.current - 1, Math.max(0, index));
+    setActiveIndex(nextIndex);
+    listRef.current?.scrollToIndex({ animated: false, index: nextIndex });
+    verticalListRef.current?.scrollToIndex({ animated: false, index: nextIndex });
+  }, []);
+
   const activeIndexRef = useRef(activeIndex);
   activeIndexRef.current = activeIndex;
+  const activeImageIdRef = useRef(activeImage?.id ?? null);
+  activeImageIdRef.current = activeImage?.id ?? null;
+
+  useLayoutEffect(() => {
+    const retainedId = pendingRetainedImageIdRef.current;
+    if (retainedId == null) {
+      return;
+    }
+    pendingRetainedImageIdRef.current = null;
+    const retainedIndex = images.findIndex((item) => item.id === retainedId);
+    if (retainedIndex < 0) {
+      return;
+    }
+    setActiveIndex(retainedIndex);
+    listRef.current?.scrollToIndex({ animated: false, index: retainedIndex });
+    verticalListRef.current?.scrollToIndex({ animated: false, index: retainedIndex });
+  }, [images]);
+
+  const loadReaderBoundary = useCallback(async (placement: 'leading' | 'trailing') => {
+    if (isLoadingBoundaryRef.current) {
+      return;
+    }
+    const request = buildMediaReaderCursorRequest(context);
+    const boundaryRef = placement === 'leading' ? leadingBoundaryRef : trailingBoundaryRef;
+    const boundary = boundaryRef.current;
+    if (!request || !boundary.hasMore || !boundary.cursor) {
+      return;
+    }
+
+    isLoadingBoundaryRef.current = true;
+    const generation = loadGenerationRef.current;
+    try {
+      const page = await runWithDatabaseSpace(context.space, (db) => imageRepository.findFilteredCursorPage(db, {
+        ...request,
+        cursor: boundary.cursor as MediaPageCursor,
+        direction: boundary.direction,
+        limit: MEDIA_READER_PAGE_SIZE,
+      }));
+      if (generation !== loadGenerationRef.current) {
+        return;
+      }
+      if (page.items.length === 0) {
+        boundaryRef.current = { ...boundary, hasMore: false };
+        return;
+      }
+
+      boundaryRef.current = resolveNextReaderBoundary(page, boundary.direction);
+      const displayedItems = leadingBoundaryRef.current.direction === 'after'
+        ? [...page.items].reverse()
+        : page.items;
+      const activeId = activeImageIdRef.current;
+      if (placement === 'leading') {
+        pendingRetainedImageIdRef.current = activeId;
+      }
+      setImages((current) => {
+        const existingIds = new Set(current.map((item) => item.id));
+        const uniqueItems = displayedItems.filter((item) => !existingIds.has(item.id));
+        if (uniqueItems.length === 0) {
+          pendingRetainedImageIdRef.current = null;
+          return current;
+        }
+        const next = placement === 'leading'
+          ? [...uniqueItems, ...current]
+          : [...current, ...uniqueItems];
+        return next;
+      });
+    } catch (error) {
+      console.warn('Pixory image reader boundary load failed.', {
+        message: error instanceof Error ? error.message : 'unknown reader boundary error',
+        placement,
+      });
+    } finally {
+      isLoadingBoundaryRef.current = false;
+    }
+  }, [context]);
+
+  useEffect(() => {
+    if (images.length === 0) {
+      return;
+    }
+    if (activeIndex <= MEDIA_READER_BOUNDARY_THRESHOLD) {
+      void loadReaderBoundary('leading');
+    }
+    if (activeIndex >= images.length - 1 - MEDIA_READER_BOUNDARY_THRESHOLD) {
+      void loadReaderBoundary('trailing');
+    }
+  }, [activeIndex, images.length, loadReaderBoundary]);
 
   const goToRelativeImage = useCallback(
     (offset: number) => {
@@ -243,6 +475,10 @@ export function ImageViewerScreen({
 
   const onPanAttemptBlockedByZoom = useCallback(() => {
     setControlsVisible(false);
+  }, []);
+
+  const handleImageLongPress = useCallback((image: ImageListItem) => {
+    setActionImage(image);
   }, []);
 
   const renderItem = useCallback(
@@ -282,6 +518,11 @@ export function ImageViewerScreen({
   function handleMomentumScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.x / pageSize);
     if (nextIndex >= 0 && nextIndex < images.length) {
+      const indexDelta = nextIndex - activeIndexRef.current;
+      lastScrollSampleRef.current = {
+        direction: indexDelta < 0 ? -1 : 1,
+        velocity: Math.abs(event.nativeEvent.velocity?.x ?? indexDelta),
+      };
       setActiveIndex(nextIndex);
     }
   }
@@ -289,33 +530,29 @@ export function ImageViewerScreen({
   function handleVerticalMomentumScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.y / pageHeight);
     if (nextIndex >= 0 && nextIndex < images.length) {
+      const indexDelta = nextIndex - activeIndexRef.current;
+      lastScrollSampleRef.current = {
+        direction: indexDelta < 0 ? -1 : 1,
+        velocity: Math.abs(event.nativeEvent.velocity?.y ?? indexDelta),
+      };
       setActiveIndex(nextIndex);
     }
   }
 
-  const handleImageLongPress = useCallback((image: ImageListItem) => {
-    setActionImage(image);
-  }, []);
-
   function handleReverseOrder() {
-    setImages((currentImages) => {
-      if (currentImages.length <= 1) {
-        return currentImages;
-      }
-      const nextImages = [...currentImages].reverse();
-      const nextIndex = activeIndex;
-      setActiveIndex(nextIndex);
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToIndex({
-          animated: false,
-          index: nextIndex,
-        });
-        verticalListRef.current?.scrollToIndex({
-          animated: false,
-          index: nextIndex,
-        });
-      });
-      return nextImages;
+    if (images.length <= 1) {
+      return;
+    }
+    const nextIndex = images.length - 1 - activeIndexRef.current;
+    const previousLeadingBoundary = leadingBoundaryRef.current;
+    leadingBoundaryRef.current = trailingBoundaryRef.current;
+    trailingBoundaryRef.current = previousLeadingBoundary;
+    setInitialListIndex(nextIndex);
+    setImages([...images].reverse());
+    setActiveIndex(nextIndex);
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({ animated: false, index: nextIndex });
+      verticalListRef.current?.scrollToIndex({ animated: false, index: nextIndex });
     });
   }
 
@@ -367,6 +604,7 @@ export function ImageViewerScreen({
   }
 
   function updateReaderMode(nextMode: ImageReaderMode) {
+    setInitialListIndex(activeIndexRef.current);
     setReaderMode(nextMode);
     persistImageViewerPreferences({ readerMode: nextMode });
     requestAnimationFrame(() => jumpToImageIndex(activeIndex));
@@ -381,19 +619,6 @@ export function ImageViewerScreen({
     setShowFilmstrip(nextVisible);
     persistImageViewerPreferences({ showFilmstrip: nextVisible });
   }
-
-  const imagesLengthRef = useRef(images.length);
-  imagesLengthRef.current = images.length;
-
-  const jumpToImageIndex = useCallback((index: number) => {
-    if (imagesLengthRef.current === 0) {
-      return;
-    }
-    const nextIndex = Math.min(imagesLengthRef.current - 1, Math.max(0, index));
-    setActiveIndex(nextIndex);
-    listRef.current?.scrollToIndex({ animated: false, index: nextIndex });
-    verticalListRef.current?.scrollToIndex({ animated: false, index: nextIndex });
-  }, []);
 
   function jumpToProgressLocation(locationX: number) {
     if (images.length <= 1 || viewerProgressWidth <= 0) {
@@ -520,6 +745,7 @@ export function ImageViewerScreen({
             length: pageHeight,
             offset: pageHeight * index,
           })}
+          initialScrollIndex={initialListIndex}
           initialNumToRender={5}
           key="vertical-continuous"
           keyExtractor={(item) => String(item.id)}
@@ -553,6 +779,7 @@ export function ImageViewerScreen({
             offset: pageSize * index,
           })}
           horizontal
+          initialScrollIndex={initialListIndex}
           initialNumToRender={5}
           inverted={readerMode === 'horizontal-rtl'}
           key={readerMode}
@@ -866,78 +1093,54 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-async function loadImagesForContext(context: ImageViewerContext): Promise<ImageListItem[]> {
+async function loadImageReaderWindow(context: ImageViewerContext, anchorId: number): Promise<ReaderWindowResult> {
   return runWithDatabaseSpace(context.space, async (db) => {
     if (context.type === 'ip-recent') {
-      return imageRepository.findRecentByIpId(db, context.ipId, context.limit);
+      const items = await imageRepository.findRecentByIpId(db, context.ipId, context.limit);
+      return {
+        items,
+        leadingBoundary: { cursor: null, direction: 'before', hasMore: false },
+        trailingBoundary: { cursor: null, direction: 'after', hasMore: false },
+      };
     }
 
-    if (context.type === 'import-batch') {
-      return imageRepository.findByImportBatchId(db, context.importBatchId);
+    const request = buildMediaReaderCursorRequest(context);
+    if (!request) {
+      return {
+        items: [],
+        leadingBoundary: { cursor: null, direction: 'before', hasMore: false },
+        trailingBoundary: { cursor: null, direction: 'after', hasMore: false },
+      };
     }
-
-    if (context.type === 'image-scope') {
-      return imageRepository.findByIds(db, context.imageIds);
-    }
-
-    if (context.type === 'ip-all') {
-      const { filter } = context;
-      if (filter.type === 'favorite') {
-        return imageRepository.findByIpId(db, context.ipId, { favoritesOnly: true });
-      }
-
-      if (filter.type === 'ungrouped') {
-        return imageRepository.findByIpId(db, context.ipId, { ungroupedOnly: true });
-      }
-
-      if (filter.type === 'untagged') {
-        return imageRepository.findByIpId(db, context.ipId, { untaggedOnly: true });
-      }
-
-      if (filter.type === 'recent-viewed') {
-        return imageRepository.findByIpId(db, context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
-      }
-
-      if (filter.type === 'mime') {
-        return imageRepository.findByIpId(db, context.ipId, { mimeType: filter.mimeType });
-      }
-
-      if (filter.type === 'aspect') {
-        return imageRepository.findByIpId(db, context.ipId, { aspectRatio: filter.aspectRatio });
-      }
-
-      if (filter.type === 'size') {
-        return imageRepository.findByIpId(db, context.ipId, {
-          minFileSize: filter.minFileSize,
-          maxFileSize: filter.maxFileSize,
-        });
-      }
-
-      if (filter.type === 'group') {
-        return imageRepository.findByGroupId(db, filter.groupId);
-      }
-
-      if (filter.type === 'tag') {
-        return imageRepository.findByIpId(db, context.ipId, { tagId: filter.tagId });
-      }
-
-      return imageRepository.findByIpId(db, context.ipId);
-    }
-
-    if (context.type === 'group') {
-      return imageRepository.findByGroupId(db, context.groupId);
-    }
-
-    if (context.type === 'tag') {
-      return imageRepository.findByTagId(db, context.tagId);
-    }
-
-    if (context.type === 'favorites') {
-      return imageRepository.findFavorites(db);
-    }
-
-    return imageRepository.findRecentViewed(db);
+    const page = await imageRepository.findCursorPageAroundId(db, anchorId, request);
+    return {
+      items: page.items,
+      leadingBoundary: { cursor: page.newerCursor, direction: 'before', hasMore: page.hasNewer },
+      trailingBoundary: { cursor: page.olderCursor, direction: 'after', hasMore: page.hasOlder },
+    };
   });
+}
+
+function resolveNextReaderBoundary(
+  page: MediaPageResult<ImageListItem>,
+  direction: 'before' | 'after'
+): MediaReaderSessionBoundary {
+  return direction === 'before'
+    ? { cursor: page.newerCursor, direction, hasMore: page.hasNewer }
+    : { cursor: page.olderCursor, direction, hasMore: page.hasOlder };
+}
+
+function createReaderCursor(
+  item: ImageListItem,
+  orderBy: 'createdAtDesc' | 'lastViewedAtDesc' | 'sourceOrderAsc' | undefined
+): MediaPageCursor {
+  if (orderBy === 'lastViewedAtDesc') {
+    return { id: item.id, sortValue: item.lastViewedAt };
+  }
+  if (orderBy === 'sourceOrderAsc') {
+    return { id: item.id, sortValue: item.sourceOrder ?? item.id };
+  }
+  return { id: item.id, sortValue: item.createdAt };
 }
 
 const styles = StyleSheet.create({

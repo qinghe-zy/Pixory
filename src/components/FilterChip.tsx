@@ -65,13 +65,10 @@ const styles = StyleSheet.create({
   wrapper: {
     ...shadows.sm,
     shadowColor: '#3A2E1D',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     borderRadius: componentTokens.filterChip.radius,
   },
   wrapperActive: {
-    shadowColor: '#566B48',
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
   },
   base: {
     borderRadius: componentTokens.filterChip.radius,

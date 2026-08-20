@@ -18,8 +18,9 @@ test('personal image rendering goes through the secure image wrapper and require
   assert.doesNotMatch(packageSource, /"expo-screen-capture"/);
   assert.match(secureImageSource, /from 'expo-image'/);
   assert.match(secureImageSource, /space:\s*PixorySpace/);
-  assert.match(secureImageSource, /cachePolicy=\{space === 'personal' \? 'none' : 'disk'\}/);
+  assert.match(secureImageSource, /cachePolicy=\{space === 'personal' \? 'memory' : 'disk'\}/);
   assert.match(secureImageSource, /clearPersonalImageCache/);
+  assert.doesNotMatch(secureImageSource, /Image\.clearDiskCache\(\)/);
   assert.match(appSource, /clearPersonalImageCache/);
   assert.match(appSource, /lockPersonalSpace[\s\S]{0,1600}clearPersonalImageCache/);
 });

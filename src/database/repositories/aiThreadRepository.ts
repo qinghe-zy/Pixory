@@ -3972,67 +3972,75 @@ export const aiThreadRepository = {
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
     const latestLimit = Math.max(1, limit);
     const sideLimit = Math.max(1, Math.ceil(limit / 2));
-    const anchor = await db.getFirstAsync<AiMessageRecord>(
-      `SELECT * FROM ai_messages
-       WHERE id = ?
-         AND threadId = ?
-         AND ${excludeRolledBackContinuityPayload('ai_messages')}
-         ${visibleBranchClause.clause}`,
-      anchorMessageId,
-      threadId,
-      ...visibleBranchClause.values
-    );
-    if (!anchor) {
-      return aiThreadRepository.listMessagesBase(db, threadId, latestLimit, branchScopes);
-    }
-    const [latestRows, beforeRows, afterRows] = await Promise.all([
-      aiThreadRepository.listMessagesBase(db, threadId, latestLimit, branchScopes),
-      db.getAllAsync<AiMessageRecord>(
-        `SELECT * FROM (
-           SELECT * FROM ai_messages
-           WHERE threadId = ?
-             ${visibleBranchClause.clause}
-             AND ${excludeRolledBackContinuityPayload('ai_messages')}
-             AND (
-               createdAt < ?
-               OR (createdAt = ? AND id < ?)
-             )
-           ORDER BY createdAt DESC, id DESC
-           LIMIT ?
-         )
-         ORDER BY createdAt ASC, id ASC`,
-        threadId,
-        ...visibleBranchClause.values,
-        anchor.createdAt,
-        anchor.createdAt,
-        anchor.id,
-        sideLimit
-      ),
-      db.getAllAsync<AiMessageRecord>(
-        `SELECT * FROM ai_messages
-         WHERE threadId = ?
+    return db.getAllAsync<AiMessageRecord>(
+      `WITH anchor AS (
+         SELECT ai_messages.*
+         FROM ai_messages
+         WHERE ai_messages.id = ?
+           AND ai_messages.threadId = ?
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           ${visibleBranchClause.clause}
+       ),
+       latest_rows AS (
+         SELECT ai_messages.*
+         FROM ai_messages
+         WHERE ai_messages.threadId = ?
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+         ORDER BY ai_messages.createdAt DESC, ai_messages.id DESC
+         LIMIT ?
+       ),
+       before_rows AS (
+         SELECT ai_messages.*
+         FROM ai_messages
+         CROSS JOIN anchor
+         WHERE ai_messages.threadId = ?
            ${visibleBranchClause.clause}
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
            AND (
-             createdAt > ?
-             OR (createdAt = ? AND id > ?)
+             ai_messages.createdAt < anchor.createdAt
+             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.id < anchor.id)
            )
-         ORDER BY createdAt ASC, id ASC
-         LIMIT ?`,
-        threadId,
-        ...visibleBranchClause.values,
-        anchor.createdAt,
-        anchor.createdAt,
-        anchor.id,
-        sideLimit
-      ),
-    ]);
-    const byId = new Map<string, AiMessageRecord>();
-    for (const row of [...latestRows, ...beforeRows, anchor, ...afterRows]) {
-      byId.set(row.id, row);
-    }
-    return [...byId.values()].sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+         ORDER BY ai_messages.createdAt DESC, ai_messages.id DESC
+         LIMIT ?
+       ),
+       after_rows AS (
+         SELECT ai_messages.*
+         FROM ai_messages
+         CROSS JOIN anchor
+         WHERE ai_messages.threadId = ?
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           AND (
+             ai_messages.createdAt > anchor.createdAt
+             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.id > anchor.id)
+           )
+         ORDER BY ai_messages.createdAt ASC, ai_messages.id ASC
+         LIMIT ?
+       )
+       SELECT *
+       FROM (
+         SELECT * FROM latest_rows
+         UNION
+         SELECT * FROM before_rows
+         UNION
+         SELECT * FROM anchor
+         UNION
+         SELECT * FROM after_rows
+       ) combined_rows
+       ORDER BY createdAt ASC, id ASC`,
+      anchorMessageId,
+      threadId,
+      ...visibleBranchClause.values,
+      threadId,
+      ...visibleBranchClause.values,
+      latestLimit,
+      threadId,
+      ...visibleBranchClause.values,
+      sideLimit,
+      threadId,
+      ...visibleBranchClause.values,
+      sideLimit,
     );
   },
 

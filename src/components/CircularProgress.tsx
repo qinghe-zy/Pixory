@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, { useAnimatedProps, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, typography } from '../design/tokens';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -21,6 +22,7 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
   ({ size = 60, strokeWidth = 5 }, ref) => {
     const [state, setState] = useState<{ current: number; total: number; label?: string } | null>(null);
     const progress = useSharedValue(0);
+    const insets = useSafeAreaInsets();
 
     const radiusVal = (size - strokeWidth) / 2;
     const circumference = radiusVal * 2 * Math.PI;
@@ -54,8 +56,12 @@ export const CircularProgress = forwardRef<CircularProgressRef, CircularProgress
     const percentageStr = total > 0 ? Math.round((current / total) * 100) : 0;
 
     return (
-      <BlurView intensity={80} tint='light' style={styles.overlayContainer}>
-        <View style={styles.ringContainer}>
+      <BlurView
+        intensity={80}
+        tint="light"
+        style={[styles.overlayContainer, { top: insets.top + spacing[4] }]}
+      >
+        <View style={[styles.ringContainer, { width: size, height: size }]}>
           <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Background Ring */}
             <Circle
@@ -100,8 +106,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
     backgroundColor: 'rgba(255, 255, 255, 0.40)', // semi-transparent
     borderRadius: 999,
     shadowColor: '#000',
@@ -110,7 +116,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
     zIndex: 9999, // Ensure it floats above everything and doesn't scroll
-    gap: spacing.md,
+    gap: spacing[4],
   },
   ringContainer: {
     position: 'relative',
@@ -140,7 +146,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   label: {
-    ...typography.textStyles.body2,
+    ...typography.textStyles.body,
     color: colors.text.primary,
     fontWeight: '600',
     maxWidth: 160,

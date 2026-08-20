@@ -28,12 +28,16 @@ import {
 } from '../services/imageImportService';
 import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
 import { importVideosToIp, pickVideosForImport, type PickedVideoAsset } from '../services/videoImportService';
-import { pickMediaFilesForImport } from '../services/mediaFilePickerService';
+import { cleanupTemporaryMediaInputs, pickMediaFilesForImport } from '../services/mediaFilePickerService';
+import {
+  assertMixedMediaImportPreflight,
+  createMediaImportCommitBudget,
+} from '../services/mediaImportPreflightRuntime';
 import { deleteMediaStoreAssetsWithConfirmation } from '../services/mediaSourceDeletionService';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
-import { trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
+import { assertPersonalTaskActive, trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
 import type { ImageImportSourceMode, MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 
 const PICKED_IMAGE_PREVIEW_LIMIT = 5;
@@ -137,6 +141,8 @@ export function ImportImagesScreen({
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>(defaultGroupId != null ? [defaultGroupId] : []);
   const [pickedAssets, setPickedAssets] = useState<PickedImageAsset[]>([]);
   const [pickedVideos, setPickedVideos] = useState<PickedVideoAsset[]>([]);
+  const pickedAssetsRef = useRef<PickedImageAsset[]>([]);
+  const pickedVideosRef = useRef<PickedVideoAsset[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
@@ -179,6 +185,37 @@ export function ImportImagesScreen({
   ].some((asset) => (asset.sourceKind ?? 'album') === 'album');
   const canRequestAlbumSourceDeletion = hasAlbumPickerSource || hasAlbumPickedAsset;
   const ip = screenData?.ip ?? null;
+
+  useEffect(() => {
+    pickedAssetsRef.current = pickedAssets;
+  }, [pickedAssets]);
+
+  useEffect(() => {
+    pickedVideosRef.current = pickedVideos;
+  }, [pickedVideos]);
+
+  useEffect(() => () => {
+    void cleanupTemporaryMediaInputs([
+      ...pickedAssetsRef.current,
+      ...pickedVideosRef.current,
+    ]);
+  }, []);
+
+  function removePickedImage(index: number) {
+    const removed = pickedAssets[index];
+    if (removed) {
+      void cleanupTemporaryMediaInputs([removed]);
+    }
+    setPickedAssets((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function removePickedVideo(index: number) {
+    const removed = pickedVideos[index];
+    if (removed) {
+      void cleanupTemporaryMediaInputs([removed]);
+    }
+    setPickedVideos((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
   const groups = screenData?.groups ?? [];
   const importTemplates = screenData?.importTemplates ?? [];
   const recentGroupIds = screenData?.recentGroupIds ?? [];
@@ -482,7 +519,8 @@ export function ImportImagesScreen({
   }
 
   function handleImport() {
-    void runSubmit(async () => {
+    void runSubmit(() => {
+      const importTask = (async () => {
       try {
         const preparedTags = mergeDraftTagNames(tags, tagInput);
         const preparedNote = note.trim();
@@ -512,9 +550,24 @@ export function ImportImagesScreen({
       let failedCount = 0;
       let sourceDeletionFailureCount = 0;
       const pendingSourceDeletionAssetIds: string[] = [];
+      const mixedPreflight = await assertMixedMediaImportPreflight<PickedImageAsset | PickedVideoAsset>({
+        assertActive: () => assertPersonalTaskActive(taskToken),
+        assets: [
+          ...pickedAssets.map((asset) => ({ asset, kind: 'image' as const })),
+          ...pickedVideos.map((asset) => ({ asset, kind: 'video' as const })),
+        ],
+        space,
+      });
+      const resolvedPickedAssets = mixedPreflight.resolvedAssets
+        .filter((entry) => entry.kind === 'image')
+        .map((entry) => entry.asset as PickedImageAsset);
+      const resolvedPickedVideos = mixedPreflight.resolvedAssets
+        .filter((entry) => entry.kind === 'video')
+        .map((entry) => entry.asset as PickedVideoAsset);
+      const commitBudget = createMediaImportCommitBudget();
 
-      if (pickedAssets.length > 0) {
-        progressBarRef.current?.setProgress(0, pickedAssets.length, '');
+      if (resolvedPickedAssets.length > 0) {
+        progressBarRef.current?.setProgress(0, resolvedPickedAssets.length, '');
         const imageResult = await importImagesToIp({
           space,
           ipId,
@@ -523,11 +576,12 @@ export function ImportImagesScreen({
           note: preparedNote,
           isFavorite,
           templateKey: selectedTemplateKey,
-          pickedAssets,
+          pickedAssets: resolvedPickedAssets,
           duplicateDecision,
           imageImportSourceMode,
           deferSourceDeletion: true,
           taskToken,
+          commitBudget,
           onProgress: (current, total) => {
             progressBarRef.current?.setProgress(current, total, '');
           },
@@ -563,8 +617,8 @@ export function ImportImagesScreen({
         });
       }
 
-      if (pickedVideos.length > 0) {
-        progressBarRef.current?.setProgress(0, pickedVideos.length, '');
+      if (resolvedPickedVideos.length > 0) {
+        progressBarRef.current?.setProgress(0, resolvedPickedVideos.length, '');
         const videoResult = await importVideosToIp({
           space,
           ipId,
@@ -572,12 +626,13 @@ export function ImportImagesScreen({
           tagNames: preparedTags,
           note: preparedNote,
           isFavorite,
-          pickedAssets: pickedVideos,
+          pickedAssets: resolvedPickedVideos,
           duplicateDecision,
           imageImportSourceMode,
           videoImportNamingMode,
           deferSourceDeletion: true,
           taskToken,
+          commitBudget,
           onProgress: (current, total) => {
             progressBarRef.current?.setProgress(current, total, '');
           },
@@ -593,7 +648,7 @@ export function ImportImagesScreen({
           )
         );
         importedAssetIds.push(...videoResult.importedVideos.map((item) => item.video.id));
-        importBatchId = pickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
+        importBatchId = resolvedPickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
       }
 
       if (pendingSourceDeletionAssetIds.length > 0) {
@@ -633,6 +688,8 @@ export function ImportImagesScreen({
       } finally {
         progressBarRef.current?.reset();
       }
+      })();
+      return trackPersonalTask(taskToken, importTask);
     }, {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -761,7 +818,7 @@ export function ImportImagesScreen({
                       accessibilityLabel={`移除第 ${index + 1} 张已选图片`}
                       accessibilityRole="button"
                       hitSlop={8}
-                      onPress={() => setPickedAssets((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      onPress={() => removePickedImage(index)}
                       style={({ pressed }) => [styles.previewRemoveButton, pressed && styles.pressed]}
                     >
                       <Ionicons color={colors.text.inverse} name="close" size={13} />
@@ -821,7 +878,7 @@ export function ImportImagesScreen({
                     accessibilityLabel={`移除视频：${video.fileName}`}
                     accessibilityRole="button"
                     hitSlop={8}
-                    onPress={() => setPickedVideos((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                    onPress={() => removePickedVideo(index)}
                     style={({ pressed }) => [styles.videoRemoveButton, pressed && styles.pressed]}
                   >
                     <Ionicons color={colors.text.tertiary} name="close-circle" size={18} />

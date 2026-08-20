@@ -6,6 +6,11 @@ export interface NativeCopyProgressEvent {
   totalBytes: number;
 }
 
+export interface NativeMemoryPressureEvent {
+  high: boolean;
+  level: number;
+}
+
 export interface NativeCopyResult {
   uri: string;
   size: number;
@@ -144,6 +149,16 @@ export function addNativeCopyProgressListener(
   }
 
   return emitter.addListener('PixoryMediaCopyProgress', listener);
+}
+
+export function addNativeMemoryPressureListener(
+  listener: (event: NativeMemoryPressureEvent) => void
+): { remove: () => void } {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+
+  return emitter.addListener('PixoryMediaMemoryPressure', listener);
 }
 
 export function addNativeIntentListener(

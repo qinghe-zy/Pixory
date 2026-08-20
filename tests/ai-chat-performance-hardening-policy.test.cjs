@@ -160,10 +160,15 @@ test('thread message loading keeps version totals cheap and only hydrates select
   assert.match(repository, /async listMessagesBaseAroundAnchor/);
   assert.match(anchorBody, /const latestLimit = Math\.max\(1, limit\)/);
   assert.match(anchorBody, /const sideLimit = Math\.max\(1, Math\.ceil\(limit \/ 2\)\)/);
-  assert.match(anchorBody, /aiThreadRepository\.listMessagesBase\(db, threadId, latestLimit, branchScopes\)/);
-  assert.match(anchorBody, /ORDER BY createdAt DESC, id DESC[\s\S]*LIMIT \?/);
-  assert.match(anchorBody, /ORDER BY createdAt ASC, id ASC[\s\S]*LIMIT \?/);
-  assert.match(anchorBody, /\[\.\.\.latestRows, \.\.\.beforeRows, anchor, \.\.\.afterRows\]/);
+  assert.match(anchorBody, /WITH anchor AS/);
+  assert.match(anchorBody, /latest_rows AS/);
+  assert.match(anchorBody, /before_rows AS/);
+  assert.match(anchorBody, /after_rows AS/);
+  assert.match(anchorBody, /ORDER BY ai_messages\.createdAt DESC, ai_messages\.id DESC[\s\S]*LIMIT \?/);
+  assert.match(anchorBody, /ORDER BY ai_messages\.createdAt ASC, ai_messages\.id ASC[\s\S]*LIMIT \?/);
+  assert.match(anchorBody, /SELECT \* FROM latest_rows[\s\S]*UNION[\s\S]*SELECT \* FROM anchor/);
+  assert.doesNotMatch(anchorBody, /Promise\.all/);
+  assert.doesNotMatch(anchorBody, /\.sort\(/);
   assert.match(repository, /async listMessageVersionTotalsForMessages/);
   assert.match(repository, /async listMessageVersionsByIndexForMessages/);
   assert.doesNotMatch(listBody, /listMessages\(db, threadId, options\.limit, options\.branchScopes\)/);
@@ -318,5 +323,6 @@ test('Live2D shutdown removes its animation and gesture paths from chat', () => 
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.doesNotMatch(chat, /resizeHandleOpacity|petPan|petScale|Live2D/);
-  assert.match(chat, /Animated\.timing\(messageAreaFadeAnim/);
+  assert.match(chat, /isMessageListReady/);
+  assert.doesNotMatch(chat, /messageAreaFadeAnim/);
 });

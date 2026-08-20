@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-13（AI 聊天 P0/P1 运行时性能：游标分页、流式发布与后台标题收敛）
-适用版本：Pixory 2.7.7
+最后更新：2026-08-20（媒体阅读器、聊天入口、SQLite/cache 与极端导入性能加固）
+适用版本：Pixory 2.8.1
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -39,11 +39,11 @@
 | 角色日记 | 已实现，首版 | 以北京时间和角色为单位保存当日私密日记；手动、自动和后台唤醒均通过同一准备链路冻结当前已采纳分支、角色提示、线程摘要和来源消息，持久 wake 真正到期时会重新解析用户此刻采用的分支，再创建不可变生成快照。内容优先使用今日完整问答，不足时从历史补齐到最近 30 个完整轮次，并为消息附北京时间；模型会明确区分“今日证据”和“历史背景”，无证据时不得虚构。自动日记由应用初始化/回前台统一协调，Personal 仅在已解锁且任务令牌有效时运行；精确本地口令仅在已启用且绑定角色卡的会话中提供非打扰确认。任务由独立运行时持有，退出聊天页仍会完成，长时间中断的 `generating` 任务在前台恢复；Android 通过 AlarmManager、receiver 与带低打扰系统常驻提示的短时 `dataSync` 前台服务启动 Headless JS，无法使用精确闹钟时退化为 inexact alarm，若系统仍拒绝后台启动则保留 SQLite 任务并在下次前台协调时恢复。完成卡片保存冻结来源版本及有效消息哈希，始终锚定在对应触发消息之后，刷新、分页和重进页面不漂到列表底部；用户确认纳入上下文的最近日记会独立注入，不会被较新未选择日记覆盖 | `src/ai/diary/`, `DiaryChatCard`, `DiaryDeckPager`, `DiaryReaderScreen`, `CompanionInnerLifeScreen`, `PixoryMediaModule` |
 | 陪伴内心运行时（情绪、梦境、思绪） | 已实现，V1 核心 | 情绪/关系投影、角色梦境、离线思绪、内心产物仲裁和后台恢复均已进入主分支；思绪是给 AI 的低权限一次性动态材料，梦境只有用户明确允许才可进入后续上下文，情绪与关系状态不直接暴露内部数值 | `src/ai/companion/`, `src/ai/dream/`, `src/ai/thought/`, `CompanionInnerLifeScreen`, `CompanionRuntimeManagerScreen`, `DreamReaderScreen` |
 | 陪伴手帐与数据面板 | 已实现，未来可扩展 | 珍珠时间线、双轴古典排版字体、底层零延迟预取、SQLite C++聚合、多维数据详单、WebView原生深链拦截 | `AboutScreen`, `MilestonesDetailScreen`, `milestoneService.ts` |
-| IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面；首页、分组和标签总览采用 SQLite 分页与虚拟列表，IP 详情分组预览在数据库层限制为 4 条，避免大库全量查询和一次性挂载卡片 | `HomeLibraryScreen`, `IpDetailScreen`, `GroupOverviewScreen`, `GlobalGroupsScreen`, `TagsOverviewScreen` |
-| 创意视觉动效与反馈 | 已实现 | 边缘极光入场（ParallaxLightSweep）、AI 档案行星与星轨系统（OrbitalSpectralRing）、聊天声纹频谱反馈（RhythmBars）、磁性流体拉伸交互（MagneticLiquidContainer）、基于双层视差与全向物理跟随的 3D 陀螺仪悬浮高光（MagneticCardContainer & GyroSpecularHighlight：包含流体惯性阻尼、菲涅尔效应、底层漫反射与顶层镜面微色散），为系统各模块注入轻量级的生命力、物理感与科技感表现 | `ParallaxLightSweep` (AiChatScreen, HomeLibraryScreen, AboutScreen, ProductDocumentationScreen), `OrbitalSpectralRing` (MeScreen), `RhythmBars` (AiChatComposer 回复状态显示, HomeLibraryScreen), `MagneticLiquidContainer` (BottomTabBar), `MagneticCardContainer` & `GyroSpecularHighlight` (IPCard) |
-| 图片/视频导入 | 已实现，Android 删除确认待真机验收 | 批量导入、复制原文件、生成缩略图、重复检查、导入批次；相册素材按来源创建时间记录来源序号，ZIP/PIXORYPACK 按压缩包条目顺序记录来源序号；Android 11+ 使用系统删除确认，取消/不支持时保留原文件并回退；大批量选择仅渲染少量预览，视频复制进度合并写入以避免长视频导入时积压 | `ImportImagesScreen`, `mediaFilePickerService`, `imageImportService`, `videoImportService`, `mediaSourceDeletionService`, `PixoryMediaModule` |
-| 图片浏览与整理 | 已实现 | 全部素材、分组素材、标签素材、收藏、最近查看、快速整理 | `AllImagesScreen`, `ImageViewerScreen`, `QuickOrganizeScreen` |
-| 视频体验 | 已实现 | 视频详情、沉浸播放、手势、队列、横竖屏、进度偏好 | `VideoDetailScreen`, `VideoPlayerScreen` |
+| IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面；首页、分组和标签总览采用 SQLite 分页与虚拟列表，IP 详情分组预览在数据库层限制为 4 条；首页冷启动只显示 1 个与真实卡片共用宽高/radius token 的 skeleton 并叠加 shimmer，不再显示“正在读取本地资产库”提示；IPCard 列表热路径已移除传感器/超大镜面高光，首卡与后续卡使用同一轻量渲染路径；仅首卡使用 high priority 与 0ms transition，其他卡 normal + 120ms，减少第二卡先显示、首卡后闪 | `HomeLibraryScreen`, `IPCard`, `IPCardSkeleton`, `IpDetailScreen`, `GroupOverviewScreen`, `GlobalGroupsScreen`, `TagsOverviewScreen` |
+| 创意视觉动效与反馈 | 已实现，按性能门禁收敛 | 边缘极光入场（ParallaxLightSweep）、AI 档案行星与星轨系统（OrbitalSpectralRing）、聊天声纹频谱反馈（RhythmBars）、磁性流体拉伸交互（MagneticLiquidContainer）继续用于非列表热路径；ParallaxLightSweep 在不可见或应用后台时取消循环。原 3D 陀螺仪卡片组件仍保留源码，但首页 IPCard 已不挂载传感器和超大镜面层，避免首卡延迟闪现与滚动抢手势 | `ParallaxLightSweep`, `OrbitalSpectralRing`, `RhythmBars`, `MagneticLiquidContainer`, `IPCard` |
+| 图片/视频导入 | 已实现，Android 删除确认待真机验收 | 批量导入、复制原文件、生成独立缩略图、重复检查、导入批次；相册素材按来源创建时间记录来源序号，ZIP/PIXORYPACK 按压缩包条目顺序记录来源序号；Android 11+ 使用系统删除确认，取消/不支持时保留原文件并回退；图片+视频混选共享一次 1000 文件/单文件/32GB/磁盘余量 gate 和同一实际写入 commit budget，并在 metadata 文件 I/O 前按数量和已知大小早拒绝；缺失 metadata 固定最多 4 worker，实际复制字节变化时在数据库提交前复查；整次混合导入进入 Personal task barrier；DocumentPicker cache URI 只有被明确标记为本页所有且仍位于 Expo cache 时才在移除/离页清理 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaImportPreflight`, `mediaImportPreflightRuntime`, `boundedFileConcurrency`, `imageImportService`, `videoImportService`, `mediaSourceDeletionService`, `PixoryMediaModule` |
+| 图片浏览与整理 | 已实现，真机压力待验证 | 全部素材、分组素材、标签素材、收藏、最近查看、快速整理；图片阅读器使用 81 项锚点窗口、40 项边界游标页、自适应编码/解码预取、并发上限、Personal 内存会话缓存、退出位置恢复和浏览记录合并写，不再加载完整上下文 | `AllImagesScreen`, `ImageViewerScreen`, `mediaPrefetchPolicy`, `mediaImagePrefetchCoordinator`, `mediaReaderSessionCache`, `mediaLastViewedQueue`, `QuickOrganizeScreen` |
+| 视频体验 | 已实现，真机音频/解码压力待验证 | 视频详情、沉浸播放、横竖屏、进度偏好；竖滑使用 previous/current/next 三槽视觉和可中断跟手 settle，播放器池保持当前 + 前向 3 + 反向 1 且只有当前项拥有音频，按优先序最多 3 路并行准备，封面在切换 settle 前发布；队列使用 61 项锚点窗口/40 项边界页；0.5×–3× 统一先启用保音高再写 playbackRate | `VideoDetailScreen`, `VideoPlayerScreen`, `videoSwipePolicy`, `videoPreloadPool`, `videoPlaybackRate` |
 | 分组与标签 | 已实现 | 全局分组、IP 分组、标签管理、多选、筛选和结果页；分组采用 SectionList，标签采用双列 FlatList，热门/最近标签由 SQLite 排序并限制返回数量 | `GlobalGroupsScreen`, `GroupOverviewScreen`, `TagsOverviewScreen` |
 | 搜索 | 已实现 | 全局素材搜索、全局搜索历史（支持年/月/日三级树状分组与统计，无缝路由返回）、AI 聊天搜索；全局素材搜索约 250ms 防抖，并在 SQLite 层按 IP、分组、标签、素材分类筛选且每类限制 20 条，避免先全量载入再由 JS 过滤 | `GlobalSearchScreen`, `GlobalSearchHistoryScreen`, `AiChatSearchScreen`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
 | 批量管理 | 已实现 | 多选、批量移动、批量打标签、批量整理、撤销；“移动到 IP”支持图片和视频混选，复制受管文件后软删除源记录；批量删除标签按安全批次执行，避免超过 Android SQLite 绑定参数上限 | `BatchManageImagesScreen`, `BatchImageOrganizePanel`, `tagRepository`, `videoMoveService` |
@@ -52,12 +52,40 @@
 | 备份/导入导出 | 已实现，Manifest V2 | 普通、单 IP 与隐私包覆盖数据库、原图/视频、缩略图、AI 文档、聊天附件和角色头像；恢复前校验相对路径、大小与 SHA-256，按内容去重并事务合并，SecureStore 密钥不进入备份 | `BackupScreen`, `BackupExportManagerScreen`, `backupService`, `managedBackupService`, `backupManifestProtocol` |
 | AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、答案级引用、阅读和带哈希校验的备份恢复；入口、术语、来源更新和跨资料搜索尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService`, `managedBackupService` |
 | Live2D 桌宠 | 完全关闭/不上线 | 已移除聊天页与会话设置页的运行时入口：不会加载模型、渲染 WebView、注册事件监听、启动动画/手势或提供下载与预览入口。保留源码、模型列表、已下载文件和既有 SQLite 设置值，供未来在独立验收后恢复 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
-| 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库，首页/整理/全部素材/分组素材/批量管理首屏查询延后到交互完成。Personal 成功建立会话后才授权生成恢复、梦境、思绪、日记和记忆维护任务；锁定先使会话 task token 失效，再撤销全部运行时入口、清除 timer、Abort 远程请求并等待生成/陪伴/记忆/日记/备份恢复任务停稳，最后关闭数据库，锁后不会由后台任务重开隐私库 | `App.tsx`, `MeScreen`, `PersonalUnlockModal`, `useScreenLoad`, `personalSystemService`, `personalTaskToken`, `aiGenerationManager`, `companionMaintenanceQueue`, `diaryGenerationManager`, `aiMemoryMaintenanceService` |
+| 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库，首页/整理/全部素材/分组素材/批量管理首屏查询延后到交互完成。Personal 图片只使用内存图片缓存；锁定会清内存图片、reader session、聊天预取和 Personal 临时文件，但不清普通空间磁盘缩略图。Personal 成功建立会话后才授权后台任务；锁定先使 task token 失效，等待生成/陪伴/记忆/日记/备份恢复/导入任务停稳，再关闭数据库 | `App.tsx`, `SecureImage`, `PersonalUnlockModal`, `useScreenLoad`, `personalSystemService`, `personalTaskToken`, `aiGenerationManager`, `companionMaintenanceQueue`, `diaryGenerationManager`, `aiMemoryMaintenanceService` |
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理 | `StorageUsageScreen`, `storageUsageService` |
 | 更新与公告 | 已实现 | 远程版本检查、公告、官网下载、GitHub fallback | `updateCheckService`, `announcementService` |
 | 官网与发布 | 已实现 | 官网下载页、更新 JSON、release notes、Android release workflow、关于页内置产品文档入口与应用内 Markdown 阅读；进入关于页会后台预取官网产品文档图片并持久缓存到应用内，后续阅读优先复用本地缓存 | `docs/`, `AGENTS.md`, `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService` |
 | 设计系统/基础组件 | 已实现 | 统一移动端 UI、空状态、按钮、表单、toast、action sheet | `src/components/`, `src/design/tokens/` |
+
+### 2.1 2026-08-20 性能加固逐项索引
+
+完整根因、文件级清单、review 新发现、验证结果与 Android 门禁见 [`docs/reviews/2026-08-20-performance-hardening-review.md`](reviews/2026-08-20-performance-hardening-review.md)。下表中的“源码/自动化已验”不等同于真机帧率、内存、codec 或声学验收。
+
+| ID | 功能/能力变化 | 实现边界 | 当前验证状态 |
+| --- | --- | --- | --- |
+| PERF-HOME-01 | 首页首帧只显示一个真实卡片几何 skeleton + shimmer，移除加载提示 | skeleton/真实卡共享宽高比、圆角、padding 和 caption 几何；Reduce Motion 停 shimmer | 源码/自动化已验；Android 像素差待验 |
+| PERF-HOME-02 | 第一张 IP 卡片不再晚于第二张参与显示 | 仅首卡 high priority + 0ms transition，其他 normal + 120ms；首项不挂传感器/重型高光 | 源码/自动化已验；冷启动和回收滚动待真机 |
+| PERF-DB-01 | 媒体/聊天热路径索引与稳定 keyset cursor | normal/personal 幂等建索引；created/recent/source 使用 sort value + id tie-breaker | 100k host SQLite plan 已验；Android SQLite 延迟待验 |
+| PERF-DB-02 | scope-aware LRU/TTL/data epoch | media epoch 按 global + normal/personal 组合；DB handle 注册空间，结构写按所属空间 bump；last-view 不 bump；未知 handle 走 global fail-safe | 单元/集成已验 |
+| PERF-IMG-01 | 图片阅读器从全量上下文改为 81 项锚点窗口 + 40 项游标补页 | 距边界 10 项内补页；`initialScrollIndex` 首帧定位 | 源码/自动化已验；200 项 fling 待真机 |
+| PERF-IMG-02 | 图片预取不固定三页，改为速度/方向/内存自适应 | encoded 8/4、16/6、32/8；decoded 最多前 6/后 3；并发 4/2；generation 防旧任务回写；Android trim 后本屏 sticky encoded-only 并释放 decoded refs；预解码同时限制 viewport pixel width/height | 单元/集成/Kotlin compile 已验；RSS/掉帧待真机 |
+| PERF-IMG-03 | 阅读器退出再进恢复当前位置且不重新全量加载 | session 最多 81 项、TTL 10 分钟、LRU 容量 8；结构 epoch 变化后失效 | 单元/集成已验 |
+| PERF-VID-01 | 上下切换采用短视频式 previous/current/next 三槽 | 封面在拖动阶段跟手；距离/速度决策；settle 可中断反向 | 源码/自动化已验；手感/帧率待真机 |
+| PERF-VID-02 | 5-player 有界池和预加载 | current + 方向前方 3 + 反向 1；仅 current 有音频；prepare 最大并发 3 | 单元已验；低端机 codec/RSS 待验 |
+| PERF-VID-03 | 0.5×–3× 倍速统一保音高 | 创建、换源、普通倍速、长按倍速都先 `preservesPitch=true` 再设 rate | 源码/自动化已验；扬声器/耳机/蓝牙声学待验 |
+| PERF-CHAT-01 | 已知线程入口利用路由时间预取首个 60 条消息页 | 只保留最近预取；consume 删除；revision 校验；创建时收敛 reject；Personal 锁定清理 | 源码/自动化已验 |
+| PERF-CHAT-02 | 初次进入使用同槽位 readiness skeleton，不做可见后纠偏 | 清旧线程数据；空线程直接 ready；非空在首次 content layout 后揭开；普通入口不跑延迟 jump | 源码/自动化已验；真实长聊天闪烁待真机 |
+| PERF-CHAT-03 | 超长历史页使用稳定 O(n) 去重合并 | `(createdAt,id)` 有序合并，当前窗口覆盖重复 ID，不对累计数组反复 sort | 6000 条/100 页单测已验 |
+| PERF-CHAT-05 | 锚点定位使用单条 SQLite statement | 一个 CTE statement 读取 latest/before/anchor/after、SQLite 内去重并按 `(createdAt,id)` 排序；anchor 缺失自然返回 latest；不在同连接 `Promise.all` | 6000 条/100 页 repository benchmark 和 query plan 已验 |
+| PERF-CHAT-04 | 聊天附件在复制/Base64 前限流限额 | 8 项、图片 12MB、文档/metadata 24MB、总量 32MB；读取并发 2；视频不转 Base64 | 单元/集成已验；设备内存峰值待验 |
+| PERF-IO-01 | 图片+视频混合导入共享总量 gate 与实际写入账本 | 1000 项、图片 256MB、视频 20GB、批次 32GB、未知 256MB、保留 512MB；metadata I/O 前早拒绝；图片/视频服务复用同一 `MediaImportCommitBudget` | 单元/集成已验 |
+| PERF-IO-02 | 导入/目录扫描/相册 metadata 使用有界并发和 commit 前复查 | 文件 worker 最大 4；复制后校验实际 size；失败走既有回滚；不改原件 | 源码/自动化已验；OEM/低存储竞态待真机 |
+| PERF-IO-03 | DocumentPicker 临时副本有显式所有权 | 只删除本次 picker 创建、明确 temporary 且仍位于 Expo cache 的 URI | 源码/自动化已验；OEM URI 生命周期待验 |
+| PERF-PRIV-01 | Personal 媒体缓存与长任务锁定边界收紧 | 图片只进 memory；导入纳入 task barrier；锁定不误清普通磁盘缓存 | 源码/自动化已验；锁定竞态待真机 |
+| PERF-UX-01 | 图片/视频混选贯通批量整理和系统相册保存 | mp4/mov/mkv/webm/avi/m4v/3gp 走 native video MediaStore；其他素材不误走视频桥 | 源码/自动化已验；Android MediaStore 待验 |
+| PERF-REV-01 | 全面 review 修复 19 项二次/补强问题 | Hook 顺序、刷新循环、space epoch、内存 trim/像素预算、预取拒绝、池并发、混合 quota/共享账本、Personal barrier、聊天单 statement 等 | 全量 1138：1123 pass / 0 fail / 15 skipped；三类 benchmark、Kotlin compile、diff 通过；Android 设备门禁待验 |
 
 ---
 
@@ -68,9 +96,9 @@
 | Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流；配置可用的默认 Embedding 模型与密钥后，材料导入/重解析会尝试生成本地向量索引，请求使用上限为 3 的有界并发且暂未引入重试/退避；普通聊天不会无条件调用 Embedding，记忆检索无向量时使用 FTS/词面回退；DeepSeek 官方端点只展示 V4 Flash/Pro，已弃用的 `deepseek-chat` / `deepseek-reasoner` 对存量会话兼容迁移但不再出现在模型列表，自定义中转网关不受该限制 | `src/ai/aiProviderService.ts`, `src/ai/providers/`, `src/ai/deepseekModelPolicy.ts`, `src/ai/aiEmbeddingService.ts` |
 | Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用、长按多选批量删除与同来源一键清理；设置页静态说明 API Key 本地保护、对话请求发送给所选模型服务商，且单次测试成功不代表永久可用 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
-| 聊天记录恢复与可见性 | 空分支范围严格表示主干路线，不会放宽成混入隐藏分支的无约束查询；有限消息页在内层查询显式导出 SQLite `rowid` 排序别名，外层不直接访问不可见的隐藏列；最近历史通过单条递归 SQL 按每个线程已采纳路线计算排序和预览；没有有效完成消息的空线程不会进入侧栏、首页、搜索或历史，同时避免逐线程 SQLite statement 竞争；历史读取失败时显示可重试错误而不是伪装成初始化空会话；发送事务创建消息 ID 后立即显示已落库的用户消息和 assistant placeholder，不依赖后续历史重载才出现用户气泡 | `AiChatScreen`, `aiThreadRepository`, `aiGenerationManager` |
+| 聊天记录恢复与可见性 | 空分支范围严格表示主干路线，不会放宽成混入隐藏分支的无约束查询；有限消息页在内层查询显式导出 SQLite `rowid` 排序别名，外层不直接访问不可见的隐藏列；最近历史通过单条递归 SQL 按每个线程已采纳路线计算排序和预览；没有有效完成消息的空线程不会进入侧栏、首页、搜索或历史，同时避免逐线程 SQLite statement 竞争；历史读取失败时显示可重试错误而不是伪装成初始化空会话；发送事务创建消息 ID 后立即显示已落库的用户消息和 assistant placeholder；所有已知 thread 路由在 push/replace 前启动 revision-safe 首消息页预取，预取创建时即把失败收敛为 null，消费前校验 route revision；普通进入依赖 inverted offset 0 和首个非空列表布局提交揭开骨架，不再执行 50–700ms 可见纠偏；加载更早消息使用有序 O(n) 去重合并而不对累计历史反复 sort | `AiChatScreen`, `aiThreadMessagePrefetch`, `aiMessagePageMerge`, `aiThreadRepository`, `aiGenerationManager` |
 | 陪伴卡片版本与删除 | 日记、梦境卡片按稳定产物组锚定在原聊天位置，重生成仅追加新版本；卡片下方可切换 `1/2`，长按复用消息气泡的触点锚定菜单以重新生成或仅从当前聊天移除。同一梦境组生成期间会禁用重复重生成，完成后默认切到新版，失败保留旧卡片并显示错误。聊天移除写入线程级隐藏状态，不会删除内心独白或历史消息；只有当前梦境版本可进入后续上下文。内心独白展示日记/梦境全部版本，外显序号按剩余版本连续重排；长按进入当前标签的多选模式，统一确认后以单事务直接永久删除所选版本，不进入回收站 | `AiChatScreen`, `DiaryChatCard`, `DreamChatCard`, `AiAnchoredContextMenu`, `CompanionInnerLifeScreen`, `companionArtifactChatStateRepository` |
-| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、continue、retry、regenerate、rewrite；已停止/失败且有正文的 assistant 回复可在原气泡内继续生成，续写阶段保留已有正文/思考上下文但只追加正文；已完成的 assistant 回复在当前末尾保持“续答”，会在下方生成一条新的 assistant 消息继续往下说且不写入伪造的 user/system 历史；当该 assistant 下方已经有后续消息时，同一入口改为“回复”，允许用户从这条历史 AI 消息重新接话并切出新的分支路线；聊天输入区新增 `AI 帮答`，基于当前可见分支、当前线程模型、人设提示词、摘要/画像/稳定记忆生成可直接发送的用户候选，短句固定三条、长句固定一条且允许 20–200 字自由安排句数和节奏；JSON、数量、重复或长度校验失败会携带原因自动纠错，首次加两次纠错仍失败才统一提示重试，provider/网络/取消错误不进入格式重试；刷新会追加新页但不写入消息历史；聊天输入框使用与受控值同步的独立文本布局测量，粘贴长内容、恢复草稿或选择长句帮答时可直接扩展到最多 8 行，不依赖 Android 偶发缺失的原生内容尺寸事件；清空后立即收回默认两行高度；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `AiChatComposer`, `providers/*` |
+| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、continue、retry、regenerate、rewrite；已停止/失败且有正文的 assistant 回复可在原气泡内继续生成，续写阶段保留已有正文/思考上下文但只追加正文；已完成的 assistant 回复在当前末尾保持“续答”，会在下方生成一条新的 assistant 消息继续往下说且不写入伪造的 user/system 历史；当该 assistant 下方已经有后续消息时，同一入口改为“回复”，允许用户从这条历史 AI 消息重新接话并切出新的分支路线；聊天输入区新增 `AI 帮答`；聊天输入框可扩展到最多 8 行并在清空后立即收回；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录，聊天页不提供视频附件入口；附件统一限制 8 个、单图片 12 MB、单文档 24 MB、总计 32 MB，未知大小占用保守预算，在复制/Base64 前拒绝；图片读取固定并发 2、保持选择顺序并隔离单张读取失败 | `aiChatService`, `aiAttachmentPolicy`, `aiBoundedConcurrency`, `aiGenerationManager`, `AiChatComposer`, `providers/*` |
 | 生成崩溃恢复 | V55 持久恢复 | 每次主聊天生成在 Provider 请求前持久化 job，首个 delta 转为 streaming，并按现有合批节奏同步部分正文/思考与 content-free 事件；完成、失败、超时、用户停止及恢复强停时，消息、思绪消费/释放与 job 均在同一事务结算，恢复重试耗尽不会遗留不可消费的思绪预留。进程重启后按空间单航班协调：无部分正文时对同一 assistant 占位最多自动重试一次，有部分正文时最多续写一次且不新增思考、做重叠去重；续写前及最终落盘前会重新验证停止前引用的来源可见性、版本、片段哈希和 claim span，失效引用不再展示；保存原人设/模型/分支快照但重新读取 SecureStore 密钥。普通空间初始化后恢复，Personal 仅成功解锁后恢复且锁定会取消并等待任务；跨空间迁移保留 job/event 且清除 lease | `src/ai/generation/`, `aiChatService`, `aiGenerationManager`, `App.tsx`, `ai_generation_jobs`, `ai_generation_events` |
 | Android 语音输入 | 已实现，直接 SpeechRecognizer | 麦克风入口独立于聊天 Provider/模型；点按切换，长按开始、松开结束、上滑或轻提示取消，只有 final result 写入输入框且仍由用户手动发送。API 31+ 优先设备端识别，否则明确使用系统识别并请求离线优先；区分权限永久拒绝、服务不可用、忙、超时、无语音、网络/音频与取消，页面离开、后台和发送时释放 recognizer | `AiChatComposer`, `AiVoiceInputStatus`, `AiChatScreen`, `pixoryMediaModule`, `PixoryMediaModule.kt` |
 | 流式性能 | generationId 防旧流污染、首 token live 显示、外部 streaming store；Provider delta 热路径只做轻量分发与 chunk 累积，显示和 SQLite 由独立合批调度完成，即使最后一个 delta 后也会 drain；generation metrics 记录内容无关的 Provider 字符数、UI backlog、handler/persist/tail 合并耗时，开发诊断按 generation identity 关联且不进入普通页面；查看历史时使用 measured tail occupancy、真实 FlatList spacer、block 级高度预留/显式测量/cache、reasoning/content lane 隔离；上滑后继续生成时，reasoning replay 保持在同一透明思考表面，content 独立进入固定 `94%` 宽度的连续正文气泡，字符/token 继续实时出现，同一行追加不改变气泡宽度，换行才增加正文高度，内部块不重复绘制边框或叠加卡片 inset；滑回最低处时，near-bottom 只预热，只有原生 offset 进入底部 `32px` 安全区、拖动与惯性结束、滚动稳定、尾块全部提升测量且高度债清零后，才在下一帧二次确认并恢复普通 streaming renderer、内联光标和自动跟随；completed/failed/stopped 业务终态、完成时间、错误与思考计时立即发布，不等待 replay 离屏，布局树则继续保持原位；离屏终态 reload 固定绑定该次 streaming identity 的线程，避免路由变化后刷新到其他会话；只有整条回放消息完全离开视口、尾块全部提升并重新测量且高度债清零后才清理 tail 并 reload 完整消息，避免可见区域换壳和坐标跳动；内容或终态签名改变时即使块高度不变也会主动重新测量；tail replay block key 与 generationId/startOffset/blockType 解耦并使用 `blockIndex`/`ordinal` 恒等契约，终态 stopped/failed/completed 会 finalize 开放尾块；tail replay 支持 feature flag/kill-switch，关闭时的 continuation fallback 同样保持 reasoning/content 视觉隔离；idle timeout 会走 failed 终态并和用户 stopped UX 区分；dev 环境记录 promoted/mounted/measured/firstTextVisible 与 mountCount 红线；低频 persist、后台 flush。高风险 detached tail、单源测量、splitter 和抽屉迁移均需 Android 门禁，当前无设备时不实施 | `aiStreamingRuntime`, `aiStreamingPerformanceDiagnostics`, `aiStreamingMessageStore`, `aiStreamingTailModel`, `aiStreamingTailRenderContract`, `aiStreamingTailFeatureFlags`, `aiStreamingTailContinuation`, `aiStreamingBlockSplitter`, `aiStreamingHeightCache`, `AiChatScreen`, `AiStreamingMessageText`, `AiStreamingTailSpacer`, `AiMeasuredStreamBlock`, `AiStreamingTailMessageSegment`, `AiStreamingTailContinuationBubble` |
@@ -106,26 +134,29 @@
 
 ---
 
-### 3.1 聊天运行时性能（P0/P1，2026-08-13）
+### 3.1 聊天运行时性能（P0/P1，更新至 2026-08-20）
 
 - 聊天记录以 `(createdAt, id)` 作为稳定顺序和 keyset cursor；首屏与“加载更早”均读取 `limit + 1` 条基础消息，精确计算 `hasEarlierMessages`，不会随已加载总量累计重查历史。分支根消息仍只作为水合依赖，不参与分页边界。
 - 路线快照携带分页 cursor，只有 `lineageVersion` 和 `thread.updatedAt` 均未变化时才直接采用，避免预取后立刻进行完整重载或额外计数查询。
 - 流式 UI 发布与 SQLite 持久化合批解耦：每一个已发布字符计数对应真实可见文本；普通附着流终态直接提交 canonical patch，不再重载整段消息。阅读历史时的 buffered tail 仍保留 canonical reload，保障恢复一致性。
 - 生成结束后的远程模型标题改为按空间/线程串行的后台 best-effort 任务，终态和输入恢复不再等待该请求；标题变更通过会话级事件回写页面。首次 memory notice 在交互空闲后读取，最近聊天仅在记录抽屉打开时加载，参与者外观读取保持共享 SQLite 连接串行。
-- 明确不在本轮范围：图片附件 payload、FlashList / `inverted` / clipping 策略、消息气泡重构、Provider 重试与 schema/index 改动。本次隔离工作树未发现 ADB 设备，因此 Android 真机性能门禁仍待有设备时完成。
+- 普通线程打开在路由提交前预取首消息页；进入页先清除旧线程可见数据并覆盖聊天骨架，非空列表只在首个 content-size 布局提交后揭开，空/失败路径显式结束 ready。普通进入不再调用 latest-jump retry，搜索/分支/编辑仍保留命名定位重试。
+- 超长历史的旧页与当前窗口按 `(createdAt, id)` 线性合并，当前窗口版本在 id 重叠时胜出；around-anchor 使用单条 CTE statement 读取 latest/before/anchor/after，不再在同连接并发多条读取或在 JS sort；100 页/6000 条 repository benchmark 验证不重不漏。隐藏或后台的 ParallaxLightSweep 会取消无限循环。
+- 媒体/聊天热查询由 normal/personal 初始化共同确保复合索引；媒体列表使用 keyset cursor、`limit + 1` 和 id tie-breaker，查询缓存按 scope、LRU、TTL 与 global+space data epoch 失效。100,000 行媒体及 6000 消息内存 SQLite 基准记录延迟与 query plan。
+- 当前仍未发现 ADB 设备；Android 真机的 20k 消息首次进入/高速往返、键盘切换、流式 detached tail、RSS/帧时间门禁均标记为“待验证”，不是已通过。
 
 ## 4. IP 与素材库矩阵
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | IP 创建/编辑 | 创建 IP、编辑名称/说明、封面、最近查看、收藏统计 | `CreateIpScreen`, `EditIpScreen`, `IpDetailScreen`, `ipRepository` |
-| IP 列表/首页 | 首页 IP 卡片、最近/收藏/统计入口 | `HomeLibraryScreen`, `IPCard` |
+| IP 列表/首页 | 首页 IP 卡片、最近/收藏/统计入口；冷启动只挂载 1 个与真实卡片共享尺寸 token 的 skeleton + shimmer，无文字加载提示；首卡和后续卡统一轻量路径、封面 priority 由可见位置决定，不再为第一张单独启动传感器/高光 | `HomeLibraryScreen`, `IPCard`, `IPCardSkeleton`, `componentTokens.ipCard` |
 | IP 删除 | IP 软删除、永久删除、本地文件清理 | `ipDeletionService`, `TrashScreen` |
 | IP 封面 | 自定义封面、个人空间 blur fallback、封面选择 | `IpCoverPickerScreen`, `GroupCoverPickerScreen` |
 | 图片详情 | 原图、备注、标签、分组、收藏、最近查看、资产编码 | `ImageDetailScreen`, `EditImageScreen`, `imageRepository` |
 | 视频详情 | 视频元数据、播放入口、保存到系统相册、删除 | `VideoDetailScreen`, `videoImportService`, `videoMoveService` |
 | 原文件安全 | 原图/视频复制到 app storage，不压缩、不覆盖、不依赖临时 URI | `fileStorageService`, `imageImportService`, `videoImportService` |
-| 缩略图/预览 | 图片缩略图、视频缩略图、缺失预览重建 | `thumbnailService`, `previewMaintenanceService` |
+| 缩略图/预览 | 图片缩略图、视频缩略图、缺失预览重建；缩略图始终为独立派生文件，不覆盖原件；大批量导入顺序生成以限制解码峰值，列表/阅读器各自使用受限 cache/预取策略 | `thumbnailService`, `previewMaintenanceService`, `SecureImage`, `mediaImagePrefetchCoordinator` |
 
 ---
 
@@ -133,12 +164,12 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| 图片导入 | 多选图片、读取 metadata、复制原图、缩略图、创建记录 | `ImportImagesScreen`, `imageImportService` |
-| 视频导入 | 多选视频、读取时长/尺寸、复制原视频、生成视频缩略图 | `videoImportService`, native media module |
+| 图片导入 | 多选图片、读取 metadata、复制原图、缩略图、创建记录；预检 1000 文件/256 MB 单图片/32 GB 总量/未知大小预留/512 MB 存储余量，实际字节变化时提交前复查；混合批次与视频共享同一实际写入账本 | `ImportImagesScreen`, `imageImportService`, `mediaImportPreflight` |
+| 视频导入 | 多选视频、读取时长/尺寸、复制原视频、生成视频缩略图；预检 20 GB 单视频与批次/存储预算，复制、hash、封面和数据库写入均保留取消检查及显式回滚；混合批次与图片共享同一实际写入账本 | `videoImportService`, `mediaImportPreflight`, native media module |
 | 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签 | `ImportImagesScreen`, `ImportResultScreen` |
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review；批次默认按来源顺序展示，支持来源正/逆序 | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `BatchManageImagesScreen`, `imageRepository`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
-| 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且始终复制；相册移动在全部成功素材完成 Pixory 本地持久化后，合并图片/视频 assetId 发起一次 Android 系统删除确认，取消、assetId 缺失或删除失败时保留导入结果并明确提示；说明弹窗提供“知道了”和“知道了，下次不再弹出”两个直接动作 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaSourceDeletionService`, `imageImportService`, `videoImportService` |
+| 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且保持 `copyToCacheDirectory: true`；只有选择器返回、显式标记 owned 且仍位于 Expo cache 的 URI 会在移除/取消/成功离页时清理，相册原件不进入该路径；相册移动在全部成功素材完成 Pixory 本地持久化后，合并图片/视频 assetId 发起一次 Android 系统删除确认，取消、assetId 缺失或删除失败时保留导入结果并明确提示 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaSourceDeletionService`, `imageImportService`, `videoImportService` |
 | 资源包导入 | zip/cbz 包选择、zip-slip 防护、图片识别、按文件夹映射分组；Personal 入口将整个资源包任务注册到锁定屏障，并把会话 token 贯通普通素材导入及识别出的 Pixory 备份恢复路径 | `ImportImagesScreen`, `packageImportService`, `ArchiveReaderScreen` |
 | 分享接入导入 | Android 分享图片/视频/文件到 Pixory | `ShareCollectScreen`, native media module |
 
@@ -164,10 +195,10 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| 图片查看器 | 翻页、沉浸 reader、filmstrip、设置、zoom 手势、反向顺序 | `ImageViewerScreen`, `mediaExperiencePreferences` |
-| 系统相册保存 | 保存单张/多张图片到系统相册 | `mediaLibraryService`, `AlbumSaveDialog` |
-| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定、末尾恢复保护、竖滑切换封面时序优化 | `VideoPlayerScreen`, `mediaExperiencePreferences` |
-| 视频手势 | 双击播放/暂停、左右区域切换、长按快进、scrub | `VideoPlayerScreen` |
+| 图片查看器 | 翻页、沉浸 reader、filmstrip、设置、zoom 手势、反向顺序；81 项初始锚点窗口 + 40 项边界 keyset page，按速度/方向在 8/4、16/6、32/8 编码窗口间自适应，解码封顶前 6/后 3、并发编码 4/解码 2；预解码使用 viewport 双维像素上限，Android trim/low-memory 后本屏切 encoded-only 并释放 decoded refs；重叠预取去重、换代释放、退出恢复 last-viewed，Personal 只保留内存会话并在锁定清除 | `ImageViewerScreen`, `mediaPrefetchPolicy`, `mediaImagePrefetchCoordinator`, `mediaReaderContextQuery`, `mediaReaderSessionCache`, `mediaLastViewedQueue`, `pixoryMediaModule` |
+| 系统相册保存 | 保存单张/多张图片或视频到系统相册；mp4/mov/mkv/webm/avi/m4v/3gp（含 query URI）统一走 native video MediaStore，其余图片走 image 路径 | `mediaLibraryService`, `AlbumSaveDialog`, `PixoryMediaModule` |
+| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、横竖屏、锁定、末尾恢复保护；61 项锚点窗口 + 40 项边界页，资源池当前 + 前向 3 + 反向 1、prepare 最大并发 3、单音频 owner，封面在 settle 前显示但只有 active source ready 后覆盖当前画面 | `VideoPlayerScreen`, `videoPreloadPool`, `mediaExperiencePreferences` |
+| 视频手势 | 双击播放/暂停、左右区域切换、长按快进、scrub；竖滑为 previous/current/next 三槽跟手、速度/距离决策、可从当前 transform 中断反向；0.5×–3× 统一 `preservesPitch=true` 后设置速率 | `VideoPlayerScreen`, `videoSwipePolicy`, `videoPlaybackRate` |
 | 视频偏好 | 播放器偏好持久化、图片 viewer 偏好持久化 | `mediaExperiencePreferences` |
 | 外部视频 | open-with 外部视频进入播放器 | `App.tsx`, native media module |
 
@@ -196,7 +227,8 @@
 | 备份导入 | 兼容旧 plain backup，并支持 Manifest V2 plain/personal encrypted merge：解包后先校验版本、空间、相对路径、大小和 SHA-256，再把文件写入受管目录；SQLite 事务按依赖合并 AI/记忆/陪伴记录、重写文档/附件/头像与 IP/图片引用。角色、线程、消息、文档、日记版本、摘要 provenance、continuity anchor、memory evidence、generation alternate ID 与任务等 logical ID 冲突时按数据库内容哈希建立持久导入会话映射，递归重写外键、声明式无外键引用和 JSON 引用；分支 scope 会拆分并重写根消息 ID，memory event 的多态 aggregate、事件 replay payload 内嵌实体 ID/canonical unique key/二次 JSON provenance 数组、continuity rollback 前后快照 ID 都按“表 + JSON 列 + discriminator”规则与 canonical 行同步映射，真实 V47 rebuild replay 后仍同时保留目标与导入投影，既不覆盖目标编辑也不留下旧来源 ID。FTS virtual/shadow 表不直接导入，canonical 行完成映射后统一重建三个 FTS 并执行完整性检查；失败、取消或锁定均回滚数据库并清理本次新建文件（包括尚未返回给外层的 AI staging 文件）；Personal 明文 staging 仅位于 Personal temp 且 finally 清理，从资源包入口识别出的备份同样注册统一任务屏障并贯通 token，锁定会中止 checkpoint 并等待恢复任务退出 | `ImportImagesScreen`, `packageImportService`, `backupService`, `managedBackupService`, `managedBackupIdMapping`, `backupManifestProtocol` |
 | 系统目录导出 | SAF 目录选择、导出到系统文件夹、进度 | `BackupExportManagerScreen`, native media module |
 | 存储统计 | 原图、缩略图、缓存、备份、回收站、IP 存储明细 | `StorageUsageScreen`, `storageUsageService`, `IpStorageDetailScreen` |
-| 缓存清理 | image memory/disk cache、temp cache、daily startup cleanup | `cacheCleanupService` |
+| 缓存清理 | image memory/disk cache、temp cache、daily startup cleanup；目录体积递归与相册 metadata 均走固定最多 4 worker，单条失败隔离，不再按目录宽度创建无界 Promise | `cacheCleanupService`, `boundedFileConcurrency`, `mediaImportOrderService` |
+| SQLite 游标与缓存 | normal/personal 初始化幂等创建媒体/聊天复合索引；created/recent/video 使用稳定 keyset cursor 与 id tie-breaker；查询缓存采用 scope-aware LRU + TTL + global/normal/personal data epoch，结构写只推进所属空间，last-view 不推进；聊天 around-anchor 用单 CTE statement；`bench:media-db` 固定 100,000 行，`bench:chat-db` 固定 6000 消息/100 页并验证索引 plan | `database/db`, `databaseSpaceRegistry`, `imageRepository`, `assetRepository`, `aiThreadRepository`, `scopedLruCache`, `dataEpochService`, `scripts/benchmark-media-database-performance.cjs`, `scripts/benchmark-ai-message-repository.cjs` |
 
 当前备份边界必须按以下方式理解：
 
@@ -229,7 +261,7 @@
 | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
 | Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用 transparent compact 前景和 `#4a7bf7` 纯色底，原素材缩小 12.5% 后按实际内容居中并保留至少 24% 透明边距，中心聊天气泡及图库、视频、相机、爱心、轨道和星点外围装饰完整保留；Expo 配置与原生五档密度资源由同一脚本/compact master 生成，避免 clean prebuild 与直接 Gradle 构建效果分叉 | `AGENTS.md`, `app.json`, `icons/splash_foreground_compact.png`, `scripts/generate-android-splash-assets.cjs`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
-| Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、可取消 direct speech recognition、share/open intent；原生 Activity/主题/媒体模块均由版本化 Expo config-plugin 模板生成 | `src/native/pixoryMediaModule.ts`, `plugins/withPixoryAndroidIntents.js`, `plugins/pixory-android-intents/templates/` |
+| Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、可取消 direct speech recognition、share/open intent、`ComponentCallbacks2` memory-pressure event；原生 Activity/主题/媒体模块均由版本化 Expo config-plugin 模板生成 | `src/native/pixoryMediaModule.ts`, `plugins/withPixoryAndroidIntents.js`, `plugins/pixory-android-intents/templates/` |
 | UI 基础组件 | toast、dialog、action sheet、empty state、form、header、cards、chips、sort menu | `src/components/` |
 | 设计 tokens | spacing、rhythm、colors、radius、typography、metrics | `src/design/tokens/` |
 
@@ -239,16 +271,16 @@
 
 | 领域 | 代表测试 |
 | --- | --- |
-| AI 聊天/Prompt/缓存/RAG/记忆/角色卡 | `tests/ai-*.test.cjs`, `tests/ai-context-budget-unit.test.cjs`, `tests/ai-bounded-concurrency-unit.test.cjs`, `tests/ai-embedding-service-integration.test.cjs`, `tests/ai-knowledge-repository-performance-integration.test.cjs`, `tests/ai-chat-performance-hardening-policy.test.cjs`, `tests/ai-chat-streaming-tail-policy.test.cjs`, `tests/ai-chat-streaming-tail-contract.test.cjs`, `tests/ai-chat-streaming-tail-render-contract.test.cjs`, `tests/ai-chat-streaming-runtime-policy.test.cjs` |
+| AI 聊天/Prompt/缓存/RAG/记忆/角色卡 | `tests/ai-*.test.cjs`, `tests/ai-context-budget-unit.test.cjs`, `tests/ai-bounded-concurrency-unit.test.cjs`, `tests/ai-embedding-service-integration.test.cjs`, `tests/ai-knowledge-repository-performance-integration.test.cjs`, `tests/ai-chat-performance-hardening-policy.test.cjs`, `tests/ai-message-repository-performance-policy.test.cjs`, `tests/ai-chat-streaming-tail-policy.test.cjs`, `tests/ai-chat-streaming-tail-contract.test.cjs`, `tests/ai-chat-streaming-tail-render-contract.test.cjs`, `tests/ai-chat-streaming-runtime-policy.test.cjs` |
 | 生成崩溃恢复/Android 语音 | `tests/ai-generation-recovery.test.cjs`, `tests/ai-generation-repository-integration.test.cjs`, `tests/ai-direct-speech-policy.test.cjs`, Android `:app:compileDebugKotlin` |
 | 陪伴运行时/日记/关系/梦境/思绪 | `tests/companion-*.test.cjs`, `tests/role-diary-*.test.cjs`, `tests/chat-and-diary-runtime-completeness-policy.test.cjs`, `tests/ai-conversation-coverage-repository-integration.test.cjs`, `tests/ai-thread-space-move-repository-integration.test.cjs` |
 | Android 图标与启动图 | `tests/android-icon-splash-policy.test.cjs`, Android `:app:processDebugResources` / `:app:assembleDebug` |
-| 资产导入与重复检测 | `asset-duplicate-v1-policy.test.cjs`, `package-import-policy.test.cjs` |
+| 资产导入与重复检测 | `asset-duplicate-v1-policy.test.cjs`, `package-import-policy.test.cjs`, `bounded-file-concurrency-unit.test.cjs`, `media-import-preflight-unit.test.cjs`, `media-import-extreme-integration-policy.test.cjs`, `media-import-file-picker-unit.test.cjs` |
 | 批量整理 | `batch-organize-ux-policy.test.cjs` |
 | 隐私系统 | `privacy-system-policy.test.cjs`, `final-personal-system-policy.test.cjs`, `route-space-policy.test.cjs` |
 | 备份 | `backup-export-ux-policy.test.cjs`, `managed-backup-v2.test.cjs` |
 | 存储与回收站 | `storage-usage-policy.test.cjs`, `trash-clear-policy.test.cjs`, `cache-cleanup-policy.test.cjs` |
-| 媒体体验 | `mature-media-experience-policy.test.cjs`, `privacy-cover-viewer-policy.test.cjs` |
+| 媒体体验 | `mature-media-experience-policy.test.cjs`, `privacy-cover-viewer-policy.test.cjs`, `media-prefetch-policy-unit.test.cjs`, `media-reader-session-cache-unit.test.cjs`, `video-swipe-policy-unit.test.cjs`, `video-preload-pool-unit.test.cjs`, `video-pitch-preservation-unit.test.cjs`, `media-db-benchmark-policy.test.cjs` |
 | 更新与官网 | `update-check-policy.test.cjs`, `website-flow-policy.test.cjs` |
 | 安全风险 | `security-risk-mitigation.test.cjs` |
 | 可访问性/UX | `accessibility-policy.test.cjs`, `v2-ux-enhancement-policy.test.cjs`, `current-ux-fixes-policy.test.cjs` |

@@ -1,4 +1,8 @@
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+
+import { MEDIA_IMPORT_FILE_CONCURRENCY } from '../constants/limits';
+import { settleFileTasksWithConcurrency } from './boundedFileConcurrency';
 
 export type MediaFileKind = 'image' | 'video';
 
@@ -8,6 +12,7 @@ export interface PickedMediaFile {
   fileSize: number | null;
   mimeType: string | null;
   sourceKind: 'files';
+  temporaryInput: boolean;
   uri: string;
 }
 
@@ -35,7 +40,29 @@ export async function pickMediaFilesForImport(kind: MediaFileKind): Promise<Pick
       fileSize: asset.size ?? null,
       mimeType: asset.mimeType ?? null,
       sourceKind: 'files',
+      temporaryInput: Boolean(FileSystem.cacheDirectory && asset.uri.startsWith(FileSystem.cacheDirectory)),
       uri: asset.uri,
     })),
   };
+}
+
+export async function cleanupTemporaryMediaInputs(
+  assets: ReadonlyArray<{ temporaryInput?: boolean; uri: string }>,
+): Promise<void> {
+  const cacheDirectory = FileSystem.cacheDirectory;
+  if (!cacheDirectory) {
+    return;
+  }
+  const ownedUris = [...new Set(
+    assets
+      .filter((asset) => asset.temporaryInput && asset.uri.startsWith(cacheDirectory))
+      .map((asset) => asset.uri),
+  )];
+  await settleFileTasksWithConcurrency(
+    ownedUris,
+    MEDIA_IMPORT_FILE_CONCURRENCY,
+    async (uri) => {
+      await FileSystem.deleteAsync(uri, { idempotent: true });
+    },
+  );
 }

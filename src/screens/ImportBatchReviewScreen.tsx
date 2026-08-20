@@ -450,7 +450,7 @@ function filterImagesByPile(images: ImageListItem[], pile: BatchPileKey): ImageL
 }
 
 function getImageAssetIds(images: ImageListItem[]): number[] {
-  return images.filter((image) => image.mediaType !== 'video').map((image) => image.id);
+  return images.map((image) => image.id);
 }
 
 const WEAK_FILENAME_PREFIXES = new Set(['img', 'image', 'screenshot', 'screen', 'photo', 'pic', 'dsc']);

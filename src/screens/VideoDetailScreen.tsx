@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
@@ -50,6 +50,10 @@ export function VideoDetailScreen({
   const [isMoreVisible, setIsMoreVisible] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const coverUri = video?.coverThumbnailFileUri ?? video?.thumbnailFileUri ?? null;
+  const onRefreshedRef = useRef(onRefreshed);
+  onRefreshedRef.current = onRefreshed;
+
+  useEffect(() => () => onRefreshedRef.current(), []);
 
   useEffect(() => {
     setActiveVideoId(videoId);

@@ -68,6 +68,29 @@ export interface PageResult<T> {
   hasMore: boolean;
 }
 
+export type MediaCursorSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'sourceOrderAsc';
+
+export interface MediaPageCursor {
+  sortValue: string | number | null;
+  id: number;
+}
+
+export interface MediaCursorPageRequest extends Omit<ImageListQueryOptions, 'orderBy'> {
+  cursor?: MediaPageCursor | null;
+  direction?: 'before' | 'after';
+  imageIds?: number[];
+  limit?: number;
+  orderBy?: MediaCursorSortOrder;
+}
+
+export interface MediaPageResult<T> {
+  items: T[];
+  olderCursor: MediaPageCursor | null;
+  newerCursor: MediaPageCursor | null;
+  hasOlder: boolean;
+  hasNewer: boolean;
+}
+
 export interface IpLibraryQuery extends PageRequest {
   searchText?: string;
   filter?: IpLibraryFilter;

@@ -1,6 +1,7 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { markInterruptedGenerationJobs } from '../ai/generation/aiGenerationRepository';
+import { registerDatabaseSpace } from './databaseSpaceRegistry';
 
 import {
   DATABASE_NAME,
@@ -74,6 +75,14 @@ export type PixorySpace = 'normal' | 'personal';
 const databasePromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
 const initializationPromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
 const MEMORY_SCOPE_GOVERNANCE_SETTING_KEY = 'ai_memory_scope_governance_applied';
+const MEDIA_PERFORMANCE_INDEX_STATEMENTS = `
+  CREATE INDEX IF NOT EXISTS idx_image_assets_ip_media_live_created
+    ON image_assets(ipId, mediaType, deletedAt, createdAt DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_image_assets_media_live_viewed
+    ON image_assets(mediaType, deletedAt, lastViewedAt DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_id
+    ON ai_messages(threadId, createdAt DESC, id DESC);
+`;
 
 function getDatabaseNameForSpace(space: PixorySpace): string {
   return space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME;
@@ -81,7 +90,10 @@ function getDatabaseNameForSpace(space: PixorySpace): string {
 
 async function openPixoryDatabase(space: PixorySpace = 'normal'): Promise<SQLiteDatabase> {
   if (!databasePromises[space]) {
-    databasePromises[space] = openDatabaseAsync(getDatabaseNameForSpace(space));
+    databasePromises[space] = openDatabaseAsync(getDatabaseNameForSpace(space)).then((database) => {
+      registerDatabaseSpace(database, space);
+      return database;
+    });
   }
 
   return databasePromises[space];
@@ -165,6 +177,10 @@ async function ensureAiPerformanceIndexes(db: SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
       ON ai_threads(space, archivedAt, roleCardId, updatedAt);
   `);
+}
+
+async function ensureMediaPerformanceIndexes(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(MEDIA_PERFORMANCE_INDEX_STATEMENTS);
 }
 
 /**
@@ -539,6 +555,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     await ensureAiMemoryLineageSchema(database);
     await ensureAiContinuityImportConsentSchema(database);
     await ensureAiPerformanceIndexes(database);
+    await ensureMediaPerformanceIndexes(database);
     await ensureMemoryAggregateSchema(database);
     await ensureMemoryScopeGovernance(database);
 

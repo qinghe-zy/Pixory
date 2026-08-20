@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { ImageProps } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -7,76 +8,58 @@ import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatFileSize, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
-import { MagneticCardContainer, GyroSpecularHighlight } from './MagneticCardContainer';
-import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 interface IPCardProps {
   ip: IpListItem;
+  imagePriority?: ImageProps['priority'];
   space?: PixorySpace;
   onLongPress?: (ip: IpListItem) => void;
   onPress: (ipId: number) => void;
-  isFirst?: boolean;
 }
 
-export function IPCard({ ip, space = 'normal', onLongPress, onPress, isFirst = false }: IPCardProps) {
+export function IPCard({ ip, imagePriority = 'normal', space = 'normal', onLongPress, onPress }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
   const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
 
-  const innerPressable = (
-    <Pressable
-      accessibilityLabel={`打开 ${ip.name}`}
-      accessibilityRole="button"
-      onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
-      onPress={() => onPress(ip.id)}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-    >
-      {ip.coverThumbnailFileUri ? (
-        <View style={styles.cover}>
-          <View style={styles.imageInset}>
-            <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
-          </View>
-          <AcrylicGlass />
-          {isFirst && <GyroSpecularHighlight intensity={0.6} />}
-          {content}
-        </View>
-      ) : (
-        <View style={[styles.cover, styles.fallbackCover]}>
-          <View style={styles.imageInset}>
-            <Text numberOfLines={1} style={styles.initialsText}>
-              {getIpInitials(ip.name)}
-            </Text>
-            <View style={styles.fallbackMark} />
-          </View>
-          <AcrylicGlass />
-          {isFirst && <GyroSpecularHighlight intensity={0.6} />}
-          {content}
-        </View>
-      )}
-    </Pressable>
-  );
-
-  if (!isFirst) {
-    return (
-      <View style={styles.shadowContainer}>
-        {innerPressable}
-      </View>
-    );
-  }
-
   return (
     <View style={styles.shadowContainer}>
-      <MagneticLiquidContainer 
-        damping={20} 
-        magneticStrength={0.03} 
-        stiffness={500} 
-        stretchFactor={0.0005}
-        maxScale={1.015}
-        maxTranslation={4}
+      <Pressable
+        accessibilityLabel={`打开 ${ip.name}`}
+        accessibilityRole="button"
+        onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
+        onPress={() => onPress(ip.id)}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       >
-        <MagneticCardContainer gyroSensitivity={3}>
-          {innerPressable}
-        </MagneticCardContainer>
-      </MagneticLiquidContainer>
+        {ip.coverThumbnailFileUri ? (
+          <View style={styles.cover}>
+            <View style={styles.imageInset}>
+              <SecureImage
+                blurRadius={coverBlurRadius}
+                contentFit="cover"
+                priority={imagePriority}
+                recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
+                space={space}
+                style={[StyleSheet.absoluteFill, styles.coverImage]}
+                transition={imagePriority === 'high' ? 0 : componentTokens.ipCard.imageTransitionMs}
+                uri={ip.coverThumbnailFileUri}
+              />
+            </View>
+            <AcrylicGlass />
+            {content}
+          </View>
+        ) : (
+          <View style={[styles.cover, styles.fallbackCover]}>
+            <View style={styles.imageInset}>
+              <Text numberOfLines={1} style={styles.initialsText}>
+                {getIpInitials(ip.name)}
+              </Text>
+              <View style={styles.fallbackMark} />
+            </View>
+            <AcrylicGlass />
+            {content}
+          </View>
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -144,7 +127,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 6 },
-    aspectRatio: 2.08,
+    aspectRatio: componentTokens.ipCard.aspectRatio,
     backgroundColor: colors.background.empty,
     borderRadius: componentTokens.ipCard.radius,
     overflow: 'hidden',
@@ -157,7 +140,7 @@ const styles = StyleSheet.create({
   cover: {
     flex: 1,
     justifyContent: 'flex-end',
-    padding: spacing[4],
+    padding: componentTokens.ipCard.contentPadding,
     position: 'relative',
   },
   imageInset: {
@@ -243,7 +226,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[3],
     justifyContent: 'flex-end',
-    width: '74%',
+    width: componentTokens.ipCard.captionWidth,
   },
   captionText: {
     flex: 1,

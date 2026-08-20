@@ -129,7 +129,9 @@ test('AI chat relies on inverted native list positioning and scoped Android keyb
   assert.doesNotMatch(content, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.doesNotMatch(content, /keyboardBottomInset/);
   assert.doesNotMatch(content, /scrollToEnd/);
-  assert.doesNotMatch(content, /onContentSizeChange=/);
+  assert.match(content, /onContentSizeChange=\{handleMessageListContentSizeChange\}/);
+  const contentSizeReadyHandler = /const handleMessageListContentSizeChange = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(content)?.[0] ?? '';
+  assert.doesNotMatch(contentSizeReadyHandler, /scrollToOffset|scrollToIndex|scrollToEnd/);
 });
 
 test('AI chat streaming does not force bottom after the user scrolls upward', () => {
@@ -158,7 +160,8 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
   assert.match(content, /scheduleStreamingTailReconcile\("scroll"/);
   assert.doesNotMatch(content, /hasUnseenStreamingUpdate \|\| shouldShowScrollToLatest\(contentOffset\.y\)/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
-  assert.doesNotMatch(content, /onContentSizeChange=/);
+  const contentSizeReadyHandler = /const handleMessageListContentSizeChange = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(content)?.[0] ?? '';
+  assert.doesNotMatch(contentSizeReadyHandler, /scrollToOffset|scrollToIndex|scrollToEnd/);
   assert.doesNotMatch(content, /scrollToEnd/);
 });
 
@@ -590,7 +593,8 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(app, /function aiChatRouteKey/);
   assert.match(app, /if \(route\.routeKey\) \{\s*return route\.routeKey;\s*\}/);
   assert.match(app, /key=\{aiChatRouteKey\(currentRoute, routeStack\.length\)\}/);
-  assert.doesNotMatch(app, /function aiChatRouteKey[\s\S]*route\.threadId/);
+  const routeKeyFunction = /function aiChatRouteKey\([\s\S]*?\n\}/.exec(app)?.[0] ?? '';
+  assert.doesNotMatch(routeKeyFunction, /route\.threadId/);
   assert.match(history, /searchText/);
   assert.match(history, /搜索标题或最近消息/);
   assert.match(history, /historyGroupLabel/);

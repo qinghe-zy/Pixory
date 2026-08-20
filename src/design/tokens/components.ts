@@ -1,5 +1,6 @@
 import { radius } from './radius';
 import { metrics } from './metrics';
+import { spacing } from './spacing';
 
 export const componentTokens = {
   common: metrics,
@@ -27,10 +28,14 @@ export const componentTokens = {
   },
   ipCard: {
     radius: radius.lg,
+    aspectRatio: 2.08,
+    captionWidth: '74%',
     previewAspectRatio: 1.04,
     imageHeight: metrics.ipCardImageHeight,
+    imageTransitionMs: 120,
     previewBadgeRadius: radius.sm,
-    contentPadding: 12,
+    contentPadding: spacing[4],
+    shimmerDurationMs: 1_200,
   },
   emptyState: {
     illustrationSize: 76,

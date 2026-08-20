@@ -112,6 +112,7 @@ test('gallery exposes aspect filters and select all entry', () => {
   const imageRepositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
   const allImagesSource = readProjectFile('src/screens/AllImagesScreen.tsx');
   const viewerSource = readProjectFile('src/screens/ImageViewerScreen.tsx');
+  const viewerQuerySource = readProjectFile('src/media/mediaReaderContextQuery.ts');
   const detailSource = readProjectFile('src/screens/ImageDetailScreen.tsx');
 
   assert.match(contextSource, /type:\s*'aspect'/);
@@ -121,7 +122,8 @@ test('gallery exposes aspect filters and select all entry', () => {
   }
   assert.match(allImagesSource, /toggleSelectAll/);
   assert.match(imageRepositorySource, /image_assets\.width/);
-  assert.match(viewerSource, /filter\.type === 'aspect'/);
+  assert.match(viewerSource, /buildMediaReaderCursorRequest\(context\)/);
+  assert.match(viewerQuerySource, /filter\.type === 'aspect'/);
   assert.match(detailSource, /filter\.type === 'aspect'/);
 });
 

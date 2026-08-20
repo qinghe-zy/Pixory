@@ -6,6 +6,8 @@ import type {
   ImageDetailRecord,
   ImageListItem,
   ImageListQueryOptions,
+  MediaCursorPageRequest,
+  MediaPageResult,
   UpdateImageAssetInput,
 } from '../types';
 import { createTimestamp } from '../utils';
@@ -32,6 +34,18 @@ export const assetRepository = {
 
   async findQueueVideosByIpId(db: SQLiteDatabase, ipId: number): Promise<ImageListItem[]> {
     return imageRepository.findByIpId(db, ipId, { mediaType: 'video' });
+  },
+
+  async findVideoQueuePageByIpId(
+    db: SQLiteDatabase,
+    ipId: number,
+    request: Omit<MediaCursorPageRequest, 'ipId' | 'mediaType'> = {}
+  ): Promise<MediaPageResult<ImageListItem>> {
+    return imageRepository.findFilteredCursorPage(db, {
+      ...request,
+      ipId,
+      mediaType: 'video',
+    });
   },
 
   async findMixedByIpId(db: SQLiteDatabase, ipId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {

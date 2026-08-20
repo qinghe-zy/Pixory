@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, Platform, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
 
@@ -9,6 +10,7 @@ import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
+import { IPCardSkeleton } from '../components/IPCardSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { RhythmBars } from '../components/RhythmBars';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -56,7 +58,6 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
-  const [isNeedsPanelDismissed, setIsNeedsPanelDismissed] = useState(false);
   const [actionIp, setActionIp] = useState<IpListItem | null>(null);
   const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
@@ -64,21 +65,47 @@ export function HomeLibraryScreen({
   const [personalPassword, setPersonalPassword] = useState('');
   const [isMovingSpace, setIsMovingSpace] = useState(false);
   const [showSweep, setShowSweep] = useState(true);
+  const [listWidth, setListWidth] = useState(0);
 
+  // Persistent dismiss: store the threshold count when user taps X.
+  // Banner only shows again if actual count exceeds that threshold.
+  const NEEDS_PANEL_DISMISS_FILE = `${FileSystem.documentDirectory ?? ''}pixory/preferences/needsPanelDismiss.json`;
+  const [dismissedThreshold, setDismissedThreshold] = useState<number>(-1); // -1 = not yet loaded
+  const [needsOrganizingCount, setNeedsOrganizingCount] = useState(0);
+  const prevRefreshKey = useRef(refreshKey);
+
+  // Load persisted dismiss threshold once on mount
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSweep(false);
-    }, 750);
-    return () => clearTimeout(timer);
+    void (async () => {
+      try {
+        const info = await FileSystem.getInfoAsync(NEEDS_PANEL_DISMISS_FILE);
+        if (info.exists) {
+          const raw = await FileSystem.readAsStringAsync(NEEDS_PANEL_DISMISS_FILE);
+          const parsed = JSON.parse(raw) as { threshold?: number };
+          setDismissedThreshold(parsed.threshold ?? 0);
+        } else {
+          setDismissedThreshold(0);
+        }
+      } catch {
+        setDismissedThreshold(0);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isDaytime = useMemo(() => {
-    const hour = new Date().getHours();
-    return hour >= 5 && hour < 18;
-  }, [refreshKey]);
-  const [needsOrganizingCount, setNeedsOrganizingCount] = useState(0);
+  async function persistDismissThreshold(count: number) {
+    try {
+      const dir = `${FileSystem.documentDirectory ?? ''}pixory/preferences/`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => undefined);
+      await FileSystem.writeAsStringAsync(NEEDS_PANEL_DISMISS_FILE, JSON.stringify({ threshold: count }));
+    } catch {
+      // ignore
+    }
+  }
 
+  // Re-fetch count whenever refreshKey changes (even if component stays mounted in tab)
   useEffect(() => {
+    prevRefreshKey.current = refreshKey;
     let isMounted = true;
     void runWithDatabaseSpace(space, async (db) => {
       try {
@@ -94,6 +121,24 @@ export function HomeLibraryScreen({
       isMounted = false;
     };
   }, [space, refreshKey]);
+
+  // Whether to show the needs-organizing banner
+  const isNeedsPanelVisible =
+    dismissedThreshold >= 0 && // loaded
+    needsOrganizingCount > 0 &&
+    needsOrganizingCount > dismissedThreshold;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSweep(false);
+    }, 750);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const isDaytime = useMemo(() => {
+    const hour = new Date().getHours();
+    return hour >= 5 && hour < 18;
+  }, [refreshKey]);
 
   const {
     items,
@@ -155,9 +200,39 @@ export function HomeLibraryScreen({
   const isLibraryCompletelyEmpty = !isLoading && !errorMessage && items.length === 0 && activeFilter === 'all';
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
 
-  function handleDeleteIp(ip: IpListItem) {
+  const handleDeleteIp = useCallback((ip: IpListItem) => {
     setActionIp(ip);
-  }
+  }, []);
+
+  const renderIpCard = useCallback(
+    ({ item, index }: ListRenderItemInfo<IpListItem>) => (
+      <IPCard
+        imagePriority={index === 0 ? 'high' : 'normal'}
+        ip={item}
+        onLongPress={handleDeleteIp}
+        onPress={onOpenIp}
+        space={space}
+      />
+    ),
+    [handleDeleteIp, onOpenIp, space]
+  );
+
+  const getIpCardLayout = useCallback(
+    (_data: ArrayLike<IpListItem> | null | undefined, index: number) => {
+      const length = listWidth / componentTokens.ipCard.aspectRatio;
+      return {
+        index,
+        length,
+        offset: index * (length + rhythm.entryCardGap),
+      };
+    },
+    [listWidth]
+  );
+
+  const handleListLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width);
+    setListWidth((current) => (current === nextWidth ? current : nextWidth));
+  }, []);
 
   function confirmMoveIpToTrash() {
     if (!trashIp) {
@@ -262,9 +337,9 @@ export function HomeLibraryScreen({
               />
             </View>
           </MagneticLiquidContainer>
-          <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" withMagnet />
+          <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
         </View>
-        {!isNeedsPanelDismissed && needsOrganizingCount > 0 ? (
+        {isNeedsPanelVisible ? (
           <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
             <View style={styles.needsIcon}>
               <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
@@ -275,7 +350,9 @@ export function HomeLibraryScreen({
               hitSlop={15} 
               onPress={(e) => {
                 e.stopPropagation();
-                setIsNeedsPanelDismissed(true);
+                // Persist threshold so banner won't reappear unless count grows
+                setDismissedThreshold(needsOrganizingCount);
+                void persistDismissThreshold(needsOrganizingCount);
               }}
               style={styles.needsCloseButton}
             >
@@ -290,64 +367,70 @@ export function HomeLibraryScreen({
               active={activeFilter === option.key}
               label={option.label}
               onPress={() => setActiveFilter(option.key)}
-              withMagnet
             />
           ))}
         </View>
       </View>
 
-      <View style={styles.emptyWrap}>
-        <PageStateBlock
-          emptyActionLabel={
-            isLibraryCompletelyEmpty
-              ? commonButtonCopy.createFirstIp
-              : activeFilter === 'favorite'
-                ? commonButtonCopy.createIp
-                : commonButtonCopy.createIp
+      <View onLayout={handleListLayout} style={styles.emptyWrap}>
+        <FlatList
+          contentContainerStyle={[styles.grid, items.length === 0 && styles.emptyGrid]}
+          data={items}
+          getItemLayout={listWidth > 0 ? getIpCardLayout : undefined}
+          initialNumToRender={3}
+          keyExtractor={(item) => String(item.id)}
+          ListEmptyComponent={
+            isLoading ? (
+              <IPCardSkeleton />
+            ) : (
+              <PageStateBlock
+                emptyActionLabel={
+                  isLibraryCompletelyEmpty
+                    ? commonButtonCopy.createFirstIp
+                    : commonButtonCopy.createIp
+                }
+                emptyDescription={
+                  isLibraryCompletelyEmpty
+                    ? commonEmptyStateCopy.noIpsDescription
+                    : activeFilter === 'favorite'
+                      ? '你还没有收藏的 IP，可以先创建一个并标记收藏。'
+                      : '切换到其他筛选条件，或创建新的 IP。'
+                }
+                emptyContainerStyle={styles.emptyGuideOffset}
+                emptyIconName={
+                  activeFilter === 'favorite'
+                    ? 'star-outline'
+                    : isLibraryCompletelyEmpty
+                      ? 'archive-outline'
+                      : 'search-outline'
+                }
+                emptyTitle={
+                  isLibraryCompletelyEmpty
+                    ? commonEmptyStateCopy.noIpsTitle
+                    : activeFilter === 'favorite'
+                      ? commonEmptyStateCopy.noFavoritesTitle
+                      : '当前筛选下没有 IP'
+                }
+                errorMessage={errorMessage}
+                errorTitle={commonErrorCopy.listUnavailableTitle}
+                isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
+                loading={false}
+                onEmptyAction={onCreateIp}
+                onRetry={reload}
+              >
+                <View />
+              </PageStateBlock>
+            )
           }
-          emptyDescription={
-            isLibraryCompletelyEmpty
-              ? commonEmptyStateCopy.noIpsDescription
-              : activeFilter === 'favorite'
-                ? '你还没有收藏的 IP，可以先创建一个并标记收藏。'
-                : '切换到其他筛选条件，或创建新的 IP。'
-          }
-          emptyContainerStyle={styles.emptyGuideOffset}
-          emptyIconName={
-            activeFilter === 'favorite'
-              ? 'star-outline'
-              : isLibraryCompletelyEmpty
-                ? 'archive-outline'
-                : 'search-outline'
-          }
-          emptyTitle={
-            isLibraryCompletelyEmpty
-              ? commonEmptyStateCopy.noIpsTitle
-              : activeFilter === 'favorite'
-                ? commonEmptyStateCopy.noFavoritesTitle
-                : '当前筛选下没有 IP'
-          }
-          errorMessage={errorMessage}
-          errorTitle={commonErrorCopy.listUnavailableTitle}
-          isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
-          loading={isLoading}
-          loadingDescription="SQLite 数据加载完成后，这里会展示真实的 IP 列表。"
-          loadingTitle="正在读取本地资产库"
-          onEmptyAction={onCreateIp}
-          onRetry={reload}
-        >
-          <FlatList
-            contentContainerStyle={styles.grid}
-            data={items}
-            keyExtractor={(item) => String(item.id)}
-            ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.5}
-            renderItem={({ item, index }) => <IPCard ip={item} isFirst={index === 0} onLongPress={handleDeleteIp} onPress={onOpenIp} space={space} />}
-            showsVerticalScrollIndicator={false}
-            style={styles.list}
-          />
-        </PageStateBlock>
+          ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+          maxToRenderPerBatch={4}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          renderItem={renderIpCard}
+          showsVerticalScrollIndicator={false}
+          style={styles.list}
+          windowSize={5}
+        />
       </View>
     </ScreenScaffold>
     <AppDialog
@@ -495,12 +578,12 @@ function HomeBrandHeader() {
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
-        <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
-          <Animated.Text style={[styles.brandGreetingText, textStyle]}>
+        <MagneticLiquidContainer magneticStrength={0.7} stretchFactor={0.07} damping={10}>
+          <Animated.Text style={[styles.brandGreetingText, textStyle, { padding: 10, margin: -10 }]}>
             {greeting}
           </Animated.Text>
         </MagneticLiquidContainer>
-        <MagneticLiquidContainer magneticStrength={0.5} stretchFactor={0.05} damping={14}>
+        <MagneticLiquidContainer magneticStrength={0.8} stretchFactor={0.1} damping={12}>
           <View style={styles.binaryStarsContainer}>
             {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
             <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />
@@ -516,8 +599,8 @@ function HomeBrandHeader() {
           </View>
         </MagneticLiquidContainer>
       </View>
-      <MagneticLiquidContainer magneticStrength={0.3} stretchFactor={0.02} damping={10}>
-        <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
+      <MagneticLiquidContainer magneticStrength={0.6} stretchFactor={0.05} damping={10}>
+        <Animated.Text style={[styles.brandSubtitleText, textStyle, { padding: 10, margin: -10 }]}>
           PIXORY · PRIVATE ARCHIVE
         </Animated.Text>
       </MagneticLiquidContainer>
@@ -579,21 +662,24 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   addActionWrapper: {
-    ...shadows.sm,
-    shadowColor: '#3A2E1D',
-    shadowOpacity: 0.15,
+    elevation: 1, // 强制 Android 创建 RenderNode 从而使 BlurView 正常工作
+    shadowColor: 'transparent', // 彻底消除阴影导致的毛玻璃发黑现象
     borderRadius: componentTokens.iconButton.radius,
   },
   addAction: {
+    ...shadows.sm,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.05,
     borderRadius: componentTokens.iconButton.radius,
     height: componentTokens.iconButton.size,
     width: componentTokens.iconButton.size,
   },
   addActionBlur: {
-    alignItems: 'center',
+    width: componentTokens.iconButton.size,
+    height: componentTokens.iconButton.size,
     borderRadius: componentTokens.iconButton.radius,
-    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     overflow: 'hidden',
   },
   topArea: {
@@ -652,6 +738,9 @@ const styles = StyleSheet.create({
   grid: {
     gap: rhythm.entryCardGap,
     paddingBottom: spacing[6],
+  },
+  emptyGrid: {
+    flexGrow: 1,
   },
   list: {
     flex: 1,
