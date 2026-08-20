@@ -207,6 +207,13 @@ export function VideoPlayerScreen({
   const trailingQueueBoundaryRef = useRef<VideoQueueBoundary>({ cursor: null, direction: 'after', hasMore: false });
   const initialPlayerReadyIdRef = useRef<number | null>(null);
   const isScreenMountedRef = useRef(true);
+  const durationRef = useRef(0);
+  const firstFrameRenderedRef = useRef(false);
+  const playbackOrderRef = useRef(playbackOrder);
+  playbackOrderRef.current = playbackOrder;
+  const currentIndexRef = useRef(-1);
+  const externalSourceRef = useRef(externalSource);
+  externalSourceRef.current = externalSource;
 
   const activeVideoSource = switchPreviewVideo ?? video;
   const sourceUri = externalSource?.uri ?? activeVideoSource?.originalFileUri ?? null;
@@ -271,6 +278,7 @@ export function VideoPlayerScreen({
   }
   const videoPreloadPool = videoPreloadPoolRef.current;
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
+  currentIndexRef.current = currentIndex;
 
   const loadVideoQueueBoundary = useCallback(async (placement: 'leading' | 'trailing') => {
     if (queueBoundaryLoadRef.current) {
@@ -345,6 +353,12 @@ export function VideoPlayerScreen({
       }
       videoPreloadPool.adoptPlayer(currentItem, playerRef.current, true);
       initialPlayerOwnedByPoolRef.current = true;
+    }
+    // Defer creating additional native player instances until the first frame
+    // of the current video has rendered, avoiding ExoPlayer resource contention
+    // that causes immediate native crashes on Android.
+    if (!firstFrameRenderedRef.current) {
+      return;
     }
     void videoPreloadPool.update({
       currentId: activeVideoId,
@@ -471,6 +485,7 @@ export function VideoPlayerScreen({
       const initialDisplayTime = 0;
       currentTimeRef.current = initialDisplayTime;
       setCurrentTime(initialDisplayTime);
+      durationRef.current = 0;
       setDuration(0);
       return;
     }
@@ -555,6 +570,7 @@ export function VideoPlayerScreen({
       : 0;
     currentTimeRef.current = initialDisplayTime;
     setCurrentTime(initialDisplayTime);
+    durationRef.current = 0;
     setDuration(0);
     committedSeekTargetRef.current = initialDisplayTime > 0 ? initialDisplayTime : null;
     committedSeekStartedAtRef.current = Date.now();
@@ -572,7 +588,9 @@ export function VideoPlayerScreen({
       player.loop = queue.length <= 1;
       currentTimeRef.current = player.currentTime;
       setCurrentTime(player.currentTime);
-      setDuration(Number.isFinite(player.duration) ? player.duration : 0);
+      const pooledDuration = Number.isFinite(player.duration) ? player.duration : 0;
+      durationRef.current = pooledDuration;
+      setDuration(pooledDuration);
       safePlayPlayer();
       return () => {
         isActive = false;
@@ -638,15 +656,47 @@ export function VideoPlayerScreen({
       }
       currentTimeRef.current = payload.currentTime;
       setCurrentTime(payload.currentTime);
-      setDuration(Number.isFinite(player.duration) && player.duration > 0 ? player.duration : duration);
+      // Read duration from ref to avoid circular dep: setDuration -> duration
+      // state change -> effect re-run -> listener teardown/re-register.
+      const fallback = durationRef.current;
+      const nextDuration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : fallback;
+      if (nextDuration !== fallback) {
+        durationRef.current = nextDuration;
+        setDuration(nextDuration);
+      }
     });
     const playingSubscription = player.addListener('playingChange', (payload) => {
       setIsPlaying(payload.isPlaying);
     });
     const sourceSubscription = player.addListener('sourceLoad', (payload) => {
+      durationRef.current = payload.duration;
       setDuration(payload.duration);
     });
-    const playToEndSubscription = player.addListener('playToEnd', handlePlayToEnd);
+    const playToEndSubscription = player.addListener('playToEnd', () => {
+      // Read all state from refs to keep this effect stable (dep: [player] only).
+      if (externalSourceRef.current || queueRef.current.length <= 1) {
+        return;
+      }
+      if (currentPlaybackVideoIdRef.current) {
+        currentTimeRef.current = 0;
+        setCurrentTime(0);
+        void persistPlaybackPosition(currentPlaybackVideoIdRef.current, 0);
+      }
+      const q = queueRef.current;
+      const ci = currentIndexRef.current;
+      const order = playbackOrderRef.current;
+      const nextVideo = order === 'shuffle'
+        ? (q.length > 1 && ci >= 0 ? q[pickRandomQueueIndex(q.length, ci)] : null)
+        : (() => {
+            if (q.length === 0 || ci < 0) return null;
+            const ni = (ci + 1 + q.length) % q.length;
+            const v = q[ni];
+            return v && v.id !== activeVideoIdRef.current ? v : null;
+          })();
+      if (nextVideo) {
+        switchVideo(nextVideo.id, nextVideo, { showControls: false });
+      }
+    });
 
     return () => {
       timeSubscription.remove();
@@ -654,7 +704,10 @@ export function VideoPlayerScreen({
       sourceSubscription.remove();
       playToEndSubscription.remove();
     };
-  }, [activeVideoId, currentIndex, duration, externalSource, playbackOrder, player, queue]);
+    // Only re-subscribe when the player instance itself changes.
+    // All other values are read from refs inside the callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player]);
 
   useEffect(() => {
     isScreenMountedRef.current = true;
@@ -1722,6 +1775,12 @@ export function VideoPlayerScreen({
           nativeControls={false}
           onFirstFrameRender={() => {
             setLoadingCoverVideo((current) => (current?.id === activeVideoId ? null : current));
+            // Signal the preload pool that the current player is stable and
+            // it is now safe to create additional native player instances.
+            if (!firstFrameRenderedRef.current) {
+              firstFrameRenderedRef.current = true;
+              setPreloadRevision((r) => r + 1);
+            }
           }}
           player={player}
           startsPictureInPictureAutomatically={false}
