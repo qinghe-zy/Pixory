@@ -168,15 +168,11 @@ function resolveResidentItems<TItem, TId extends string | number>(
     return [];
   }
 
-  // Keep multiple forward players warm for consecutive short-feed swipes. The
-  // opposite neighbor remains resident so an interrupted/reversed gesture does
-  // not have to replace a source on the critical path.
+  // Keep fewer players warm to prevent OutOfMemoryError on Android devices
+  // with strict 256MB heap limits. ExoPlayer instances are heavy.
   const prioritizedIndices = [
     currentIndex,
     currentIndex + update.direction,
-    currentIndex + update.direction * 2,
-    currentIndex + update.direction * 3,
-    currentIndex - update.direction,
   ];
   const residents: TItem[] = [];
   const residentIds = new Set<TId>();
@@ -191,5 +187,6 @@ function resolveResidentItems<TItem, TId extends string | number>(
       residents.push(item);
     }
   }
-  return residents.slice(0, 5);
+  // Max 2 players resident
+  return residents.slice(0, 2);
 }

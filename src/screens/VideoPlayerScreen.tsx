@@ -208,7 +208,6 @@ export function VideoPlayerScreen({
   const initialPlayerReadyIdRef = useRef<number | null>(null);
   const isScreenMountedRef = useRef(true);
   const durationRef = useRef(0);
-  const firstFrameRenderedRef = useRef(false);
   const playbackOrderRef = useRef(playbackOrder);
   playbackOrderRef.current = playbackOrder;
   const currentIndexRef = useRef(-1);
@@ -353,12 +352,6 @@ export function VideoPlayerScreen({
       }
       videoPreloadPool.adoptPlayer(currentItem, playerRef.current, true);
       initialPlayerOwnedByPoolRef.current = true;
-    }
-    // Defer creating additional native player instances until the first frame
-    // of the current video has rendered, avoiding ExoPlayer resource contention
-    // that causes immediate native crashes on Android.
-    if (!firstFrameRenderedRef.current) {
-      return;
     }
     void videoPreloadPool.update({
       currentId: activeVideoId,
@@ -1775,12 +1768,6 @@ export function VideoPlayerScreen({
           nativeControls={false}
           onFirstFrameRender={() => {
             setLoadingCoverVideo((current) => (current?.id === activeVideoId ? null : current));
-            // Signal the preload pool that the current player is stable and
-            // it is now safe to create additional native player instances.
-            if (!firstFrameRenderedRef.current) {
-              firstFrameRenderedRef.current = true;
-              setPreloadRevision((r) => r + 1);
-            }
           }}
           player={player}
           startsPictureInPictureAutomatically={false}
