@@ -1,3 +1,4 @@
+import { VolumeManager } from 'react-native-volume-manager';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -454,6 +455,50 @@ export function ImageViewerScreen({
     },
     [jumpToImageIndex]
   );
+
+
+  const previousVolumeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const isVideo = activeImage?.mediaType === 'video';
+    
+    if (isVideo) {
+      VolumeManager.showNativeVolumeUI({ enabled: true });
+      return;
+    }
+
+    VolumeManager.showNativeVolumeUI({ enabled: false });
+
+    VolumeManager.getVolume().then(({ volume }) => {
+      previousVolumeRef.current = volume;
+    });
+
+    const subscription = VolumeManager.addVolumeListener((result) => {
+      if (previousVolumeRef.current !== null) {
+        if (result.volume > previousVolumeRef.current) {
+          // Volume Up -> Prev
+          goToRelativeImage(-1);
+        } else if (result.volume < previousVolumeRef.current) {
+          // Volume Down -> Next
+          goToRelativeImage(1);
+        }
+      }
+      previousVolumeRef.current = result.volume;
+
+      if (result.volume >= 1) {
+        VolumeManager.setVolume(0.9);
+        previousVolumeRef.current = 0.9;
+      } else if (result.volume <= 0) {
+        VolumeManager.setVolume(0.1);
+        previousVolumeRef.current = 0.1;
+      }
+    });
+
+    return () => {
+      VolumeManager.showNativeVolumeUI({ enabled: true });
+      subscription.remove();
+    };
+  }, [activeImage?.mediaType, goToRelativeImage]);
 
   const handleReaderZonePress = useCallback(
     (locationX: number) => {
