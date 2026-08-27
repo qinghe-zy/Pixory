@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
@@ -292,7 +292,10 @@ export function BatchImageOrganizePanel({
         }
         return '已移动到目标 IP';
       },
-      onClearSelection
+      () => {
+        onClearSelection();
+        onChanged();
+      }
     );
   }
 
@@ -354,7 +357,7 @@ export function BatchImageOrganizePanel({
               {currentGroupId != null && mode === 'remove-group' ? (
                 <Text style={styles.helperText}>直接从当前分组移出，不需要再次选择分组。</Text>
               ) : (
-                <View style={styles.optionList}>
+                <ScrollView style={styles.optionScroll} contentContainerStyle={styles.optionList}>
                   {mode === 'replace-group' ? (
                   <OptionSelectRow label="无分组" meta="保留在当前 IP" onPress={() => setSelectedGroupId(null)} selected={selectedGroupId == null} />
                   ) : null}
@@ -376,14 +379,14 @@ export function BatchImageOrganizePanel({
                       </View>
                     </Pressable>
                   ) : null}
-                </View>
+                </ScrollView>
               )}
             </LightFormSection>
             <View style={styles.inlineActions}>
               <View style={styles.primaryGrow}>
                 <PrimaryButton disabled={isSubmitting} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} />
               </View>
-              <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
+              <PrimaryButton fullWidth={false} label="取消" onPress={() => resetMode()} variant="ghost" />
             </View>
           </View>
         ) : mode === 'add-tags' ? (
@@ -401,13 +404,13 @@ export function BatchImageOrganizePanel({
               <View style={styles.primaryGrow}>
                 <PrimaryButton disabled={isSubmitting} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
               </View>
-              <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
+              <PrimaryButton fullWidth={false} label="取消" onPress={() => resetMode()} variant="ghost" />
             </View>
           </View>
         ) : mode === 'move-asset-ip' ? (
           <View style={styles.inlinePanel}>
             <LightFormSection title="移动到 IP" hint="目标必须是另一个已有 IP；分组会按名称自动映射或创建。">
-              <View style={styles.optionList}>
+              <ScrollView style={styles.optionScroll} contentContainerStyle={styles.optionList}>
                 {moveTargetIps.map((ip) => (
                   <OptionSelectRow
                     key={ip.id}
@@ -417,13 +420,13 @@ export function BatchImageOrganizePanel({
                     selected={targetIpId === ip.id}
                   />
                 ))}
-              </View>
+              </ScrollView>
             </LightFormSection>
             <View style={styles.inlineActions}>
               <View style={styles.primaryGrow}>
                 <PrimaryButton disabled={isSubmitting || targetIpId == null} label="确认移动素材" loading={isSubmitting} onPress={handleMoveAssetsToIp} />
               </View>
-              <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
+              <PrimaryButton fullWidth={false} label="取消" onPress={() => resetMode()} variant="ghost" />
             </View>
           </View>
         ) : (
@@ -647,6 +650,9 @@ const styles = StyleSheet.create({
   optionList: {
     gap: spacing[1],
     paddingTop: spacing[2],
+  },
+  optionScroll: {
+    maxHeight: 240,
   },
   createGroupRow: {
     alignItems: 'center',

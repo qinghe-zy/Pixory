@@ -95,6 +95,7 @@ export interface ImportPlainBackupPackageParams {
   mode: 'merge';
   ipNameConflictStrategy?: IpNameConflictStrategy;
   taskToken?: PersonalTaskToken | null;
+  onProgress?: (current: number, total: number) => void;
 }
 
 export interface ImportPlainBackupPackageResult {
@@ -713,7 +714,6 @@ async function copyPlainBackupAssetFiles(params: {
     coverDestinationUri: coverDestinationUri ?? thumbnailDestinationUri,
   };
 }
-
 export async function importPlainBackupPackage({
   extractedDirectoryUri,
   ipNameConflictStrategy = 'createRenamed',
@@ -721,6 +721,7 @@ export async function importPlainBackupPackage({
   packageUri,
   space = 'normal',
   taskToken,
+  onProgress,
 }: ImportPlainBackupPackageParams): Promise<ImportPlainBackupPackageResult> {
   if (mode !== 'merge') {
     throw new Error('Plain backup import only supports merge mode.');
@@ -831,7 +832,9 @@ export async function importPlainBackupPackage({
         importBatchIdMap.set(batch.id, createdBatch.id);
       }
 
-      for (const image of exportData?.images ?? []) {
+      const images = exportData?.images ?? [];
+      for (const [index, image] of images.entries()) {
+        onProgress?.(index + 1, images.length);
         assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(image.ipId);
         if (!nextIpId) continue;

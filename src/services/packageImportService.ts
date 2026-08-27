@@ -19,8 +19,8 @@ import { importPlainBackupPackage, type ImportPlainBackupPackageResult, type IpN
 import { importVideosToIp, type ImportedVideoResult, type PickedVideoAsset } from './videoImportService';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 
-export const MAX_PACKAGE_BYTES = 200 * 1024 * 1024;
-export const MAX_UNCOMPRESSED_BYTES = 800 * 1024 * 1024;
+export const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024; // 1 GB
+export const MAX_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024; // 4 GB
 export const MAX_PACKAGE_FILE_COUNT = 1000;
 export const MAX_PACKAGE_DIRECTORY_DEPTH = 8;
 const MIN_FREE_STORAGE_AFTER_IMPORT_BYTES = 64 * 1024 * 1024;
@@ -392,6 +392,7 @@ export async function importPackageToIp(params: {
   isFavorite?: boolean;
   ipNameConflictStrategy?: IpNameConflictStrategy;
   taskToken?: PersonalTaskToken | null;
+  onProgress?: (current: number, total: number) => void;
 }): Promise<PackageImportResult> {
   const space = params.space ?? 'normal';
   assertPersonalTaskActive(params.taskToken);
@@ -426,6 +427,7 @@ export async function importPackageToIp(params: {
           mode: 'merge',
           ipNameConflictStrategy: params.ipNameConflictStrategy ?? 'ask',
           taskToken: params.taskToken,
+          onProgress: params.onProgress,
         });
         assertPersonalTaskActive(params.taskToken);
         return {
@@ -463,6 +465,7 @@ export async function importPackageToIp(params: {
       let videoFailedCount = 0;
 
       for (const [fileIndex, file] of files.entries()) {
+        params.onProgress?.(fileIndex + 1, files.length);
         assertPersonalTaskActive(params.taskToken);
         try {
           const imageType = await detectImageTypeFromMagicBytes(file.uri);

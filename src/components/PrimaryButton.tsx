@@ -14,6 +14,7 @@ interface PrimaryButtonProps {
   variant?: ButtonVariant;
   compact?: boolean;
   tone?: ButtonTone;
+  fullWidth?: boolean;
 }
 
 export function PrimaryButton({
@@ -24,6 +25,7 @@ export function PrimaryButton({
   variant = 'solid',
   compact = false,
   tone = 'default',
+  fullWidth = true,
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading;
   const indicatorColor =
@@ -49,6 +51,7 @@ export function PrimaryButton({
         variant === 'solid' && tone === 'danger' ? styles.dangerSolid : null,
         variant === 'outline' && tone === 'ai' ? styles.aiOutline : null,
         isDisabled && styles.disabled,
+        fullWidth && styles.fullWidth,
         pressed && !isDisabled && styles.pressed,
       ]}
     >
@@ -78,6 +81,8 @@ const styles = StyleSheet.create({
     height: componentTokens.primaryButton.height,
     justifyContent: 'center',
     paddingHorizontal: componentTokens.primaryButton.horizontalPadding,
+  },
+  fullWidth: {
     width: '100%',
   },
   compact: {

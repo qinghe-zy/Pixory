@@ -727,6 +727,9 @@ export function ImportImagesScreen({
         isFavorite,
         ipNameConflictStrategy: 'ask',
         taskToken,
+        onProgress: (current, total) => {
+          progressBarRef.current?.setProgress(current, total, '');
+        },
       }));
       setPackageImportResult(result);
 

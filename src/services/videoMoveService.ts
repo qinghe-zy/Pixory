@@ -76,62 +76,62 @@ async function moveAssetsToIpInternal({
     const createdAssetIds: number[] = [];
     const sourceAssetIds: number[] = [];
 
-    await db.withTransactionAsync(async () => {
-      for (const assetId of uniqueAssetIds) {
-        const sourceAsset = await imageRepository.findById(db, assetId, { includeDeleted: false, mediaType: 'all' });
-        if (!sourceAsset) {
-          continue;
-        }
-        if (targetIpId === sourceAsset.ipId) {
-          throw new Error('目标 IP 必须是另一个已有 IP。');
-        }
-
-        const sourceGroups = await imageRepository.findGroupsByImageId(db, sourceAsset.id);
-        const targetGroups = await Promise.all(sourceGroups.map((group) => resolveTargetGroup(db, targetIpId, group)));
-        const tagNames = (await tagRepository.findByImageId(db, sourceAsset.id)).map((tag) => tag.name);
-        const internalFilename = generateInternalFilename(sourceAsset.originalFilename);
-        const originalDestinationDir = `${joinStoragePath(getOriginalsDir(space), `ip_${targetIpId}`)}/`;
-        const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir(space), `ip_${targetIpId}`)}/`;
-        await ensureLocalDirectory(originalDestinationDir);
-        await ensureLocalDirectory(thumbnailDestinationDir);
-        const originalDestinationUri = buildDestinationPath(getOriginalsDir(space), targetIpId, internalFilename);
-        const thumbnailFilename = sourceAsset.thumbnailFileUri?.split('/').pop() ?? null;
-        const coverFilename = sourceAsset.coverThumbnailFileUri?.split('/').pop() ?? `${internalFilename.replace(/\.[A-Za-z0-9]+$/, '')}_cover.jpg`;
-        const thumbnailDestinationUri = thumbnailFilename
-          ? buildDestinationPath(getThumbnailsDir(space), targetIpId, thumbnailFilename)
-          : null;
-        const coverDestinationUri = sourceAsset.coverThumbnailFileUri
-          ? buildDestinationPath(getThumbnailsDir(space), targetIpId, coverFilename)
-          : thumbnailDestinationUri;
-
-        await copyLocalFile(sourceAsset.originalFileUri, originalDestinationUri);
-        if (sourceAsset.thumbnailFileUri && thumbnailDestinationUri) {
-          await copyLocalFile(sourceAsset.thumbnailFileUri, thumbnailDestinationUri);
-        }
-        if (sourceAsset.coverThumbnailFileUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
-          await copyLocalFile(sourceAsset.coverThumbnailFileUri, coverDestinationUri);
-        }
-
-        const createdAsset: ImageAssetRecord = await imageRepository.create(db, {
-          ...sourceAsset,
-          ipId: targetIpId,
-          importBatchId: null,
-          groupId: targetGroups[0]?.id ?? null,
-          groupIds: targetGroups.map((group) => group.id),
-          originalFileUri: originalDestinationUri,
-          thumbnailFileUri: thumbnailDestinationUri,
-          coverThumbnailFileUri: coverDestinationUri,
-          internalFilename,
-          deletedAt: null,
-          sourceOrder: sourceAsset.sourceOrder,
-        });
-        await tagRepository.setImageTags(db, createdAsset.id, tagNames);
-        createdAssetIds.push(createdAsset.id);
-        sourceAssetIds.push(sourceAsset.id);
+    for (const assetId of uniqueAssetIds) {
+      const sourceAsset = await imageRepository.findById(db, assetId, { includeDeleted: false, mediaType: 'all' });
+      if (!sourceAsset) {
+        continue;
+      }
+      if (targetIpId === sourceAsset.ipId) {
+        throw new Error('目标 IP 必须是另一个已有 IP。');
       }
 
+      const sourceGroups = await imageRepository.findGroupsByImageId(db, sourceAsset.id);
+      const targetGroups = await Promise.all(sourceGroups.map((group) => resolveTargetGroup(db, targetIpId, group)));
+      const tagNames = (await tagRepository.findByImageId(db, sourceAsset.id)).map((tag) => tag.name);
+      const internalFilename = generateInternalFilename(sourceAsset.originalFilename);
+      const originalDestinationDir = `${joinStoragePath(getOriginalsDir(space), `ip_${targetIpId}`)}/`;
+      const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir(space), `ip_${targetIpId}`)}/`;
+      await ensureLocalDirectory(originalDestinationDir);
+      await ensureLocalDirectory(thumbnailDestinationDir);
+      const originalDestinationUri = buildDestinationPath(getOriginalsDir(space), targetIpId, internalFilename);
+      const thumbnailFilename = sourceAsset.thumbnailFileUri?.split('/').pop() ?? null;
+      const coverFilename = sourceAsset.coverThumbnailFileUri?.split('/').pop() ?? `${internalFilename.replace(/\.[A-Za-z0-9]+$/, '')}_cover.jpg`;
+      const thumbnailDestinationUri = thumbnailFilename
+        ? buildDestinationPath(getThumbnailsDir(space), targetIpId, thumbnailFilename)
+        : null;
+      const coverDestinationUri = sourceAsset.coverThumbnailFileUri
+        ? buildDestinationPath(getThumbnailsDir(space), targetIpId, coverFilename)
+        : thumbnailDestinationUri;
+
+      await copyLocalFile(sourceAsset.originalFileUri, originalDestinationUri);
+      if (sourceAsset.thumbnailFileUri && thumbnailDestinationUri) {
+        await copyLocalFile(sourceAsset.thumbnailFileUri, thumbnailDestinationUri);
+      }
+      if (sourceAsset.coverThumbnailFileUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
+        await copyLocalFile(sourceAsset.coverThumbnailFileUri, coverDestinationUri);
+      }
+
+      const createdAsset: ImageAssetRecord = await imageRepository.create(db, {
+        ...sourceAsset,
+        ipId: targetIpId,
+        importBatchId: null,
+        groupId: targetGroups[0]?.id ?? null,
+        groupIds: targetGroups.map((group) => group.id),
+        originalFileUri: originalDestinationUri,
+        thumbnailFileUri: thumbnailDestinationUri,
+        coverThumbnailFileUri: coverDestinationUri,
+        internalFilename,
+        deletedAt: null,
+        sourceOrder: sourceAsset.sourceOrder,
+      });
+      await tagRepository.setImageTags(db, createdAsset.id, tagNames);
+      createdAssetIds.push(createdAsset.id);
+      sourceAssetIds.push(sourceAsset.id);
+    }
+
+    if (sourceAssetIds.length > 0) {
       await imageRepository.softDeleteMany(db, sourceAssetIds);
-    });
+    }
 
     return { movedCount: sourceAssetIds.length, createdAssetIds };
   });
