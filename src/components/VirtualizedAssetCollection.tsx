@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   StyleSheet,
   View,
@@ -81,6 +82,19 @@ export function VirtualizedAssetCollection({
       key={viewMode}
 
       initialScrollIndex={initialIndex.current !== -1 ? initialIndex.current : undefined}
+      getItemLayout={(data, index) => {
+        const windowWidth = Dimensions.get('window').width;
+        const contentWidth = windowWidth - 40; // spacing[5] * 2 padding in ScreenScaffold
+        const itemHeight = isGrid ? (contentWidth * 0.318) : 86;
+        const gap = 12; // rhythm.listCardGap
+        const rowHeight = itemHeight + gap;
+        return {
+          length: rowHeight,
+          offset: rowHeight * (isGrid ? Math.floor(index / 3) : index),
+          index,
+        };
+      }}
+
       onScrollToIndexFailed={(info) => {
         if (images.length > 0) {
           setTimeout(() => {
