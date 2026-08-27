@@ -8,6 +8,7 @@ import { AssetDetailRow } from '../components/AssetDetailRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
@@ -149,6 +150,7 @@ export function RecentViewedScreen({
       </View>
 
       <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
         emptyActionLabel={undefined}
         emptyDescription="打开过图片详情后，这里会展示最近查看过的图片。"
         emptyIconName="time-outline"
@@ -292,6 +294,8 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
   },
   gridHeader: {
+    zIndex: 10,
+    elevation: 10,
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],

@@ -8,6 +8,7 @@ import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
@@ -355,6 +356,7 @@ export function TagResultScreen({
       </AssetFilterDrawer>
 
       <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
         emptyActionLabel={undefined}
         emptyDescription="这个标签当前没有关联中的图片，可能都已移入回收站或还没被使用。"
         emptyIconName="search-outline"
@@ -669,6 +671,8 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   galleryActions: {
+    zIndex: 10,
+    elevation: 10,
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.cardContentGap,

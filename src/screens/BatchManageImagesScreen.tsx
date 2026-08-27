@@ -12,6 +12,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton } from '../components/SortMenuButton';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy } from '../constants/copy';
@@ -744,6 +745,7 @@ export function BatchManageImagesScreen({
       </AssetFilterDrawer>
 
       <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
         emptyActionLabel={commonButtonCopy.importImages}
         emptyDescription="导入图片后，这里可以用于批量移动分组、加标签、收藏和软删除。"
         emptyIconName="albums-outline"
@@ -1101,6 +1103,8 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
   },
   galleryActions: {
+    zIndex: 10,
+    elevation: 10,
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.cardContentGap,

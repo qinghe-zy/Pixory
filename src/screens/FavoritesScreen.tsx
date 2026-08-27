@@ -7,6 +7,7 @@ import { AssetDetailRow } from '../components/AssetDetailRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { listFavoriteAssistantMessagePage, type AiMessageFavoriteListItem } from '../ai/aiChatService';
@@ -265,6 +266,7 @@ export function FavoritesScreen({
   ) : undefined;
   const imageFavoritesContent = (
     <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
         emptyActionLabel={undefined}
         emptyDescription="给图片加星标后，这里会展示当前所有收藏图片。"
         emptyIconName="star-outline"
@@ -329,6 +331,7 @@ export function FavoritesScreen({
   );
   const aiFavoritesContent = (
     <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
       emptyDescription="在 AI 回复下点亮星标后，这里会展示收藏消息。"
       emptyIconName="star-outline"
       emptyTitle="还没有收藏 AI 消息"
@@ -779,6 +782,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   gridHeader: {
+    zIndex: 10,
+    elevation: 10,
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],

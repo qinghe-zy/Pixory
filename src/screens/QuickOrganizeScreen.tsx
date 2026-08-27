@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
@@ -291,6 +292,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
     <>
       <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Queue" onBack={onBack} scrollable title="待整理">
         <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
           emptyDescription="还没有分组的图片都已处理完。无标签图片会在进度里单独提醒。"
           emptyIconName="checkmark-circle-outline"
           emptyTitle="整理完成"

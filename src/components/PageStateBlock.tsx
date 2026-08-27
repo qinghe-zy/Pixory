@@ -22,6 +22,7 @@ interface PageStateBlockProps {
   retryLabel?: string;
   onRetry?: () => void;
   loadingTitle?: string;
+  loadingComponent?: ReactNode;
   loadingDescription?: string;
   errorTitle?: string;
   emptyContainerStyle?: StyleProp<ViewStyle>;
@@ -43,8 +44,12 @@ export function PageStateBlock({
   loadingDescription = '请稍候，这里的内容会在本地数据读取完成后展示。',
   errorTitle = commonErrorCopy.pageUnavailableTitle,
   emptyContainerStyle,
+  loadingComponent,
 }: PageStateBlockProps) {
   if (loading) {
+    if (loadingComponent) {
+      return <>{loadingComponent}</>;
+    }
     return (
       <View style={styles.loadingWrap}>
         <LoadingTransition description={loadingDescription} title={loadingTitle} />

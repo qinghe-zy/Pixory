@@ -11,6 +11,7 @@ import { VolumeManager } from 'react-native-volume-manager';
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { SecureImage } from '../components/SecureImage';
+import { globalViewState } from '../services/globalViewState';
 import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, type ImageDetailRecord, type ImageListItem, type IpListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';

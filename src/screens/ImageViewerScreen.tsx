@@ -34,6 +34,7 @@ import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { AppActionSheet } from '../components/AppActionSheet';
 import { useToast } from '../components/AppToast';
 import { addNativeMemoryPressureListener } from '../native/pixoryMediaModule';
+import { globalViewState } from '../services/globalViewState';
 import {
   loadImageViewerPreferences,
   saveImageViewerPreferences,
@@ -272,6 +273,7 @@ export function ImageViewerScreen({
       return;
     }
     lastViewedQueue.enqueue(activeImage.id);
+    globalViewState.lastViewedImageId = activeImage.id;
   }, [activeImage, lastViewedQueue]);
 
   useEffect(() => {

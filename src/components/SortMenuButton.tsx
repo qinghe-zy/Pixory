@@ -168,7 +168,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: 38,
-    zIndex: 22,
+    zIndex: 999,
+    elevation: 99,
   },
   menuRow: {
     alignItems: 'center',

@@ -6,6 +6,7 @@ import { ActivityIndicator, FlatList, Pressable, SectionList, StyleSheet, Text, 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { GroupRenameDialog } from '../components/GroupRenameDialog';
+import { ListSkeleton } from '../components/ListSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
@@ -155,6 +156,7 @@ export function GlobalGroupsScreen({
     <>
     <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} rightAction={headerRightAction} title="分组" titleSlot={titleSlot}>
       <PageStateBlock
+        loadingComponent={<ListSkeleton />}
         emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
         emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"
         emptyContainerStyle={styles.emptyGuideOffset}

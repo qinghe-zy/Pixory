@@ -9,6 +9,8 @@ interface UseScreenLoadOptions<T> {
   deferUntilInteractions?: boolean;
 }
 
+const screenDataCache = new Map<string, any>();
+
 export function useScreenLoad<T>(
   loader: () => Promise<T>,
   deps: DependencyList,
@@ -19,8 +21,10 @@ export function useScreenLoad<T>(
   const loaderRef = useRef(loader);
   const formatErrorRef = useRef(options?.formatError);
   const deferUntilInteractionsRef = useRef(options?.deferUntilInteractions);
-  const [data, setData] = useState<T | undefined>(options?.initialData);
-  const [isLoading, setIsLoading] = useState(true);
+  const cacheKey = JSON.stringify(deps);
+  const cached = screenDataCache.get(cacheKey) as T | undefined;
+  const [data, setData] = useState<T | undefined>(cached !== undefined ? cached : options?.initialData);
+  const [isLoading, setIsLoading] = useState(cached === undefined);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -43,7 +47,7 @@ export function useScreenLoad<T>(
 
   const load = useCallback(async () => {
     const request = requestGateRef.current.beginRequest();
-    setIsLoading(true);
+    if (!screenDataCache.has(cacheKey)) { setIsLoading(true); }
     setErrorMessage(null);
 
     try {
@@ -55,6 +59,7 @@ export function useScreenLoad<T>(
           })
         : await loaderRef.current();
       if (isMountedRef.current && requestGateRef.current.isCurrent(request)) {
+        screenDataCache.set(cacheKey, nextData);
         setData(nextData);
       }
       return nextData;

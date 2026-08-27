@@ -12,6 +12,7 @@ import {
 import type { ImageListItem } from '../database';
 import type { AssetListViewMode } from '../database/repositories/settingsRepository';
 import { colors, rhythm, spacing } from '../design/tokens';
+import { globalViewState } from '../services/globalViewState';
 
 interface MeasuredLayout {
   height: number;
@@ -47,8 +48,25 @@ export function VirtualizedAssetCollection({
   renderAsset,
   viewMode,
 }: VirtualizedAssetCollectionProps) {
+
   const scrollOffsetRef = useRef(0);
   const isGrid = viewMode === 'grid';
+  const numColumns = isGrid ? 3 : 1;
+
+  const initialIndex = useRef<number | undefined>(undefined);
+  if (initialIndex.current === undefined) {
+    if (globalViewState.lastViewedImageId !== -1) {
+      const idx = images.findIndex(img => img.id === globalViewState.lastViewedImageId);
+      if (idx !== -1) {
+        initialIndex.current = Math.floor(idx / numColumns);
+      } else {
+        initialIndex.current = -1;
+      }
+    } else {
+      initialIndex.current = -1;
+    }
+  }
+
 
   return (
     <FlatList
@@ -61,6 +79,15 @@ export function VirtualizedAssetCollection({
       data={images}
       initialNumToRender={12}
       key={viewMode}
+
+      initialScrollIndex={initialIndex.current !== -1 ? initialIndex.current : undefined}
+      onScrollToIndexFailed={(info) => {
+        if (images.length > 0) {
+          setTimeout(() => {
+            listRef?.current?.scrollToIndex({ index: info.index, animated: false });
+          }, 100);
+        }
+      }}
       keyExtractor={(item) => String(item.id)}
       maxToRenderPerBatch={12}
       numColumns={isGrid ? 3 : 1}
@@ -77,7 +104,7 @@ export function VirtualizedAssetCollection({
           imageId={item.id}
           onMeasured={onItemMeasured}
           scrollOffsetRef={scrollOffsetRef}
-          style={isGrid ? styles.gridCell : styles.detailCell}
+          style={[isGrid ? styles.gridCell : styles.detailCell, item.id === globalViewState.lastViewedImageId ? styles.lastViewedHighlight : null]}
         >
           {renderAsset(item, index, isGrid)}
         </MeasuredAssetCell>
@@ -142,6 +169,19 @@ const styles = StyleSheet.create({
   },
   loader: {
     paddingVertical: spacing[4],
+  },
+
+  lastViewedHighlight: {
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.primary.active,
+    shadowColor: colors.primary.active,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'visible',
+    transform: [{ scale: 1.02 }],
   },
   list: {
     flex: 1,

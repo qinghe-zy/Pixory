@@ -25,6 +25,8 @@ interface PagedScreenData<TItem, TMeta> {
   meta: TMeta;
 }
 
+const pagedScreenCache = new Map<string, PagedScreenData<any, any>>();
+
 export function usePagedScreenLoad<TItem, TMeta>(
   loader: (offset: number, meta: TMeta) => Promise<PagedLoadResult<TItem, TMeta>>,
   options: UsePagedScreenLoadOptions<TItem, TMeta>
@@ -35,14 +37,16 @@ export function usePagedScreenLoad<TItem, TMeta>(
   const isMountedRef = useRef(true);
   const loadingMoreRef = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [data, setData] = useState<PagedScreenData<TItem, TMeta>>({
+  const cached = pagedScreenCache.get(options.requestKey) as PagedScreenData<TItem, TMeta> | undefined;
+  const [data, setData] = useState<PagedScreenData<TItem, TMeta>>(
+    cached || {
     requestKey: options.requestKey,
     items: [],
     hasMore: false,
     meta: options.initialMeta,
   });
   const dataRef = useRef(data);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cached);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -66,7 +70,8 @@ export function usePagedScreenLoad<TItem, TMeta>(
     setIsLoadingMore(false);
     setIsLoading(true);
     setErrorMessage(null);
-    const resetData: PagedScreenData<TItem, TMeta> = {
+    const currentCached = pagedScreenCache.get(options.requestKey) as PagedScreenData<TItem, TMeta> | undefined;
+    const resetData: PagedScreenData<TItem, TMeta> = currentCached || {
       requestKey: options.requestKey,
       items: [],
       hasMore: false,
@@ -74,6 +79,9 @@ export function usePagedScreenLoad<TItem, TMeta>(
     };
     dataRef.current = resetData;
     setData(resetData);
+    if (currentCached) {
+      setIsLoading(false);
+    }
 
     const run = async () => {
       try {
@@ -94,6 +102,7 @@ export function usePagedScreenLoad<TItem, TMeta>(
           meta: next.meta ?? optionsRef.current.initialMeta,
         };
         dataRef.current = nextData;
+        pagedScreenCache.set(request.requestKey, nextData);
         setData(nextData);
       } catch (error) {
         if (!isMountedRef.current || !gate.isCurrent(request)) {
@@ -155,6 +164,7 @@ export function usePagedScreenLoad<TItem, TMeta>(
             meta: next.meta ?? latest.meta,
           };
           dataRef.current = merged;
+          pagedScreenCache.set(request.requestKey, merged);
           return merged;
         });
       } catch (error) {

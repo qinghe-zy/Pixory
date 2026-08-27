@@ -8,6 +8,7 @@ import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
@@ -388,6 +389,7 @@ export function AllImagesScreen({
       </AssetFilterDrawer>
 
       <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
         emptyActionLabel={commonButtonCopy.importImages}
         emptyDescription={
           !hasActiveFilters
@@ -778,6 +780,8 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   galleryActions: {
+    zIndex: 10,
+    elevation: 10,
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.cardContentGap,

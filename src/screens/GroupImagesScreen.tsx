@@ -8,6 +8,7 @@ import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
+import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
@@ -324,6 +325,7 @@ export function GroupImagesScreen({
       </AssetFilterDrawer>
 
       <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
         emptyActionLabel={commonButtonCopy.importImages}
         emptyDescription="导入图片后，可以在这里查看该分组下的素材"
         emptyIconName="images-outline"
@@ -635,6 +637,8 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   galleryActions: {
+    zIndex: 10,
+    elevation: 10,
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.cardContentGap,

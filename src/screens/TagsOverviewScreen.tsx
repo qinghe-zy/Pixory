@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, Vi
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
+import { TagSkeleton } from '../components/TagSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { SearchBar } from '../components/SearchBar';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -332,6 +333,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
         </View>
       ) : null}
       <PageStateBlock
+        loadingComponent={<TagSkeleton />}
         emptyActionLabel={undefined}
         emptyDescription="给图片添加标签后，这里会展示标签名称、使用次数和结果入口。"
         emptyContainerStyle={styles.emptyGuideOffset}
