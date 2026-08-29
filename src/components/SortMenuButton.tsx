@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Modal, Dimensions } from 'react-native';
+import { useRef } from 'react';
 
 import type { ImageSortOrder } from '../database';
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
@@ -38,13 +39,27 @@ export function SortMenuButton({
   filterIcon?: keyof typeof Ionicons.glyphMap;
 }) {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const buttonRef = useRef<View>(null);
+
+  const handleOpen = () => {
+    if (sortMenuVisible) {
+      setSortMenuVisible(false);
+      return;
+    }
+    buttonRef.current?.measure((x, y, w, h, px, py) => {
+      const windowWidth = Dimensions.get('window').width;
+      setMenuPos({ top: py + h + 6, right: windowWidth - px - w });
+      setSortMenuVisible(true);
+    });
+  };
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} ref={buttonRef}>
       <View style={styles.pillContainer}>
         <Pressable
           accessibilityLabel="选择素材排序"
-          onPress={() => setSortMenuVisible((visible) => !visible)}
+          onPress={handleOpen}
           style={({ pressed }) => [
             styles.sortButton,
             sortMenuVisible && styles.buttonActive,
@@ -75,30 +90,33 @@ export function SortMenuButton({
         )}
       </View>
 
-      {sortMenuVisible ? (
-        <>
-          <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={styles.dismissLayer} />
-          <View style={styles.menu}>
-            {IMAGE_SORT_OPTIONS.map((option) => {
-              const selected = option.value === orderBy;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  key={option.value}
-                  onPress={() => {
-                    onChange(option.value);
-                    setSortMenuVisible(false);
-                  }}
-                  style={({ pressed }) => [styles.menuRow, selected ? styles.menuRowActive : null, pressed && styles.pressed]}
-                >
-                  <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{option.label}</Text>
-                  <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
-                </Pressable>
-              );
-            })}
-          </View>
-        </>
-      ) : null}
+      <Modal
+        visible={sortMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSortMenuVisible(false)}
+      >
+        <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={StyleSheet.absoluteFill} />
+        <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
+          {IMAGE_SORT_OPTIONS.map((option) => {
+            const selected = option.value === orderBy;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                key={option.value}
+                onPress={() => {
+                  onChange(option.value);
+                  setSortMenuVisible(false);
+                }}
+                style={({ pressed }) => [styles.menuRow, selected ? styles.menuRowActive : null, pressed && styles.pressed]}
+              >
+                <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{option.label}</Text>
+                <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
+              </Pressable>
+            );
+          })}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -166,8 +184,6 @@ const styles = StyleSheet.create({
     minWidth: 156,
     padding: spacing[2],
     position: 'absolute',
-    right: 0,
-    top: 38,
     zIndex: 999,
     elevation: 99,
   },
