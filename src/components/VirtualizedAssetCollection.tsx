@@ -74,7 +74,7 @@ export function VirtualizedAssetCollection({
       {...panHandlers}
       ListEmptyComponent={emptyComponent ? <View>{emptyComponent}</View> : null}
       ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.active} style={styles.loader} /> : null}
-      ListHeaderComponent={headerComponent ? <View>{headerComponent}</View> : null}
+      ListHeaderComponent={headerComponent ? <View style={{ zIndex: 1000, elevation: 100 }}>{headerComponent}</View> : null}
       columnWrapperStyle={isGrid ? styles.gridRow : undefined}
       contentContainerStyle={[styles.content, images.length === 0 && styles.emptyContent]}
       data={images}
