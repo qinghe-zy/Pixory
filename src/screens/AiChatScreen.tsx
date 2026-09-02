@@ -2999,8 +2999,14 @@ export function AiChatScreen({
         // Skip when a search anchor is pending — that scroll will be handled
         // by scheduleSearchTargetScroll instead.
         messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
+        setTimeout(() => {
+          if (screenMountedRef.current) {
+            setIsMessageListReady(true);
+          }
+        }, 80);
+      } else if (!isMessageListReady) {
+        setIsMessageListReady(true);
       }
-      setIsMessageListReady(true);
     }
   }, [invertedMessageItems.length, isInitialMessageLoading, isMessageListReady]);
 
@@ -6960,7 +6966,7 @@ export function AiChatScreen({
             }}
             style={styles.messageArea}
           >
-            <View style={styles.messageListFade}>
+            <View style={[styles.messageListFade, !isMessageListReady && { opacity: 0 }]}>
               <FlatList
                 ref={messageListRef}
                 data={invertedMessageItems}
@@ -7203,7 +7209,7 @@ export function AiChatScreen({
           <AiScrollToLatestButton
             bottomOffset={composerShellHeight + spacing[3] + spacing[1.5]}
             generating={generating}
-            visible={showScrollToLatest && !inlineEditingActive}
+            visible={isMessageListReady && showScrollToLatest && !inlineEditingActive}
             onPress={handleReturnToLatestPress}
           />
         </View>
@@ -7211,7 +7217,13 @@ export function AiChatScreen({
       <AiSessionConfigScreen
           contextTitle={contextTitle}
           contextType={contextType}
-          onBack={() => setConfigDrawerVisible(false)}
+          onBack={() => {
+            setConfigDrawerVisible(false);
+            if (activeThreadId) {
+              void reloadParticipantAppearance(activeThreadId);
+              void reloadThreadTitle(activeThreadId);
+            }
+          }}
           onCurrentThreadDeleted={() => {
             if (activeThreadId) {
               onCurrentThreadDeleted(activeThreadId);
@@ -7262,7 +7274,19 @@ export function AiChatScreen({
               onOpenCompanionRuntime(activeThreadId);
             }
           }}
-          onStartChat={() => setConfigDrawerVisible(false)}
+          onSettingsChanged={() => {
+            if (activeThreadId) {
+              void reloadParticipantAppearance(activeThreadId);
+              void reloadThreadTitle(activeThreadId);
+            }
+          }}
+          onStartChat={() => {
+            setConfigDrawerVisible(false);
+            if (activeThreadId) {
+              void reloadParticipantAppearance(activeThreadId);
+              void reloadThreadTitle(activeThreadId);
+            }
+          }}
           space={space}
           threadId={activeThreadId ?? undefined}
           visible={configDrawerVisible}
@@ -7685,3 +7709,5 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+

@@ -90,7 +90,7 @@ export function VirtualizedAssetCollection({
         const rowHeight = itemHeight + gap;
         return {
           length: rowHeight,
-          offset: rowHeight * (isGrid ? Math.floor(index / 3) : index),
+          offset: rowHeight * index,
           index,
         };
       }}

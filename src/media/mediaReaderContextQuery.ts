@@ -1,8 +1,8 @@
 import type { MediaCursorPageRequest } from '../database';
 import type { ImageViewerContext, ImageViewerIpAllFilter } from '../navigation/imageViewerContext';
 
-export const MEDIA_READER_INITIAL_WINDOW_SIZE = 81;
-export const MEDIA_READER_PAGE_SIZE = 40;
+export const MEDIA_READER_INITIAL_WINDOW_SIZE = 200;
+export const MEDIA_READER_PAGE_SIZE = 100;
 
 const BASE_CURSOR_REQUEST: MediaCursorPageRequest = {
   limit: MEDIA_READER_INITIAL_WINDOW_SIZE,

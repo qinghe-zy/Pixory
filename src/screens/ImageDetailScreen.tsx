@@ -33,6 +33,7 @@ interface ImageDetailScreenProps {
   onEdit: (imageId: number) => void;
   onMoveGroup: (imageId: number) => void;
   onNavigateImage: (imageId: number, context?: ImageViewerContext) => void;
+  onOpenViewer: (imageId: number, context?: ImageViewerContext) => void;
   onDeleted: () => void;
 }
 
@@ -46,6 +47,7 @@ export function ImageDetailScreen({
   onEdit,
   onMoveGroup,
   onNavigateImage,
+  onOpenViewer,
   onDeleted,
 }: ImageDetailScreenProps) {
   const insets = useSafeAreaInsets();
@@ -55,10 +57,8 @@ export function ImageDetailScreen({
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [groups, setGroups] = useState<GroupRecord[]>([]);
   const [contextImages, setContextImages] = useState<ImageListItem[]>([]);
-  const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isMoreSheetVisible, setIsMoreSheetVisible] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
-  const [previewResizeMode, setPreviewResizeMode] = useState<'contain' | 'cover'>('contain');
   const [fileAvailability, setFileAvailability] = useState<{ originalExists: boolean; thumbnailExists: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
@@ -288,7 +288,7 @@ export function ImageDetailScreen({
 
   return (
     <AppScreen backgroundDimmed backgroundVariant="detail" scrollable>
-      <Header onBack={onBack} rightSlot={rightSlot} title="图片详情" />
+      <Header onBack={onBack} rightSlot={rightSlot} title={image ? (image.originalFilename || image.internalFilename).replace(/\.[^.]+$/, '') : "图片详情"} />
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       {isLoading && !image ? <Text style={styles.hint}>正在读取图片元数据…</Text> : null}
@@ -298,32 +298,17 @@ export function ImageDetailScreen({
           <Pressable
             accessibilityLabel="全屏查看原图"
             accessibilityRole="imagebutton"
-            onPress={() => setIsFullScreenOpen(true)}
+            onPress={() => onOpenViewer(image.id, context)}
             style={({ pressed }) => [styles.previewWrap, pressed && styles.previewPressed]}
           >
-            <SecureImage contentFit={previewResizeMode} space={routeSpace} style={styles.previewImage} uri={image.originalFileUri} />
+            <SecureImage contentFit="contain" space={routeSpace} style={styles.previewImage} uri={image.originalFileUri} />
             <View style={styles.previewAction}>
               <Ionicons color={colors.text.inverse} name="expand-outline" size={15} />
               <Text style={styles.previewActionText}>查看原图</Text>
             </View>
           </Pressable>
-          <View style={styles.previewModeRow}>
-            <PreviewModeButton active={previewResizeMode === 'contain'} label="适应" onPress={() => setPreviewResizeMode('contain')} />
-            <PreviewModeButton active={previewResizeMode === 'cover'} label="填充" onPress={() => setPreviewResizeMode('cover')} />
-          </View>
 
           <ContentCard style={styles.detailCard}>
-            <View style={styles.imageTitleBlock}>
-              <View style={styles.titleLine}>
-                <Text adjustsFontSizeToFit minimumFontScale={0.86} numberOfLines={2} style={styles.imageTitle}>
-                  {image.originalFilename.replace(/\.[^.]+$/, '')}
-                </Text>
-                <Ionicons color={image.isFavorite ? colors.semantic.favorite : colors.text.tertiary} name={image.isFavorite ? 'star' : 'star-outline'} size={18} />
-              </View>
-              <Text numberOfLines={2} style={styles.imageSubtitle}>
-                IP：{image.ipName}　　分组：{image.groupName ?? '未分组'}
-              </Text>
-            </View>
             <View style={styles.tagsWrap}>
               {groups.length > 0 ? groups.map((group) => <TagChip key={`group-${group.id}`} label={group.name} />) : <TagChip label="未分组" />}
               {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
@@ -389,36 +374,6 @@ export function ImageDetailScreen({
             </View>
           ) : null}
 
-          <Modal
-            animationType="fade"
-            onRequestClose={() => setIsFullScreenOpen(false)}
-            statusBarTranslucent
-            transparent
-            visible={isFullScreenOpen}
-          >
-            <View style={styles.fullscreenShell}>
-              <ExpoStatusBar backgroundColor="#05070A" style="light" translucent />
-              <SecureImage contentFit="contain" space={routeSpace} style={styles.fullscreenImage} uri={image.originalFileUri} />
-              <View style={[styles.fullscreenTopBar, { paddingTop: insets.top + spacing[3] }]}>
-                <View style={styles.fullscreenTitleBlock}>
-                  <Text numberOfLines={1} style={styles.fullscreenTitle}>
-                    {image.originalFilename}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.fullscreenMeta}>
-                    {formatImageDimensions(image.width, image.height)} · {formatFileSize(image.fileSize)}
-                  </Text>
-                </View>
-                <Pressable
-                  accessibilityLabel="关闭全屏预览"
-                  hitSlop={10}
-                  onPress={() => setIsFullScreenOpen(false)}
-                  style={({ pressed }) => [styles.fullscreenClose, pressed && styles.fullscreenPressed]}
-                >
-                  <Ionicons color={colors.text.inverse} name="close" size={22} />
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
         </>
       ) : null}
       <AppActionSheet
@@ -493,13 +448,7 @@ function PrimaryAction({
   );
 }
 
-function PreviewModeButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.previewModeButton, active ? styles.previewModeButtonActive : null, pressed && styles.pressed]}>
-      <Text style={[styles.previewModeText, active ? styles.previewModeTextActive : null]}>{label}</Text>
-    </Pressable>
-  );
-}
+
 
 const actionStyles = StyleSheet.create({
   button: {
@@ -578,35 +527,8 @@ const styles = StyleSheet.create({
     opacity: 0.92,
   },
   previewImage: {
-    aspectRatio: 0.9,
+    aspectRatio: 1.33,
     width: '100%',
-  },
-  previewModeRow: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[1],
-    padding: spacing[1],
-  },
-  previewModeButton: {
-    borderRadius: radius.pill,
-    minHeight: 28,
-    justifyContent: 'center',
-    paddingHorizontal: spacing[3],
-  },
-  previewModeButtonActive: {
-    backgroundColor: colors.background.surface,
-  },
-  previewModeText: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-    fontWeight: '600',
-  },
-  previewModeTextActive: {
-    color: colors.primary.active,
   },
   previewAction: {
     alignItems: 'center',
@@ -624,48 +546,6 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.text.inverse,
     fontWeight: '500',
-  },
-  fullscreenShell: {
-    backgroundColor: '#05070A',
-    flex: 1,
-  },
-  fullscreenImage: {
-    height: '100%',
-    width: '100%',
-  },
-  fullscreenTopBar: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[3],
-    left: 0,
-    paddingBottom: spacing[4],
-    paddingHorizontal: spacing[4],
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  fullscreenTitleBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  fullscreenTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.inverse,
-  },
-  fullscreenMeta: {
-    ...typography.textStyles.micro,
-    color: 'rgba(255, 255, 255, 0.68)',
-  },
-  fullscreenClose: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderRadius: radius.pill,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  fullscreenPressed: {
-    opacity: 0.78,
   },
   errorText: {
     ...typography.textStyles.caption,

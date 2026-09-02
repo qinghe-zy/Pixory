@@ -1719,6 +1719,7 @@ export default function App() {
         onEdit={(imageId) => pushRoute({ name: 'edit-image', imageId, space: currentRoute.space })}
         onMoveGroup={(imageId) => pushRoute({ name: 'move-image-group', imageId, space: currentRoute.space })}
         onNavigateImage={(imageId, context) => replaceCurrentRoute({ name: 'image-detail', imageId, space: context?.space ?? currentRoute.space, context })}
+        onOpenViewer={(imageId, context) => pushRoute({ name: 'image-viewer', imageId, space: context?.space ?? currentRoute.space, context: context! })}
         onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
         refreshToken={libraryRefreshToken}
       />

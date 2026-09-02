@@ -63,9 +63,9 @@ const DOUBLE_TAP_INTERVAL_MS = 260;
 const MAX_ZOOM_SCALE = 4;
 const MIN_ZOOM_SCALE = 1;
 const READER_ZONE_EDGE_RATIO = 0.34;
-const FILMSTRIP_ITEM_WIDTH = 44;
+const FILMSTRIP_ITEM_WIDTH = 30;
 const FILMSTRIP_ITEM_GAP = spacing[2];
-const MEDIA_READER_BOUNDARY_THRESHOLD = 10;
+const MEDIA_READER_BOUNDARY_THRESHOLD = 40;
 
 interface ReaderWindowResult {
   items: ImageListItem[];
@@ -96,6 +96,7 @@ export function ImageViewerScreen({
   const { width, height } = useWindowDimensions();
   const [images, setImages] = useState<ImageListItem[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const [initialListIndex, setInitialListIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
@@ -244,7 +245,8 @@ export function ImageViewerScreen({
   const pageSize = Math.max(1, width);
   const pageHeight = Math.max(1, height);
   const isVerticalContinuous = readerMode === 'vertical-continuous';
-  const viewerProgress = images.length > 1 ? activeIndex / Math.max(1, images.length - 1) : 0;
+  const displayIndex = scrubIndex !== null ? scrubIndex : activeIndex;
+  const viewerProgress = images.length > 1 ? displayIndex / Math.max(1, images.length - 1) : 0;
   const filmstripSwitchTrackColor = filmstripSwitchProgress.interpolate({
     inputRange: [0, 1],
     outputRange: ['rgba(255,255,255,0.12)', colors.primary.weak],
@@ -336,8 +338,8 @@ export function ImageViewerScreen({
       return '0 / 0';
     }
 
-    return `${activeIndex + 1} / ${images.length}`;
-  }, [activeIndex, images.length]);
+    return `${displayIndex + 1} / ${images.length}`;
+  }, [displayIndex, images.length]);
 
   const handleZoomStateChange = useCallback((zoomed: boolean) => {
     setIsPagingEnabled(!zoomed);
@@ -672,11 +674,11 @@ export function ImageViewerScreen({
     persistImageViewerPreferences({ showFilmstrip: nextVisible });
   }
 
-  function jumpToProgressLocation(locationX: number) {
+  function calculateScrubIndex(locationX: number) {
     if (images.length <= 1 || viewerProgressWidth <= 0) {
-      return;
+      return 0;
     }
-    jumpToImageIndex(Math.round((locationX / viewerProgressWidth) * (images.length - 1)));
+    return clamp(Math.round((locationX / viewerProgressWidth) * (images.length - 1)), 0, images.length - 1);
   }
 
   const viewerProgressPanResponder = useMemo(
@@ -684,10 +686,20 @@ export function ImageViewerScreen({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => jumpToProgressLocation(event.nativeEvent.locationX),
-        onPanResponderMove: (event) => jumpToProgressLocation(event.nativeEvent.locationX),
+        onPanResponderGrant: (event) => {
+          setScrubIndex(calculateScrubIndex(event.nativeEvent.locationX));
+        },
+        onPanResponderMove: (event) => {
+          setScrubIndex(calculateScrubIndex(event.nativeEvent.locationX));
+        },
+        onPanResponderRelease: (event) => {
+          const finalIndex = calculateScrubIndex(event.nativeEvent.locationX);
+          setScrubIndex(null);
+          jumpToImageIndex(finalIndex);
+        },
+        onPanResponderTerminate: () => setScrubIndex(null),
       }),
-    [images.length, viewerProgressWidth]
+    [images.length, viewerProgressWidth, jumpToImageIndex]
   );
 
   return (
@@ -702,9 +714,6 @@ export function ImageViewerScreen({
         >
           <Ionicons color={colors.text.inverse} name="chevron-back" size={22} />
         </Pressable>
-        <Text numberOfLines={1} style={styles.counter}>
-          {counterLabel}
-        </Text>
         <View style={styles.topActions}>
           <Pressable
             accessibilityLabel="阅读设置"
@@ -861,26 +870,19 @@ export function ImageViewerScreen({
       )}
 
       {activeImage ? (
-        <>
+        <Animated.View style={[styles.bottomContainer, { paddingBottom: Math.max(insets.bottom, spacing[2]), opacity: controlsOpacity }]}>
           {showFilmstrip ? (
-            <Animated.View style={[styles.filmstripDock, { bottom: insets.bottom + 92, opacity: controlsOpacity }]}>
+            <View style={styles.filmstripDock}>
               <Filmstrip
                 activeIndex={activeIndex}
                 images={images}
                 onSelect={jumpToImageIndex}
                 space={context.space}
               />
-            </Animated.View>
-          ) : null}
-          <Animated.View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[4], opacity: controlsOpacity }]}>
-            <View style={styles.filenameBlock}>
-              <Text numberOfLines={1} style={styles.filename}>
-                {activeImage.originalFilename}
-              </Text>
-              <Text numberOfLines={1} style={styles.metaText}>
-                {readerMode === 'vertical-continuous' ? '纵向连续阅读' : readerMode === 'horizontal-rtl' ? 'RTL 阅读' : '横向单页阅读'}
-              </Text>
             </View>
+          ) : null}
+          <View style={styles.bottomBarRow}>
+            <Text style={styles.viewerProgressText}>{counterLabel}</Text>
             <View
               {...viewerProgressPanResponder.panHandlers}
               onLayout={(event) => setViewerProgressWidth(Math.max(1, event.nativeEvent.layout.width))}
@@ -889,18 +891,21 @@ export function ImageViewerScreen({
               <View style={styles.viewerProgressTrack}>
                 <View style={[styles.viewerProgressFill, { width: `${viewerProgress * 100}%` }]} />
               </View>
-              <Text style={styles.viewerProgressText}>{counterLabel}</Text>
             </View>
-            <Pressable onPress={() => void toggleFavorite()} style={styles.favoritePill}>
-              <Ionicons
-                color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
-                name={activeImage.isFavorite ? 'star' : 'star-outline'}
-                size={14}
-              />
-              <Text style={styles.favoriteText}>{activeImage.isFavorite ? '已收藏' : '未收藏'}</Text>
-            </Pressable>
-          </Animated.View>
-        </>
+            <View style={styles.bottomToolbar}>
+              <Pressable accessibilityLabel="详细信息" onPress={() => onOpenDetail(activeImage.id)} style={styles.toolbarIcon}>
+                <Ionicons name="information-circle-outline" size={24} color={colors.text.inverse} />
+              </Pressable>
+              <Pressable accessibilityLabel={activeImage.isFavorite ? '取消收藏' : '收藏'} onPress={() => void toggleFavorite()} style={styles.toolbarIcon}>
+                <Ionicons
+                  color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
+                  name={activeImage.isFavorite ? 'star' : 'star-outline'}
+                  size={24}
+                />
+              </Pressable>
+            </View>
+          </View>
+        </Animated.View>
       ) : null}
       <AppActionSheet
         items={actionImage ? [
@@ -1164,11 +1169,11 @@ async function loadImageReaderWindow(context: ImageViewerContext, anchorId: numb
         trailingBoundary: { cursor: null, direction: 'after', hasMore: false },
       };
     }
-    const page = await imageRepository.findCursorPageAroundId(db, anchorId, request);
+    const items = await imageRepository.findAllFiltered(db, request);
     return {
-      items: page.items,
-      leadingBoundary: { cursor: page.newerCursor, direction: 'before', hasMore: page.hasNewer },
-      trailingBoundary: { cursor: page.olderCursor, direction: 'after', hasMore: page.hasOlder },
+      items,
+      leadingBoundary: { cursor: null, direction: 'before', hasMore: false },
+      trailingBoundary: { cursor: null, direction: 'after', hasMore: false },
     };
   });
 }
@@ -1318,93 +1323,81 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   filmstripDock: {
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    zIndex: 2,
+    width: '100%',
+    marginBottom: spacing[1],
   },
   filmstripContent: {
     gap: spacing[2],
     paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3], // Provide vertical space so scaled item isn't clipped
   },
   filmstripItem: {
     borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    height: 58,
-    opacity: 0.72,
+    height: 30,
+    opacity: 0.5,
     overflow: 'hidden',
-    width: 44,
+    width: 30,
   },
   filmstripItemActive: {
-    borderColor: colors.primary.hover,
+    borderColor: colors.text.inverse,
     opacity: 1,
-    transform: [{ translateY: -3 }],
+    transform: [{ scale: 1.25 }], // More pronounced scale, now it won't clip
   },
   filmstripImage: {
     height: '100%',
     width: '100%',
   },
-  bottomBar: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(5, 7, 10, 0.66)',
-    flexDirection: 'row',
-    gap: spacing[3],
+  bottomContainer: {
+    backgroundColor: 'rgba(5, 7, 10, 0.72)',
+    bottom: 0,
     left: 0,
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
+    paddingTop: spacing[2],
     position: 'absolute',
     right: 0,
-    bottom: 0,
+  },
+  bottomBarRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[3],
+    height: 44,
+    paddingHorizontal: spacing[4],
+    width: '100%',
+  },
+  viewerProgressText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+    minWidth: 54,
   },
   viewerProgressHitArea: {
     flex: 1,
-    gap: spacing[1],
+    height: '100%',
     justifyContent: 'center',
-    minHeight: 36,
   },
   viewerProgressTrack: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: radius.pill,
-    height: 3,
+    height: 4,
     overflow: 'hidden',
   },
   viewerProgressFill: {
-    backgroundColor: colors.primary.hover,
+    backgroundColor: colors.text.inverse,
     borderRadius: radius.pill,
     height: '100%',
   },
-  viewerProgressText: {
-    ...typography.textStyles.micro,
-    color: 'rgba(255,255,255,0.72)',
-    textAlign: 'right',
-  },
-  filenameBlock: {
-    flex: 0.9,
-    gap: spacing[1],
-    minWidth: 0,
-  },
-  filename: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.inverse,
-  },
-  metaText: {
-    ...typography.textStyles.micro,
-    color: 'rgba(255, 255, 255, 0.68)',
-  },
-  favoritePill: {
+  bottomToolbar: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    borderRadius: radius.pill,
     flexDirection: 'row',
-    gap: spacing[1],
-    minHeight: 32,
-    paddingHorizontal: spacing[2],
+    gap: spacing[2],
   },
-  favoriteText: {
-    ...typography.textStyles.micro,
-    color: colors.text.inverse,
-    fontWeight: '500',
+  toolbarIcon: {
+    alignItems: 'center',
+    height: '100%',
+    justifyContent: 'center',
+    paddingHorizontal: spacing[1],
   },
   stateWrap: {
     alignItems: 'center',

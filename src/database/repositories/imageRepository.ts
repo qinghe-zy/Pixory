@@ -1080,6 +1080,27 @@ export const imageRepository = {
     };
   },
 
+  async findAllFiltered(
+    db: SQLiteDatabase,
+    request: Omit<MediaCursorPageRequest, 'limit' | 'cursor' | 'direction'> = {}
+  ): Promise<ImageListItem[]> {
+    const sort = resolveMediaCursorSort(request.orderBy);
+    const base = buildMediaCursorBase(request, sort);
+    const orderByClause = `ORDER BY ${sort.expression} ${sort.ascending ? 'ASC' : 'DESC'}, image_assets.id ${sort.ascending ? 'ASC' : 'DESC'}`;
+    const queryParts = buildImageListQueryParts(base.clauses, base.values, {
+      ...request,
+      orderBy: sort.orderBy,
+    });
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${orderByClause}`,
+      ...queryParts.values
+    );
+    return rows.map(mapImageListItemRow);
+  },
+
   async findCursorPageAroundId(
     db: SQLiteDatabase,
     anchorId: number,

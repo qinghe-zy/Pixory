@@ -70,6 +70,7 @@ interface AiSessionConfigScreenProps {
   onOpenInnerLife?: () => void;
   onOpenCompanionRuntime?: () => void;
   onStartChat: () => void;
+  onSettingsChanged?: () => void;
   onCurrentThreadDeleted?: () => void;
 }
 
@@ -186,6 +187,7 @@ export function AiSessionConfigScreen({
   onOpenInnerLife,
   onOpenCompanionRuntime,
   onStartChat,
+  onSettingsChanged,
   onCurrentThreadDeleted,
 }: AiSessionConfigScreenProps) {
   const fallbackThreadTitle = contextTitle ?? '普通聊天';
@@ -343,6 +345,8 @@ export function AiSessionConfigScreen({
         thinkingDisabled,
         threadId,
         userAvatarEnabled,
+      }).then(() => {
+        onSettingsChanged?.();
       }).catch(() => undefined);
     }, 450);
     return () => clearTimeout(timer);
@@ -359,6 +363,7 @@ export function AiSessionConfigScreen({
     thinkingDisabled,
     threadId,
     userAvatarEnabled,
+    onSettingsChanged,
   ]);
 
   useEffect(() => {
@@ -368,6 +373,7 @@ export function AiSessionConfigScreen({
   useEffect(() => {
     setSelectedSessionModelKeys([]);
   }, [threadId, modelPickerVisible]);
+
 
   function handleSystemPromptFocus() {
     if (Platform.OS !== 'android') {
@@ -418,6 +424,7 @@ export function AiSessionConfigScreen({
       if (!updated) {
         throw new Error('没有找到当前会话，设置未保存。');
       }
+      onSettingsChanged?.();
       setStatus({ message: '会话设置已保存。', tone: 'success', title: '设置已保存' });
       return true;
     } catch (error) {

@@ -287,9 +287,7 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
             style={styles.gestureArea}
           >
             {imgSize ? (
-              <Image
-                contentFit="contain"
-                source={{ uri: sourceUri ?? undefined }}
+              <View
                 style={{
                   width: imgSize.w * minScale.current,
                   height: imgSize.h * minScale.current,
@@ -299,7 +297,13 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
                     { scale: scale.current / minScale.current },
                   ],
                 }}
-              />
+              >
+                <Image
+                  contentFit="contain"
+                  source={{ uri: sourceUri ?? undefined }}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </View>
             ) : (
               <ActivityIndicator color={aiLightColors.primary} size="large" />
             )}
