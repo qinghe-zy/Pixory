@@ -59,6 +59,7 @@ export function ImageDetailScreen({
   const [contextImages, setContextImages] = useState<ImageListItem[]>([]);
   const [isMoreSheetVisible, setIsMoreSheetVisible] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [isNoteExpanded, setIsNoteExpanded] = useState(false);
   const [fileAvailability, setFileAvailability] = useState<{ originalExists: boolean; thumbnailExists: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
@@ -309,56 +310,57 @@ export function ImageDetailScreen({
           </Pressable>
 
           <ContentCard style={styles.detailCard}>
-            <View style={styles.tagsWrap}>
-              {groups.length > 0 ? groups.map((group) => <TagChip key={`group-${group.id}`} label={group.name} />) : <TagChip label="未分组" />}
-              {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>归属</Text>
+              <Text numberOfLines={1} style={[styles.infoValue, styles.infoValueLong]}>
+                {image.ipName} · {image.groupName ? (image.groupCount > 1 ? image.groupName : `${image.groupName} (${getGroupTypeLabel(image.groupType)})`) : '未分组'}
+              </Text>
             </View>
-            <View style={styles.noteBlock}>
-              <Text style={styles.infoLabel}>备注</Text>
-              <Text numberOfLines={6} style={[styles.infoValue, styles.noteValue]}>{image.note || '暂无备注'}</Text>
+
+            {tags.length > 0 ? (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>标签</Text>
+                <Text numberOfLines={1} style={[styles.infoValue, styles.infoValueLong]}>
+                  {tags.map((t) => t.name).join(' · ')}
+                </Text>
+              </View>
+            ) : null}
+
+            {image.note ? (
+              <Pressable onPress={() => setIsNoteExpanded(!isNoteExpanded)} style={styles.infoRow}>
+                <Text style={styles.infoLabel}>备注</Text>
+                <Text numberOfLines={isNoteExpanded ? 0 : 1} style={[styles.infoValue, styles.infoValueLong, isNoteExpanded && styles.noteValueExpanded]}>
+                  {image.note}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>规格</Text>
+              <Text numberOfLines={1} style={[styles.infoValue, styles.infoValueLong]}>
+                {formatImageDimensions(image.width, image.height)} · {formatFileSize(image.fileSize)} · {image.mimeType?.split('/').pop()?.toUpperCase() || image.mimeType}
+              </Text>
             </View>
 
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>所属 IP</Text>
-              <Text style={[styles.infoValue, styles.infoValueLong]}>{image.ipName}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>所在分组</Text>
-              <Text style={[styles.infoValue, styles.infoValueLong]}>
-                {image.groupName
-                  ? image.groupCount > 1
-                    ? image.groupName
-                    : `${image.groupName} · ${getGroupTypeLabel(image.groupType)}`
-                  : '未分组'}
+              <Text style={styles.infoLabel}>文件</Text>
+              <Text numberOfLines={1} selectable style={[styles.infoValue, styles.infoValueLong]}>
+                {image.originalFilename}
               </Text>
             </View>
+            
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>素材编号</Text>
-              <Text selectable style={[styles.infoValue, styles.infoValueLong]}>{formatImageAssetCode(image)}</Text>
+              <Text style={styles.infoLabel}>编号</Text>
+              <Text numberOfLines={1} selectable style={[styles.infoValue, styles.infoValueLong]}>
+                {formatImageAssetCode(image)}
+              </Text>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>文件名</Text>
-              <Text style={[styles.infoValue, styles.infoValueLong]}>{image.originalFilename}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>尺寸</Text>
-              <Text numberOfLines={1} style={styles.infoValue}>{formatImageDimensions(image.width, image.height)}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>大小</Text>
-              <Text numberOfLines={1} style={styles.infoValue}>{formatFileSize(image.fileSize)}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>格式</Text>
-              <Text style={styles.infoValue}>{image.mimeType}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>上传时间</Text>
-              <Text numberOfLines={1} style={styles.infoValue}>{formatDateTime(image.createdAt)}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>收藏状态</Text>
-              <Text numberOfLines={1} style={styles.infoValue}>{image.isFavorite ? '已收藏' : '未收藏'}</Text>
+
+            <View style={[styles.infoRow, styles.infoRowLast]}>
+              <Text style={styles.infoLabel}>收录</Text>
+              <Text numberOfLines={1} style={[styles.infoValue, styles.infoValueLong]}>
+                {formatDateTime(image.createdAt)}
+              </Text>
             </View>
           </ContentCard>
 
@@ -499,24 +501,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
   },
-  imageTitle: {
-    ...typography.textStyles.pageTitle,
-    flex: 1,
-    fontSize: 20,
-    lineHeight: 27,
-    minWidth: 0,
-  },
-  imageSubtitle: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
-    minWidth: 0,
-  },
-  noteBlock: {
-    borderBottomColor: colors.border.divider,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
-    paddingBottom: spacing[3],
-  },
+
   previewWrap: {
     backgroundColor: colors.background.sunken,
     borderRadius: radius.xl,
@@ -532,12 +517,14 @@ const styles = StyleSheet.create({
   },
   previewAction: {
     alignItems: 'center',
-    backgroundColor: 'rgba(23, 33, 43, 0.58)',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.pill,
     bottom: spacing[3],
     flexDirection: 'row',
     gap: spacing[1],
-    minHeight: 34,
+    minHeight: 32,
     paddingHorizontal: spacing[3],
     position: 'absolute',
     right: spacing[3],
@@ -561,12 +548,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[3],
     justifyContent: 'space-between',
-    paddingBottom: spacing[3],
+    paddingVertical: spacing[3],
+  },
+  infoRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
   },
   infoLabel: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
-    width: 74,
+    width: 60,
   },
   infoValue: {
     ...typography.textStyles.body,
@@ -579,13 +570,8 @@ const styles = StyleSheet.create({
   infoValueLong: {
     textAlign: 'left',
   },
-  noteValue: {
-    textAlign: 'left',
-  },
-  tagsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+  noteValueExpanded: {
+    lineHeight: 22,
   },
   safetyPanel: {
     alignItems: 'center',
@@ -616,11 +602,11 @@ const styles = StyleSheet.create({
   },
   navButton: {
     alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
+    backgroundColor: 'transparent',
+    borderColor: colors.border.default,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 38,
+    minHeight: 34,
     justifyContent: 'center',
     paddingHorizontal: spacing[4],
   },

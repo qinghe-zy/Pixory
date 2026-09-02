@@ -893,15 +893,15 @@ export function ImageViewerScreen({
               </View>
             </View>
             <View style={styles.bottomToolbar}>
-              <Pressable accessibilityLabel="详细信息" onPress={() => onOpenDetail(activeImage.id)} style={styles.toolbarIcon}>
-                <Ionicons name="information-circle-outline" size={24} color={colors.text.inverse} />
-              </Pressable>
               <Pressable accessibilityLabel={activeImage.isFavorite ? '取消收藏' : '收藏'} onPress={() => void toggleFavorite()} style={styles.toolbarIcon}>
                 <Ionicons
                   color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
                   name={activeImage.isFavorite ? 'star' : 'star-outline'}
                   size={24}
                 />
+              </Pressable>
+              <Pressable accessibilityLabel="详细信息" onPress={() => onOpenDetail(activeImage.id)} style={styles.toolbarIcon}>
+                <Ionicons name="information-circle-outline" size={24} color={colors.text.inverse} />
               </Pressable>
             </View>
           </View>
@@ -1395,9 +1395,9 @@ const styles = StyleSheet.create({
   },
   toolbarIcon: {
     alignItems: 'center',
-    height: '100%',
     justifyContent: 'center',
-    paddingHorizontal: spacing[1],
+    height: 36,
+    width: 36,
   },
   stateWrap: {
     alignItems: 'center',
