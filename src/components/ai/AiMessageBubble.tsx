@@ -313,18 +313,6 @@ function AiMessageBubbleComponent({
     !hideFooterActions &&
     ((showActionButtons && !isUser && assistantTerminal) ||
       message.versionTotal > 1);
-  const assistantHasBody =
-    !isUser &&
-    (editing ||
-      Boolean(content.trim()) ||
-      waitingForFirstToken ||
-      Boolean(message.errorMessage?.trim()) ||
-      (!hideCitations && message.citations.length > 0));
-  const shouldRenderBubble = isUser || editing || assistantHasBody;
-  const [editDraft, setEditDraft] = useState('');
-  const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
-  const copyFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const rawContent = message.content;
   let displayContent = rawContent;
   if (isUser) {
@@ -336,6 +324,21 @@ function AiMessageBubbleComponent({
       displayContent = '';
     }
   }
+
+  const assistantHasBody =
+    !isUser &&
+    (editing ||
+      Boolean(content.trim()) ||
+      waitingForFirstToken ||
+      Boolean(message.errorMessage?.trim()) ||
+      (!hideCitations && message.citations.length > 0));
+  // User bubble is only rendered when there is visible text or the message is being edited.
+  // Without this guard, sending an image with no text would show an empty bubble shell.
+  const userHasBody = isUser && (editing || Boolean(displayContent));
+  const shouldRenderBubble = userHasBody || assistantHasBody;
+  const [editDraft, setEditDraft] = useState('');
+  const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
+  const copyFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (editing) {
