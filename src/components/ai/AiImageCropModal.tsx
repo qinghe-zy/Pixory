@@ -24,6 +24,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 
 import { aiLightColors } from './aiLightTheme';
@@ -34,9 +35,9 @@ import { spacing, typography } from '../../design/tokens';
 const SCREEN = Dimensions.get('window');
 // 裁剪框尺寸：屏幕宽度减左右内边距
 const CROP_BOX = Math.min(SCREEN.width - spacing[8] * 2, SCREEN.width * 0.85);
-// 初始最小缩放：让图片宽度至少填满裁剪框
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 8;
+// 初始最小缩放：让图片短边至少填满裁剪框（运行时动态计算）
+// 最大缩放：允许基于初始缩放放大 5 倍
+const MAX_ZOOM_MULTIPLIER = 5;
 
 // ─── 类型 ──────────────────────────────────────────────────────────────────
 
@@ -66,10 +67,13 @@ function pinchDistance(touches: { pageX: number; pageY: number }[]) {
 // ─── 组件 ──────────────────────────────────────────────────────────────────
 
 export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCropModalProps) {
+  const insets = useSafeAreaInsets();
+
   // 图片原始尺寸
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   // 缩放和偏移（相对于裁剪框中心）
   const scale = useRef(1);
+  const minScale = useRef(0.1);
   const offsetX = useRef(0);
   const offsetY = useRef(0);
   // 用于触发重渲染的计数器（PanResponder 回调中直接改 ref，手势结束后同步一次）
@@ -89,6 +93,7 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
     }
     // 重置状态
     scale.current = 1;
+    minScale.current = 0.1;
     offsetX.current = 0;
     offsetY.current = 0;
     setImgSize(null);
@@ -98,14 +103,18 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
       sourceUri,
       (w, h) => {
         setImgSize({ w, h });
-        // 初始缩放：让图片短边填满裁剪框
+        // 初始缩放：让图片短边正好填满裁剪框
         const fitScale = CROP_BOX / Math.min(w, h);
-        scale.current = Math.max(fitScale, 1);
+        scale.current = fitScale;
+        minScale.current = fitScale;
         forceRender();
       },
       () => {
         // 读不到尺寸时用 fallback 值
         setImgSize({ w: CROP_BOX, h: CROP_BOX });
+        scale.current = 1;
+        minScale.current = 1;
+        forceRender();
       },
     );
   }, [sourceUri, forceRender]);
@@ -138,8 +147,8 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
             const delta = dist / lastPinchDist.current;
             scale.current = clamp(
               lastPinchScale.current * delta,
-              MIN_SCALE,
-              MAX_SCALE,
+              minScale.current,
+              minScale.current * MAX_ZOOM_MULTIPLIER,
             );
           }
           lastPinchDist.current = dist;
@@ -233,8 +242,8 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
       visible={visible}
     >
       <View style={styles.root}>
-        {/* 顶部栏 */}
-        <View style={styles.topBar}>
+        {/* 顶部栏（加上 SafeAreaInset） */}
+        <View style={[styles.topBar, { paddingTop: insets.top, height: TOP_BAR_HEIGHT + insets.top }]}>
           <Pressable
             accessibilityLabel="取消"
             accessibilityRole="button"
