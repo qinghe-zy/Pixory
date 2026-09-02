@@ -2991,9 +2991,18 @@ export function AiChatScreen({
 
   const handleMessageListContentSizeChange = useCallback(() => {
     if (!isInitialMessageLoading && invertedMessageItems.length > 0) {
+      if (!isMessageListReady && !pendingSearchScrollMessageIdRef.current) {
+        // First layout with real data: the inverted list starts at offset 0
+        // (= latest message), but maintainVisibleContentPosition can shift it
+        // during the initial render burst.  Force it back unconditionally so the
+        // user always lands on the newest message after the skeleton hides.
+        // Skip when a search anchor is pending — that scroll will be handled
+        // by scheduleSearchTargetScroll instead.
+        messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
+      }
       setIsMessageListReady(true);
     }
-  }, [invertedMessageItems.length, isInitialMessageLoading]);
+  }, [invertedMessageItems.length, isInitialMessageLoading, isMessageListReady]);
 
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {

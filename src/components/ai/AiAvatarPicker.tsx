@@ -8,6 +8,7 @@ import { aiLightColors } from './aiLightTheme';
 import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { copyAiRoleAvatarToAppStorage } from '../../services/fileStorageService';
 import { AiLightButton } from './AiLightButton';
+import { AiImageCropModal } from './AiImageCropModal';
 import { SecureImage } from '../SecureImage';
 
 interface AiAvatarPickerProps {
@@ -21,6 +22,8 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
   const [ips, setIps] = useState<IpListItem[]>([]);
   const [avatarIpId, setAvatarIpId] = useState<number | null>(null);
   const [avatarCandidates, setAvatarCandidates] = useState<ImageListItem[]>([]);
+  // 待裁剪的图片临时 URI（非 null 时弹出裁剪 Modal）
+  const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
 
   const loadIps = useCallback(async () => {
     try {
@@ -41,11 +44,9 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
       setAvatarCandidates([]);
       return;
     }
-    void runWithDatabaseSpace(space, (db: any) => imageRepository.findByIpId(db, avatarIpId, { mediaType: 'image' })).then((images: any) => {
-      setAvatarCandidates(images);
-    }).catch((e: any) => {
-      onError?.(e instanceof Error ? e : String(e));
-    });
+    void runWithDatabaseSpace(space, (db: any) => imageRepository.findByIpId(db, avatarIpId, { mediaType: 'image' }))
+      .then((images: any) => { setAvatarCandidates(images); })
+      .catch((e: any) => { onError?.(e instanceof Error ? e : String(e)); });
   }, [avatarIpId, space, onError]);
 
   async function pickAvatarFromAlbum() {
@@ -57,22 +58,44 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
+        // 不使用 allowsEditing：Android 多数厂商 ROM（MIUI / ColorOS / HyperOS 等）
+        // 的系统 CROP intent 会显示截取框但没有确认按钮，导致用户无法完成选图。
+        // 裁剪改为应用内 AiImageCropModal 完成。
+        quality: 1,
       });
       if (result.canceled || !result.assets.length) {
         return;
       }
-      const copiedUri = await copyAiRoleAvatarToAppStorage(result.assets[0].uri, space);
-      onAvatarChange(copiedUri);
+      // 弹出应用内裁剪 Modal
+      setCropSourceUri(result.assets[0].uri);
     } catch (error) {
       onError?.(error instanceof Error ? error : '头像选择失败');
     }
   }
 
+  async function handleCropConfirm(croppedUri: string) {
+    setCropSourceUri(null);
+    try {
+      const copiedUri = await copyAiRoleAvatarToAppStorage(croppedUri, space);
+      onAvatarChange(copiedUri);
+    } catch (error) {
+      onError?.(error instanceof Error ? error : '头像保存失败');
+    }
+  }
+
+  function handleCropCancel() {
+    setCropSourceUri(null);
+  }
+
   return (
     <View style={styles.container}>
+      {/* 应用内裁剪 Modal */}
+      <AiImageCropModal
+        sourceUri={cropSourceUri}
+        onConfirm={(uri) => void handleCropConfirm(uri)}
+        onCancel={handleCropCancel}
+      />
+
       <View style={styles.inlineActions}>
         <AiLightButton label="从相册选择" onPress={() => void pickAvatarFromAlbum()} variant="ghost" />
         {avatarUri ? <AiLightButton label="清除头像" onPress={() => onAvatarChange(null)} variant="ghost" /> : null}
