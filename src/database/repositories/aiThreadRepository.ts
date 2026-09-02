@@ -3937,14 +3937,14 @@ export const aiThreadRepository = {
     if (limit && limit > 0) {
       const rows = await db.getAllAsync<AiMessageRecord>(
         `SELECT * FROM (
-           SELECT * FROM ai_messages
+           SELECT *, rowid AS _sortrowid FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
              AND ${excludeRolledBackContinuityPayload('ai_messages')}
            ORDER BY createdAt DESC, rowid DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC, rowid ASC`,
+          ORDER BY createdAt ASC, _sortrowid ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit
@@ -3968,7 +3968,7 @@ export const aiThreadRepository = {
     if (limit && limit > 0) {
       return db.getAllAsync<AiMessageRecord>(
         `SELECT * FROM (
-           SELECT *
+           SELECT *, rowid AS _sortrowid
            FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
@@ -3976,7 +3976,7 @@ export const aiThreadRepository = {
            ORDER BY createdAt DESC, rowid DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC, rowid ASC`,
+          ORDER BY createdAt ASC, _sortrowid ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit
@@ -4003,7 +4003,7 @@ export const aiThreadRepository = {
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
     return db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM (
-         SELECT * FROM ai_messages
+         SELECT *, rowid AS _sortrowid FROM ai_messages
          WHERE threadId = ?
            ${visibleBranchClause.clause}
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
@@ -4014,7 +4014,7 @@ export const aiThreadRepository = {
          ORDER BY createdAt DESC, rowid DESC
          LIMIT ?
        )
-       ORDER BY createdAt ASC, rowid ASC`,
+       ORDER BY createdAt ASC, _sortrowid ASC`,
       threadId,
       ...visibleBranchClause.values,
       cursor.createdAt,
@@ -4044,7 +4044,7 @@ export const aiThreadRepository = {
     const sideLimit = Math.max(1, Math.ceil(limit / 2));
     return db.getAllAsync<AiMessageRecord>(
       `WITH anchor AS (
-         SELECT ai_messages.*
+         SELECT ai_messages.*, ai_messages.rowid AS _sortrowid
          FROM ai_messages
          WHERE ai_messages.id = ?
            AND ai_messages.threadId = ?
@@ -4052,7 +4052,7 @@ export const aiThreadRepository = {
            ${visibleBranchClause.clause}
        ),
        latest_rows AS (
-         SELECT ai_messages.*
+         SELECT ai_messages.*, ai_messages.rowid AS _sortrowid
          FROM ai_messages
          WHERE ai_messages.threadId = ?
            ${visibleBranchClause.clause}
@@ -4061,7 +4061,7 @@ export const aiThreadRepository = {
          LIMIT ?
        ),
        before_rows AS (
-         SELECT ai_messages.*
+         SELECT ai_messages.*, ai_messages.rowid AS _sortrowid
          FROM ai_messages
          CROSS JOIN anchor
          WHERE ai_messages.threadId = ?
@@ -4069,13 +4069,13 @@ export const aiThreadRepository = {
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
            AND (
              ai_messages.createdAt < anchor.createdAt
-             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.rowid < anchor.rowid)
+             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.rowid < anchor._sortrowid)
            )
          ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
          LIMIT ?
        ),
        after_rows AS (
-         SELECT ai_messages.*
+         SELECT ai_messages.*, ai_messages.rowid AS _sortrowid
          FROM ai_messages
          CROSS JOIN anchor
          WHERE ai_messages.threadId = ?
@@ -4083,7 +4083,7 @@ export const aiThreadRepository = {
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
            AND (
              ai_messages.createdAt > anchor.createdAt
-             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.rowid > anchor.rowid)
+             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.rowid > anchor._sortrowid)
            )
          ORDER BY ai_messages.createdAt ASC, ai_messages.rowid ASC
          LIMIT ?
@@ -4098,7 +4098,7 @@ export const aiThreadRepository = {
          UNION
          SELECT * FROM after_rows
        ) combined_rows
-       ORDER BY createdAt ASC, rowid ASC`,
+       ORDER BY createdAt ASC, _sortrowid ASC`,
       anchorMessageId,
       threadId,
       ...visibleBranchClause.values,
