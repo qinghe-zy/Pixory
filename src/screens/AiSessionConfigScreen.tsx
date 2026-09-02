@@ -332,6 +332,7 @@ export function AiSessionConfigScreen({
     const timer = setTimeout(() => {
       void updateAiThreadSessionConfig({
         avatarEnabled,
+        avatarUri,
         boundaryMode,
         deepMemoryEnabled,
         contextHistoryRoundLimit,
@@ -347,6 +348,7 @@ export function AiSessionConfigScreen({
     return () => clearTimeout(timer);
   }, [
     avatarEnabled,
+    avatarUri,
     boundaryMode,
     deepMemoryEnabled,
     contextHistoryRoundLimit,
@@ -403,6 +405,7 @@ export function AiSessionConfigScreen({
       const updated = await updateAiThreadSessionConfig({
         boundaryMode,
         avatarEnabled,
+        avatarUri,
         deepMemoryEnabled,
         replyPreference,
         roleInstructionWeight,

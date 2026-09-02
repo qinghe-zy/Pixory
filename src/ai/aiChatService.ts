@@ -359,6 +359,7 @@ export interface UpdateAiThreadSessionConfigInput {
   providerId?: string | null;
   modelId?: string | null;
   avatarEnabled?: boolean;
+  avatarUri?: string | null;
   userAvatarEnabled?: boolean;
   deepMemoryEnabled?: boolean;
 }
@@ -3260,6 +3261,9 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
     > = {};
     if (input.avatarEnabled != null) {
       roleSnapshotPatch.avatarEnabled = input.avatarEnabled;
+    }
+    if (input.avatarUri !== undefined) {
+      roleSnapshotPatch.avatarUri = input.avatarUri;
     }
     if (input.userAvatarEnabled != null) {
       roleSnapshotPatch.userAvatarEnabled = input.userAvatarEnabled;

@@ -123,22 +123,32 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
   // 记录上一帧手势累积值，用于计算帧间增量
   const lastDx = useRef(0);
   const lastDy = useRef(0);
+  const lastTouchCount = useRef(0);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
-      onPanResponderGrant: () => {
+      onPanResponderGrant: (evt, gestureState) => {
         // 新一轮手势开始，重置所有追踪状态
-        lastDx.current = 0;
-        lastDy.current = 0;
+        lastDx.current = gestureState.dx;
+        lastDy.current = gestureState.dy;
         lastPinchDist.current = null;
         lastPinchScale.current = scale.current;
+        lastTouchCount.current = evt.nativeEvent.touches.length;
       },
 
       onPanResponderMove: (evt, gestureState) => {
         const touches = evt.nativeEvent.touches;
+
+        if (touches.length !== lastTouchCount.current) {
+          lastDx.current = gestureState.dx;
+          lastDy.current = gestureState.dy;
+          lastTouchCount.current = touches.length;
+          lastPinchDist.current = null;
+          return;
+        }
 
         if (touches.length === 2) {
           // ── 双指缩放 ──────────────────────────────────────────────────
@@ -153,7 +163,6 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
           }
           lastPinchDist.current = dist;
           lastPinchScale.current = scale.current;
-          // 双指时重置单指基准，防止切换手指时突变
           lastDx.current = gestureState.dx;
           lastDy.current = gestureState.dy;
         } else if (touches.length === 1) {
@@ -282,11 +291,12 @@ export function AiImageCropModal({ sourceUri, onConfirm, onCancel }: AiImageCrop
                 contentFit="contain"
                 source={{ uri: sourceUri ?? undefined }}
                 style={{
-                  width: displayW,
-                  height: displayH,
+                  width: imgSize.w * minScale.current,
+                  height: imgSize.h * minScale.current,
                   transform: [
                     { translateX: offsetX.current },
                     { translateY: offsetY.current },
+                    { scale: scale.current / minScale.current },
                   ],
                 }}
               />
