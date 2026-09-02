@@ -3941,10 +3941,10 @@ export const aiThreadRepository = {
            WHERE threadId = ?
              ${visibleBranchClause.clause}
              AND ${excludeRolledBackContinuityPayload('ai_messages')}
-           ORDER BY createdAt DESC
+           ORDER BY createdAt DESC, rowid DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC`,
+          ORDER BY createdAt ASC, rowid ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit
@@ -3956,7 +3956,7 @@ export const aiThreadRepository = {
        WHERE threadId = ?
          ${visibleBranchClause.clause}
          AND ${excludeRolledBackContinuityPayload('ai_messages')}
-       ORDER BY createdAt ASC`,
+       ORDER BY createdAt ASC, rowid ASC`,
       threadId,
       ...visibleBranchClause.values
     );
@@ -3973,10 +3973,10 @@ export const aiThreadRepository = {
            WHERE threadId = ?
              ${visibleBranchClause.clause}
              AND ${excludeRolledBackContinuityPayload('ai_messages')}
-           ORDER BY createdAt DESC, id DESC
+           ORDER BY createdAt DESC, rowid DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC, id ASC`,
+          ORDER BY createdAt ASC, rowid ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit
@@ -3987,7 +3987,7 @@ export const aiThreadRepository = {
        WHERE threadId = ?
          ${visibleBranchClause.clause}
          AND ${excludeRolledBackContinuityPayload('ai_messages')}
-       ORDER BY createdAt ASC, id ASC`,
+       ORDER BY createdAt ASC, rowid ASC`,
       threadId,
       ...visibleBranchClause.values
     );
@@ -4011,10 +4011,10 @@ export const aiThreadRepository = {
              createdAt < ?
              OR (createdAt = ? AND id < ?)
            )
-         ORDER BY createdAt DESC, id DESC
+         ORDER BY createdAt DESC, rowid DESC
          LIMIT ?
        )
-       ORDER BY createdAt ASC, id ASC`,
+       ORDER BY createdAt ASC, rowid ASC`,
       threadId,
       ...visibleBranchClause.values,
       cursor.createdAt,
@@ -4057,7 +4057,7 @@ export const aiThreadRepository = {
          WHERE ai_messages.threadId = ?
            ${visibleBranchClause.clause}
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
-         ORDER BY ai_messages.createdAt DESC, ai_messages.id DESC
+         ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
          LIMIT ?
        ),
        before_rows AS (
@@ -4069,9 +4069,9 @@ export const aiThreadRepository = {
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
            AND (
              ai_messages.createdAt < anchor.createdAt
-             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.id < anchor.id)
+             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.rowid < anchor.rowid)
            )
-         ORDER BY ai_messages.createdAt DESC, ai_messages.id DESC
+         ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
          LIMIT ?
        ),
        after_rows AS (
@@ -4083,9 +4083,9 @@ export const aiThreadRepository = {
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
            AND (
              ai_messages.createdAt > anchor.createdAt
-             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.id > anchor.id)
+             OR (ai_messages.createdAt = anchor.createdAt AND ai_messages.rowid > anchor.rowid)
            )
-         ORDER BY ai_messages.createdAt ASC, ai_messages.id ASC
+         ORDER BY ai_messages.createdAt ASC, ai_messages.rowid ASC
          LIMIT ?
        )
        SELECT *
@@ -4098,7 +4098,7 @@ export const aiThreadRepository = {
          UNION
          SELECT * FROM after_rows
        ) combined_rows
-       ORDER BY createdAt ASC, id ASC`,
+       ORDER BY createdAt ASC, rowid ASC`,
       anchorMessageId,
       threadId,
       ...visibleBranchClause.values,

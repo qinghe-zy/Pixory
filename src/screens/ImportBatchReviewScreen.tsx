@@ -20,6 +20,7 @@ import {
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 type BatchPileKey =
   | 'all'
@@ -50,6 +51,7 @@ interface ImportBatchReviewScreenProps {
   onQuickOrganize: (importBatchId?: number | null) => void;
   onBatchOrganize: (imageIds: number[], initialMode?: BatchInitialMode) => void;
   onOpenDuplicateReview: (importBatchId: number) => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
   onOpenImageDetail: (imageId: number) => void;
 }
 
@@ -64,6 +66,7 @@ export function ImportBatchReviewScreen({
   onQuickOrganize,
   onBatchOrganize,
   onOpenDuplicateReview,
+  onOpenImage,
   onOpenImageDetail,
 }: ImportBatchReviewScreenProps) {
   const [activePile, setActivePile] = useState<BatchPileKey>('all');
@@ -130,6 +133,18 @@ export function ImportBatchReviewScreen({
           : []),
       ]
     : [];
+
+  function handleImagePress(imageId: number) {
+    const asset = filteredImages.find(i => i.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
+    const context: ImageViewerContext = importBatchId != null
+      ? { type: 'import-batch', ipId, importBatchId, space }
+      : { type: 'image-scope', imageIds: filteredImages.map(i => i.id), space, label: '导入结果' };
+    onOpenImage(imageId, context);
+  }
 
   return (
     <>
@@ -299,7 +314,7 @@ export function ImportBatchReviewScreen({
           </View>
           <View style={styles.grid}>
             {filteredImages.map((image) => (
-              <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} space={space} />
+              <ThumbnailTile image={image} key={image.id} onPress={handleImagePress} space={space} />
             ))}
           </View>
         </PageStateBlock>
@@ -845,3 +860,4 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
 });
+

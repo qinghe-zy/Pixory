@@ -897,7 +897,7 @@ export function ImageViewerScreen({
                 <Ionicons
                   color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
                   name={activeImage.isFavorite ? 'star' : 'star-outline'}
-                  size={24}
+                  size={20}
                 />
               </Pressable>
               <Pressable accessibilityLabel="详细信息" onPress={() => onOpenDetail(activeImage.id)} style={styles.toolbarIcon}>
@@ -1396,8 +1396,8 @@ const styles = StyleSheet.create({
   toolbarIcon: {
     alignItems: 'center',
     justifyContent: 'center',
-    height: 36,
-    width: 36,
+    height: 32,
+    width: 32,
   },
   stateWrap: {
     alignItems: 'center',

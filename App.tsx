@@ -1645,6 +1645,7 @@ export default function App() {
         }
         onImportAgain={() => replaceCurrentRoute({ name: 'import-images', ipId: currentRoute.ipId, space: currentRoute.space })}
         onQuickOrganize={(importBatchId) => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, importBatchId, space: currentRoute.space })}
+        onOpenImage={openImageViewer}
         onOpenImageDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
       />
@@ -1719,7 +1720,7 @@ export default function App() {
         onEdit={(imageId) => pushRoute({ name: 'edit-image', imageId, space: currentRoute.space })}
         onMoveGroup={(imageId) => pushRoute({ name: 'move-image-group', imageId, space: currentRoute.space })}
         onNavigateImage={(imageId, context) => replaceCurrentRoute({ name: 'image-detail', imageId, space: context?.space ?? currentRoute.space, context })}
-        onOpenViewer={(imageId, context) => pushRoute({ name: 'image-viewer', imageId, space: context?.space ?? currentRoute.space, context: context! })}
+        onOpenViewer={(imageId, context) => pushRoute({ name: 'image-viewer', imageId, space: context?.space ?? currentRoute.space, context: context ?? { type: 'image-scope', space: currentRoute.space, imageIds: [imageId] } })}
         onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
         refreshToken={libraryRefreshToken}
       />
@@ -2571,3 +2572,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
