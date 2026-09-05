@@ -15,7 +15,6 @@ import { formatFileSize } from '../utils/formatters';
 import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
 import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
 import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
-import { useDeveloperMode } from '../utils/dev';
 
 interface MeScreenProps {
   refreshToken: number;
@@ -30,7 +29,7 @@ interface MeScreenProps {
   onOpenStorageUsage: () => void;
   onOpenDuplicateReview: () => void;
   onOpenAbout: () => void;
-  onOpenDiagnostics: () => void;
+  onOpenSettings: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
 }
@@ -155,12 +154,11 @@ export function MeScreen({
   onOpenStorageUsage,
   onOpenDuplicateReview,
   onOpenAbout,
-  onOpenDiagnostics,
+  onOpenSettings,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
 }: MeScreenProps) {
   const { showToast } = useToast();
-  const developerMode = useDeveloperMode();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
   const [isRenameDialogVisible, setIsRenameDialogVisible] = useState(false);
   const isPersonalMode = space === 'personal';
@@ -212,7 +210,7 @@ export function MeScreen({
     }
   );
 
-  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'diagnostics') {
+  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'settings') {
     if (key === 'favorites') {
       onOpenFavorites();
       return;
@@ -247,7 +245,7 @@ export function MeScreen({
       onOpenAbout();
       return;
     }
-    if (key === 'diagnostics') onOpenDiagnostics();
+    if (key === 'settings') onOpenSettings();
   }
 
   function handlePersonalToggle() {
@@ -522,18 +520,14 @@ export function MeScreen({
             <Text style={styles.systemListTitle}>关于</Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
-          {developerMode ? (
-            <>
-              <View style={styles.systemListDivider} />
-              <Pressable onPress={() => handleEntryPress('diagnostics')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
-                <View style={styles.systemListIcon}>
-                  <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
-                </View>
-                <Text style={styles.systemListTitle}>性能与诊断</Text>
-                <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
-              </Pressable>
-            </>
-          ) : null}
+          <View style={styles.systemListDivider} />
+          <Pressable onPress={() => handleEntryPress('settings')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
+            <View style={styles.systemListIcon}>
+              <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
+            </View>
+            <Text style={styles.systemListTitle}>设置</Text>
+            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
+          </Pressable>
         </ContentCard>
         </MagneticLiquidContainer>
       </View>

@@ -18,9 +18,20 @@ test('high-density diagnostic storage has operations, windows, and incidents', (
 
 test('developer mode supports seven taps and settings exit', () => {
   const about = fs.readFileSync('src/screens/AboutScreen.tsx', 'utf8');
-  const settings = fs.readFileSync('src/screens/DiagnosticsSettingsScreen.tsx', 'utf8');
+  const settings = fs.readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
+  const developerSettings = fs.readFileSync('src/screens/DeveloperModeSettingsScreen.tsx', 'utf8');
   assert.match(about, /count >= 7/);
   assert.match(about, /10000/);
   assert.match(about, /isDeveloperModeRevealEnabled/);
-  assert.match(settings, /关闭开发者模式/);
+  assert.match(settings, /性能与诊断/);
+  assert.match(developerSettings, /关闭开发者模式/);
+});
+
+test('settings hierarchy keeps diagnostics below the settings screen', () => {
+  const me = fs.readFileSync('src/screens/MeScreen.tsx', 'utf8');
+  const settings = fs.readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
+  assert.match(me, /设置/);
+  assert.doesNotMatch(me, /性能与诊断/);
+  assert.match(settings, /useDeveloperMode/);
+  assert.match(settings, /onOpenDiagnostics/);
 });

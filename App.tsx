@@ -88,6 +88,8 @@ import { IpCoverPickerScreen } from './src/screens/IpCoverPickerScreen';
 import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { DeveloperModeSettingsScreen } from './src/screens/DeveloperModeSettingsScreen';
 import { initializeDiagnostics } from './src/diagnostics/diagnosticLogger';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { OriginalStorageScreen } from './src/screens/OriginalStorageScreen';
@@ -238,6 +240,8 @@ type AppRoute =
   | { name: 'companion-runtime-manager'; space: PixorySpace; threadId: string }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
+  | { name: 'settings'; space: PixorySpace }
+  | { name: 'developer-mode-settings'; space: PixorySpace }
   | { name: 'diagnostics-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string; threadId?: string; mode?: 'library' | 'apply_to_thread' }
@@ -1424,7 +1428,7 @@ export default function App() {
               onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
               onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
               onOpenAbout={() => pushRoute({ name: 'about', space: activeSpace })}
-              onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: activeSpace })}
+              onOpenSettings={() => pushRoute({ name: 'settings', space: activeSpace })}
               onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
               onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
               onLockPersonalSpace={() => {
@@ -2140,6 +2144,10 @@ export default function App() {
     content = <ProductDocumentationScreen onBack={popRoute} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'settings') {
+    content = <SettingsScreen onBack={popRoute} onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} />;
+  } else if (currentRoute.name === 'developer-mode-settings') {
+    content = <DeveloperModeSettingsScreen onBack={popRoute} />;
   } else if (currentRoute.name === 'diagnostics-settings') {
     content = <DiagnosticsSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-library') {
