@@ -31,7 +31,7 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
     setWorking(true);
     try {
       const uri = await createExport(level);
-      await saveDiagnosticsToSystemDirectory({ zipUri: uri });
+      await saveDiagnosticsToSystemDirectory({ directoryUri: uri });
       showToast('诊断包已下载，请在系统文件管理器中查看。');
     } catch (error) {
       showToast(error instanceof Error ? `下载失败：${error.message}` : '下载失败');

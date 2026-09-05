@@ -1,6 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
-import { zip } from 'react-native-zip-archive';
 import { runWithDatabaseSpace } from '../database/db';
 import { listDiagnosticEvents } from './diagnosticRepository';
 import { summarizeDiagnosticEvents } from './diagnosticSummary';
@@ -56,19 +55,45 @@ export async function exportDiagnostics(input: DiagnosticExportOptions): Promise
   if (input.level === 'standard') assertStandardExportPrivacy(files);
   for (const [name, text] of Object.entries(files)) await FileSystem.writeAsStringAsync(`${root}/${name}`, text);
   const checksums: string[] = []; for (const [name, text] of Object.entries(files)) checksums.push(`${await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text)}  ${name}`); await FileSystem.writeAsStringAsync(`${root}/checksums.sha256`, checksums.join('\n'));
-  const zipPath = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory) + 'Pixory-diagnostics-' + input.space + '-' + Date.now() + '.zip';
-  const exportedZipPath = await zip(root, zipPath);
-  const zipInfo = await FileSystem.getInfoAsync(exportedZipPath);
-  if (!zipInfo.exists || (zipInfo.size ?? 0) <= 0) throw new Error('诊断包 ZIP 生成失败或为空。');
-  return exportedZipPath;
+  const exportInfo = await FileSystem.readDirectoryAsync(root);
+  if (exportInfo.length === 0) throw new Error('诊断包目录生成失败或为空。');
+  return root;
 }
 
-export async function saveDiagnosticsToSystemDirectory(input: { zipUri: string; destinationDirectoryUri?: string | null }): Promise<string> {
+function diagnosticFileMimeType(fileName: string): string {
+  if (fileName.endsWith('.json') || fileName.endsWith('.jsonl')) return 'application/json';
+  if (fileName.endsWith('.csv')) return 'text/csv';
+  if (fileName.endsWith('.md')) return 'text/markdown';
+  return 'application/octet-stream';
+}
+
+async function copyDiagnosticsDirectoryToSaf(sourceDirUri: string, destinationDirUri: string): Promise<number> {
+  const sourceDirectoryUri = sourceDirUri.endsWith('/') ? sourceDirUri : sourceDirUri + '/';
+  const entries = await FileSystem.readDirectoryAsync(sourceDirectoryUri);
+  let copiedFileCount = 0;
+  for (const entry of entries) {
+    const sourceUri = sourceDirectoryUri + entry;
+    const info = await FileSystem.getInfoAsync(sourceUri);
+    if (!info.exists) continue;
+    if (info.isDirectory) {
+      const childDestinationUri = await FileSystem.StorageAccessFramework.makeDirectoryAsync(destinationDirUri, entry);
+      copiedFileCount += await copyDiagnosticsDirectoryToSaf(sourceUri, childDestinationUri);
+    } else {
+      await copyFileToSafWithProgress(sourceUri, destinationDirUri, entry, diagnosticFileMimeType(entry), 'diagnostics-export-' + Date.now());
+      copiedFileCount += 1;
+    }
+  }
+  return copiedFileCount;
+}
+
+export async function saveDiagnosticsToSystemDirectory(input: { directoryUri: string; destinationDirectoryUri?: string | null }): Promise<string> {
   const permissions = input.destinationDirectoryUri
     ? { granted: true, directoryUri: input.destinationDirectoryUri }
     : await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(null);
   if (!permissions.granted) throw new Error('未选择诊断包保存目录。');
-  const fileName = input.zipUri.split('/').pop() || `Pixory-diagnostics-${Date.now()}.zip`;
-  await copyFileToSafWithProgress(input.zipUri, permissions.directoryUri, fileName, 'application/zip', `diagnostics-export-${Date.now()}`);
-  return `${permissions.directoryUri}/${fileName}`;
+  const directoryName = input.directoryUri.split('/').filter(Boolean).pop() || 'Pixory-diagnostics-' + Date.now();
+  const exportedDirectoryUri = await FileSystem.StorageAccessFramework.makeDirectoryAsync(permissions.directoryUri, directoryName);
+  const copiedFileCount = await copyDiagnosticsDirectoryToSaf(input.directoryUri, exportedDirectoryUri);
+  if (copiedFileCount === 0) throw new Error('诊断包目录复制失败或为空。');
+  return exportedDirectoryUri;
 }

@@ -11,5 +11,5 @@ test('diagnostic export shares and saves the generated ZIP as a file', () => {
   assert.match(service, /threadIdHashes/);
   assert.match(service, /saveDiagnosticsToSystemDirectory/);
   assert.match(service, /copyFileToSafWithProgress/);
-  assert.match(service, /诊断包 ZIP 生成失败或为空/);
+  assert.match(service, /诊断包目录生成失败或为空/);
 });

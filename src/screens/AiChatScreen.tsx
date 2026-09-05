@@ -4336,7 +4336,7 @@ export function AiChatScreen({
   const tailListWindowSize = shouldExpandRenderWindow ? 15 : 11;
   const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow ? 16 : 50;
   const tailListRemoveClippedSubviews =
-    Platform.OS === "android" ? !shouldRelaxClipping : undefined;
+    Platform.OS === "android" ? false : undefined;
 
   const handleReturnToLatestPress = useCallback(() => {
     followLatestMessage();
