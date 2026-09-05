@@ -2145,9 +2145,9 @@ export default function App() {
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'settings') {
-    content = <SettingsScreen onBack={popRoute} onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} />;
+    content = <SettingsScreen space={currentRoute.space} onBack={popRoute} onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} />;
   } else if (currentRoute.name === 'developer-mode-settings') {
-    content = <DeveloperModeSettingsScreen onBack={popRoute} />;
+    content = <DeveloperModeSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'diagnostics-settings') {
     content = <DiagnosticsSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-library') {

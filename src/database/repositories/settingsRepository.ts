@@ -321,7 +321,7 @@ export const settingsRepository = {
     const enabled = await this.getValue(db, DIAGNOSTICS_ENABLED_KEY);
     const retentionDays = Number(await this.getValue(db, DIAGNOSTICS_RETENTION_DAYS_KEY));
     const maxEvents = Number(await this.getValue(db, DIAGNOSTICS_MAX_EVENTS_KEY));
-    return { enabled: enabled !== 'false', retentionDays: Number.isInteger(retentionDays) && retentionDays >= 1 && retentionDays <= 90 ? retentionDays : 7, maxEvents: Number.isInteger(maxEvents) && maxEvents >= 100 && maxEvents <= 100000 ? maxEvents : 20000 };
+    return { enabled: enabled === 'true', retentionDays: Number.isInteger(retentionDays) && retentionDays >= 1 && retentionDays <= 90 ? retentionDays : 7, maxEvents: Number.isInteger(maxEvents) && maxEvents >= 100 && maxEvents <= 100000 ? maxEvents : 20000 };
   },
 
   async updateDiagnosticsSettings(db: SQLiteDatabase, patch: Partial<DiagnosticsSettingsRecord>): Promise<DiagnosticsSettingsRecord> {

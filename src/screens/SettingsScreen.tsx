@@ -1,18 +1,34 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import type { PixorySpace } from '../database';
+import { runWithDatabaseSpace } from '../database/db';
+import { settingsRepository } from '../database/repositories/settingsRepository';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useDeveloperMode } from '../utils/dev';
 
 interface SettingsScreenProps {
+  space: PixorySpace;
   onBack: () => void;
   onOpenDeveloperMode: () => void;
   onOpenDiagnostics: () => void;
 }
 
-export function SettingsScreen({ onBack, onOpenDeveloperMode, onOpenDiagnostics }: SettingsScreenProps) {
+export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagnostics }: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
+  const [diagnosticsEnabled, setDiagnosticsEnabledState] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void runWithDatabaseSpace(space, (db) => settingsRepository.getDiagnosticsSettings(db)).then((settings) => {
+      if (mounted) setDiagnosticsEnabledState(settings.enabled);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [space]);
 
   return (
     <ScreenScaffold onBack={onBack} scrollable title="设置">
@@ -40,12 +56,14 @@ export function SettingsScreen({ onBack, onOpenDeveloperMode, onOpenDiagnostics 
             description="查看状态或关闭开发者模式"
             onPress={onOpenDeveloperMode}
           />
-          <SettingsRow
-            icon="speedometer-outline"
-            title="性能与诊断"
-            description="查看性能数据、异常记录并导出诊断包"
-            onPress={onOpenDiagnostics}
-          />
+          {diagnosticsEnabled ? (
+            <SettingsRow
+              icon="speedometer-outline"
+              title="性能与诊断"
+              description="查看性能数据、异常记录并导出诊断包"
+              onPress={onOpenDiagnostics}
+            />
+          ) : null}
         </View>
       ) : null}
     </ScreenScaffold>

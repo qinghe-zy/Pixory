@@ -1,11 +1,33 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import type { PixorySpace } from '../database';
+import { runWithDatabaseSpace } from '../database/db';
+import { settingsRepository, type DiagnosticsSettingsRecord } from '../database/repositories/settingsRepository';
+import { setDiagnosticsEnabled } from '../diagnostics/diagnosticLogger';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { isDeveloperModeEnabled, setDeveloperModeEnabled, useDeveloperMode } from '../utils/dev';
 
-export function DeveloperModeSettingsScreen({ onBack }: { onBack: () => void }) {
+export function DeveloperModeSettingsScreen({ onBack, space }: { onBack: () => void; space: PixorySpace }) {
   const developerMode = useDeveloperMode();
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsSettingsRecord>({ enabled: false, retentionDays: 7, maxEvents: 20000 });
+
+  useEffect(() => {
+    let mounted = true;
+    void runWithDatabaseSpace(space, (db) => settingsRepository.getDiagnosticsSettings(db)).then((settings) => {
+      if (mounted) setDiagnostics(settings);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [space]);
+
+  async function toggleDiagnostics(enabled: boolean) {
+    const next = await runWithDatabaseSpace(space, (db) => settingsRepository.updateDiagnosticsSettings(db, { enabled }));
+    setDiagnostics(next);
+    setDiagnosticsEnabled(space, next.enabled);
+  }
 
   function confirmDisable() {
     Alert.alert(
@@ -34,6 +56,13 @@ export function DeveloperModeSettingsScreen({ onBack }: { onBack: () => void }) 
         <View style={styles.statusRow}>
           <Text style={styles.label}>当前状态</Text>
           <Text style={styles.status}>{developerMode || isDeveloperModeEnabled() ? '已开启' : '已关闭'}</Text>
+        </View>
+        <View style={styles.monitorRow}>
+          <View style={styles.monitorCopy}>
+            <Text style={styles.label}>启用性能监测</Text>
+            <Text style={styles.monitorDescription}>首次默认关闭。开启后才会显示“性能与诊断”入口并记录诊断数据。</Text>
+          </View>
+          <Switch value={diagnostics.enabled} onValueChange={(enabled) => { void toggleDiagnostics(enabled); }} />
         </View>
         <Pressable onPress={confirmDisable} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
           <Text style={styles.buttonText}>关闭开发者模式</Text>
@@ -80,6 +109,24 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontSize: typography.size.body,
     fontWeight: '700',
+  },
+  monitorRow: {
+    alignItems: 'center',
+    borderTopColor: colors.border.subtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[3],
+    marginTop: spacing[5],
+    paddingTop: spacing[4],
+  },
+  monitorCopy: {
+    flex: 1,
+    gap: spacing[1],
+  },
+  monitorDescription: {
+    color: colors.text.secondary,
+    fontSize: typography.size.caption,
+    lineHeight: 18,
   },
   button: {
     alignItems: 'center',

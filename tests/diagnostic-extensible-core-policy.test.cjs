@@ -35,3 +35,13 @@ test('settings hierarchy keeps diagnostics below the settings screen', () => {
   assert.match(settings, /useDeveloperMode/);
   assert.match(settings, /onOpenDiagnostics/);
 });
+
+test('diagnostic monitoring is opt-in and hides the diagnostics entry when disabled', () => {
+  const repository = fs.readFileSync('src/database/repositories/settingsRepository.ts', 'utf8');
+  const settings = fs.readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
+  const developerSettings = fs.readFileSync('src/screens/DeveloperModeSettingsScreen.tsx', 'utf8');
+  assert.match(repository, /enabled: enabled === 'true'/);
+  assert.match(settings, /diagnosticsEnabled/);
+  assert.match(settings, /diagnosticsEnabled[\s\S]*性能与诊断/);
+  assert.match(developerSettings, /setDiagnosticsEnabled/);
+});
