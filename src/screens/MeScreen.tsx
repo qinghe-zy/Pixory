@@ -15,6 +15,7 @@ import { formatFileSize } from '../utils/formatters';
 import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
 import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
 import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
+import { isDevToolsEnabled } from '../utils/dev';
 
 interface MeScreenProps {
   refreshToken: number;
@@ -520,14 +521,18 @@ export function MeScreen({
             <Text style={styles.systemListTitle}>关于</Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
-          <View style={styles.systemListDivider} />
-          <Pressable onPress={() => handleEntryPress('diagnostics')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
-            <View style={styles.systemListIcon}>
-              <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
-            </View>
-            <Text style={styles.systemListTitle}>性能与诊断</Text>
-            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
-          </Pressable>
+          {isDevToolsEnabled ? (
+            <>
+              <View style={styles.systemListDivider} />
+              <Pressable onPress={() => handleEntryPress('diagnostics')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
+                <View style={styles.systemListIcon}>
+                  <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
+                </View>
+                <Text style={styles.systemListTitle}>性能与诊断</Text>
+                <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
+              </Pressable>
+            </>
+          ) : null}
         </ContentCard>
         </MagneticLiquidContainer>
       </View>
