@@ -27,6 +27,18 @@ Server-side AI infrastructure, AI gateways, prompt caching, semantic caching, pr
 - Thumbnails and previews are allowed only as separate preview files.
 - The UI must feel like a real polished mobile product, not an AI mockup.
 
+## Architecture Principles
+
+- Follow a component-driven architecture with high cohesion and low coupling.
+- Componentize reusable UI elements, interaction patterns, business capabilities, and data-handling modules when the boundary is clear and the reuse value is real.
+- Keep each component or module focused on one cohesive responsibility, with explicit inputs, outputs, and stable interfaces.
+- Prefer composing small, reusable components and services over duplicating implementation across screens or features.
+- Reuse shared architecture, design tokens, hooks, utilities, and domain services wherever appropriate so that common behavior can be updated centrally and consistently.
+- Keep feature-specific behavior close to its owning feature; do not create generic abstractions solely for the sake of abstraction.
+- Avoid over-componentization, excessive indirection, and tightly coupled shared components that make behavior difficult to understand or change.
+- Before introducing a new component or service, check whether an existing abstraction can be extended safely without weakening its cohesion or creating unrelated dependencies.
+- Treat consistency, maintainability, batch updates, and future reuse as design goals, while preserving readability and straightforward debugging.
+
 ## Recommended Stack
 
 Use:

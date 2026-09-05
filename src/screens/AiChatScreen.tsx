@@ -4340,7 +4340,8 @@ export function AiChatScreen({
 
   const handleReturnToLatestPress = useCallback(() => {
     followLatestMessage();
-  }, [followLatestMessage]);
+    markScrollGestureSettled();
+  }, [followLatestMessage, markScrollGestureSettled]);
 
   async function renameRecentThread(
     thread: AiThreadHistoryItem,
