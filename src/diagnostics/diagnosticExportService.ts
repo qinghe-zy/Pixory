@@ -10,7 +10,7 @@ import { hashPromptCacheText } from '../ai/aiPromptCache';
 import { copyFileToSafWithProgress } from '../native/pixoryMediaModule';
 import type { DiagnosticExportLevel, DiagnosticEventRecord } from './diagnosticTypes';
 
-export interface DiagnosticExportOptions { space: 'normal' | 'personal'; level: DiagnosticExportLevel; threadId?: string; threadIdHash?: string; from?: string; to?: string; includeResponseSnippets?: boolean; }
+export interface DiagnosticExportOptions { space: 'normal' | 'personal'; level: DiagnosticExportLevel; threadId?: string; threadIds?: string[]; threadIdHash?: string; threadIdHashes?: string[]; from?: string; to?: string; includeResponseSnippets?: boolean; }
 const SECRET_VALUE = /(Bearer\s+[A-Za-z0-9._~+/=-]+|sk-[A-Za-z0-9_-]{8,}|api[_-]?key\s*[:=]\s*\S+|file:\/\/\/[^\s]+|[A-Za-z]:\\(?:[^\s\\]+\\)+[^\s]+)/gi;
 function redactSecrets(value: unknown): unknown { if (Array.isArray(value)) return value.map(redactSecrets); if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, redactSecrets(item)])); return typeof value === 'string' ? value.replace(SECRET_VALUE, '[REDACTED]') : value; }
 function shouldPseudonymize(key: string): boolean { return key !== 'modelId' && (key === 'id' || key === 'traceId' || /(?:Id|Hash)$/.test(key)); }
@@ -27,13 +27,15 @@ function assertStandardExportPrivacy(files: Record<string, string>): void { cons
 
 export async function exportDiagnostics(input: DiagnosticExportOptions): Promise<string> {
   const raw = await runWithDatabaseSpace(input.space, async (db) => {
-    const events = await listDiagnosticEvents(db, input.space, { threadIdHash: input.threadIdHash ?? (input.threadId ? hashPromptCacheText(`${input.space}:thread:${input.threadId}`) : undefined), from: input.from, to: input.to });
+    const selectedThreadIds = input.threadIds?.length ? input.threadIds : input.threadId ? [input.threadId] : [];
+    const selectedThreadHashes = input.threadIdHashes?.length ? input.threadIdHashes : selectedThreadIds.length ? selectedThreadIds.map((id) => hashPromptCacheText(`${input.space}:thread:${id}`)) : undefined;
+    const events = await listDiagnosticEvents(db, input.space, { threadIdHash: input.threadIdHash, threadIdHashes: selectedThreadHashes, from: input.from, to: input.to });
     if (input.level !== 'deep') return { events, deepMessages: [], deepPromptSnapshots: [] };
     const filters = ["r.status = 'completed'"]; const args: string[] = [];
-    if (input.threadId) { filters.push('r.threadId = ?'); args.push(input.threadId); } if (input.from) { filters.push('s.createdAt >= ?'); args.push(input.from); } if (input.to) { filters.push('s.createdAt <= ?'); args.push(input.to); }
+    if (selectedThreadIds.length) { filters.push(`r.threadId IN (${selectedThreadIds.map(() => '?').join(', ')})`); args.push(...selectedThreadIds); } if (input.from) { filters.push('s.createdAt >= ?'); args.push(input.from); } if (input.to) { filters.push('s.createdAt <= ?'); args.push(input.to); }
     const deepPromptSnapshots = await db.getAllAsync<any>(`SELECT r.id AS requestId, r.threadId, r.generationId, r.modelId, r.branchRouteHash, r.contextAssemblyProfileHash, s.sequence, s.role, s.messageId, s.renderedContent, s.sourceMessageVersionHash, s.createdAt FROM ai_prompt_requests r JOIN ai_prompt_snapshots s ON s.requestId = r.id WHERE ${filters.join(' AND ')} ORDER BY s.createdAt ASC, s.sequence ASC`, ...args);
     const messageFilters = ['1 = 1']; const messageArgs: string[] = [];
-    if (input.threadId) { messageFilters.push('threadId = ?'); messageArgs.push(input.threadId); } if (input.from) { messageFilters.push('createdAt >= ?'); messageArgs.push(input.from); } if (input.to) { messageFilters.push('createdAt <= ?'); messageArgs.push(input.to); }
+    if (selectedThreadIds.length) { messageFilters.push(`threadId IN (${selectedThreadIds.map(() => '?').join(', ')})`); messageArgs.push(...selectedThreadIds); } if (input.from) { messageFilters.push('createdAt >= ?'); messageArgs.push(input.from); } if (input.to) { messageFilters.push('createdAt <= ?'); messageArgs.push(input.to); }
     const deepMessages = await db.getAllAsync<any>(`SELECT id, threadId, role, content, ${input.includeResponseSnippets ? 'reasoningText' : 'NULL AS reasoningText'}, status, providerId, modelId, createdAt, completedAt FROM ai_messages WHERE ${messageFilters.join(' AND ')} ORDER BY createdAt ASC`, ...messageArgs);
     return { events, deepMessages, deepPromptSnapshots };
   });
@@ -43,7 +45,7 @@ export async function exportDiagnostics(input: DiagnosticExportOptions): Promise
   const deepMessages = await Promise.all(raw.deepMessages.map((item) => pseudonymizeObject(item, exportSalt)));
   const root = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}pixory-diagnostics-${Date.now()}`; await FileSystem.makeDirectoryAsync(root, { intermediates: true });
   const summary = summarizeDiagnosticEvents(events); const droppedEventCount = getDroppedDiagnosticEventCount(input.space);
-  const manifest = { schemaVersion: 1, exportLevel: input.level, space: input.space, eventCount: events.length, droppedEventCount, generatedAt: new Date().toISOString(), correlationSaltScope: 'single_export_only', filters: { threadSelected: Boolean(input.threadId || input.threadIdHash), from: input.from ?? null, to: input.to ?? null }, completeness: { bufferedEventsFlushed: true, hasDroppedEvents: droppedEventCount > 0 } };
+  const manifest = { schemaVersion: 1, exportLevel: input.level, space: input.space, eventCount: events.length, droppedEventCount, generatedAt: new Date().toISOString(), correlationSaltScope: 'single_export_only', filters: { threadSelected: Boolean(input.threadIds?.length || input.threadId || input.threadIdHash || input.threadIdHashes?.length), from: input.from ?? null, to: input.to ?? null }, completeness: { bufferedEventsFlushed: true, hasDroppedEvents: droppedEventCount > 0 } };
   const analysisReady = { manifest: 'manifest.json', summary: 'summary.md', architecture: 'architecture.json', keyMetrics: summary, integrity: manifest.completeness, files: { events: 'events.jsonl', generationSpans: 'generation-spans.csv', cacheRequests: 'cache-requests.csv', databaseSpans: 'database-spans.csv', screenSpans: 'screen-spans.csv', attachmentSpans: 'attachment-spans.csv', errors: 'errors.jsonl' } };
   const files: Record<string, string> = {
     'manifest.json': JSON.stringify(manifest, null, 2), 'analysis-ready.json': JSON.stringify(analysisReady, null, 2), 'events.jsonl': events.map((event) => JSON.stringify(event)).join('\n'),

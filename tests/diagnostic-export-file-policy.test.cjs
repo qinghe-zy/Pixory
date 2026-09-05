@@ -7,6 +7,9 @@ test('diagnostic export shares and saves the generated ZIP as a file', () => {
   const service = fs.readFileSync('src/diagnostics/diagnosticExportService.ts', 'utf8');
   assert.match(screen, /Sharing\.shareAsync\(uri/);
   assert.match(screen, /runSave/);
+  assert.match(screen, /目标会话（可多选）/);
+  assert.match(screen, /下载标准诊断包到设备/);
+  assert.match(service, /threadIdHashes/);
   assert.match(service, /saveDiagnosticsToSystemDirectory/);
   assert.match(service, /copyFileToSafWithProgress/);
   assert.match(service, /诊断包 ZIP 生成失败或为空/);

@@ -18,7 +18,7 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
   const [working, setWorking] = useState(false);
   const [settings, setSettings] = useState<DiagnosticsSettingsRecord>({ enabled: true, retentionDays: 7, maxEvents: 20000 });
   const [threads, setThreads] = useState<Array<{ id: string; title: string }>>([]);
-  const [threadId, setThreadId] = useState<string | undefined>();
+  const [selectedThreadIds, setSelectedThreadIds] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
   const [includeResponseSnippets, setIncludeResponseSnippets] = useState(false);
   useEffect(() => { void Promise.all([runWithDatabaseSpace(space, (db) => settingsRepository.getDiagnosticsSettings(db)), listAiHistoryThreads({ space, limit: 8 })]).then(([loaded, items]) => { setSettings(loaded); setDiagnosticsEnabled(space, loaded.enabled); setThreads(items.map((item) => ({ id: item.id, title: item.title || '未命名会话' }))); }); }, [space]);
@@ -26,7 +26,7 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
   const saveSettings = async (patch: Partial<DiagnosticsSettingsRecord>) => { const next = await runWithDatabaseSpace(space, (db) => settingsRepository.updateDiagnosticsSettings(db, patch)); setSettings(next); setDiagnosticsEnabled(space, next.enabled); };
   const createExport = async (level: 'standard' | 'deep') => {
     await flushDiagnostics(space);
-    return exportDiagnostics({ level, space, threadId, from, includeResponseSnippets: level === 'deep' && includeResponseSnippets });
+    return exportDiagnostics({ level, space, threadIds: selectedThreadIds, from, includeResponseSnippets: level === 'deep' && includeResponseSnippets });
   };
   const runExport = async (level: 'standard' | 'deep') => {
     setWorking(true);
@@ -52,7 +52,7 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
       setWorking(false);
     }
   };
-  const selectedThreadTitle = threadId ? threads.find((thread) => thread.id === threadId)?.title ?? '已选会话' : '全部会话';
+  const selectedThreadTitle = selectedThreadIds.length ? `已选 ${selectedThreadIds.length} 个会话` : '全部会话';
   const confirmDeepExport = () => Alert.alert('导出深度诊断包', `范围：${selectedThreadTitle}，${timeRange === '24h' ? '最近24小时' : timeRange === '7d' ? '最近7天' : '全部时间'}。${includeResponseSnippets ? '包含 reasoning/answer 字段。' : '不包含 reasoning 字段。'} 本次授权不会被记住。`, [{ text: '取消', style: 'cancel' }, { text: '继续导出', onPress: () => { void runExport('deep'); } }]);
   return <ScreenScaffold onBack={onBack} scrollable title="性能与诊断"><View style={styles.card}>
     <Text style={styles.title}>可复盘诊断</Text><Text style={styles.body}>标准包不含聊天正文、提示词、Base64 或密钥；深度包每次二次确认。</Text>
@@ -60,10 +60,10 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
     <View style={styles.row}><Text style={styles.label}>保留天数</Text><TextInput keyboardType="number-pad" style={styles.input} value={String(settings.retentionDays)} onEndEditing={(event) => { void saveSettings({ retentionDays: Number(event.nativeEvent.text) || 7 }); }} /></View>
     <View style={styles.row}><Text style={styles.label}>事件上限</Text><TextInput keyboardType="number-pad" style={styles.input} value={String(settings.maxEvents)} onEndEditing={(event) => { void saveSettings({ maxEvents: Number(event.nativeEvent.text) || 20000 }); }} /></View>
     <Text style={styles.sectionLabel}>导出时间范围</Text><View style={styles.optionRow}>{(['24h', '7d', 'all'] as TimeRange[]).map((value) => <Pressable key={value} onPress={() => setTimeRange(value)} style={[styles.option, timeRange === value && styles.optionActive]}><Text style={[styles.optionText, timeRange === value && styles.optionTextActive]}>{value === '24h' ? '24小时' : value === '7d' ? '7天' : '全部'}</Text></Pressable>)}</View>
-    <Text style={styles.sectionLabel}>目标会话</Text><Pressable onPress={() => setThreadId(undefined)} style={[styles.threadOption, !threadId && styles.optionActive]}><Text style={[styles.optionText, !threadId && styles.optionTextActive]}>全部会话</Text></Pressable>{threads.map((thread) => <Pressable key={thread.id} onPress={() => setThreadId(thread.id)} style={[styles.threadOption, threadId === thread.id && styles.optionActive]}><Text numberOfLines={1} style={[styles.optionText, threadId === thread.id && styles.optionTextActive]}>{thread.title}</Text></Pressable>)}
+    <Text style={styles.sectionLabel}>目标会话（可多选）</Text><Pressable onPress={() => setSelectedThreadIds([])} style={[styles.threadOption, !selectedThreadIds.length && styles.optionActive]}><Text style={[styles.optionText, !selectedThreadIds.length && styles.optionTextActive]}>全部会话</Text></Pressable>{threads.map((thread) => { const selected = selectedThreadIds.includes(thread.id); return <Pressable key={thread.id} onPress={() => setSelectedThreadIds((current) => selected ? current.filter((id) => id !== thread.id) : [...current, thread.id])} style={[styles.threadOption, selected && styles.optionActive]}><Text numberOfLines={1} style={[styles.optionText, selected && styles.optionTextActive]}>{selected ? '✓ ' : ''}{thread.title}</Text></Pressable>; })}
     <View style={styles.row}><Text style={styles.label}>深度包包含响应片段</Text><Switch value={includeResponseSnippets} onValueChange={setIncludeResponseSnippets} /></View>
     <Pressable disabled={working} onPress={() => { void runExport('standard'); }} style={styles.button}><Text style={styles.buttonText}>{working ? '正在处理…' : '分享标准诊断包'}</Text></Pressable>
-    <Pressable disabled={working} onPress={() => { void runSave('standard'); }} style={styles.secondary}><Text style={styles.secondaryText}>保存标准诊断包到设备</Text></Pressable>
+    <Pressable disabled={working} onPress={() => { void runSave('standard'); }} style={styles.button}><Text style={styles.buttonText}>{working ? '正在生成 ZIP…' : '下载标准诊断包到设备'}</Text></Pressable>
     <Pressable disabled={working} onPress={confirmDeepExport} style={styles.button}><Text style={styles.buttonText}>二次确认后分享深度包</Text></Pressable>
     <Pressable disabled={working} onPress={() => Alert.alert('保存深度诊断包', '将先生成包含所选内容的 ZIP，再由你选择设备保存目录。', [{ text: '取消', style: 'cancel' }, { text: '继续', onPress: () => { void runSave('deep'); } }])} style={styles.secondary}><Text style={styles.secondaryText}>二次确认后保存深度包到设备</Text></Pressable>
     <Pressable disabled={working} onPress={() => { void flushDiagnostics(space).then(() => showToast('诊断日志已刷新')); }} style={styles.secondary}><Text style={styles.secondaryText}>立即写入本地日志</Text></Pressable>

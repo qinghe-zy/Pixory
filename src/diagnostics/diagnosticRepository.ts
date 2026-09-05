@@ -7,10 +7,11 @@ export async function insertDiagnosticEvents(db: SQLiteDatabase, events: Diagnos
   }
 }
 
-export async function listDiagnosticEvents(db: SQLiteDatabase, space: 'normal' | 'personal', options: { limit?: number; threadIdHash?: string; from?: string; to?: string } = {}): Promise<DiagnosticEventRecord[]> {
+export async function listDiagnosticEvents(db: SQLiteDatabase, space: 'normal' | 'personal', options: { limit?: number; threadIdHash?: string; threadIdHashes?: string[]; from?: string; to?: string } = {}): Promise<DiagnosticEventRecord[]> {
   const clauses = ['space = ?'];
   const args: (string | number)[] = [space];
   if (options.threadIdHash) { clauses.push('threadIdHash = ?'); args.push(options.threadIdHash); }
+  if (options.threadIdHashes?.length) { clauses.push(`threadIdHash IN (${options.threadIdHashes.map(() => '?').join(', ')})`); args.push(...options.threadIdHashes); }
   if (options.from) { clauses.push('occurredAt >= ?'); args.push(options.from); }
   if (options.to) { clauses.push('occurredAt <= ?'); args.push(options.to); }
   args.push(options.limit ?? 20000);
