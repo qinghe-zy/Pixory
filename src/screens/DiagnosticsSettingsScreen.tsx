@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import * as Sharing from 'expo-sharing';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { useToast } from '../components/AppToast';
 import type { PixorySpace } from '../database';
@@ -32,22 +31,10 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
     setWorking(true);
     try {
       const uri = await createExport(level);
-      if (!(await Sharing.isAvailableAsync())) throw new Error('当前设备不支持文件分享，请使用保存到设备。');
-      await Sharing.shareAsync(uri, { mimeType: 'application/zip', dialogTitle: `Pixory ${level === 'deep' ? '深度' : '标准'}诊断包` });
-    } catch (error) {
-      showToast(error instanceof Error ? `分享失败：${error.message}` : '分享失败');
-    } finally {
-      setWorking(false);
-    }
-  };
-  const runSave = async (level: 'standard' | 'deep') => {
-    setWorking(true);
-    try {
-      const uri = await createExport(level);
       await saveDiagnosticsToSystemDirectory({ zipUri: uri });
-      showToast('诊断包已保存，请在系统文件管理器中查看。');
+      showToast('诊断包已下载，请在系统文件管理器中查看。');
     } catch (error) {
-      showToast(error instanceof Error ? `保存失败：${error.message}` : '保存失败');
+      showToast(error instanceof Error ? `下载失败：${error.message}` : '下载失败');
     } finally {
       setWorking(false);
     }
@@ -62,10 +49,8 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
     <Text style={styles.sectionLabel}>导出时间范围</Text><View style={styles.optionRow}>{(['24h', '7d', 'all'] as TimeRange[]).map((value) => <Pressable key={value} onPress={() => setTimeRange(value)} style={[styles.option, timeRange === value && styles.optionActive]}><Text style={[styles.optionText, timeRange === value && styles.optionTextActive]}>{value === '24h' ? '24小时' : value === '7d' ? '7天' : '全部'}</Text></Pressable>)}</View>
     <Text style={styles.sectionLabel}>目标会话（可多选）</Text><Pressable onPress={() => setSelectedThreadIds([])} style={[styles.threadOption, !selectedThreadIds.length && styles.optionActive]}><Text style={[styles.optionText, !selectedThreadIds.length && styles.optionTextActive]}>全部会话</Text></Pressable>{threads.map((thread) => { const selected = selectedThreadIds.includes(thread.id); return <Pressable key={thread.id} onPress={() => setSelectedThreadIds((current) => selected ? current.filter((id) => id !== thread.id) : [...current, thread.id])} style={[styles.threadOption, selected && styles.optionActive]}><Text numberOfLines={1} style={[styles.optionText, selected && styles.optionTextActive]}>{selected ? '✓ ' : ''}{thread.title}</Text></Pressable>; })}
     <View style={styles.row}><Text style={styles.label}>深度包包含响应片段</Text><Switch value={includeResponseSnippets} onValueChange={setIncludeResponseSnippets} /></View>
-    <Pressable disabled={working} onPress={() => { void runExport('standard'); }} style={styles.button}><Text style={styles.buttonText}>{working ? '正在处理…' : '分享标准诊断包'}</Text></Pressable>
-    <Pressable disabled={working} onPress={() => { void runSave('standard'); }} style={styles.button}><Text style={styles.buttonText}>{working ? '正在生成 ZIP…' : '下载标准诊断包到设备'}</Text></Pressable>
-    <Pressable disabled={working} onPress={confirmDeepExport} style={styles.button}><Text style={styles.buttonText}>二次确认后分享深度包</Text></Pressable>
-    <Pressable disabled={working} onPress={() => Alert.alert('保存深度诊断包', '将先生成包含所选内容的 ZIP，再由你选择设备保存目录。', [{ text: '取消', style: 'cancel' }, { text: '继续', onPress: () => { void runSave('deep'); } }])} style={styles.secondary}><Text style={styles.secondaryText}>二次确认后保存深度包到设备</Text></Pressable>
+    <Pressable disabled={working} onPress={() => { void runExport('standard'); }} style={styles.button}><Text style={styles.buttonText}>{working ? '正在生成 ZIP…' : '下载标准诊断包到设备'}</Text></Pressable>
+    <Pressable disabled={working} onPress={confirmDeepExport} style={styles.button}><Text style={styles.buttonText}>二次确认后下载深度包</Text></Pressable>
     <Pressable disabled={working} onPress={() => { void flushDiagnostics(space).then(() => showToast('诊断日志已刷新')); }} style={styles.secondary}><Text style={styles.secondaryText}>立即写入本地日志</Text></Pressable>
     <Pressable disabled={working} onPress={() => Alert.alert('清除诊断日志', '只清除当前空间的诊断事件，不影响聊天、记忆或附件。', [{ text: '取消', style: 'cancel' }, { text: '清除', style: 'destructive', onPress: () => { void runWithDatabaseSpace(space, (db) => clearDiagnosticEvents(db, space)).then(() => showToast('当前空间日志已清除')); } }])} style={styles.secondary}><Text style={styles.secondaryText}>清除当前空间日志</Text></Pressable>
   </View></ScreenScaffold>;
