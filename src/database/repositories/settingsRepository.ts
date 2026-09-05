@@ -14,6 +14,9 @@ export const AI_DEFAULT_CHAT_PROVIDER_ID_KEY = 'aiDefaultChatProviderId';
 export const AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY = 'aiProviderPromptCacheEnabled';
 export const AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY = 'aiProviderPromptCacheDisabledProviderIds';
 export const AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY = 'aiProviderPromptCacheTtlMs';
+export const DIAGNOSTICS_ENABLED_KEY = 'diagnosticsEnabled';
+export const DIAGNOSTICS_RETENTION_DAYS_KEY = 'diagnosticsRetentionDays';
+export const DIAGNOSTICS_MAX_EVENTS_KEY = 'diagnosticsMaxEvents';
 export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
 export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
 export const MEMORY_MAINTENANCE_MODEL_ID_KEY = 'memoryMaintenanceModelId';
@@ -47,6 +50,12 @@ export interface MemoryMaintenanceSettingsRecord {
   memoryMaintenanceTestedBaseUrlHash: string | null;
   memoryMaintenanceTestedModelId: string | null;
   memoryMaintenanceTestedProviderId: string | null;
+}
+
+export interface DiagnosticsSettingsRecord {
+  enabled: boolean;
+  retentionDays: number;
+  maxEvents: number;
 }
 
 export interface AiPromptCacheSettingsRecord {
@@ -306,6 +315,20 @@ export const settingsRepository = {
       await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY, JSON.stringify(sanitizeProviderTtlMs(patch.providerTtlMs) ?? {}));
     }
     return this.getAiPromptCacheSettings(db);
+  },
+
+  async getDiagnosticsSettings(db: SQLiteDatabase): Promise<DiagnosticsSettingsRecord> {
+    const enabled = await this.getValue(db, DIAGNOSTICS_ENABLED_KEY);
+    const retentionDays = Number(await this.getValue(db, DIAGNOSTICS_RETENTION_DAYS_KEY));
+    const maxEvents = Number(await this.getValue(db, DIAGNOSTICS_MAX_EVENTS_KEY));
+    return { enabled: enabled !== 'false', retentionDays: Number.isInteger(retentionDays) && retentionDays >= 1 && retentionDays <= 90 ? retentionDays : 7, maxEvents: Number.isInteger(maxEvents) && maxEvents >= 100 && maxEvents <= 100000 ? maxEvents : 20000 };
+  },
+
+  async updateDiagnosticsSettings(db: SQLiteDatabase, patch: Partial<DiagnosticsSettingsRecord>): Promise<DiagnosticsSettingsRecord> {
+    if (patch.enabled !== undefined) await this.setValue(db, DIAGNOSTICS_ENABLED_KEY, patch.enabled ? 'true' : 'false');
+    if (patch.retentionDays !== undefined) await this.setValue(db, DIAGNOSTICS_RETENTION_DAYS_KEY, String(Math.min(90, Math.max(1, Math.round(patch.retentionDays)))));
+    if (patch.maxEvents !== undefined) await this.setValue(db, DIAGNOSTICS_MAX_EVENTS_KEY, String(Math.min(100000, Math.max(100, Math.round(patch.maxEvents)))));
+    return this.getDiagnosticsSettings(db);
   },
 
   async getAssetListViewMode(db: SQLiteDatabase): Promise<AssetListViewMode> {

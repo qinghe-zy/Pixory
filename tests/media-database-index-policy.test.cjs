@@ -30,7 +30,7 @@ test('runtime initialization ensures media indexes without bumping schema versio
   assert.match(dbSource, /idx_image_assets_ip_media_live_created/);
   assert.match(dbSource, /idx_image_assets_media_live_viewed/);
   assert.match(dbSource, /idx_ai_messages_thread_created_id/);
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*59/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*(?:59|6[01])/);
 });
 
 test('media and chat hot queries use the intended composite indexes without temp sorting', () => {

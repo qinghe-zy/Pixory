@@ -87,6 +87,8 @@ import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { IpCoverPickerScreen } from './src/screens/IpCoverPickerScreen';
 import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
+import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
+import { initializeDiagnostics } from './src/diagnostics/diagnosticLogger';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { OriginalStorageScreen } from './src/screens/OriginalStorageScreen';
 import { OrganizeScreen } from './src/screens/OrganizeScreen';
@@ -236,6 +238,7 @@ type AppRoute =
   | { name: 'companion-runtime-manager'; space: PixorySpace; threadId: string }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
+  | { name: 'diagnostics-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
@@ -510,6 +513,10 @@ export default function App() {
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
+
+  useEffect(() => {
+    if (isReady) void initializeDiagnostics(activeSpace).catch(() => undefined);
+  }, [activeSpace, isReady]);
 
   const currentRouteRef = useRef(currentRoute);
   currentRouteRef.current = currentRoute;
@@ -1417,6 +1424,7 @@ export default function App() {
               onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
               onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
               onOpenAbout={() => pushRoute({ name: 'about', space: activeSpace })}
+              onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: activeSpace })}
               onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
               onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
               onLockPersonalSpace={() => {
@@ -2132,6 +2140,8 @@ export default function App() {
     content = <ProductDocumentationScreen onBack={popRoute} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'diagnostics-settings') {
+    content = <DiagnosticsSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-library') {
     content = (
       <AiRoleLibraryScreen

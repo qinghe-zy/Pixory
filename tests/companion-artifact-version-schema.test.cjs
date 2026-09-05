@@ -83,7 +83,7 @@ test('V59 backfills legacy dreams into one current version group and creates cha
         '2026-08-11T00:00:00.000Z', 'active', '2026-08-11T00:00:00.000Z', '2026-08-11T00:00:00.000Z')
     `).run();
 
-    assert.equal(schema.DATABASE_VERSION, 59);
+    assert.equal(schema.DATABASE_VERSION, 61);
     db.exec(schema.MIGRATION_STATEMENTS_V59);
     assert.deepEqual(
       {

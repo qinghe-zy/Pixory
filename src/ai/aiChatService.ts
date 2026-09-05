@@ -97,9 +97,20 @@ import {
 } from './aiPromptCache';
 import {
   isAllowedOfficialDeepSeekModel,
+  isAllowedOfficialDeepSeekVisionModel,
   isOfficialDeepSeekProvider,
   migrateDeprecatedDeepSeekModel,
 } from './deepseekModelPolicy';
+import { assertDeepSeekVisionAttachment, assertDeepSeekVisionRequest, supportsDeepSeekVision } from './deepseekVisionPolicy';
+import { flushDiagnostics, recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
+import {
+  beginDeepSeekPromptRequest,
+  buildDeepSeekReplayHistory,
+  writeCompletedDeepSeekPromptRequest,
+  failDeepSeekPromptRequest,
+  findRenderedUserSnapshotsForAssistantIds,
+  sourceMessageVersionHash,
+} from './deepseekPromptLedger';
 import { normalizeProviderUsage, type NormalizedProviderUsage } from './aiProviderUsage';
 import {
   STREAMING_PRESSURE_RECOVERY_MS,
@@ -1324,10 +1335,13 @@ function describeOutgoingAttachmentKind(kind: AiOutgoingAttachment['kind']): str
   return '文档';
 }
 
-async function readImageAttachment(attachment: AiOutgoingAttachment): Promise<AiChatAttachment> {
+async function readImageAttachment(attachment: AiOutgoingAttachment, validateDeepSeekVision = false): Promise<AiChatAttachment> {
   const base64Data = await FileSystem.readAsStringAsync(attachment.uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
+  if (validateDeepSeekVision) {
+    assertDeepSeekVisionAttachment({ mimeType: attachment.mimeType, size: attachment.size, base64Data });
+  }
   return {
     base64Data,
     mimeType: attachment.mimeType || 'image/jpeg',
@@ -1385,6 +1399,7 @@ function buildAttachmentPromptContext(input: {
   imageReadFailureCount: number;
   sentImageCount: number;
   visionEnabled: boolean;
+  validateDeepSeekVision?: boolean;
 }): string {
   if (input.attachments.length === 0) {
     return '';
@@ -1419,6 +1434,9 @@ async function prepareOutgoingAttachments(input: {
   space: PixorySpace;
   threadId: string;
   visionEnabled: boolean;
+  validateDeepSeekVision?: boolean;
+  visionModelId?: string;
+  visionModel?: { supportsVision: boolean } | null;
 }): Promise<{ promptContext: string; providerAttachments: AiChatAttachment[] }> {
   const attachments = input.attachments ?? [];
   if (attachments.length === 0) {
@@ -1448,12 +1466,15 @@ async function prepareOutgoingAttachments(input: {
   assertAiChatAttachments(resolvedAttachments);
 
   const imageAttachments = resolvedAttachments.filter((attachment) => attachment.kind === 'image');
+  if (input.visionEnabled && imageAttachments.length > 0) {
+    assertDeepSeekVisionRequest({ imageSizes: imageAttachments.map((attachment) => attachment.size ?? -1), model: input.visionModel, modelId: input.visionModelId ?? '' });
+  }
   const [imageResults, documentContexts] = await Promise.all([
     input.visionEnabled
       ? settleWithConcurrency(
           imageAttachments,
           AI_CHAT_ATTACHMENT_READ_CONCURRENCY,
-          readImageAttachment,
+          (attachment) => readImageAttachment(attachment, input.validateDeepSeekVision),
         )
       : Promise.resolve([]),
     buildDocumentAttachmentContext({ attachments: resolvedAttachments, space: input.space, threadId: input.threadId }),
@@ -1939,7 +1960,7 @@ export async function resolveThreadChatModel(space: PixorySpace, thread: ThreadM
           ? models.find((model) =>
             model.modelId === candidateModelId
               && model.supportsChat
-              && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(model.modelId))
+              && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(model.modelId) || isAllowedOfficialDeepSeekVisionModel(model.modelId))
           ) ?? null
           : null;
       const explicitMigration = migrateDeprecatedDeepSeekModel(modelId, effectiveBaseUrl);
@@ -1964,7 +1985,7 @@ export async function resolveThreadChatModel(space: PixorySpace, thread: ThreadM
         ?? defaultModel
         ?? models.find((model) =>
           model.supportsChat
-            && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(model.modelId))
+            && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(model.modelId) || isAllowedOfficialDeepSeekVisionModel(model.modelId))
         )
         ?? null;
       if (!resolvedModel) {
@@ -3827,6 +3848,7 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
   contextTrimmedByCount: boolean;
   contextTrimmedByBudget: boolean;
   history: Array<{ role: 'assistant' | 'user'; content: string }>;
+  historyMessageIds: string[];
 } {
   const userIndex = messages.findIndex((message) => message.id === userMessageId);
   const previousMessages = userIndex >= 0 ? messages.slice(0, userIndex) : messages;
@@ -3844,6 +3866,7 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
   return {
     contextTrimmedByCount: roundSelected.trimmed,
     contextTrimmedByBudget: budgeted.trimmed,
+    historyMessageIds: budgeted.messages.map((message) => message.id),
     history: budgeted.messages
       .map((message) => ({
         role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
@@ -4232,6 +4255,16 @@ async function streamAssistantReply(input: {
   let assistantReset = mode === 'continue';
   const generationMetrics = input.generationMetrics;
   const generationId = generationMetrics.context.generationId;
+  const traceId = `trace_${generationId}`;
+  const generationStartedAt = Date.now();
+  recordDiagnosticEvent({
+    eventType: 'generation_start',
+    generationId,
+    payload: { mode, attachmentCount: input.attachments?.length ?? 0 },
+    space: input.space,
+    threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
+    traceId,
+  });
   const streamingPerformanceIdentity: StreamingPerformanceIdentity = {
     generationId,
     messageId: input.assistantMessageId,
@@ -4425,6 +4458,8 @@ async function streamAssistantReply(input: {
   let contextTrimmedByCount = false;
   let coverage: CompiledConversationCoverage;
   let history: Array<{ role: 'assistant' | 'user'; content: string }> = [];
+  let historyMessageIds: string[] = [];
+  let deepSeekLedgerRequestId: string | null = null;
   let modelId = '';
   let modelContextWindowTokens: number | null = null;
   let outgoingAttachments: AiChatAttachment[] = [];
@@ -4436,6 +4471,8 @@ async function streamAssistantReply(input: {
   let legacyThinkingDisabled = false;
   let snippets: Awaited<ReturnType<typeof buildPromptForThread>>['snippets'] = [];
   let userPrompt = '';
+  let firstAnswerDeltaRecorded = false;
+  let firstReasoningDeltaRecorded = false;
   const requestedAt = startedAt;
 
   try {
@@ -4604,15 +4641,36 @@ async function streamAssistantReply(input: {
     }
 
     const hasImageAttachments = (input.attachments ?? []).some((a) => a.kind === 'image');
-    // If the user attached images, always send them — the user's intent is the
-    // strongest signal.  Model capability flags may be stale or incomplete; let
-    // the provider return an error if the model truly cannot handle images.
-    const canSendVisionAttachments = hasImageAttachments || (provider.visionEnabled && resolvedModel.model.supportsVision);
+    const isDeepSeek = isOfficialDeepSeekProvider({ baseUrl: provider.baseUrl, providerType: provider.providerType });
+    const canSendVisionAttachments = isDeepSeek
+      ? supportsDeepSeekVision({ modelId, model: resolvedModel.model })
+      : provider.visionEnabled && resolvedModel.model.supportsVision;
+    if (hasImageAttachments && isDeepSeek) {
+      try {
+        assertDeepSeekVisionRequest({
+          imageSizes: (input.attachments ?? [])
+            .filter((attachment) => attachment.kind === 'image')
+            .map((attachment) => attachment.size ?? 0),
+          model: resolvedModel.model,
+          modelId,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '当前模型不支持图片，请切换视觉模型。';
+        const failureCode = setGenerationFailureReason(generationMetrics, 'vision_unsupported');
+        await markAssistantFailed(input.space, input.assistantMessageId, generationId, errorMessage, answerText, reasoningText || null, buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics, messageDisplayKind }));
+        emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage, completedAt: new Date().toISOString() });
+        input.onUpdated?.();
+        return;
+      }
+    }
     const preparedAttachments = await prepareOutgoingAttachments({
       attachments: input.attachments,
       space: input.space,
       threadId: input.thread.id,
       visionEnabled: canSendVisionAttachments,
+      validateDeepSeekVision: isDeepSeek,
+      visionModelId: isDeepSeek ? modelId : undefined,
+      visionModel: isDeepSeek ? resolvedModel.model : undefined,
     });
     outgoingAttachments = preparedAttachments.providerAttachments;
     const attachmentPromptContext = preparedAttachments.promptContext;
@@ -4645,6 +4703,15 @@ async function streamAssistantReply(input: {
       ))
       .reduce((total, layer) => total + (layer.text ? estimatePromptTokens(layer.text) : 0), 0);
     markGenerationMetric(generationMetrics, 'promptBuildEndAt');
+    recordDiagnosticEvent({
+      durationMs: Date.now() - generationStartedAt,
+      eventType: 'prompt_ready',
+      generationId,
+      payload: { historyMessageCount: history.length, modelId, stablePrefixEstimatedTokens: prompt.cacheMetadata.stablePrefixEstimatedTokens },
+      space: input.space,
+      threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
+      traceId,
+    });
     if (await stopForAbort()) {
       return;
     }
@@ -4664,11 +4731,21 @@ async function streamAssistantReply(input: {
       mode === 'followup' ? input.continuationContext?.answerText ?? '' : '',
       mode === 'followup' ? input.continuationInstruction ?? '' : '',
     ].filter(Boolean).join('\n\n');
-    ({ contextTrimmedByCount, contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id, {
+    ({ contextTrimmedByCount, contextTrimmedByBudget, history, historyMessageIds } = buildChatHistory(historyMessages, input.userMessage.id, {
       historyRoundLimit,
       modelContextWindowTokens,
       protectedPrompt,
     }));
+    if (isOfficialDeepSeekProvider({ baseUrl: provider.baseUrl, providerType: provider.providerType }) && mode !== 'continue' && mode !== 'followup') {
+      const snapshotsByAssistantId = await runWithDatabaseSpace(input.space, (db) =>
+        findRenderedUserSnapshotsForAssistantIds(db, historyMessages.filter((message) => message.role === 'assistant').map((message) => message.id))
+      );
+      history = buildDeepSeekReplayHistory({
+        branchRouteHash: buildBranchRouteHash(branchScopes),
+        history: history.map((message, index) => ({ ...message, messageId: historyMessageIds[index] })),
+        snapshotsByAssistantId,
+      }).map(({ content, role }) => ({ content, role }));
+    }
     if (mode === 'continue') {
       history = appendVisibleAssistantPartialToHistory(history, {
         assistantPartial: buildAssistantContinuationContext({
@@ -4727,6 +4804,29 @@ async function streamAssistantReply(input: {
       ttlLikelyExpired: ttlLikelyExpired({ previousRequestAt, provider, requestedAt, settings: promptCacheSettings }),
       turnIntervalMs: turnIntervalMs != null && Number.isFinite(turnIntervalMs) ? turnIntervalMs : null,
     });
+    if (isOfficialDeepSeekProvider({ baseUrl: provider.baseUrl, providerType: provider.providerType }) && mode !== 'continue' && mode !== 'followup') {
+      deepSeekLedgerRequestId = `aiprompt_${generationId}`;
+      await runWithDatabaseSpace(input.space, (db) => beginDeepSeekPromptRequest(db, {
+        assistantMessageId: input.assistantMessageId,
+        branchRouteHash: buildBranchRouteHash(branchScopes),
+        contextAssemblyProfileHash: prompt.cacheMetadata.stablePrefixHash,
+        generationId,
+        historyRoundLimit,
+        id: deepSeekLedgerRequestId as string,
+        memoryEpoch: prompt.cacheMetadata.memoryEpoch,
+        modelId,
+        promptVersion: prompt.cacheMetadata.promptVersion,
+        providerId: provider.id,
+        retrievalHash: prompt.cacheMetadata.retrievalHash,
+        reusablePrefixEstimatedTokens: prompt.cacheMetadata.stablePrefixEstimatedTokens,
+        sourceMessageVersionHash: sourceMessageVersionHash(input.userMessage.content),
+        space: input.space,
+        stablePrefixEstimatedTokens: prompt.cacheMetadata.stablePrefixEstimatedTokens,
+        stablePrefixHash: prompt.cacheMetadata.stablePrefixHash,
+        threadId: input.thread.id,
+        userMessageId: input.userMessage.id,
+      }));
+    }
   } catch (error) {
     if (await stopForAbort({ buildPromptSnapshotJson: () => buildMetricsOnlyPromptSnapshotJson({ generationMetrics, messageDisplayKind, stopReason: currentStopReason() }) })) {
       return;
@@ -5038,6 +5138,20 @@ async function streamAssistantReply(input: {
           generationMetrics.context.totalPromptTokens = normalizedUsage?.totalPromptTokens ?? null;
           generationMetrics.context.cachedInputTokens = normalizedUsage?.cachedInputTokens ?? null;
           generationMetrics.context.cachedTokenRatio = normalizedUsage?.cachedTokenRatio ?? null;
+          recordDiagnosticEvent({
+            eventType: 'provider_usage',
+            generationId,
+            payload: {
+              cacheFieldsObserved: normalizedUsage?.cacheFieldsObserved ?? false,
+              cachedInputTokens: normalizedUsage?.cachedInputTokens ?? null,
+              completionTokens: normalizedUsage?.completionTokens ?? null,
+              promptTokens: normalizedUsage?.promptTokens ?? null,
+              totalPromptTokens: normalizedUsage?.totalPromptTokens ?? null,
+            },
+            space: input.space,
+            threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
+            traceId,
+          });
           return;
         }
         if (event.type === 'answer_delta') {
@@ -5047,6 +5161,17 @@ async function streamAssistantReply(input: {
           generationMetrics.counters.answerDeltaCount += 1;
           if (!generationMetrics.timestamps.firstProviderDeltaAt) {
             markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
+          }
+          if (!firstAnswerDeltaRecorded) {
+            firstAnswerDeltaRecorded = true;
+            recordDiagnosticEvent({
+            eventType: 'first_answer_delta',
+            generationId,
+            payload: { chars: [...event.text].length },
+            space: input.space,
+            threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
+            traceId,
+            });
           }
           markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
           const visibleDelta = citationMarkerParser.push(event.text);
@@ -5065,6 +5190,17 @@ async function streamAssistantReply(input: {
             generationMetrics.counters.reasoningDeltaCount += 1;
             if (!generationMetrics.timestamps.firstProviderDeltaAt) {
               markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
+            }
+            if (!firstReasoningDeltaRecorded) {
+              firstReasoningDeltaRecorded = true;
+              recordDiagnosticEvent({
+              eventType: 'first_reasoning_delta',
+              generationId,
+              payload: { chars: [...event.text].length },
+              space: input.space,
+              threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
+              traceId,
+              });
             }
             markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
             pendingReasoningChunks.push(event.text);
@@ -5126,6 +5262,9 @@ async function streamAssistantReply(input: {
 
   finalizeCitationParser();
 
+  if (streamFailed && deepSeekLedgerRequestId) {
+    await runWithDatabaseSpace(input.space, (db) => failDeepSeekPromptRequest(db, deepSeekLedgerRequestId as string));
+  }
   if (streamFailed) {
     flushStreamingTextChunks();
     mergeStreamingPerformanceSnapshot();
@@ -5155,6 +5294,7 @@ async function streamAssistantReply(input: {
     if (answerText) {
       await recordSuccessfulProviderModel(input.space, provider.id, modelId);
     }
+    if (deepSeekLedgerRequestId) await runWithDatabaseSpace(input.space, (db) => failDeepSeekPromptRequest(db, deepSeekLedgerRequestId as string, 'stopped'));
     return;
   }
 
@@ -5166,6 +5306,16 @@ async function streamAssistantReply(input: {
   if (!answerText) {
     setGenerationFailureReason(generationMetrics, finalFailureReason);
   }
+  recordDiagnosticEvent({
+    durationMs: Date.now() - generationStartedAt,
+    eventType: answerText ? 'generation_completed' : 'generation_empty',
+    generationId,
+    payload: { modelId, providerId: provider.id, historyMessageCount: history.length },
+    space: input.space,
+    threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
+    traceId,
+  });
+  void flushDiagnostics(input.space);
   markGenerationMetric(generationMetrics, 'finalPersistStartAt');
   const promptSnapshotJson = createPromptSnapshotJson();
   let finalMessagePersisted = false;
@@ -5185,6 +5335,15 @@ async function streamAssistantReply(input: {
         completedAt,
       });
       finalMessagePersisted = Boolean(current);
+      if (current?.status === 'completed' && deepSeekLedgerRequestId) {
+        await writeCompletedDeepSeekPromptRequest(db, deepSeekLedgerRequestId, [{
+          branchRouteHash: buildBranchRouteHash(branchScopes),
+          messageId: input.userMessage.id,
+          renderedContent: prompt.user,
+          role: 'user',
+          sourceMessageVersionHash: sourceMessageVersionHash(input.userMessage.content),
+        }]);
+      }
       if (current?.status === 'completed') {
         if (companionContextPlan?.selectedOpenLoopId) {
           await markCompanionOpenLoopMentioned(db, {

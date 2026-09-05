@@ -29,6 +29,7 @@ interface MeScreenProps {
   onOpenStorageUsage: () => void;
   onOpenDuplicateReview: () => void;
   onOpenAbout: () => void;
+  onOpenDiagnostics: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
 }
@@ -153,6 +154,7 @@ export function MeScreen({
   onOpenStorageUsage,
   onOpenDuplicateReview,
   onOpenAbout,
+  onOpenDiagnostics,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
 }: MeScreenProps) {
@@ -208,7 +210,7 @@ export function MeScreen({
     }
   );
 
-  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about') {
+  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'diagnostics') {
     if (key === 'favorites') {
       onOpenFavorites();
       return;
@@ -243,6 +245,7 @@ export function MeScreen({
       onOpenAbout();
       return;
     }
+    if (key === 'diagnostics') onOpenDiagnostics();
   }
 
   function handlePersonalToggle() {
@@ -518,11 +521,11 @@ export function MeScreen({
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
           <View style={styles.systemListDivider} />
-          <Pressable onPress={() => showToast('设置功能暂未开放')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
+          <Pressable onPress={() => handleEntryPress('diagnostics')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
             <View style={styles.systemListIcon}>
               <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
             </View>
-            <Text style={styles.systemListTitle}>设置</Text>
+            <Text style={styles.systemListTitle}>性能与诊断</Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
         </ContentCard>
