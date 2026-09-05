@@ -2,11 +2,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { DiagnosticEventRecord } from './diagnosticTypes';
 
 export async function insertDiagnosticEvents(db: SQLiteDatabase, events: DiagnosticEventRecord[]): Promise<void> {
-  await db.withTransactionAsync(async () => {
-    for (const event of events) {
-      await db.runAsync(`INSERT OR REPLACE INTO diagnostic_events (id, space, traceId, eventType, occurredAt, monotonicStartMs, monotonicEndMs, durationMs, parentSpanId, threadIdHash, generationId, requestId, payloadJson, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, event.id, event.space, event.traceId, event.eventType, event.occurredAt, event.monotonicStartMs ?? null, event.monotonicEndMs ?? null, event.durationMs ?? null, event.parentSpanId ?? null, event.threadIdHash ?? null, event.generationId ?? null, event.requestId ?? null, JSON.stringify(event.payload ?? {}), event.createdAt);
-    }
-  });
+  for (const event of events) {
+    await db.runAsync(`INSERT OR REPLACE INTO diagnostic_events (id, space, traceId, eventType, occurredAt, monotonicStartMs, monotonicEndMs, durationMs, parentSpanId, threadIdHash, generationId, requestId, payloadJson, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, event.id, event.space, event.traceId, event.eventType, event.occurredAt, event.monotonicStartMs ?? null, event.monotonicEndMs ?? null, event.durationMs ?? null, event.parentSpanId ?? null, event.threadIdHash ?? null, event.generationId ?? null, event.requestId ?? null, JSON.stringify(event.payload ?? {}), event.createdAt);
+  }
 }
 
 export async function listDiagnosticEvents(db: SQLiteDatabase, space: 'normal' | 'personal', options: { limit?: number; threadIdHash?: string; from?: string; to?: string } = {}): Promise<DiagnosticEventRecord[]> {

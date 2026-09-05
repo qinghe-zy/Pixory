@@ -23,6 +23,7 @@ import type {
 import type { AiDocumentOwnerType, AiDocumentStatus } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 
 interface AiMaterialListScreenProps {
   space: PixorySpace;
@@ -68,6 +69,9 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
   const screenTitle = threadId ? '会话资料库' : knowledgeBaseId ? '知识库资料' : ownerTitle ?? '总资料库';
 
   const reload = useCallback(async () => {
+    const startedAt = Date.now();
+    const traceId = `materials-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    recordDiagnosticEvent({ eventType: 'materials_load_started', space, traceId, payload: { global: isGlobalView, thread: Boolean(threadId), knowledgeBase: Boolean(knowledgeBaseId) } });
     if (threadId) {
       setConversationGroups([]);
       const page = await listMaterialsPage({ limit: MATERIAL_PAGE_SIZE, space, threadId });
@@ -75,6 +79,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
       setItemCursor(page.nextCursor);
       setGroupCursor(null);
       setHasMore(page.hasMore);
+      recordDiagnosticEvent({ eventType: 'materials_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { itemCount: page.items.length, groupCount: 0, hasMore: page.hasMore } });
       return;
     }
     if (isGlobalView) {
@@ -84,6 +89,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
       setGroupCursor(page.nextCursor);
       setItemCursor(null);
       setHasMore(page.hasMore);
+      recordDiagnosticEvent({ eventType: 'materials_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { itemCount: page.items.length, groupCount: 0, hasMore: page.hasMore } });
       return;
     }
     setConversationGroups([]);
@@ -98,6 +104,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
     setItemCursor(page.nextCursor);
     setGroupCursor(null);
     setHasMore(page.hasMore);
+    recordDiagnosticEvent({ eventType: 'materials_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { itemCount: page.items.length, groupCount: page.items.length, hasMore: page.hasMore } });
   }, [isGlobalView, knowledgeBaseId, ownerId, ownerType, space, threadId]);
 
   const loadMore = useCallback(async () => {
@@ -105,6 +112,9 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
       return;
     }
     setLoadingMore(true);
+    const startedAt = Date.now();
+    const traceId = 'materials-page-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    recordDiagnosticEvent({ eventType: 'materials_page_started', space, traceId, payload: { global: isGlobalView } });
     try {
       if (isGlobalView) {
         const page = await listGlobalMaterialGroupPage({
@@ -118,6 +128,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
         });
         setGroupCursor(page.nextCursor);
         setHasMore(page.hasMore);
+        recordDiagnosticEvent({ eventType: 'materials_page_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { loadedCount: page.items.length, hasMore: page.hasMore } });
         return;
       }
       const page = await listMaterialsPage({
@@ -135,6 +146,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
       });
       setItemCursor(page.nextCursor);
       setHasMore(page.hasMore);
+      recordDiagnosticEvent({ eventType: 'materials_page_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { loadedCount: page.items.length, hasMore: page.hasMore } });
     } finally {
       setLoadingMore(false);
     }

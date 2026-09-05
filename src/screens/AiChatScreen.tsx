@@ -164,6 +164,7 @@ import {
   type StreamingTailViewportPolicy,
 } from "../ai/aiStreamingTailViewportPolicy";
 import { streamingTailPerfDebug } from "../ai/aiStreamingPerfDebug";
+import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 import {
   recordDetachedTailMerge,
   recordStreamingUiCommit,
@@ -1083,6 +1084,10 @@ export function AiChatScreen({
   const isLoadingEarlierRef = useRef(false);
   const displayTitleRef = useRef(resolvedContextTitle);
   const activeThreadIdRef = useRef<string | null>(threadId ?? null);
+  const diagnosticTraceIdRef = useRef(`chat-screen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const chatPageLoadStartedAtRef = useRef(Date.now());
+  const chatFirstLayoutKeyRef = useRef<string | null>(null);
+  const streamDiagnosticWindowRef = useRef({ generationId: "", recordedAt: 0, answerChars: 0, reasoningChars: 0 });
   const latestRequestRef = useRef({
     avatar: 0,
     continuity: 0,
@@ -2627,6 +2632,15 @@ export function AiChatScreen({
         if (!isCurrentStreamingPatch(targetThreadId, generation, patch)) {
           return;
         }
+        const now = Date.now();
+        const answerChars = patch.content?.length ?? 0;
+        const reasoningChars = patch.reasoningText?.length ?? 0;
+        const previous = streamDiagnosticWindowRef.current;
+        const terminal = patch.status === "completed" || patch.status === "failed" || patch.status === "stopped";
+        if (previous.generationId !== patch.generationId || now - previous.recordedAt >= 500 || terminal) {
+          recordDiagnosticEvent({ eventType: "chat_stream_render_window", space, traceId: diagnosticTraceIdRef.current, generationId: patch.generationId, durationMs: previous.generationId === patch.generationId ? now - previous.recordedAt : 0, payload: { status: patch.status ?? null, answerChars, reasoningChars, answerCharsDelta: previous.generationId === patch.generationId ? Math.max(0, answerChars - previous.answerChars) : answerChars, reasoningCharsDelta: previous.generationId === patch.generationId ? Math.max(0, reasoningChars - previous.reasoningChars) : reasoningChars } });
+          streamDiagnosticWindowRef.current = { generationId: patch.generationId, recordedAt: now, answerChars, reasoningChars };
+        }
         applyOrBufferStreamingMessagePatch(targetThreadId, generation, patch);
       },
       onSettled: () => {
@@ -2991,6 +3005,11 @@ export function AiChatScreen({
 
   const handleMessageListContentSizeChange = useCallback(() => {
     if (!isInitialMessageLoading && invertedMessageItems.length > 0) {
+      const layoutKey = `${activeThreadIdRef.current ?? "new"}:${invertedMessageItems.length}`;
+      if (chatFirstLayoutKeyRef.current !== layoutKey) {
+        chatFirstLayoutKeyRef.current = layoutKey;
+        recordDiagnosticEvent({ eventType: "chat_content_layout", space, traceId: diagnosticTraceIdRef.current, durationMs: Date.now() - chatPageLoadStartedAtRef.current, payload: { itemCount: invertedMessageItems.length, threadSelected: Boolean(activeThreadIdRef.current) } });
+      }
       if (!isMessageListReady && !pendingSearchScrollMessageIdRef.current) {
         // First layout with real data: the inverted list starts at offset 0
         // (= latest message), but maintainVisibleContentPosition can shift it
@@ -3008,7 +3027,7 @@ export function AiChatScreen({
         setIsMessageListReady(true);
       }
     }
-  }, [invertedMessageItems.length, isInitialMessageLoading, isMessageListReady]);
+  }, [invertedMessageItems.length, isInitialMessageLoading, isMessageListReady, space]);
 
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -3552,6 +3571,8 @@ export function AiChatScreen({
       branchScopesOverride?: AiBranchScope[],
       limitOverride?: number,
     ) => {
+      const requestStartedAt = Date.now();
+      recordDiagnosticEvent({ eventType: "chat_history_load_started", space, traceId: diagnosticTraceIdRef.current, payload: { targetThread: Boolean(targetThreadId), forceToLatest: typeof forceToLatestOrOptions === "boolean" ? forceToLatestOrOptions : Boolean(forceToLatestOrOptions.forceToLatest), anchor: Boolean(typeof forceToLatestOrOptions === "object" && forceToLatestOrOptions.anchorMessageId) } });
       const requestId = nextRequestId("messages");
       const options: ReloadMessagesOptions =
         typeof forceToLatestOrOptions === "object"
@@ -3628,6 +3649,7 @@ export function AiChatScreen({
         return;
       }
       setMessageLoadError(null);
+      recordDiagnosticEvent({ eventType: "chat_history_load_completed", space, traceId: diagnosticTraceIdRef.current, durationMs: Date.now() - requestStartedAt, payload: { messageCount: nextMessages.length, hasEarlierMessages: nextHasEarlierMessages, requestId } });
       activeMessageBranchScopesRef.current = resolvedScopes;
       selectedVersionByMessageIdRef.current = buildBranchSelectionMap(resolvedScopes);
       setSelectedVersionByMessageId(selectedVersionByMessageIdRef.current);
@@ -3842,6 +3864,8 @@ export function AiChatScreen({
       return;
     }
     isLoadingEarlierRef.current = true;
+    const startedAt = Date.now();
+    recordDiagnosticEvent({ eventType: "chat_history_page_started", space, traceId: diagnosticTraceIdRef.current, payload: { pageSize: CHAT_MESSAGE_PAGE_SIZE } });
     void (async () => {
       try {
         const page = await loadThreadMessagePage(space, targetThreadId, {
@@ -3863,6 +3887,7 @@ export function AiChatScreen({
         olderMessageCursorRef.current = page.olderCursor;
         setHasEarlierMessages(page.hasEarlierMessages);
         replaceMessages(mergedMessages);
+        recordDiagnosticEvent({ eventType: "chat_history_page_completed", space, traceId: diagnosticTraceIdRef.current, durationMs: Date.now() - startedAt, payload: { loadedCount: page.messages.length, totalCount: mergedMessages.length, hasEarlierMessages: page.hasEarlierMessages } });
       } catch (error) {
         setMessageLoadError(
           error instanceof Error
@@ -4338,6 +4363,8 @@ export function AiChatScreen({
 
   useEffect(() => {
     const nextThreadId = threadId ?? null;
+    chatPageLoadStartedAtRef.current = Date.now();
+    chatFirstLayoutKeyRef.current = null;
     const nextDisplayTitle =
       contextTitle ??
       (contextType === "ip"

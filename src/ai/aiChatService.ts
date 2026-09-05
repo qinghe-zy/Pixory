@@ -5315,7 +5315,6 @@ async function streamAssistantReply(input: {
     threadIdHash: hashPromptCacheText(`${input.space}:thread:${input.thread.id}`),
     traceId,
   });
-  void flushDiagnostics(input.space);
   markGenerationMetric(generationMetrics, 'finalPersistStartAt');
   const promptSnapshotJson = createPromptSnapshotJson();
   let finalMessagePersisted = false;
@@ -5537,6 +5536,7 @@ async function streamAssistantReply(input: {
   if (queuedDreamJobId) scheduleCompanionMaintenance({ allowRemoteModelForPersonal: input.space === 'personal', delayMs: 250, space: input.space });
   activateThoughtSession(completedThoughtSession);
   input.onUpdated?.();
+  void flushDiagnostics(input.space);
 }
 
 export async function recoverInterruptedGeneration(input: {

@@ -16,6 +16,7 @@ import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiFullMinute } from '../utils/aiTimeFormatters';
+import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
@@ -84,6 +85,9 @@ export function AiHomeScreen({
   const spaceLabel = space === 'personal' ? '私密空间 · 本地保存对话、资料与角色' : '普通空间 · 本地保存对话、资料与角色';
 
   useEffect(() => {
+    const startedAt = Date.now();
+    const traceId = 'ai-home-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    recordDiagnosticEvent({ eventType: 'home_load_started', space, traceId, payload: { refresh: refreshToken ?? 0 } });
     let isMounted = true;
     setErrorMessage(null);
     setLoadedThreads({ space, threads: getCachedHomeThreads(space) });
@@ -92,10 +96,12 @@ export function AiHomeScreen({
         homeThreadCache[space] = nextThreads;
         if (isMounted) {
           setLoadedThreads({ space, threads: nextThreads });
+          recordDiagnosticEvent({ eventType: 'home_threads_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextThreads.length } });
         }
       })
       .catch((error) => {
         if (isMounted) {
+          recordDiagnosticEvent({ eventType: 'home_threads_load_failed', space, traceId, durationMs: Date.now() - startedAt, payload: { errorType: error instanceof Error ? error.name : 'unknown' } });
           setErrorMessage(error instanceof Error ? error.message : '读取 AI 工作台失败');
         }
       });
@@ -105,6 +111,9 @@ export function AiHomeScreen({
   }, [space, refreshToken]);
 
   useEffect(() => {
+    const startedAt = Date.now();
+    const traceId = 'ai-home-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    recordDiagnosticEvent({ eventType: 'home_roles_load_started', space, traceId });
     let isMounted = true;
     setLoadedRoleCards({ space, roleCards: getCachedHomeRoleCards(space) });
     void listRoleCards(space)
@@ -112,10 +121,12 @@ export function AiHomeScreen({
         homeRoleCardCache[space] = nextRoleCards;
         if (isMounted) {
           setLoadedRoleCards({ space, roleCards: nextRoleCards });
+          recordDiagnosticEvent({ eventType: 'home_roles_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextRoleCards.length } });
         }
       })
       .catch((error) => {
         if (isMounted) {
+          recordDiagnosticEvent({ eventType: 'home_roles_load_failed', space, traceId, durationMs: Date.now() - startedAt, payload: { errorType: error instanceof Error ? error.name : 'unknown' } });
           setErrorMessage(error instanceof Error ? error.message : '读取角色库失败');
         }
       });
