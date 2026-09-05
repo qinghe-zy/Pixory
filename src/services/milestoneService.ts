@@ -20,8 +20,8 @@ export interface AppMilestones {
   totalStorageBytes: number;
 }
 
-export async function getAppMilestones(): Promise<AppMilestones> {
-  return runWithDatabaseSpace('normal', async (db: SQLiteDatabase) => {
+export async function getAppMilestones(space: PixorySpace = 'normal'): Promise<AppMilestones> {
+  return runWithDatabaseSpace(space, async (db: SQLiteDatabase) => {
     const now = Date.now();
     let firstUseDate = now;
 

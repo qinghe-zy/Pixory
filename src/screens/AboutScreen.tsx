@@ -18,6 +18,13 @@ import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { isDeveloperModeRevealEnabled, setDeveloperModeEnabled } from '../utils/dev';
+import { JournalAchievementChapter } from '../components/about/JournalAchievementChapter';
+import {
+  getJournalAchievementProjection,
+  markJournalAchievementRead,
+  type JournalAchievementProjection,
+  type JournalAchievementRecord,
+} from '../services/journalAchievementService';
 
 interface AboutScreenProps {
   onBack: () => void;
@@ -37,8 +44,11 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const { showToast } = useToast();
   const version = Constants.expoConfig?.version ?? '2.8.1';
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
+  const [journal, setJournal] = useState<JournalAchievementProjection | null>(null);
 
   const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
+  const [openAchievementId, setOpenAchievementId] = useState<string | null>(null);
   const [detailMd, setDetailMd] = useState<string | null>(null);
   const [productDocMd, setProductDocMd] = useState<string>(() => getPreloadedProductDocumentationMarkdown());
   const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
@@ -63,11 +73,14 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
   useEffect(() => {
     let isMounted = true;
-    void getAppMilestones().then((data) => {
+    void getJournalAchievementProjection(space).then((data) => {
+      if (isMounted) setJournal(data);
+    }).catch(console.warn);
+    void getAppMilestones(space).then((data) => {
       if (isMounted) {
         setMilestones(data);
         // Expand the first node by default for a nice opening
-        setExpandedNodes({ storyBegins: true });
+        setExpandedNodes({ storyBegins: true, firstFootprints: true });
       }
     }).catch(console.warn);
 
@@ -91,7 +104,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [space]);
 
   const openUrl = (url: string) => {
     Linking.openURL(url).catch(() => {});
@@ -142,6 +155,95 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const toggleNode = (nodeKey: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedNodes(prev => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategoryIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
+      return next;
+    });
+  };
+
+  const openAchievement = async (achievement: JournalAchievementRecord) => {
+    setOpenAchievementId((current) => current === achievement.achievementId ? null : achievement.achievementId);
+    if (achievement.readAt === null) {
+      await markJournalAchievementRead(space, achievement.achievementId).catch(() => {});
+      setJournal((current) => current ? {
+        ...current,
+        categories: current.categories.map((category) => ({
+          ...category,
+          achievements: category.achievements.map((item) =>
+            item.achievementId === achievement.achievementId ? { ...item, readAt: Date.now() } : item,
+          ),
+          hasUnread: category.achievements.some((item) =>
+            item.achievementId !== achievement.achievementId && item.readAt === null,
+          ),
+        })),
+        unreadCategoryIds: current.unreadCategoryIds.map((id) => {
+          if (id !== achievement.category) return id;
+          const category = current.categories.find((item) => item.id === id);
+          return category && category.achievements.some((item) =>
+            item.achievementId !== achievement.achievementId && item.readAt === null,
+          ) ? id : null;
+        }).filter((id): id is JournalAchievementProjection['unreadCategoryIds'][number] => id !== null),
+      } : current);
+    }
+  };
+
+  const navigateAchievement = (achievement: JournalAchievementRecord) => {
+    void openAchievement(achievement);
+    const payload = achievement.sourcePayload;
+    switch (achievement.routeKind) {
+      case 'asset':
+        if (achievement.sourceId) onPushRoute({ name: 'image-detail', imageId: Number(achievement.sourceId), space });
+        break;
+      case 'thread':
+        if (achievement.sourceId) onPushRoute({
+          name: 'ai-chat',
+          threadId: achievement.sourceId,
+          searchTargetMessageId: typeof payload.messageId === 'string' ? payload.messageId : undefined,
+          space,
+        });
+        break;
+      case 'memory-board':
+        if (typeof payload.threadId === 'string') {
+          onPushRoute({ name: 'ai-memory-board', threadId: payload.threadId, space });
+        }
+        break;
+      case 'diary':
+        if (achievement.sourceId) onPushRoute({ name: 'diary-reader', diaryId: achievement.sourceId, space });
+        break;
+      case 'dream':
+        if (achievement.sourceId) onPushRoute({ name: 'dream-reader', dreamId: achievement.sourceId, space });
+        break;
+      case 'ip':
+        if (achievement.sourceId) onPushRoute({ name: 'ip-detail', ipId: Number(achievement.sourceId), space });
+        break;
+      case 'group':
+        if (achievement.sourceId && typeof payload.ipId === 'number') {
+          onPushRoute({ name: 'group-images', ipId: payload.ipId, groupId: Number(achievement.sourceId), space });
+        }
+        break;
+      case 'tag':
+        if (achievement.sourceId) onPushRoute({ name: 'tag-result', tagId: Number(achievement.sourceId), space });
+        break;
+      case 'all-assets':
+        onPushRoute({ name: 'all-images', space });
+        break;
+      case 'knowledge':
+        if (achievement.sourceId) onPushRoute({ name: 'ai-document-reader', documentId: achievement.sourceId, space });
+        break;
+      case 'role':
+        if (achievement.sourceId) onPushRoute({ name: 'ai-role-card-detail', roleCardId: achievement.sourceId, space });
+        break;
+      case 'branch-tree':
+        if (achievement.sourceId) onPushRoute({ name: 'ai-branch-tree', threadId: achievement.sourceId, space });
+        break;
+      default:
+        break;
+    }
   };
 
   const formatDate = (timestamp: number) => {
@@ -210,6 +312,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
         backgroundVariant="profile"
         decorativeTitle={space === 'personal' ? 'Journal' : 'Journal'}
         onBack={onBack}
+        compactBack
         scrollable
         title=""
       >
@@ -249,45 +352,64 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                 )}
               </View>
 
-              {/* NODE 2: 最初的印记 */}
+              {/* NODE 2: 岁月有声 */}
               <View style={styles.timelineNode}>
                 <Pressable onPress={() => toggleNode('firstFootprints')} style={styles.nodeHeader} hitSlop={12}>
                   <View style={[styles.pearl, expandedNodes.firstFootprints && styles.pearlActive]} />
-                  <Text style={styles.nodeTitle}>最初的印记</Text>
+                  <Text style={styles.nodeTitle}>岁月有声</Text>
                 </Pressable>
                 {expandedNodes.firstFootprints && (
                   <View style={styles.nodeContent}>
-                    {(!milestones.firstImageDate && !milestones.firstThreadDate) ? (
-                      <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
-                    ) : (
-                      <View style={styles.footprintsContainer}>
-                        {milestones.firstImageDate && (
+                    <View style={styles.achievementList}>
+                      {milestones.firstImageDate ? (
+                        <View style={styles.achievementRow}>
+                          <Text style={styles.achievementName}>第一份光影</Text>
+                          <Text style={styles.achievementDate}>{formatDate(milestones.firstImageDate)}</Text>
                           <Pressable
-                            style={styles.footprintRow}
+                            accessibilityLabel="打开第一份光影"
+                            hitSlop={10}
                             onPress={() => onPushRoute({ name: 'image-detail', imageId: milestones.firstImageId, space })}
+                            style={styles.achievementAction}
                           >
-                            <Text style={styles.footprintIcon}>🖼️</Text>
-                            <Text style={styles.footprintText}>第一份光影：{formatDate(milestones.firstImageDate)}</Text>
-                            <Feather name="arrow-right" size={14} color={colors.text.tertiary} style={styles.footprintArrow} />
+                            <Feather color={colors.text.tertiary} name="arrow-right" size={15} />
                           </Pressable>
-                        )}
-                        {milestones.firstThreadDate && (
+                        </View>
+                      ) : null}
+                      {milestones.firstThreadDate ? (
+                        <View style={styles.achievementRow}>
+                          <Text style={styles.achievementName}>第一次对话</Text>
+                          <Text style={styles.achievementDate}>{formatDate(milestones.firstThreadDate)}</Text>
                           <Pressable
-                            style={styles.footprintRow}
-                            onPress={() => onPushRoute({ 
-                              name: 'ai-chat', 
-                              threadId: milestones.firstThreadId, 
+                            accessibilityLabel="打开第一次对话"
+                            hitSlop={10}
+                            onPress={() => onPushRoute({
+                              name: 'ai-chat',
+                              threadId: milestones.firstThreadId,
                               searchTargetMessageId: milestones.firstMessageId ?? undefined,
-                              space 
+                              space,
                             })}
+                            style={styles.achievementAction}
                           >
-                            <Text style={styles.footprintIcon}>💬</Text>
-                            <Text style={styles.footprintText}>第一次对话：{formatDate(milestones.firstThreadDate)}</Text>
-                            <Feather name="arrow-right" size={14} color={colors.text.tertiary} style={styles.footprintArrow} />
+                            <Feather color={colors.text.tertiary} name="arrow-right" size={15} />
                           </Pressable>
-                        )}
-                      </View>
-                    )}
+                        </View>
+                      ) : null}
+                      {journal?.categories.map((category) => (
+                        <JournalAchievementChapter
+                          category={category}
+                          expanded={expandedCategoryIds.has(category.id)}
+                          formatDate={formatDate}
+                          key={category.id}
+                          onNavigate={navigateAchievement}
+                          onOpenAchievement={openAchievement}
+                          onToggle={() => toggleCategory(category.id)}
+                          openAchievementId={openAchievementId}
+                        />
+                      ))}
+                      {!journal?.categories.length && !milestones.firstImageDate && !milestones.firstThreadDate ? (
+                        <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
+                      ) : null}
+                    </View>
                   </View>
                 )}
               </View>
@@ -438,6 +560,33 @@ const styles = StyleSheet.create({
   /* Footprints */
   footprintsContainer: {
     gap: spacing[4],
+  },
+  achievementList: {
+    marginTop: spacing[1],
+  },
+  achievementRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.border.subtle,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: 36,
+    paddingVertical: spacing[2],
+  },
+  achievementName: {
+    ...typography.textStyles.body,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  achievementDate: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+    textAlign: 'right',
+    width: 86,
+  },
+  achievementAction: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    width: 28,
   },
   footprintRow: {
     flexDirection: 'row',

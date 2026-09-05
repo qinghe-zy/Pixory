@@ -12,6 +12,7 @@ interface HeaderProps {
   titleVariant?: 'page' | 'brand';
   decorativeTitle?: string;
   onBack?: () => void;
+  compactBack?: boolean;
   rightSlot?: ReactNode;
   sideWidth?: number;
 }
@@ -33,6 +34,7 @@ export function Header({
   titleVariant = 'page',
   decorativeTitle,
   onBack,
+  compactBack = false,
   rightSlot,
   sideWidth = componentTokens.iconButton.size,
 }: HeaderProps) {
@@ -58,9 +60,9 @@ export function Header({
             accessibilityLabel="返回"
             hitSlop={10}
             onPress={onBack}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            style={({ pressed }) => [styles.iconButton, compactBack && styles.compactIconButton, pressed && styles.iconButtonPressed]}
           >
-            <Ionicons color={colors.text.title} name="chevron-back" size={20} />
+            <Ionicons color={colors.text.title} name="chevron-back" size={compactBack ? 18 : 20} />
           </Pressable>
         ) : null}
       </View>
@@ -130,5 +132,13 @@ const styles = StyleSheet.create({
   },
   iconButtonPressed: {
     opacity: 0.72,
+  },
+  compactIconButton: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    elevation: 0,
+    height: 32,
+    shadowOpacity: 0,
+    width: 32,
   },
 });

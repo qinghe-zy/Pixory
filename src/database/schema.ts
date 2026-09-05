@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 62;
+export const DATABASE_VERSION = 63;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2251,6 +2251,27 @@ CREATE INDEX IF NOT EXISTS idx_diag_operations_trace_time ON diagnostic_operatio
 CREATE INDEX IF NOT EXISTS idx_diag_operations_generation_time ON diagnostic_operations(generationId, occurredAtUtc);
 CREATE INDEX IF NOT EXISTS idx_diag_incidents_fingerprint_state ON diagnostic_incidents(fingerprint, state);
 CREATE INDEX IF NOT EXISTS idx_diag_incidents_space_time ON diagnostic_incidents(space, occurredAtUtc);
+`;
+
+export const MIGRATION_STATEMENTS_V63 = `
+CREATE TABLE IF NOT EXISTS journal_achievements (
+  id INTEGER PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  achievementId TEXT NOT NULL,
+  category TEXT NOT NULL,
+  occurredAt TEXT NOT NULL,
+  unlockedAt TEXT NOT NULL,
+  readAt TEXT,
+  sourceType TEXT NOT NULL,
+  sourceId TEXT,
+  sourcePayload TEXT NOT NULL DEFAULT '{}',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE(space, achievementId)
+);
+
+CREATE INDEX IF NOT EXISTS idx_journal_achievements_space_category_read
+  ON journal_achievements(space, category, readAt);
 `;
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
 UPDATE ai_memories

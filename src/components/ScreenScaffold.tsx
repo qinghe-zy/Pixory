@@ -23,6 +23,7 @@ interface ScreenScaffoldProps {
   titleVariant?: 'page' | 'brand';
   decorativeTitle?: string;
   onBack?: () => void;
+  compactBack?: boolean;
   rightAction?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
@@ -44,6 +45,7 @@ export function ScreenScaffold({
   titleVariant,
   decorativeTitle,
   onBack,
+  compactBack = false,
   rightAction,
   children,
   footer,
@@ -70,7 +72,8 @@ export function ScreenScaffold({
       scrollable={scrollable}
     >
       {showHeader ? (
-        <Header
+          <Header
+          compactBack={compactBack}
           decorativeTitle={decorativeTitle}
           onBack={onBack}
           rightSlot={rightAction}
