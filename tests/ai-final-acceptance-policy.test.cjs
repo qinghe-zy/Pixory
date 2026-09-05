@@ -182,7 +182,7 @@ test('AI session settings can disable model thinking for the current thread', ()
   const gemini = read('src/ai/providers/geminiProvider.ts');
 
   assert.match(types, /thinkingDisabled: boolean/);
-  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
+  assert.match(schema, /DATABASE_VERSION = (?:5[1-9]|6[01])/);
   assert.match(schema, /thinkingDisabled INTEGER NOT NULL DEFAULT 0/);
   assert.match(schema, /MIGRATION_STATEMENTS_V40/);
   assert.match(db, /MIGRATION_STATEMENTS_V40/);
@@ -424,7 +424,7 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   const types = read('src/ai/types.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
+  assert.match(schema, /DATABASE_VERSION = (?:5[1-9]|6[01])/);
   assert.match(schema, /MIGRATION_STATEMENTS_V38/);
   assert.match(schema, /sessionBaseUrl TEXT/);
   assert.match(schema, /sessionApiKeyRef TEXT/);

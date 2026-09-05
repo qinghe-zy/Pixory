@@ -35,7 +35,7 @@
 
 | 功能域 | 当前状态 | 主要用户价值 | 关键入口 |
 | --- | --- | --- | --- |
-| AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复 | `AiHomeScreen`, `AiChatScreen`, `src/ai/` |
+| AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复；DeepSeek V4 Prompt Ledger 前缀回放、视觉模型图片门禁，以及标准/深度诊断包入口已接入 | `AiHomeScreen`, `AiChatScreen`, `src/ai/`, `DiagnosticsSettingsScreen` |
 | 角色日记 | 已实现，首版 | 以北京时间和角色为单位保存当日私密日记；手动、自动和后台唤醒均通过同一准备链路冻结当前已采纳分支、角色提示、线程摘要和来源消息，持久 wake 真正到期时会重新解析用户此刻采用的分支，再创建不可变生成快照。内容优先使用今日完整问答，不足时从历史补齐到最近 30 个完整轮次，并为消息附北京时间；模型会明确区分“今日证据”和“历史背景”，无证据时不得虚构。自动日记由应用初始化/回前台统一协调，Personal 仅在已解锁且任务令牌有效时运行；精确本地口令仅在已启用且绑定角色卡的会话中提供非打扰确认。任务由独立运行时持有，退出聊天页仍会完成，长时间中断的 `generating` 任务在前台恢复；Android 通过 AlarmManager、receiver 与带低打扰系统常驻提示的短时 `dataSync` 前台服务启动 Headless JS，无法使用精确闹钟时退化为 inexact alarm，若系统仍拒绝后台启动则保留 SQLite 任务并在下次前台协调时恢复。完成卡片保存冻结来源版本及有效消息哈希，始终锚定在对应触发消息之后，刷新、分页和重进页面不漂到列表底部；用户确认纳入上下文的最近日记会独立注入，不会被较新未选择日记覆盖 | `src/ai/diary/`, `DiaryChatCard`, `DiaryDeckPager`, `DiaryReaderScreen`, `CompanionInnerLifeScreen`, `PixoryMediaModule` |
 | 陪伴内心运行时（情绪、梦境、思绪） | 已实现，V1 核心 | 情绪/关系投影、角色梦境、离线思绪、内心产物仲裁和后台恢复均已进入主分支；思绪是给 AI 的低权限一次性动态材料，梦境只有用户明确允许才可进入后续上下文，情绪与关系状态不直接暴露内部数值 | `src/ai/companion/`, `src/ai/dream/`, `src/ai/thought/`, `CompanionInnerLifeScreen`, `CompanionRuntimeManagerScreen`, `DreamReaderScreen` |
 | 陪伴手帐与数据面板 | 已实现，未来可扩展 | 珍珠时间线、双轴古典排版字体、底层零延迟预取、SQLite C++聚合、多维数据详单、WebView原生深链拦截 | `AboutScreen`, `MilestonesDetailScreen`, `milestoneService.ts` |

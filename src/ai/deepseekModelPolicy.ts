@@ -2,6 +2,7 @@ import type { AiProviderType } from './types';
 
 export const DEEPSEEK_RETIRED_MODEL_IDS = ['deepseek-chat', 'deepseek-reasoner'] as const;
 export const DEEPSEEK_OFFICIAL_MODEL_IDS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const;
+export const DEEPSEEK_OFFICIAL_VISION_MODEL_IDS = ['deepseek-v4-flash-vision-exp'] as const;
 
 export function isOfficialDeepSeekEndpoint(baseUrl: string | null | undefined): boolean {
   if (!baseUrl) {
@@ -32,6 +33,11 @@ export function isAllowedOfficialDeepSeekModel(modelId: string | null | undefine
     normalized
       && DEEPSEEK_OFFICIAL_MODEL_IDS.includes(normalized as typeof DEEPSEEK_OFFICIAL_MODEL_IDS[number])
   );
+}
+
+export function isAllowedOfficialDeepSeekVisionModel(modelId: string | null | undefined): boolean {
+  const normalized = modelId?.trim().toLowerCase();
+  return Boolean(normalized && DEEPSEEK_OFFICIAL_VISION_MODEL_IDS.includes(normalized as typeof DEEPSEEK_OFFICIAL_VISION_MODEL_IDS[number]));
 }
 
 export function isOfficialDeepSeekV4Model(input: {

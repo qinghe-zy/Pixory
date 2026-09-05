@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 59;
+export const DATABASE_VERSION = 61;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2117,6 +2117,73 @@ CREATE TABLE IF NOT EXISTS companion_artifact_chat_states (
 );
 CREATE INDEX IF NOT EXISTS idx_companion_artifact_chat_states_thread
   ON companion_artifact_chat_states(threadId, artifactKind, hiddenAt);
+`;
+
+export const MIGRATION_STATEMENTS_V60 = `
+CREATE TABLE IF NOT EXISTS ai_prompt_requests (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK(space IN ('normal', 'personal')),
+  threadId TEXT NOT NULL,
+  userMessageId TEXT NOT NULL,
+  assistantMessageId TEXT NOT NULL,
+  generationId TEXT NOT NULL,
+  providerId TEXT,
+  modelId TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed', 'stopped')),
+  branchRouteHash TEXT NOT NULL,
+  sourceMessageVersionHash TEXT NOT NULL,
+  contextAssemblyProfileHash TEXT NOT NULL,
+  memoryEpoch TEXT,
+  retrievalHash TEXT,
+  historyRoundLimit INTEGER NOT NULL,
+  promptVersion INTEGER NOT NULL,
+  stablePrefixHash TEXT NOT NULL,
+  stablePrefixEstimatedTokens INTEGER NOT NULL DEFAULT 0,
+  reusablePrefixEstimatedTokens INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL,
+  completedAt TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_prompt_requests_generation ON ai_prompt_requests(generationId);
+CREATE INDEX IF NOT EXISTS idx_ai_prompt_requests_assistant_status ON ai_prompt_requests(assistantMessageId, status);
+CREATE INDEX IF NOT EXISTS idx_ai_prompt_requests_thread_route ON ai_prompt_requests(threadId, branchRouteHash, status);
+
+CREATE TABLE IF NOT EXISTS ai_prompt_snapshots (
+  id TEXT PRIMARY KEY NOT NULL,
+  requestId TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+  messageId TEXT NOT NULL,
+  renderedContent TEXT NOT NULL,
+  sourceMessageVersionHash TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  UNIQUE(requestId, sequence),
+  FOREIGN KEY(requestId) REFERENCES ai_prompt_requests(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ai_prompt_snapshots_message ON ai_prompt_snapshots(messageId, sourceMessageVersionHash);
+CREATE INDEX IF NOT EXISTS idx_ai_prompt_snapshots_request ON ai_prompt_snapshots(requestId, sequence);
+`;
+
+export const MIGRATION_STATEMENTS_V61 = `
+CREATE TABLE IF NOT EXISTS diagnostic_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK(space IN ('normal', 'personal')),
+  traceId TEXT NOT NULL,
+  eventType TEXT NOT NULL,
+  occurredAt TEXT NOT NULL,
+  monotonicStartMs REAL,
+  monotonicEndMs REAL,
+  durationMs REAL,
+  parentSpanId TEXT,
+  threadIdHash TEXT,
+  generationId TEXT,
+  requestId TEXT,
+  payloadJson TEXT NOT NULL,
+  createdAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_events_occurred ON diagnostic_events(occurredAt);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_events_trace ON diagnostic_events(traceId, occurredAt);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_events_generation ON diagnostic_events(generationId, occurredAt);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

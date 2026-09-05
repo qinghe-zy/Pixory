@@ -13,6 +13,7 @@ import {
   type AiStreamEventHandler,
 } from './base';
 import { classifyAiProviderError, toUserProviderErrorMessage } from '../aiProviderErrorClassifier';
+import { assertDeepSeekInlineRequestBodyBytes, isOfficialDeepSeekVisionModel } from '../deepseekVisionPolicy';
 
 interface OpenAiModelListResponse {
   data?: Array<{ id?: string }>;
@@ -330,6 +331,10 @@ function buildOpenAiUserContent(text: string, attachments?: AiChatAttachment[]):
   ];
 }
 
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 export const openAiCompatibleProvider: AiProviderAdapter = {
   async listModels(input) {
     const { response } = await fetchOpenAiCompatibleResponse(input.baseUrl, '/models', {
@@ -408,6 +413,8 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       if (shouldDisableDeepSeekThinking(input)) {
         body.thinking = { type: 'disabled' };
       }
+      const serializedBody = JSON.stringify(body);
+      if (isOfficialDeepSeekVisionModel(input.modelId) && input.attachments?.length) assertDeepSeekInlineRequestBodyBytes(utf8ByteLength(serializedBody));
       const { response } = await fetchOpenAiCompatibleResponse(input.baseUrl, '/chat/completions', {
         method: 'POST',
         headers: {
@@ -416,7 +423,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
           'Content-Type': 'application/json',
         },
         signal: input.signal,
-        body: JSON.stringify(body),
+        body: serializedBody,
       });
       await assertOkResponse(response, 'AI chat request failed');
       const sawCompletionEvent = await readStreamingResponse(response, onEvent, input.signal);
