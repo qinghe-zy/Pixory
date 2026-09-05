@@ -7,6 +7,7 @@ import { summarizeDiagnosticEvents } from './diagnosticSummary';
 import { buildDiagnosticArchitectureSnapshot } from './diagnosticArchitectureSnapshot';
 import { getDroppedDiagnosticEventCount } from './diagnosticLogger';
 import { hashPromptCacheText } from '../ai/aiPromptCache';
+import { copyFileToSafWithProgress } from '../native/pixoryMediaModule';
 import type { DiagnosticExportLevel, DiagnosticEventRecord } from './diagnosticTypes';
 
 export interface DiagnosticExportOptions { space: 'normal' | 'personal'; level: DiagnosticExportLevel; threadId?: string; threadIdHash?: string; from?: string; to?: string; includeResponseSnippets?: boolean; }
@@ -53,5 +54,19 @@ export async function exportDiagnostics(input: DiagnosticExportOptions): Promise
   if (input.level === 'standard') assertStandardExportPrivacy(files);
   for (const [name, text] of Object.entries(files)) await FileSystem.writeAsStringAsync(`${root}/${name}`, text);
   const checksums: string[] = []; for (const [name, text] of Object.entries(files)) checksums.push(`${await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text)}  ${name}`); await FileSystem.writeAsStringAsync(`${root}/checksums.sha256`, checksums.join('\n'));
-  const zipPath = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}Pixory-diagnostics-${input.space}-${Date.now()}.zip`; return zip(root, zipPath);
+  const zipPath = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory) + 'Pixory-diagnostics-' + input.space + '-' + Date.now() + '.zip';
+  const exportedZipPath = await zip(root, zipPath);
+  const zipInfo = await FileSystem.getInfoAsync(exportedZipPath);
+  if (!zipInfo.exists || (zipInfo.size ?? 0) <= 0) throw new Error('诊断包 ZIP 生成失败或为空。');
+  return exportedZipPath;
+}
+
+export async function saveDiagnosticsToSystemDirectory(input: { zipUri: string; destinationDirectoryUri?: string | null }): Promise<string> {
+  const permissions = input.destinationDirectoryUri
+    ? { granted: true, directoryUri: input.destinationDirectoryUri }
+    : await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(null);
+  if (!permissions.granted) throw new Error('未选择诊断包保存目录。');
+  const fileName = input.zipUri.split('/').pop() || `Pixory-diagnostics-${Date.now()}.zip`;
+  await copyFileToSafWithProgress(input.zipUri, permissions.directoryUri, fileName, 'application/zip', `diagnostics-export-${Date.now()}`);
+  return `${permissions.directoryUri}/${fileName}`;
 }
