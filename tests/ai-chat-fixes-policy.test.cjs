@@ -1735,8 +1735,9 @@ test('AI chat keeps no-jitter scroll policy during streaming keyboard and return
     followLatestHandler,
     /nativeMessageScrollOffsetRef\.current\s*=\s*0/,
   );
-  assert.match(returnToLatestHandler, /followLatestMessage\(\)/);
+  assert.match(returnToLatestHandler, /followLatestMessage\(false\)/);
   assert.match(returnToLatestHandler, /markScrollGestureSettled\(\)/);
+  assert.match(chat, /if \(followLatest\) \{[\s\S]{0,220}followLatestMessage\(false\);/);
   assert.doesNotMatch(returnToLatestHandler, /requestStreamingTailCommit\(\)/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);
   assert.doesNotMatch(chat, /scrollToEnd/);

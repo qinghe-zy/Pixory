@@ -4023,7 +4023,7 @@ export function AiChatScreen({
       if (followLatest) {
         allowFullShrinkSettlementRef.current = true;
         maybeSettleStreamingTailShrinkDebt("return-to-latest");
-        followLatestMessage();
+        followLatestMessage(false);
       } else {
         setScrollToLatestVisible(false);
       }
@@ -4339,7 +4339,7 @@ export function AiChatScreen({
     Platform.OS === "android" ? false : undefined;
 
   const handleReturnToLatestPress = useCallback(() => {
-    followLatestMessage();
+    followLatestMessage(false);
     markScrollGestureSettled();
   }, [followLatestMessage, markScrollGestureSettled]);
 
