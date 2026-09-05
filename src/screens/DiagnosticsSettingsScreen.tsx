@@ -10,6 +10,7 @@ import { colors, radius, spacing, typography } from '../design/tokens';
 import { exportDiagnostics, saveDiagnosticsToSystemDirectory } from '../diagnostics/diagnosticExportService';
 import { clearDiagnosticEvents } from '../diagnostics/diagnosticRepository';
 import { flushDiagnostics, setDiagnosticsEnabled } from '../diagnostics/diagnosticLogger';
+import { setDeveloperModeEnabled } from '../utils/dev';
 
 type TimeRange = '24h' | '7d' | 'all';
 export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpace; onBack: () => void }) {
@@ -52,6 +53,7 @@ export function DiagnosticsSettingsScreen({ space, onBack }: { space: PixorySpac
     <Pressable disabled={working} onPress={() => { void runExport('standard'); }} style={styles.button}><Text style={styles.buttonText}>{working ? '正在生成 ZIP…' : '下载标准诊断包到设备'}</Text></Pressable>
     <Pressable disabled={working} onPress={confirmDeepExport} style={styles.button}><Text style={styles.buttonText}>二次确认后下载深度包</Text></Pressable>
     <Pressable disabled={working} onPress={() => { void flushDiagnostics(space).then(() => showToast('诊断日志已刷新')); }} style={styles.secondary}><Text style={styles.secondaryText}>立即写入本地日志</Text></Pressable>
+    <Pressable disabled={working} onPress={() => Alert.alert('关闭开发者模式', '关闭后只隐藏开发者专用功能，不删除聊天、记忆、备份或诊断日志。是否关闭？', [{ text: '取消', style: 'cancel' }, { text: '关闭', style: 'destructive', onPress: () => { void setDeveloperModeEnabled(false).then(() => onBack()); } }])} style={styles.secondary}><Text style={styles.secondaryText}>关闭开发者模式</Text></Pressable>
     <Pressable disabled={working} onPress={() => Alert.alert('清除诊断日志', '只清除当前空间的诊断事件，不影响聊天、记忆或附件。', [{ text: '取消', style: 'cancel' }, { text: '清除', style: 'destructive', onPress: () => { void runWithDatabaseSpace(space, (db) => clearDiagnosticEvents(db, space)).then(() => showToast('当前空间日志已清除')); } }])} style={styles.secondary}><Text style={styles.secondaryText}>清除当前空间日志</Text></Pressable>
   </View></ScreenScaffold>;
 }

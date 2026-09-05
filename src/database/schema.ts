@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 61;
+export const DATABASE_VERSION = 62;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2186,6 +2186,72 @@ CREATE INDEX IF NOT EXISTS idx_diagnostic_events_trace ON diagnostic_events(trac
 CREATE INDEX IF NOT EXISTS idx_diagnostic_events_generation ON diagnostic_events(generationId, occurredAt);
 `;
 
+
+export const MIGRATION_STATEMENTS_V62 = `
+CREATE TABLE IF NOT EXISTS diagnostic_operations (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK(space IN ('normal', 'personal')),
+  operationType TEXT NOT NULL,
+  status TEXT NOT NULL,
+  occurredAtUtc TEXT NOT NULL,
+  traceId TEXT NOT NULL,
+  parentId TEXT,
+  threadIdHash TEXT,
+  generationId TEXT,
+  screenInstanceId TEXT,
+  payloadJson TEXT NOT NULL,
+  payloadSchemaVersion INTEGER NOT NULL DEFAULT 1,
+  monitorVersionsJson TEXT NOT NULL DEFAULT '{}',
+  metricKeysJson TEXT NOT NULL DEFAULT '[]',
+  createdAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS diagnostic_windows (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK(space IN ('normal', 'personal')),
+  operationId TEXT,
+  occurredAtUtc TEXT NOT NULL,
+  traceId TEXT NOT NULL,
+  payloadJson TEXT NOT NULL,
+  payloadSchemaVersion INTEGER NOT NULL DEFAULT 1,
+  createdAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS diagnostic_incidents (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK(space IN ('normal', 'personal')),
+  incidentType TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  state TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  occurredAtUtc TEXT NOT NULL,
+  resolvedAtUtc TEXT,
+  traceId TEXT NOT NULL,
+  threadIdHash TEXT,
+  operationId TEXT,
+  generationId TEXT,
+  screenInstanceId TEXT,
+  payloadJson TEXT NOT NULL,
+  payloadSchemaVersion INTEGER NOT NULL DEFAULT 1,
+  createdAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS diagnostic_counters (
+  space TEXT PRIMARY KEY NOT NULL CHECK(space IN ('normal', 'personal')),
+  payloadJson TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS diagnostic_monitor_state (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK(space IN ('normal', 'personal')),
+  version INTEGER NOT NULL,
+  payloadJson TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_diag_operations_time ON diagnostic_operations(occurredAtUtc);
+CREATE INDEX IF NOT EXISTS idx_diag_operations_space_time ON diagnostic_operations(space, occurredAtUtc);
+CREATE INDEX IF NOT EXISTS idx_diag_operations_trace_time ON diagnostic_operations(traceId, occurredAtUtc);
+CREATE INDEX IF NOT EXISTS idx_diag_operations_generation_time ON diagnostic_operations(generationId, occurredAtUtc);
+CREATE INDEX IF NOT EXISTS idx_diag_incidents_fingerprint_state ON diagnostic_incidents(fingerprint, state);
+CREATE INDEX IF NOT EXISTS idx_diag_incidents_space_time ON diagnostic_incidents(space, occurredAtUtc);
+`;
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
 UPDATE ai_memories
 SET status = 'stale',

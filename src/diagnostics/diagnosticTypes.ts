@@ -13,6 +13,12 @@ export interface DiagnosticEventInput {
   threadIdHash?: string | null;
   generationId?: string | null;
   requestId?: string | null;
+  eventCategory?: 'operation' | 'window' | 'incident' | 'lifecycle';
+  source?: string;
+  appLaunchId?: string;
+  screenInstanceId?: string | null;
+  navigationId?: string | null;
+  refreshId?: string | null;
   payload?: Record<string, unknown>;
 }
 export interface DiagnosticEventRecord extends DiagnosticEventInput {

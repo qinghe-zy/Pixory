@@ -1,0 +1,18 @@
+import type { DiagnosticExportLevel } from './diagnosticTypes';
+
+export type DiagnosticMetricUnit = 'ms' | 'count' | 'bytes' | 'tokens' | 'ratio' | 'boolean' | 'enum';
+export type DiagnosticMetricAggregation = 'sum' | 'min' | 'max' | 'avg' | 'p50' | 'p95' | 'last' | 'histogram';
+export type DiagnosticMetricPrivacy = 'safe' | 'hashed' | 'deep_only' | 'never';
+export interface DiagnosticMetricDefinition { key: string; version: number; unit: DiagnosticMetricUnit; aggregation: DiagnosticMetricAggregation; privacy: DiagnosticMetricPrivacy; exportTargets: string[]; }
+export interface DiagnosticContext { space: 'normal' | 'personal'; traceId: string; nowUtc: string; }
+export interface DiagnosticPartialPayload { metrics?: Record<string, unknown>; state?: Record<string, unknown>; resources?: Record<string, unknown>; attributes?: Record<string, unknown>; anomalies?: string[]; }
+export interface DiagnosticMonitorModule { id: string; version: number; enabledByDefault: boolean; eventTypes: string[]; collect?: (context: DiagnosticContext) => DiagnosticPartialPayload | null; onFlush?: (context: { space: 'normal' | 'personal' }) => Promise<void>; detect?: (context: { space: 'normal' | 'personal'; payload: Record<string, unknown> }) => Array<{ incidentType: string; severity: string; fingerprint: string; payload?: Record<string, unknown> }>; redact?: (payload: Record<string, unknown>, level: DiagnosticExportLevel) => Record<string, unknown>; }
+const monitors = new Map<string, DiagnosticMonitorModule>();
+const metrics = new Map<string, DiagnosticMetricDefinition>();
+export function registerDiagnosticMonitor(module: DiagnosticMonitorModule): void { monitors.set(module.id, module); }
+export function registerDiagnosticMetric(definition: DiagnosticMetricDefinition): void { metrics.set(definition.key, definition); }
+export function getDiagnosticMonitors(): DiagnosticMonitorModule[] { return [...monitors.values()]; }
+export function getDiagnosticMetrics(): DiagnosticMetricDefinition[] { return [...metrics.values()]; }
+export function collectRegisteredDiagnostics(context: DiagnosticContext): DiagnosticPartialPayload { return getDiagnosticMonitors().reduce((result, monitor) => { const partial = monitor.collect?.(context); if (!partial) return result; return { ...result, ...partial, metrics: { ...result.metrics, ...partial.metrics }, state: { ...result.state, ...partial.state }, resources: { ...result.resources, ...partial.resources }, attributes: { ...result.attributes, ...partial.attributes }, anomalies: [...(result.anomalies ?? []), ...(partial.anomalies ?? [])] }; }, {} as DiagnosticPartialPayload); }
+export function diagnosticCatalog(): { schemaVersion: number; monitors: Array<{ id: string; version: number; enabled: boolean; eventTypes: string[] }>; metrics: DiagnosticMetricDefinition[] } { return { schemaVersion: 1, monitors: getDiagnosticMonitors().map(({ id, version, enabledByDefault, eventTypes }) => ({ id, version, enabled: enabledByDefault, eventTypes })), metrics: getDiagnosticMetrics() }; }
+[['chat.firstUiVisibleMs',1,'ms','last','safe'],['chat.visibleItemCount',1,'count','last','safe'],['chat.blankScreenDurationMs',1,'ms','max','safe'],['cache.eligiblePrefixReuseRatio',1,'ratio','last','safe'],['provider.firstByteMs',1,'ms','last','safe'],['database.lockWaitMs',1,'ms','max','safe'],['runtime.memoryUsedMb',1,'bytes','last','safe'],['render.jsFrameP95',1,'ms','p95','safe']].forEach(([key,version,unit,aggregation,privacy]) => registerDiagnosticMetric({ key: key as string, version: version as number, unit: unit as DiagnosticMetricUnit, aggregation: aggregation as DiagnosticMetricAggregation, privacy: privacy as DiagnosticMetricPrivacy, exportTargets: ['analysis-ready.json', 'metrics-catalog.json'] }));

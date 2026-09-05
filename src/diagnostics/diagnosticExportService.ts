@@ -1,7 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import { runWithDatabaseSpace } from '../database/db';
-import { listDiagnosticEvents } from './diagnosticRepository';
+import { listDiagnosticEvents, listDiagnosticTableRows } from './diagnosticRepository';
+import { diagnosticCatalog } from './diagnosticRegistry';
 import { summarizeDiagnosticEvents } from './diagnosticSummary';
 import { buildDiagnosticArchitectureSnapshot } from './diagnosticArchitectureSnapshot';
 import { getDroppedDiagnosticEventCount } from './diagnosticLogger';
@@ -29,25 +30,31 @@ export async function exportDiagnostics(input: DiagnosticExportOptions): Promise
     const selectedThreadIds = input.threadIds?.length ? input.threadIds : input.threadId ? [input.threadId] : [];
     const selectedThreadHashes = input.threadIdHashes?.length ? input.threadIdHashes : selectedThreadIds.length ? selectedThreadIds.map((id) => hashPromptCacheText(`${input.space}:thread:${id}`)) : undefined;
     const events = await listDiagnosticEvents(db, input.space, { threadIdHash: input.threadIdHash, threadIdHashes: selectedThreadHashes, from: input.from, to: input.to });
-    if (input.level !== 'deep') return { events, deepMessages: [], deepPromptSnapshots: [] };
+    const operations = await listDiagnosticTableRows(db, 'diagnostic_operations', input.space, { threadIdHashes: selectedThreadHashes, from: input.from, to: input.to });
+    const windows = await listDiagnosticTableRows(db, 'diagnostic_windows', input.space, { from: input.from, to: input.to });
+    const incidents = await listDiagnosticTableRows(db, 'diagnostic_incidents', input.space, { threadIdHashes: selectedThreadHashes, from: input.from, to: input.to });
+    if (input.level !== 'deep') return { events, operations, windows, incidents, deepMessages: [], deepPromptSnapshots: [] };
     const filters = ["r.status = 'completed'"]; const args: string[] = [];
     if (selectedThreadIds.length) { filters.push(`r.threadId IN (${selectedThreadIds.map(() => '?').join(', ')})`); args.push(...selectedThreadIds); } if (input.from) { filters.push('s.createdAt >= ?'); args.push(input.from); } if (input.to) { filters.push('s.createdAt <= ?'); args.push(input.to); }
     const deepPromptSnapshots = await db.getAllAsync<any>(`SELECT r.id AS requestId, r.threadId, r.generationId, r.modelId, r.branchRouteHash, r.contextAssemblyProfileHash, s.sequence, s.role, s.messageId, s.renderedContent, s.sourceMessageVersionHash, s.createdAt FROM ai_prompt_requests r JOIN ai_prompt_snapshots s ON s.requestId = r.id WHERE ${filters.join(' AND ')} ORDER BY s.createdAt ASC, s.sequence ASC`, ...args);
     const messageFilters = ['1 = 1']; const messageArgs: string[] = [];
     if (selectedThreadIds.length) { messageFilters.push(`threadId IN (${selectedThreadIds.map(() => '?').join(', ')})`); messageArgs.push(...selectedThreadIds); } if (input.from) { messageFilters.push('createdAt >= ?'); messageArgs.push(input.from); } if (input.to) { messageFilters.push('createdAt <= ?'); messageArgs.push(input.to); }
     const deepMessages = await db.getAllAsync<any>(`SELECT id, threadId, role, content, ${input.includeResponseSnippets ? 'reasoningText' : 'NULL AS reasoningText'}, status, providerId, modelId, createdAt, completedAt FROM ai_messages WHERE ${messageFilters.join(' AND ')} ORDER BY createdAt ASC`, ...messageArgs);
-    return { events, deepMessages, deepPromptSnapshots };
+    return { events, operations, windows, incidents, deepMessages, deepPromptSnapshots };
   });
   const exportSalt = `${input.space}:${Crypto.randomUUID()}`;
   const events = await Promise.all(raw.events.map((event) => pseudonymizeObject(event, exportSalt))) as DiagnosticEventRecord[];
   const deepPromptSnapshots = await Promise.all(raw.deepPromptSnapshots.map((item) => pseudonymizeObject(item, exportSalt)));
   const deepMessages = await Promise.all(raw.deepMessages.map((item) => pseudonymizeObject(item, exportSalt)));
+  const operations = await Promise.all(raw.operations.map((item: unknown) => pseudonymizeObject(item, exportSalt)));
+  const windows = await Promise.all(raw.windows.map((item: unknown) => pseudonymizeObject(item, exportSalt)));
+  const incidents = await Promise.all(raw.incidents.map((item: unknown) => pseudonymizeObject(item, exportSalt)));
   const root = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}pixory-diagnostics-${Date.now()}`; await FileSystem.makeDirectoryAsync(root, { intermediates: true });
   const summary = summarizeDiagnosticEvents(events); const droppedEventCount = getDroppedDiagnosticEventCount(input.space);
   const manifest = { schemaVersion: 1, exportLevel: input.level, space: input.space, eventCount: events.length, droppedEventCount, generatedAt: new Date().toISOString(), correlationSaltScope: 'single_export_only', filters: { threadSelected: Boolean(input.threadIds?.length || input.threadId || input.threadIdHash || input.threadIdHashes?.length), from: input.from ?? null, to: input.to ?? null }, completeness: { bufferedEventsFlushed: true, hasDroppedEvents: droppedEventCount > 0 } };
-  const analysisReady = { manifest: 'manifest.json', summary: 'summary.md', architecture: 'architecture.json', keyMetrics: summary, integrity: manifest.completeness, files: { events: 'events.jsonl', generationSpans: 'generation-spans.csv', cacheRequests: 'cache-requests.csv', databaseSpans: 'database-spans.csv', screenSpans: 'screen-spans.csv', attachmentSpans: 'attachment-spans.csv', errors: 'errors.jsonl' } };
+  const analysisReady = { manifest: 'manifest.json', summary: 'summary.md', architecture: 'architecture.json', keyMetrics: summary, integrity: manifest.completeness, files: { events: 'events.jsonl', operations: 'operations.jsonl', windows: 'windows.jsonl', incidents: 'incidents.jsonl', metricsCatalog: 'metrics-catalog.json', monitors: 'monitors.json', generationSpans: 'generation-spans.csv', cacheRequests: 'cache-requests.csv', databaseSpans: 'database-spans.csv', screenSpans: 'screen-spans.csv', attachmentSpans: 'attachment-spans.csv', errors: 'errors.jsonl' } };
   const files: Record<string, string> = {
-    'manifest.json': JSON.stringify(manifest, null, 2), 'analysis-ready.json': JSON.stringify(analysisReady, null, 2), 'events.jsonl': events.map((event) => JSON.stringify(event)).join('\n'),
+    'manifest.json': JSON.stringify(manifest, null, 2), 'analysis-ready.json': JSON.stringify(analysisReady, null, 2), 'operations.jsonl': operations.map((item) => JSON.stringify(item)).join('\n'), 'windows.jsonl': windows.map((item) => JSON.stringify(item)).join('\n'), 'incidents.jsonl': incidents.map((item) => JSON.stringify(item)).join('\n'), 'metrics-catalog.json': JSON.stringify({ schemaVersion: 1, metrics: diagnosticCatalog().metrics }, null, 2), 'monitors.json': JSON.stringify({ schemaVersion: 1, monitors: diagnosticCatalog().monitors }, null, 2), 'events.jsonl': events.map((event) => JSON.stringify(event)).join('\n'),
     'generation-spans.csv': toCsv(events, (event) => event.eventType.startsWith('generation_') || event.eventType.startsWith('first_')), 'cache-requests.csv': toCsv(events, (event) => event.eventType === 'provider_usage' || event.eventType === 'prompt_ready'), 'database-spans.csv': toCsv(events, (event) => event.eventType.startsWith('database_')), 'screen-spans.csv': toCsv(events, (event) => event.eventType.startsWith('screen_') || event.eventType.startsWith('navigation_')), 'attachment-spans.csv': toCsv(events, (event) => event.eventType.startsWith('attachment_')), 'errors.jsonl': events.filter((event) => event.eventType.includes('error') || event.eventType.endsWith('_failed')).map((event) => JSON.stringify(event)).join('\n'),
     'summary.md': `# Pixory 诊断摘要\n\n- 级别：${input.level}\n- 空间：${input.space}\n- 事件数：${events.length}\n- 丢失事件：${droppedEventCount}\n- P50：${summary.durationP50Ms ?? 'N/A'} ms\n- P90：${summary.durationP90Ms ?? 'N/A'} ms\n- P95：${summary.durationP95Ms ?? 'N/A'} ms\n`, 'architecture.json': JSON.stringify(buildDiagnosticArchitectureSnapshot({ space: input.space }), null, 2), 'README.md': '标准包只含脱敏结构化数据。关联标识使用本次导出专用盐，不能跨诊断包关联。深度包仅在用户逐次确认后生成。API key、Authorization、Cookie、Base64 和完整本机路径禁止导出。'
   };

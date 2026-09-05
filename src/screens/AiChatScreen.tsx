@@ -164,7 +164,9 @@ import {
   type StreamingTailViewportPolicy,
 } from "../ai/aiStreamingTailViewportPolicy";
 import { streamingTailPerfDebug } from "../ai/aiStreamingPerfDebug";
-import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
+import { recordDiagnosticEvent, recordDiagnosticIncident, recordDiagnosticWindow } from '../diagnostics/diagnosticLogger';
+import { createAiGenerationState, transitionAiGeneration, type AiGenerationState } from '../ai/aiGenerationStateMachine';
+import { shouldSuspectBlankScreen } from '../diagnostics/diagnosticWindowAggregator';
 import {
   recordDetachedTailMerge,
   recordStreamingUiCommit,
@@ -233,6 +235,7 @@ import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWo
 import { presentDreamFailure } from '../ai/dream/dreamPolicy';
 import { loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
 import { hashBranchRoute } from '../ai/context/conversationCoverage';
+import { hashPromptCacheText } from '../ai/aiPromptCache';
 import type {
   AiBranchScope,
   AiMessagePageCursor,
@@ -1022,6 +1025,55 @@ export function AiChatScreen({
   const pendingStreamingTailCommitRef = useRef(false);
   const commitStreamingTailIfStableRef = useRef<() => boolean>(() => false);
   const visibleStreamingTailMessageIdsRef = useRef(new Set<string>());
+  const messageContentHeightRef = useRef(0);
+  const blankScreenSinceRef = useRef<number | null>(null);
+  const blankIncidentFingerprintRef = useRef<string | null>(null);
+  const recordBlankScreenIncidentIfNeeded = () => {
+    const threadId = activeThreadIdRef.current;
+    if (!threadId || !isMessageListReady || isInitialMessageLoading) return;
+    const visibleMessageIds = new Set([
+      ...inlineEditSafeVisibleMessageIdsRef.current,
+      ...visibleStreamingTailMessageIdsRef.current,
+    ]);
+    const visibleItemCount = visibleMessageIds.size;
+    const suspect = shouldSuspectBlankScreen({
+      dataCount: messagesRef.current.length,
+      visibleItemCount,
+      mountedItemCount: visibleItemCount,
+      contentHeight: messageContentHeightRef.current,
+      generating,
+      uiCommitAgeMs: Date.now() - lastStreamingUiCommitAtRef.current,
+      threadMatch: activeThreadIdRef.current === threadId,
+    });
+    if (!suspect) {
+      blankScreenSinceRef.current = null;
+      blankIncidentFingerprintRef.current = null;
+      return;
+    }
+    const now = Date.now();
+    blankScreenSinceRef.current ??= now;
+    if (now - blankScreenSinceRef.current < 250) return;
+    const generationId = activeStreamingIdentityRef.current?.generationId ?? 'none';
+    const fingerprint = 'blank_screen:' + threadId + ':' + generationId;
+    if (blankIncidentFingerprintRef.current === fingerprint) return;
+    blankIncidentFingerprintRef.current = fingerprint;
+    recordDiagnosticIncident({
+      id: fingerprint + ':' + now,
+      space,
+      incidentType: 'blank_screen_suspected',
+      severity: 'error',
+      fingerprint,
+      occurredAtUtc: new Date(now).toISOString(),
+      traceId: diagnosticTraceIdRef.current,
+      threadIdHash: hashPromptCacheText(`${space}:thread:${threadId}`),
+      generationId: activeStreamingIdentityRef.current?.generationId,
+      payload: {
+        metrics: { dataCount: messagesRef.current.length, visibleItemCount, contentHeight: messageContentHeightRef.current, viewportHeight: messageViewportHeightRef.current },
+        state: { generating, removeClippedSubviews: tailListRemoveClippedSubviews },
+        anomalies: ['blank_screen_suspected'],
+      },
+    });
+  };
   // prettier-ignore
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
       const nextVisibleMessageIds = new Set(
@@ -1068,6 +1120,7 @@ export function AiChatScreen({
         }
       });
       visibleStreamingTailMessageIdsRef.current = nextVisibleMessageIds;
+      recordBlankScreenIncidentIfNeeded();
       commitStreamingTailIfStableRef.current();
     },
   );
@@ -1099,6 +1152,8 @@ export function AiChatScreen({
   const screenMountedRef = useRef(true);
   const appActiveRef = useRef(AppState.currentState === "active");
   const generationSubscriptionRef = useRef<(() => void) | null>(null);
+  const generationStateRef = useRef<AiGenerationState | null>(null);
+  const lastStreamingUiCommitAtRef = useRef(Date.now());
   const activeStreamGenerationRef = useRef(0);
   const activeStreamingIdentityRef = useRef<ActiveStreamingIdentity | null>(
     null,
@@ -1519,6 +1574,7 @@ export function AiChatScreen({
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [clippingEnabled, setClippingEnabled] = useState(false);
   const [isInitialMessageLoading, setIsInitialMessageLoading] = useState(true);
   const [isMessageListReady, setIsMessageListReady] = useState(false);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
@@ -2564,6 +2620,27 @@ export function AiChatScreen({
     return false;
   }
 
+  function transitionGenerationPhase(nextPhase: Parameters<typeof transitionAiGeneration>[1]): void {
+    const currentState = generationStateRef.current;
+    if (!currentState) return;
+    const result = transitionAiGeneration(currentState, nextPhase, new Date().toISOString());
+    generationStateRef.current = result.state;
+    if (!result.accepted) {
+      recordDiagnosticIncident({
+        id: `generation_transition_${currentState.generationId}_${Date.now()}`,
+        space,
+        incidentType: result.reason === 'duplicate_terminal' ? 'generation_duplicate_terminal' : 'generation_invalid_transition',
+        severity: 'error',
+        fingerprint: `generation_transition:${result.reason}:${currentState.phase}:${nextPhase}`,
+        occurredAtUtc: new Date().toISOString(),
+        traceId: diagnosticTraceIdRef.current,
+        threadIdHash: hashPromptCacheText(`${space}:thread:${currentState.threadId}`),
+        generationId: currentState.generationId,
+        payload: { state: { previousPhase: currentState.phase, nextPhase }, anomalies: [result.reason ?? 'invalid_transition'] },
+      });
+    }
+  }
+
   function createGenerationSubscriber(
     targetThreadId: string,
     generation: number,
@@ -2589,6 +2666,9 @@ export function AiChatScreen({
           threadId: targetThreadId,
         };
         activeStreamingIdentityRef.current = streamingIdentity;
+        generationStateRef.current = createAiGenerationState({ generationId, threadId: targetThreadId, messageId: assistantMessageId, occurredAtUtc: new Date().toISOString() });
+        transitionGenerationPhase('local_persisted');
+        transitionGenerationPhase('request_started');
         thinkingExpectedByMessageIdRef.current.set(
           assistantMessageId,
           Boolean(thinkingExpected),
@@ -2638,8 +2718,24 @@ export function AiChatScreen({
         const previous = streamDiagnosticWindowRef.current;
         const terminal = patch.status === "completed" || patch.status === "failed" || patch.status === "stopped";
         if (previous.generationId !== patch.generationId || now - previous.recordedAt >= 500 || terminal) {
-          recordDiagnosticEvent({ eventType: "chat_stream_render_window", space, traceId: diagnosticTraceIdRef.current, generationId: patch.generationId, durationMs: previous.generationId === patch.generationId ? now - previous.recordedAt : 0, payload: { status: patch.status ?? null, answerChars, reasoningChars, answerCharsDelta: previous.generationId === patch.generationId ? Math.max(0, answerChars - previous.answerChars) : answerChars, reasoningCharsDelta: previous.generationId === patch.generationId ? Math.max(0, reasoningChars - previous.reasoningChars) : reasoningChars } });
+          const answerCharsDelta = previous.generationId === patch.generationId ? Math.max(0, answerChars - previous.answerChars) : answerChars;
+          const reasoningCharsDelta = previous.generationId === patch.generationId ? Math.max(0, reasoningChars - previous.reasoningChars) : reasoningChars;
+          const anomalyFlags = activeThreadIdRef.current === targetThreadId ? [] : ['thread_delta_mismatch'];
+          recordDiagnosticWindow({
+            id: 'stream_' + patch.generationId + '_' + now,
+            space,
+            occurredAtUtc: new Date(now).toISOString(),
+            traceId: diagnosticTraceIdRef.current,
+            payload: { generationId: patch.generationId, metrics: { deltaCount: 1, answerCharsDelta, reasoningCharsDelta, visibleItemCount: visibleStreamingTailMessageIdsRef.current.size, contentHeight: messageContentHeightRef.current, viewportHeight: messageViewportHeightRef.current }, state: { status: patch.status ?? 'generating', threadMatch: activeThreadIdRef.current === targetThreadId }, anomalies: anomalyFlags },
+          });
+          if (terminal) {
+            recordDiagnosticEvent({ eventType: "chat_stream_terminal", space, traceId: diagnosticTraceIdRef.current, generationId: patch.generationId, durationMs: previous.generationId === patch.generationId ? now - previous.recordedAt : 0, payload: { status: patch.status ?? null, answerChars, reasoningChars, answerCharsDelta, reasoningCharsDelta } });
+          }
           streamDiagnosticWindowRef.current = { generationId: patch.generationId, recordedAt: now, answerChars, reasoningChars };
+        }
+        if (generationStateRef.current && patch.generationId) {
+          const nextPhase = terminal ? 'terminal' : patch.content?.trim() ? 'answer' : patch.reasoningText?.trim() ? 'reasoning' : 'first_byte';
+          transitionGenerationPhase(nextPhase);
         }
         applyOrBufferStreamingMessagePatch(targetThreadId, generation, patch);
       },
@@ -2649,6 +2745,13 @@ export function AiChatScreen({
           !screenMountedRef.current
         ) {
           return;
+        }
+        if (generationStateRef.current && generationStateRef.current.phase !== 'terminal' && generationStateRef.current.phase !== 'final_persisted' && generationStateRef.current.phase !== 'ui_stable') {
+          transitionGenerationPhase('terminal');
+        }
+        const terminalBufferedPatch = bufferedStreamingPatchRef.current;
+        if (terminalBufferedPatch && (terminalBufferedPatch.status === "completed" || terminalBufferedPatch.status === "failed" || terminalBufferedPatch.status === "stopped")) {
+          applyStreamingMessagePatch(terminalBufferedPatch);
         }
         setGenerating(false);
         setActiveAssistantId(null);
@@ -2868,7 +2971,17 @@ export function AiChatScreen({
 
   // prettier-ignore
   function preserveLiveStreamingMessages(nextMessages: AiMessageWithCitations[]): AiMessageWithCitations[] {
-    return nextMessages.map((message) => {
+    const currentLiveMessages = messagesRef.current.filter(
+      (message) => message.status === 'generating',
+    );
+    const nextMessageIds = new Set(nextMessages.map((message) => message.id));
+    const missingLiveMessages = currentLiveMessages.filter(
+      (message) => !nextMessageIds.has(message.id),
+    );
+    const mergedMessages = [...nextMessages, ...missingLiveMessages].sort(
+      (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
+    );
+    return mergedMessages.map((message) => {
       if (message.status !== 'generating') {
         return message;
       }
@@ -3003,7 +3116,12 @@ export function AiChatScreen({
     messageTouchDirectionRef.current = 'undetermined';
   }, []);
 
-  const handleMessageListContentSizeChange = useCallback(() => {
+  const handleMessageListContentSizeChange = useCallback((_: number, contentHeight: number) => {
+    messageContentHeightRef.current = Math.max(0, Math.round(contentHeight));
+    recordBlankScreenIncidentIfNeeded();
+    if (!isInitialMessageLoading && invertedMessageItems.length === 0 && activeThreadIdRef.current) {
+      recordDiagnosticIncident({ id: `blank_${space}_${Date.now()}`, space, incidentType: 'message_list_empty', severity: 'error', fingerprint: `message_list_empty:${activeThreadIdRef.current}`, occurredAtUtc: new Date().toISOString(), traceId: diagnosticTraceIdRef.current, generationId: activeStreamingIdentityRef.current?.generationId, payload: { state: { generating, isMessageListReady }, metrics: { messageCount: 0 }, anomalies: ['message_list_empty'] } });
+    }
     if (!isInitialMessageLoading && invertedMessageItems.length > 0) {
       const layoutKey = `${activeThreadIdRef.current ?? "new"}:${invertedMessageItems.length}`;
       if (chatFirstLayoutKeyRef.current !== layoutKey) {
@@ -3776,6 +3894,7 @@ export function AiChatScreen({
         });
         requestAnimationFrame(() => {
           const visibleChars = (patch.content?.length ?? 0) + (patch.reasoningText?.length ?? 0);
+          lastStreamingUiCommitAtRef.current = Date.now();
           recordStreamingUiCommit({
             ...streamingIdentity,
             backlogAgeMs: 0,
@@ -4335,8 +4454,16 @@ export function AiChatScreen({
   const tailListMaxToRenderPerBatch = shouldExpandRenderWindow ? 16 : 8;
   const tailListWindowSize = shouldExpandRenderWindow ? 15 : 11;
   const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow ? 16 : 50;
-  const tailListRemoveClippedSubviews =
-    Platform.OS === "android" ? false : undefined;
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    if (generating || shouldRelaxClipping || streamingTailStateRef.current.status !== "idle") {
+      setClippingEnabled(false);
+      return;
+    }
+    const timer = setTimeout(() => setClippingEnabled(true), 1000);
+    return () => clearTimeout(timer);
+  }, [generating, shouldRelaxClipping, streamingTailVersion]);
+  const tailListRemoveClippedSubviews = Platform.OS === "android" ? clippingEnabled : undefined;
 
   const handleReturnToLatestPress = useCallback(() => {
     followLatestMessage(false);

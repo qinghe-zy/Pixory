@@ -39,7 +39,8 @@ export function AiThinkingBlock({
 }: AiThinkingBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [now, setNow] = useState(Date.now());
-  const thinking = thinkingActive ?? (status === 'generating' || status === 'queued');
+  const terminalStatus = status === 'completed' || status === 'failed' || status === 'stopped';
+  const thinking = !terminalStatus && (thinkingActive ?? (status === 'generating' || status === 'queued'));
   const expandedProgress = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const durationCompletedAt = thinking ? null : completedAt ?? createdAt;
   const duration = useMemo(() => elapsedSeconds(createdAt, durationCompletedAt, now), [createdAt, durationCompletedAt, now]);
@@ -47,6 +48,10 @@ export function AiThinkingBlock({
   const hasReasoningText = Boolean(reasoningText?.trim());
   const waitingForReasoningText = thinking && expanded && !hasReasoningText;
   const bodyVisible = expanded && (hasReasoningText || thinking);
+
+  useEffect(() => {
+    setExpanded(defaultExpanded);
+  }, [defaultExpanded]);
 
   useEffect(() => {
     if (!thinking) {

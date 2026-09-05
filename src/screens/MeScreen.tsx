@@ -15,7 +15,7 @@ import { formatFileSize } from '../utils/formatters';
 import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
 import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
 import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
-import { isDevToolsEnabled } from '../utils/dev';
+import { useDeveloperMode } from '../utils/dev';
 
 interface MeScreenProps {
   refreshToken: number;
@@ -160,6 +160,7 @@ export function MeScreen({
   onLockPersonalSpace,
 }: MeScreenProps) {
   const { showToast } = useToast();
+  const developerMode = useDeveloperMode();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
   const [isRenameDialogVisible, setIsRenameDialogVisible] = useState(false);
   const isPersonalMode = space === 'personal';
@@ -521,7 +522,7 @@ export function MeScreen({
             <Text style={styles.systemListTitle}>关于</Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
-          {isDevToolsEnabled ? (
+          {developerMode ? (
             <>
               <View style={styles.systemListDivider} />
               <Pressable onPress={() => handleEntryPress('diagnostics')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
