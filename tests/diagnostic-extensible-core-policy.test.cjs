@@ -21,5 +21,6 @@ test('developer mode supports seven taps and settings exit', () => {
   const settings = fs.readFileSync('src/screens/DiagnosticsSettingsScreen.tsx', 'utf8');
   assert.match(about, /count >= 7/);
   assert.match(about, /10000/);
+  assert.match(about, /isDeveloperModeRevealEnabled/);
   assert.match(settings, /关闭开发者模式/);
 });

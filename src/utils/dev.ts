@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 const DEVELOPER_MODE_KEY = 'pixory_developer_mode_enabled';
 export const isDevToolsEnabled = __DEV__ && process.env.EXPO_PUBLIC_PIXORY_DEV_TOOLS === '1';
+export const isDeveloperModeRevealEnabled = true;
 let developerModeEnabled = false;
 const listeners = new Set<(enabled: boolean) => void>();
 export function isDeveloperModeEnabled(): boolean { return isDevToolsEnabled || developerModeEnabled; }

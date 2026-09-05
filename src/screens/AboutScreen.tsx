@@ -17,7 +17,7 @@ import {
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
-import { isDevToolsEnabled, setDeveloperModeEnabled } from '../utils/dev';
+import { isDeveloperModeRevealEnabled, setDeveloperModeEnabled } from '../utils/dev';
 
 interface AboutScreenProps {
   onBack: () => void;
@@ -44,7 +44,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
   const [showSweep, setShowSweep] = useState(true);
   const revealTapRef = useRef({ count: 0, startedAt: 0 });
-  const handleDeveloperTap = () => { if (!isDevToolsEnabled) return; const now = Date.now(); const current = revealTapRef.current; const count = now - current.startedAt <= 10000 ? current.count + 1 : 1; revealTapRef.current = { count, startedAt: count === 1 ? now : current.startedAt }; if (count >= 7) { revealTapRef.current = { count: 0, startedAt: 0 }; void setDeveloperModeEnabled(true); showToast('开发者模式已开启'); } };
+  const handleDeveloperTap = () => { if (!isDeveloperModeRevealEnabled) return; const now = Date.now(); const current = revealTapRef.current; const count = now - current.startedAt <= 10000 ? current.count + 1 : 1; revealTapRef.current = { count, startedAt: count === 1 ? now : current.startedAt }; if (count >= 7) { revealTapRef.current = { count: 0, startedAt: 0 }; void setDeveloperModeEnabled(true); showToast('开发者模式已开启'); } };
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSweep(false), 2500);
