@@ -33,6 +33,7 @@ interface AboutScreenProps {
   onBack: () => void;
   onPushRoute: (route: any) => void;
   space?: PixorySpace;
+  isFocused?: boolean;
 }
 
 interface AboutJournalUiState {
@@ -65,7 +66,7 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
+export function AboutScreen({ onBack, onPushRoute, space = 'normal', isFocused = true }: AboutScreenProps) {
   const { showToast } = useToast();
   const version = Constants.expoConfig?.version ?? '2.8.1';
   const isReturningRef = useRef(aboutJournalUiStateBySpace.has(space));
@@ -106,7 +107,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           day,
           title: achievement.title,
           requirement: achievement.requirement,
-          occurredAt: achievement.occurredAt,
+          occurredAt: achievement.occurredAt, routeKind: achievement.routeKind, original: achievement,
         });
       }
     }
@@ -473,7 +474,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                 </Text>
                 <Text style={styles.heroUnit}>天</Text>
                 {milestones ? (
-                  <DaysPlaybackEgg
+                  <DaysPlaybackEgg isFocused={isFocused} onPressAchievement={navigateAchievement} 
                     achievements={playbackAchievements}
                     onPlaybackAchievement={handlePlaybackAchievement}
                     onPlaybackDay={handlePlaybackDay}

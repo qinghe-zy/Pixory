@@ -1971,7 +1971,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'about') {
-    content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} />;
+    content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} isFocused={routeIndex === routeStack.length - 1} />;
   } else if (currentRoute.name === 'original-storage') {
     content = (
       <OriginalStorageScreen

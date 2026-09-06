@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
 import { colors, spacing, typography } from '../../design/tokens';
 
@@ -11,6 +12,8 @@ export interface PlaybackAchievement {
   title: string;
   requirement: string;
   occurredAt: number; // ms timestamp
+  routeKind?: string;
+  original?: any;
 }
 
 interface DaysPlaybackEggProps {
@@ -22,6 +25,10 @@ interface DaysPlaybackEggProps {
   onPlaybackDay: (day: number | null) => void;
   /** Called when a new achievement appears or clears during playback */
   onPlaybackAchievement: (achievement: PlaybackAchievement | null) => void;
+  /** Is the screen currently focused? If false, auto-pause playback. */
+  isFocused?: boolean;
+  /** Called when user presses a navigable achievement bubble */
+  onPressAchievement?: (achievement: any) => void;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -44,11 +51,16 @@ export function DaysPlaybackEgg({
   achievements,
   onPlaybackDay,
   onPlaybackAchievement,
+  isFocused = true,
+  onPressAchievement,
 }: DaysPlaybackEggProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAchievement, setCurrentAchievement] = useState<PlaybackAchievement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playingRef = useRef(false);
+  
+  const [isPausedByFocus, setIsPausedByFocus] = useState(false);
+  const currentDayRef = useRef<number>(1);
 
   // Build lookup map when achievements change
   const achievementMapRef = useRef<Map<number, PlaybackAchievement>>(new Map());
@@ -69,6 +81,7 @@ export function DaysPlaybackEgg({
     clearTimer();
     playingRef.current = false;
     setIsPlaying(false);
+    setIsPausedByFocus(false);
     setCurrentAchievement(null);
     onPlaybackDay(null);
     onPlaybackAchievement(null);
@@ -77,6 +90,7 @@ export function DaysPlaybackEgg({
   const scheduleNext = useCallback(
     (day: number) => {
       if (!playingRef.current) return;
+      currentDayRef.current = day;
       onPlaybackDay(day);
       const achievement = achievementMapRef.current.get(day);
       if (achievement) {
@@ -111,9 +125,25 @@ export function DaysPlaybackEgg({
     clearTimer();
     playingRef.current = true;
     setIsPlaying(true);
+    setIsPausedByFocus(false);
     setCurrentAchievement(null);
     scheduleNext(1);
   }, [scheduleNext]);
+
+  // Handle focus changes (auto-pause and auto-resume)
+  useEffect(() => {
+    if (!isFocused && isPlaying && playingRef.current) {
+      // Screen lost focus, pause
+      clearTimer();
+      playingRef.current = false;
+      setIsPausedByFocus(true);
+    } else if (isFocused && isPausedByFocus) {
+      // Screen regained focus, resume from the current day
+      setIsPausedByFocus(false);
+      playingRef.current = true;
+      scheduleNext(currentDayRef.current);
+    }
+  }, [isFocused, isPlaying, isPausedByFocus, scheduleNext]);
 
   // Cleanup on unmount
   useEffect(() => () => {
@@ -125,6 +155,8 @@ export function DaysPlaybackEgg({
     if (isPlaying) stopPlayback();
     else startPlayback();
   };
+  
+  const isNavigable = currentAchievement?.routeKind && currentAchievement.routeKind !== 'none';
 
   return (
     <View style={styles.container}>
@@ -145,9 +177,21 @@ export function DaysPlaybackEgg({
           key={currentAchievement.title + currentAchievement.day}
           style={styles.displayInfo}
         >
-          <Text style={styles.displayDate}>{formatDate(currentAchievement.occurredAt)}</Text>
-          <Text style={styles.displayTitle}>达成成就 {currentAchievement.title}</Text>
-          <Text style={styles.displayReq}>{currentAchievement.requirement}</Text>
+          <Pressable
+            disabled={!isNavigable || !onPressAchievement}
+            onPress={() => {
+              if (isNavigable && onPressAchievement && currentAchievement.original) {
+                onPressAchievement(currentAchievement.original);
+              }
+            }}
+          >
+            <Text style={styles.displayDate}>{formatDate(currentAchievement.occurredAt)}</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.displayTitle}>达成成就 {currentAchievement.title}</Text>
+              {isNavigable ? <Feather name="chevron-right" size={14} color={colors.text.tertiary} style={styles.chevron} /> : null}
+            </View>
+            <Text style={styles.displayReq}>{currentAchievement.requirement}</Text>
+          </Pressable>
         </Animated.View>
       ) : null}
     </View>
@@ -235,14 +279,13 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginBottom: 2,
   },
-  displayTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.primary,
-    marginBottom: 2,
-  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  chevron: { marginLeft: 2, marginBottom: 2 },
+  displayTitle: { ...typography.textStyles.bodyStrong, color: colors.text.primary },
   displayReq: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
     lineHeight: 18,
   },
 });
+
