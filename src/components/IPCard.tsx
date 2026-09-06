@@ -8,6 +8,7 @@ import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatFileSize, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
+import { MagneticCardContainer, GyroSpecularHighlight } from './MagneticCardContainer';
 
 interface IPCardProps {
   ip: IpListItem;
@@ -15,51 +16,67 @@ interface IPCardProps {
   space?: PixorySpace;
   onLongPress?: (ip: IpListItem) => void;
   onPress: (ipId: number) => void;
+  useGyroEffect?: boolean;
 }
 
-export function IPCard({ ip, imagePriority = 'normal', space = 'normal', onLongPress, onPress }: IPCardProps) {
+export function IPCard({ ip, imagePriority = 'normal', space = 'normal', onLongPress, onPress, useGyroEffect = false }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
   const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
 
+  const innerCard = (
+    <Pressable
+      accessibilityLabel={`打开 ${ip.name}`}
+      accessibilityRole="button"
+      onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
+      onPress={() => onPress(ip.id)}
+      style={({ pressed }) => [styles.card, pressed && !useGyroEffect && styles.cardPressed]}
+    >
+      {ip.coverThumbnailFileUri ? (
+        <View style={styles.cover}>
+          <View style={styles.imageInset}>
+            <SecureImage
+              blurRadius={coverBlurRadius}
+              contentFit="cover"
+              priority={imagePriority}
+              recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
+              space={space}
+              style={[StyleSheet.absoluteFill, styles.coverImage]}
+              transition={imagePriority === 'high' ? 0 : componentTokens.ipCard.imageTransitionMs}
+              uri={ip.coverThumbnailFileUri}
+            />
+          </View>
+          <AcrylicGlass />
+          {content}
+        </View>
+      ) : (
+        <View style={[styles.cover, styles.fallbackCover]}>
+          <View style={styles.imageInset}>
+            <Text numberOfLines={1} style={styles.initialsText}>
+              {getIpInitials(ip.name)}
+            </Text>
+            <View style={styles.fallbackMark} />
+          </View>
+          <AcrylicGlass />
+          {content}
+        </View>
+      )}
+      {useGyroEffect && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <GyroSpecularHighlight intensity={0.7} />
+        </View>
+      )}
+    </Pressable>
+  );
+
   return (
     <View style={styles.shadowContainer}>
-      <Pressable
-        accessibilityLabel={`打开 ${ip.name}`}
-        accessibilityRole="button"
-        onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
-        onPress={() => onPress(ip.id)}
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      >
-        {ip.coverThumbnailFileUri ? (
-          <View style={styles.cover}>
-            <View style={styles.imageInset}>
-              <SecureImage
-                blurRadius={coverBlurRadius}
-                contentFit="cover"
-                priority={imagePriority}
-                recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
-                space={space}
-                style={[StyleSheet.absoluteFill, styles.coverImage]}
-                transition={imagePriority === 'high' ? 0 : componentTokens.ipCard.imageTransitionMs}
-                uri={ip.coverThumbnailFileUri}
-              />
-            </View>
-            <AcrylicGlass />
-            {content}
-          </View>
-        ) : (
-          <View style={[styles.cover, styles.fallbackCover]}>
-            <View style={styles.imageInset}>
-              <Text numberOfLines={1} style={styles.initialsText}>
-                {getIpInitials(ip.name)}
-              </Text>
-              <View style={styles.fallbackMark} />
-            </View>
-            <AcrylicGlass />
-            {content}
-          </View>
-        )}
-      </Pressable>
+      {useGyroEffect ? (
+        <MagneticCardContainer maxRotation={12} rotationFactor={0.08} gyroSensitivity={4}>
+          {innerCard}
+        </MagneticCardContainer>
+      ) : (
+        innerCard
+      )}
     </View>
   );
 }
