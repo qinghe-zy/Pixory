@@ -101,27 +101,26 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     },
   });
 
-  // 1. Label and original back button fade out quickly as they touch the sticky header
+  // 1. Label and original back button fade out quickly
   const heroLabelFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [4, 24], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [0, 20], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // 2. Big number starts fading ONLY when it touches the sticky header (scrollY ~ 48)
-  // and finishes fading when it is fully covered (scrollY ~ 112)
+  // 2. Big number starts fading when touching sticky header (scrollY ~ 32)
   const heroNumberFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [48, 112], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [32, 96], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // 3. Sticky header background and back button fade in early to prepare coverage
-  const stickyBackgroundStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [20, 60], [0, 1], Extrapolation.CLAMP),
+  // 3. Sticky header background, back button, and "已陪伴你" fade in early to replace the original ones
+  const stickyEarlyStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP),
   }));
 
-  // 4. Sticky title ("已陪伴你 123 天") fades in ONLY after big number is almost gone
-  const stickyTitleStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [90, 120], [0, 1], Extrapolation.CLAMP),
+  // 4. Sticky number part (" · 123 天") fades in ONLY after big number is almost gone
+  const stickyLateStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [80, 100], [0, 1], Extrapolation.CLAMP),
     transform: [
-      { translateY: interpolate(scrollY.value, [90, 120], [4, 0], Extrapolation.CLAMP) },
+      { translateY: interpolate(scrollY.value, [80, 100], [4, 0], Extrapolation.CLAMP) },
     ],
   }));
   const handleDeveloperTap = () => { if (!isDeveloperModeRevealEnabled) return; const now = Date.now(); const current = revealTapRef.current; const count = now - current.startedAt <= 10000 ? current.count + 1 : 1; revealTapRef.current = { count, startedAt: count === 1 ? now : current.startedAt }; if (count >= 7) { revealTapRef.current = { count: 0, startedAt: 0 }; void setDeveloperModeEnabled(true); showToast('开发者模式已开启'); } };
@@ -399,6 +398,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
         contentContainerStyle={{ padding: 0, gap: 0, flex: 1 }}
       >
         <Animated.ScrollView
+          bounces={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
@@ -406,7 +406,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           contentContainerStyle={[
             styles.scrollContent,
             { 
-              paddingTop: insets.top + spacing[8],
+              paddingTop: spacing[2],
               paddingBottom: insets.bottom + spacing[12] 
             },
           ]}
