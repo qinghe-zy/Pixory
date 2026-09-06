@@ -26,8 +26,9 @@ interface DaysPlaybackEggProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FRAME_MS = 30;
-const ACHIEVEMENT_PAUSE_MS = 500;
+const FRAME_MS = 200;
+const ACHIEVEMENT_DISPLAY_MS = 3000;
+const ACHIEVEMENT_FADEOUT_MS = 500;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -85,12 +86,15 @@ export function DaysPlaybackEgg({
           if (!playingRef.current) return;
           setCurrentAchievement(null);
           onPlaybackAchievement(null);
-          if (day < totalDays) {
-            timerRef.current = setTimeout(() => scheduleNext(day + 1), FRAME_MS);
-          } else {
-            stopPlayback();
-          }
-        }, ACHIEVEMENT_PAUSE_MS);
+          timerRef.current = setTimeout(() => {
+            if (!playingRef.current) return;
+            if (day < totalDays) {
+              scheduleNext(day + 1);
+            } else {
+              stopPlayback();
+            }
+          }, ACHIEVEMENT_FADEOUT_MS);
+        }, ACHIEVEMENT_DISPLAY_MS);
       } else {
         setCurrentAchievement(null);
         if (day < totalDays) {
@@ -137,7 +141,7 @@ export function DaysPlaybackEgg({
       {currentAchievement ? (
         <Animated.View
           entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(150)}
+          exiting={FadeOut.duration(500)}
           key={currentAchievement.title + currentAchievement.day}
           style={styles.bubble}
         >
