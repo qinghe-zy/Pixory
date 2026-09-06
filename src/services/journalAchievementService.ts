@@ -10,7 +10,7 @@ import {
 import {
   hasContinuousRounds,
   hasCrossDateContinuousRounds,
-  hasDateInLocalHour,
+  hasDeepNightRounds,
   hasSevenConsecutiveDates,
   type JournalRound,
 } from './journalAchievementRules';
@@ -214,6 +214,7 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
         assistantCreatedAt: assistant.createdAt,
         userStatus: user.status,
         assistantStatus: assistant.status,
+        userMessageId: user.id,
       };
       rounds.push(round);
       const threadRounds = roundsByThread.get(thread.id) ?? [];
@@ -224,24 +225,27 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
   const firstRoundThread = threadRows.find((thread) => (roundsByThread.get(thread.id)?.length ?? 0) > 0);
   const addThreadCondition = (
     achievementId: string,
-    predicate: (threadRounds: JournalRound[]) => boolean,
-    sourcePayload?: Record<string, unknown>,
+    predicate: (threadRounds: JournalRound[]) => JournalRound | null,
+    sourcePayloadBuilder?: (round: JournalRound) => Record<string, unknown>,
   ) => {
-    const source = [...roundsByThread.entries()]
-      .find(([, threadRounds]) => predicate(threadRounds));
-    if (source) {
-      add({
-        achievementId,
-        occurredAt: source[1][0].userCreatedAt,
-        sourceType: 'thread',
-        sourceId: source[0],
-        sourcePayload,
-      });
+    for (const [threadId, threadRounds] of roundsByThread.entries()) {
+      const match = predicate(threadRounds);
+      if (match) {
+        add({
+          achievementId,
+          occurredAt: match.userCreatedAt,
+          sourceType: 'thread',
+          sourceId: threadId,
+          sourcePayload: {
+            messageId: match.userMessageId,
+            ...(sourcePayloadBuilder ? sourcePayloadBuilder(match) : {}),
+          },
+        });
+        return;
+      }
     }
   };
-  addThreadCondition('deep-night-light', (threadRounds) =>
-    threadRounds.filter((round) => hasDateInLocalHour(round.userCreatedAt, 1, 4)).length >= 20,
-  );
+  addThreadCondition('deep-night-light', (threadRounds) => hasDeepNightRounds(threadRounds));
   addThreadCondition('long-conversation', (threadRounds) => hasContinuousRounds(threadRounds, 25));
   addThreadCondition('between-two-days', (threadRounds) => hasCrossDateContinuousRounds(threadRounds));
   const roundsByLocalDate = new Map<string, number>();
@@ -249,8 +253,10 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
     const local = new Date(new Date(round.userCreatedAt).getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
     roundsByLocalDate.set(local, (roundsByLocalDate.get(local) ?? 0) + 1);
   }
-  if (hasSevenConsecutiveDates(roundsByLocalDate)) {
-    add({ achievementId: 'week-has-voice', occurredAt: now.toISOString(), sourceType: 'thread', sourceId: firstRoundThread?.id, sourcePayload: { dates: roundsByLocalDate.size } });
+  const sevenDaysDate = hasSevenConsecutiveDates(roundsByLocalDate);
+  if (sevenDaysDate) {
+    const achievedAt = new Date(`${sevenDaysDate}T23:59:59Z`).toISOString();
+    add({ achievementId: 'week-has-voice', occurredAt: achievedAt, sourceType: 'thread', sourceId: firstRoundThread?.id, sourcePayload: { dates: roundsByLocalDate.size } });
   }
 
   const firstMemory = await db.getFirstAsync<{ id: string; createdAt: string; threadId: string | null }>(
@@ -268,17 +274,18 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
     sourcePayload: firstMemory.threadId ? { threadId: firstMemory.threadId } : undefined,
   });
 
-  const memoryCount = await db.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM ai_memories
-     WHERE status IN (${ACTIVE_MEMORY_STATUSES.map(() => '?').join(',')}) AND deletedAt IS NULL`,
+  const memoryCountRows = await db.getAllAsync<{ createdAt: string }>(
+    `SELECT createdAt FROM ai_memories
+     WHERE status IN (${ACTIVE_MEMORY_STATUSES.map(() => '?').join(',')}) AND deletedAt IS NULL
+     ORDER BY createdAt ASC`,
     ACTIVE_MEMORY_STATUSES,
   );
-  if ((memoryCount?.count ?? 0) >= 30) {
+  if (memoryCountRows.length >= 30) {
     add({
       achievementId: 'memory-grove',
-      occurredAt: now.toISOString(),
+      occurredAt: memoryCountRows[29].createdAt,
       sourceType: 'memory',
-      sourcePayload: { count: memoryCount?.count ?? 0 },
+      sourcePayload: { count: memoryCountRows.length },
     });
   }
 
@@ -354,18 +361,20 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
     sourceType: 'branch',
     sourceId: firstBranch.threadId,
   });
-  const threeBranches = await db.getFirstAsync<{ threadId: string; count: number }>(
-    `SELECT threadId, COUNT(*) AS count FROM ai_branch_route_metadata
+  const threeBranches = await db.getAllAsync<{ threadId: string; count: number; createdAt: string }>(
+    `SELECT threadId, COUNT(*) AS count, MAX(createdAt) as createdAt FROM ai_branch_route_metadata
      WHERE status != 'abandoned' GROUP BY threadId HAVING COUNT(*) >= 3
-     ORDER BY threadId ASC LIMIT 1`,
+     ORDER BY createdAt ASC LIMIT 1`,
   );
-  add(threeBranches && {
-    achievementId: 'three-way-crossing',
-    occurredAt: now.toISOString(),
-    sourceType: 'branch',
-    sourceId: threeBranches.threadId,
-    sourcePayload: { count: threeBranches.count },
-  });
+  if (threeBranches.length > 0) {
+    add({
+      achievementId: 'three-way-crossing',
+      occurredAt: threeBranches[0].createdAt,
+      sourceType: 'branch',
+      sourceId: threeBranches[0].threadId,
+      sourcePayload: { count: threeBranches[0].count },
+    });
+  }
 
   const firstCitation = await db.getFirstAsync<{ messageId: string; createdAt: string }>(
     `SELECT c.messageId, c.createdAt FROM ai_message_citations c
@@ -399,15 +408,15 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
     });
   }
 
-  const ipCount = await db.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM ips WHERE deletedAt IS NULL`,
+  const ipsRows = await db.getAllAsync<{ createdAt: string }>(
+    `SELECT createdAt FROM ips WHERE deletedAt IS NULL ORDER BY createdAt ASC`,
   );
-  if ((ipCount?.count ?? 0) >= 3) {
+  if (ipsRows.length >= 3) {
     add({
       achievementId: 'three-realms',
-      occurredAt: now.toISOString(),
+      occurredAt: ipsRows[2].createdAt,
       sourceType: 'ip',
-      sourcePayload: { count: ipCount?.count ?? 0 },
+      sourcePayload: { count: ipsRows.length },
     });
   }
 
@@ -438,31 +447,31 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
     sourceId: firstTag.id,
   });
 
-  const groupedAssetCounts = await db.getAllAsync<{ groupId: number; count: number }>(
-    `SELECT groupId, COUNT(*) AS count FROM image_assets
+  const groupedAssetCounts = await db.getFirstAsync<{ groupId: number; count: number; createdAt: string }>(
+    `SELECT groupId, COUNT(*) AS count, MAX(createdAt) as createdAt FROM image_assets
      WHERE groupId IS NOT NULL AND deletedAt IS NULL
      GROUP BY groupId HAVING COUNT(*) >= 10
      ORDER BY count DESC, groupId ASC LIMIT 1`,
   );
-  if (groupedAssetCounts[0]) {
+  if (groupedAssetCounts) {
     add({
       achievementId: 'ten-in-one-group',
-      occurredAt: now.toISOString(),
+      occurredAt: groupedAssetCounts.createdAt,
       sourceType: 'group',
-      sourceId: groupedAssetCounts[0].groupId,
-      sourcePayload: { count: groupedAssetCounts[0].count },
+      sourceId: groupedAssetCounts.groupId,
+      sourcePayload: { count: groupedAssetCounts.count },
     });
   }
 
-  const assetCount = await db.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL`,
+  const assetCountRows = await db.getAllAsync<{ createdAt: string }>(
+    `SELECT createdAt FROM image_assets WHERE deletedAt IS NULL ORDER BY createdAt ASC`,
   );
-  if ((assetCount?.count ?? 0) >= 100) {
+  if (assetCountRows.length >= 100) {
     add({
       achievementId: 'hundred-images-scroll',
-      occurredAt: now.toISOString(),
+      occurredAt: assetCountRows[99].createdAt,
       sourceType: 'asset',
-      sourcePayload: { count: assetCount?.count ?? 0 },
+      sourcePayload: { count: assetCountRows.length },
     });
   }
 
@@ -475,32 +484,52 @@ async function collectCandidates(db: SQLiteDatabase, now: Date): Promise<Candida
   if (installDate) {
     const start = new Date(installDate);
     const days = Math.max(1, Math.ceil((now.getTime() - start.getTime()) / 86400000));
-    const addTime = (achievementId: string, condition: boolean) => {
+    const addTime = (achievementId: string, condition: boolean, offsetMs: number) => {
       if (condition) {
         add({
           achievementId,
-          occurredAt: now.toISOString(),
+          occurredAt: new Date(start.getTime() + offsetMs).toISOString(),
           sourceType: 'system',
           sourcePayload: { startDate: start.toISOString(), days },
         });
       }
     };
-    addTime('seven-days-poem', days >= 7);
-    addTime('hundred-day-promise', days >= 100);
-    addTime('half-year-date', now.getTime() >= new Date(start.getFullYear(), start.getMonth() + 6, start.getDate()).getTime());
-    addTime('one-year-chapter', now.getTime() >= new Date(start.getFullYear() + 1, start.getMonth(), start.getDate()).getTime());
+    addTime('seven-days-poem', days >= 7, 6 * 86400000);
+    addTime('hundred-day-promise', days >= 100, 99 * 86400000);
+    
+    const halfYear = new Date(start.getFullYear(), start.getMonth() + 6, start.getDate());
+    addTime('half-year-date', now.getTime() >= halfYear.getTime(), halfYear.getTime() - start.getTime());
+    
+    const oneYear = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+    addTime('one-year-chapter', now.getTime() >= oneYear.getTime(), oneYear.getTime() - start.getTime());
+    
     const months = new Set<string>([
       ...messageRows.map((message) => monthKey(message.createdAt)),
       ...(firstAsset ? [monthKey(firstAsset.createdAt)] : []),
     ]);
     months.add(monthKey(now.toISOString()));
-    addTime('moon-trace', months.size >= 3);
+    if (months.size >= 3) {
+      const sortedMonths = Array.from(months).sort();
+      add({
+        achievementId: 'moon-trace',
+        occurredAt: new Date(`${sortedMonths[2]}-01T00:00:00Z`).toISOString(),
+        sourceType: 'system',
+        sourcePayload: { startDate: start.toISOString() },
+      });
+    }
     const seasons = new Set<string>();
     messageRows.forEach((message) => seasons.add(seasonKey(message.createdAt)));
     if (firstAsset) seasons.add(seasonKey(firstAsset.createdAt));
     seasons.add(seasonKey(start.toISOString()));
     seasons.add(seasonKey(now.toISOString()));
-    addTime('four-seasons', seasons.size >= 4);
+    if (seasons.size >= 4) {
+      add({
+        achievementId: 'four-seasons',
+        occurredAt: now.toISOString(),
+        sourceType: 'system',
+        sourcePayload: { startDate: start.toISOString() },
+      });
+    }
   }
 
   return candidates;

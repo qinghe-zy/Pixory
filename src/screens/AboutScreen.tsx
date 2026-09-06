@@ -77,22 +77,9 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
     ...initialJournalUiState.expandedNodes,
-    // If returning, restore exact state without forcing storyBegins to false
-    storyBegins: isReturning ? initialJournalUiState.expandedNodes.storyBegins : false,
+    storyBegins: isReturning ? initialJournalUiState.expandedNodes.storyBegins : (initialJournalUiState.expandedNodes.storyBegins !== false),
   });
 
-  useEffect(() => {
-    // Only play the auto-expand animation on initial load, not when returning
-    if (isReturning) return;
-    
-    const timer = setTimeout(() => {
-      if (initialJournalUiState.expandedNodes.storyBegins !== false) {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setExpandedNodes((prev) => ({ ...prev, storyBegins: true }));
-      }
-    }, 1100);
-    return () => clearTimeout(timer);
-  }, [initialJournalUiState.expandedNodes.storyBegins, isReturning]);
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(initialJournalUiState.expandedCategoryIds);
   const [openAchievementId, setOpenAchievementId] = useState<string | null>(initialJournalUiState.openAchievementId);
   const [detailMd, setDetailMd] = useState<string | null>(null);

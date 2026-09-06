@@ -3,6 +3,7 @@ export interface JournalRound {
   assistantCreatedAt: string;
   userStatus?: string;
   assistantStatus?: string;
+  userMessageId?: string;
 }
 
 export interface JournalMessage {
@@ -27,13 +28,13 @@ export function parseLocalHour(date: Date, timeZoneOffsetMinutes = 480): number 
 export function hasDeepNightRounds(
   rounds: JournalRound[],
   timeZoneOffsetMinutes = 480,
-): boolean {
+): JournalRound | null {
   const validNightRounds = rounds.filter((round) => {
     if (!isValidRound(round)) return false;
     const hour = parseLocalHour(new Date(round.userCreatedAt), timeZoneOffsetMinutes);
     return hour >= 1 && hour < 4;
   });
-  return validNightRounds.length >= 20;
+  return validNightRounds.length >= 20 ? validNightRounds[19] : null;
 }
 
 export function hasContinuousRounds(
@@ -41,7 +42,7 @@ export function hasContinuousRounds(
   minimumRounds: number,
   windowMs = 60 * 60 * 1000,
   maximumGapMs = 3 * 60 * 1000,
-): boolean {
+): JournalRound | null {
   const validRounds = rounds
     .filter(isValidRound)
     .sort((left, right) => left.userCreatedAt.localeCompare(right.userCreatedAt));
@@ -58,17 +59,17 @@ export function hasContinuousRounds(
       }
       count += 1;
       previousAt = currentAt;
-      if (count >= minimumRounds) return true;
+      if (count >= minimumRounds) return validRounds[index];
     }
   }
 
-  return false;
+  return null;
 }
 
 export function hasCrossDateContinuousRounds(
   rounds: JournalRound[],
   timeZoneOffsetMinutes = 480,
-): boolean {
+): JournalRound | null {
   const validRounds = rounds
     .filter(isValidRound)
     .sort((left, right) => left.userCreatedAt.localeCompare(right.userCreatedAt));
@@ -82,17 +83,17 @@ export function hasCrossDateContinuousRounds(
       if (currentAt - previousAt > 3 * 60 * 1000 || currentAt - startAt > 60 * 60 * 1000) break;
       const localMs = currentAt + timeZoneOffsetMinutes * 60 * 1000;
       localDates.add(new Date(localMs).toISOString().slice(0, 10));
-      if (index - start + 1 >= 25 && localDates.size >= 2) return true;
+      if (index - start + 1 >= 25 && localDates.size >= 2) return current;
       previousAt = currentAt;
     }
   }
-  return false;
+  return null;
 }
 
 export function hasSevenConsecutiveDates(
   roundsByDate: Map<string, number>,
   minimumRoundsPerDate = 3,
-): boolean {
+): string | null {
   const eligibleDates = [...roundsByDate.entries()]
     .filter(([, rounds]) => rounds >= minimumRoundsPerDate)
     .map(([date]) => date)
@@ -108,9 +109,9 @@ export function hasSevenConsecutiveDates(
         break;
       }
     }
-    if (consecutive) return true;
+    if (consecutive) return eligibleDates[index + 6];
   }
-  return false;
+  return null;
 }
 
 export function hasDateInLocalHour(
