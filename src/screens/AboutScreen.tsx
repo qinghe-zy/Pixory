@@ -434,7 +434,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>故事开始</Text>
                   </Pressable>
                   {expandedNodes.storyBegins && (
-                    <Animated.View entering={FadeInDown.duration(280)} style={styles.nodeContent}>
+                    <Animated.View entering={FadeIn.duration(300)} style={styles.nodeContent}>
                       <Text style={styles.poetryText}>
                         {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
                         彼时的空白，如今已被时光填满。
