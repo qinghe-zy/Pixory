@@ -450,7 +450,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>故事开始</Text>
                   </Pressable>
                   {expandedNodes.storyBegins && (
-                    <Animated.View entering={FadeIn.duration(300)} style={styles.nodeContent}>
+                    <Animated.View entering={FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       <Text style={styles.poetryText}>
                         {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
                         彼时的空白，如今已被时光填满。
@@ -466,7 +466,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>岁月有声</Text>
                   </Pressable>
                   {expandedNodes.firstFootprints && (
-                    <View style={styles.nodeContent}>
+                    <Animated.View entering={FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       <View style={styles.achievementList}>
                         {journal?.categories.map((category) => (
                           <JournalAchievementChapter
@@ -484,7 +484,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                           <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
                         ) : null}
                       </View>
-                    </View>
+                    </Animated.View>
                   )}
                 </View>
 
@@ -495,9 +495,9 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>至今</Text>
                   </Pressable>
                   {expandedNodes.now && (
-                    <View style={styles.nodeContent}>
+                    <Animated.View entering={FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       {renderStatsGrid()}
-                    </View>
+                    </Animated.View>
                   )}
                 </View>
               </Animated.View>
