@@ -562,14 +562,14 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       */}
       <View style={[styles.stickyBar, { paddingTop: insets.top, height: insets.top + 36 }]} pointerEvents="box-none">
         {/* Animated background that fades in to block content underneath */}
-        <Animated.View style={[StyleSheet.absoluteFill, stickyBackgroundStyle]} pointerEvents="none">
+        <Animated.View style={[StyleSheet.absoluteFill, stickyEarlyStyle]} pointerEvents="none">
           <BlurView intensity={80} tint={space === 'personal' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           {/* Fallback semi-transparent background if BlurView isn't enough in some modes */}
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background.page, opacity: 0.85 }]} />
         </Animated.View>
 
         <View style={styles.stickyBarContent} pointerEvents="box-none">
-          <Animated.View style={stickyBackgroundStyle} pointerEvents="box-none">
+          <Animated.View style={stickyEarlyStyle} pointerEvents="box-none">
             <Pressable
               accessibilityLabel="返回"
               hitSlop={16}
@@ -580,9 +580,14 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             </Pressable>
           </Animated.View>
           
-          <Animated.Text numberOfLines={1} style={[styles.stickyTitle, stickyTitleStyle]}>
-            已陪伴你 · {milestones ? milestones.daysTogether : '...'} 天
-          </Animated.Text>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+            <Animated.Text numberOfLines={1} style={[styles.stickyTitle, { flex: 0 }, stickyEarlyStyle]}>
+              已陪伴你
+            </Animated.Text>
+            <Animated.Text numberOfLines={1} style={[styles.stickyTitle, { flex: 1 }, stickyLateStyle]}>
+              {' · '}{milestones ? milestones.daysTogether : '...'} 天
+            </Animated.Text>
+          </View>
         </View>
       </View>
 
