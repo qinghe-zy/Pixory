@@ -1445,6 +1445,7 @@ export default function App() {
     </FloatingFooterProvider>
   ) : null;
 
+  const renderRouteContent = (currentRoute: AppRoute, routeIndex: number) => {
   let content;
 
   if (isPersonalRoute(currentRoute) && personalSessionState !== 'unlocked') {
@@ -1969,8 +1970,8 @@ export default function App() {
         space={currentRoute.space}
       />
     );
-  // } else if (currentRoute.name === 'about') {
-    // content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'about') {
+    content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'original-storage') {
     content = (
       <OriginalStorageScreen
@@ -2297,6 +2298,8 @@ export default function App() {
     // No overlay content is needed when the user is at the root level.
     content = null;
   }
+    return content;
+  };
 
   return (
     <GestureHandlerRootView style={styles.gestureRoot}>
@@ -2309,30 +2312,21 @@ export default function App() {
           {/* Always-mounted base layer: root tab pager stays alive under overlays */}
           {rootTabContent}
           
-          {/* Always-mounted About layer if in stack */}
-          {(() => {
-            const aboutRoute = routeStack.find((r) => r.name === 'about') as Extract<AppRoute, { name: 'about' }> | undefined;
-            if (!aboutRoute) return null;
+          {/* Overlays: stack of pushed screens sit on top via absoluteFill */}
+          {routeStack.map((route, index) => {
+            const isTop = index === routeStack.length - 1;
+            const routeContent = renderRouteContent(route, index);
+            if (routeContent == null) return null;
             return (
               <View 
-                style={[StyleSheet.absoluteFill, { zIndex: 5 }]} 
-                pointerEvents={currentRoute.name === 'about' ? 'auto' : 'none'}
+                key={`${route.name}-${index}`} 
+                style={[StyleSheet.absoluteFill, { zIndex: 10 + index }]} 
+                pointerEvents={isTop ? 'auto' : 'none'}
               >
-                <AboutScreen 
-                  onBack={popRoute} 
-                  onPushRoute={pushRoute} 
-                  space={aboutRoute.space} 
-                />
+                {routeContent}
               </View>
             );
-          })()}
-
-          {/* Overlay: pushed screens sit on top via absoluteFill so the base layer survives */}
-          {content != null ? (
-            <View style={[StyleSheet.absoluteFill, { zIndex: 10 }]}>
-              {content}
-            </View>
-          ) : null}
+          })}
           {/* Tab bar: only show when no overlay is covering the base layer */}
           {currentRoute.name === 'root' && baseRootRoute ? (
             <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} scrollOffset={globalScrollOffset} />
@@ -2609,4 +2603,5 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
 
