@@ -1969,8 +1969,8 @@ export default function App() {
         space={currentRoute.space}
       />
     );
-  } else if (currentRoute.name === 'about') {
-    content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} />;
+  // } else if (currentRoute.name === 'about') {
+    // content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'original-storage') {
     content = (
       <OriginalStorageScreen
@@ -2308,6 +2308,25 @@ export default function App() {
         <View style={{ flex: 1 }}>
           {/* Always-mounted base layer: root tab pager stays alive under overlays */}
           {rootTabContent}
+          
+          {/* Always-mounted About layer if in stack */}
+          {(() => {
+            const aboutRoute = routeStack.find((r) => r.name === 'about') as Extract<AppRoute, { name: 'about' }> | undefined;
+            if (!aboutRoute) return null;
+            return (
+              <View 
+                style={[StyleSheet.absoluteFill, { zIndex: 5 }]} 
+                pointerEvents={currentRoute.name === 'about' ? 'auto' : 'none'}
+              >
+                <AboutScreen 
+                  onBack={popRoute} 
+                  onPushRoute={pushRoute} 
+                  space={aboutRoute.space} 
+                />
+              </View>
+            );
+          })()}
+
           {/* Overlay: pushed screens sit on top via absoluteFill so the base layer survives */}
           {content != null ? (
             <View style={[StyleSheet.absoluteFill, { zIndex: 10 }]}>
@@ -2315,7 +2334,7 @@ export default function App() {
             </View>
           ) : null}
           {/* Tab bar: only show when no overlay is covering the base layer */}
-          {content == null && baseRootRoute ? (
+          {currentRoute.name === 'root' && baseRootRoute ? (
             <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} scrollOffset={globalScrollOffset} />
           ) : null}
         </View>
