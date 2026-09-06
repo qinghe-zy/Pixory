@@ -140,7 +140,9 @@ export function ImageViewerScreen({
   const lastViewedQueue = useMemo(
     () => new MediaLastViewedQueue({
       flushIds: (ids) => runWithDatabaseSpace(context.space, (db) => imageRepository.touchLastViewedAtMany(db, [...ids])),
-      onFlushed: () => onRefreshedRef.current(),
+      // Do NOT call onRefreshed here — lastViewedAt is silent background metadata.
+      // Triggering onRefreshed causes the parent list (AllImagesScreen etc.) to
+      // re-fetch and flash its thumbnails every time the user returns from the viewer.
     }),
     [context.space]
   );
