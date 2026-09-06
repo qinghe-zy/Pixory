@@ -143,11 +143,11 @@ export function DaysPlaybackEgg({
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(500)}
           key={currentAchievement.title + currentAchievement.day}
-          style={styles.bubble}
+          style={styles.displayInfo}
         >
-          <Text style={styles.bubbleDate}>{formatDate(currentAchievement.occurredAt)}</Text>
-          <Text style={styles.bubbleTitle}>达成成就 {currentAchievement.title}</Text>
-          <Text style={styles.bubbleReq}>{currentAchievement.requirement}</Text>
+          <Text style={styles.displayDate}>{formatDate(currentAchievement.occurredAt)}</Text>
+          <Text style={styles.displayTitle}>达成成就 {currentAchievement.title}</Text>
+          <Text style={styles.displayReq}>{currentAchievement.requirement}</Text>
         </Animated.View>
       ) : null}
     </View>
@@ -222,34 +222,27 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.9,
   },
-  // Achievement bubble: positioned to the right of the button
-  bubble: {
+  // Achievement info: seamless text to the right of the button
+  displayInfo: {
     position: 'absolute',
-    left: CIRCLE_SIZE + spacing[1] * 2 + spacing[2],
-    bottom: 0,
-    width: 180,
-    backgroundColor: colors.background.surface,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.default,
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[3],
+    left: CIRCLE_SIZE + spacing[4],
+    bottom: -spacing[1], // shift slightly down to visually balance with large number baseline
+    width: 240, // plenty of space for text wrapping
     zIndex: 20,
   },
-  bubbleDate: {
+  displayDate: {
     ...typography.textStyles.micro,
     color: colors.text.tertiary,
     marginBottom: 2,
   },
-  bubbleTitle: {
-    ...typography.textStyles.caption,
+  displayTitle: {
+    ...typography.textStyles.bodyStrong,
     color: colors.text.primary,
-    fontWeight: '500',
     marginBottom: 2,
   },
-  bubbleReq: {
-    ...typography.textStyles.micro,
+  displayReq: {
+    ...typography.textStyles.caption,
     color: colors.text.secondary,
-    lineHeight: 15,
+    lineHeight: 18,
   },
 });

@@ -627,7 +627,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             </Animated.Text>
             <Animated.Text numberOfLines={1} style={[styles.stickyTitle, { flex: 1 }, stickyLateStyle]}>
               {' · '}{milestones ? (playbackDay ?? milestones.daysTogether) : '...'} 天
-              {playbackAchievement ? `　${playbackAchievement.title}` : ''}
+              {playbackAchievement ? `　${formatDate(playbackAchievement.occurredAt)} ${playbackAchievement.title}` : ''}
             </Animated.Text>
           </View>
         </View>
