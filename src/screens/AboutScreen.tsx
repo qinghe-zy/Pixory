@@ -32,6 +32,26 @@ interface AboutScreenProps {
   space?: PixorySpace;
 }
 
+interface AboutJournalUiState {
+  expandedNodes: Record<string, boolean>;
+  expandedCategoryIds: Set<string>;
+  openAchievementId: string | null;
+}
+
+const aboutJournalUiStateBySpace = new Map<PixorySpace, AboutJournalUiState>();
+
+function getAboutJournalUiState(space: PixorySpace): AboutJournalUiState {
+  const existing = aboutJournalUiStateBySpace.get(space);
+  if (existing) return existing;
+  const initial: AboutJournalUiState = {
+    expandedNodes: { storyBegins: true, firstFootprints: false },
+    expandedCategoryIds: new Set(),
+    openAchievementId: null,
+  };
+  aboutJournalUiStateBySpace.set(space, initial);
+  return initial;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -43,12 +63,13 @@ function formatBytes(bytes: number): string {
 export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
   const { showToast } = useToast();
   const version = Constants.expoConfig?.version ?? '2.8.1';
+  const initialJournalUiState = getAboutJournalUiState(space);
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
   const [journal, setJournal] = useState<JournalAchievementProjection | null>(null);
 
-  const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
-  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
-  const [openAchievementId, setOpenAchievementId] = useState<string | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>(initialJournalUiState.expandedNodes);
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(initialJournalUiState.expandedCategoryIds);
+  const [openAchievementId, setOpenAchievementId] = useState<string | null>(initialJournalUiState.openAchievementId);
   const [detailMd, setDetailMd] = useState<string | null>(null);
   const [productDocMd, setProductDocMd] = useState<string>(() => getPreloadedProductDocumentationMarkdown());
   const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
@@ -79,8 +100,6 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     void getAppMilestones(space).then((data) => {
       if (isMounted) {
         setMilestones(data);
-        // Expand the first node by default for a nice opening
-        setExpandedNodes({ storyBegins: true, firstFootprints: true });
       }
     }).catch(console.warn);
 
@@ -154,7 +173,12 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
   const toggleNode = (nodeKey: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedNodes(prev => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
+    setExpandedNodes(prev => {
+      const next = { ...prev, [nodeKey]: !prev[nodeKey] };
+      const stored = getAboutJournalUiState(space);
+      aboutJournalUiStateBySpace.set(space, { ...stored, expandedNodes: next });
+      return next;
+    });
   };
 
   const toggleCategory = (categoryId: string) => {
@@ -162,12 +186,19 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       const next = new Set(previous);
       if (next.has(categoryId)) next.delete(categoryId);
       else next.add(categoryId);
+      const stored = getAboutJournalUiState(space);
+      aboutJournalUiStateBySpace.set(space, { ...stored, expandedCategoryIds: next });
       return next;
     });
   };
 
   const openAchievement = async (achievement: JournalAchievementRecord) => {
-    setOpenAchievementId((current) => current === achievement.achievementId ? null : achievement.achievementId);
+    setOpenAchievementId((current) => {
+      const next = current === achievement.achievementId ? null : achievement.achievementId;
+      const stored = getAboutJournalUiState(space);
+      aboutJournalUiStateBySpace.set(space, { ...stored, openAchievementId: next });
+      return next;
+    });
     if (achievement.readAt === null) {
       await markJournalAchievementRead(space, achievement.achievementId).catch(() => {});
       setJournal((current) => current ? {
@@ -343,12 +374,12 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                   <Text style={styles.nodeTitle}>故事开始</Text>
                 </Pressable>
                 {expandedNodes.storyBegins && (
-                  <View style={styles.nodeContent}>
+                  <Animated.View entering={FadeInDown.duration(280)} style={styles.nodeContent}>
                     <Text style={styles.poetryText}>
                       {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
                       彼时的空白，如今已被时光填满。
                     </Text>
-                  </View>
+                  </Animated.View>
                 )}
               </View>
 
@@ -361,39 +392,6 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                 {expandedNodes.firstFootprints && (
                   <View style={styles.nodeContent}>
                     <View style={styles.achievementList}>
-                      {milestones.firstImageDate ? (
-                        <View style={styles.achievementRow}>
-                          <Text style={styles.achievementName}>第一份光影</Text>
-                          <Text style={styles.achievementDate}>{formatDate(milestones.firstImageDate)}</Text>
-                          <Pressable
-                            accessibilityLabel="打开第一份光影"
-                            hitSlop={10}
-                            onPress={() => onPushRoute({ name: 'image-detail', imageId: milestones.firstImageId, space })}
-                            style={styles.achievementAction}
-                          >
-                            <Feather color={colors.text.tertiary} name="arrow-right" size={15} />
-                          </Pressable>
-                        </View>
-                      ) : null}
-                      {milestones.firstThreadDate ? (
-                        <View style={styles.achievementRow}>
-                          <Text style={styles.achievementName}>第一次对话</Text>
-                          <Text style={styles.achievementDate}>{formatDate(milestones.firstThreadDate)}</Text>
-                          <Pressable
-                            accessibilityLabel="打开第一次对话"
-                            hitSlop={10}
-                            onPress={() => onPushRoute({
-                              name: 'ai-chat',
-                              threadId: milestones.firstThreadId,
-                              searchTargetMessageId: milestones.firstMessageId ?? undefined,
-                              space,
-                            })}
-                            style={styles.achievementAction}
-                          >
-                            <Feather color={colors.text.tertiary} name="arrow-right" size={15} />
-                          </Pressable>
-                        </View>
-                      ) : null}
                       {journal?.categories.map((category) => (
                         <JournalAchievementChapter
                           category={category}
@@ -406,7 +404,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                           openAchievementId={openAchievementId}
                         />
                       ))}
-                      {!journal?.categories.length && !milestones.firstImageDate && !milestones.firstThreadDate ? (
+                      {!journal?.categories.length ? (
                         <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
                       ) : null}
                     </View>
