@@ -368,8 +368,7 @@ export function TagResultScreen({
         loadingTitle="正在读取标签结果"
         onRetry={reloadAll}
       >
-        <VirtualizedAssetCollection
-          headerComponent={<View style={styles.galleryHeading}>
+        <View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
             {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
@@ -388,7 +387,8 @@ export function TagResultScreen({
               orderBy={sortOrder}
             />
           </View>
-          </View>}
+        </View>
+        <VirtualizedAssetCollection
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}

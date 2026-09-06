@@ -758,8 +758,6 @@ export function BatchManageImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reloadAll}
       >
-        <VirtualizedAssetCollection
-          headerComponent={<View>
         <View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>已选择 {selectedCount} 张</Text>
           <View style={styles.galleryActions}>
@@ -774,7 +772,8 @@ export function BatchManageImagesScreen({
             />
           </View>
         </View>
-
+        <VirtualizedAssetCollection
+          headerComponent={<View>
         {activeRule ? (
           <View style={styles.activeRulePanel}>
             <Text numberOfLines={2} style={styles.activeRuleText}>{activeRule.label} · {activeRule.description}</Text>

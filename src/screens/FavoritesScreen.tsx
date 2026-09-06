@@ -278,8 +278,7 @@ export function FavoritesScreen({
         loadingTitle="正在读取收藏图片"
         onRetry={reloadAll}
       >
-        <VirtualizedAssetCollection
-          headerComponent={<View style={styles.gridHeader}>
+        <View style={styles.gridHeader}>
           <Text style={styles.gridTitle}>图片</Text>
           <Pressable
             disabled={selectableAssets.length === 0}
@@ -295,7 +294,8 @@ export function FavoritesScreen({
             onFilterPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
             orderBy={sortOrder}
           />
-          </View>}
+        </View>
+        <VirtualizedAssetCollection
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}
