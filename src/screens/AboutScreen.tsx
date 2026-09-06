@@ -101,16 +101,27 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     },
   });
 
-  // Big Hero fades out completely before the sticky header appears
-  const heroFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [10, 50], [1, 0], Extrapolation.CLAMP),
+  // 1. Label and original back button fade out quickly as they touch the sticky header
+  const heroLabelFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [4, 24], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // The ENTIRE sticky header (background, back button, title) fades in after hero is gone
-  const stickyBarStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [50, 80], [0, 1], Extrapolation.CLAMP),
+  // 2. Big number starts fading ONLY when it touches the sticky header (scrollY ~ 48)
+  // and finishes fading when it is fully covered (scrollY ~ 112)
+  const heroNumberFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [48, 112], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // 3. Sticky header background and back button fade in early to prepare coverage
+  const stickyBackgroundStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [20, 60], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  // 4. Sticky title ("已陪伴你 123 天") fades in ONLY after big number is almost gone
+  const stickyTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [90, 120], [0, 1], Extrapolation.CLAMP),
     transform: [
-      { translateY: interpolate(scrollY.value, [50, 80], [4, 0], Extrapolation.CLAMP) },
+      { translateY: interpolate(scrollY.value, [90, 120], [4, 0], Extrapolation.CLAMP) },
     ],
   }));
   const handleDeveloperTap = () => { if (!isDeveloperModeRevealEnabled) return; const now = Date.now(); const current = revealTapRef.current; const count = now - current.startedAt <= 10000 ? current.count + 1 : 1; revealTapRef.current = { count, startedAt: count === 1 ? now : current.startedAt }; if (count >= 7) { revealTapRef.current = { count: 0, startedAt: 0 }; void setDeveloperModeEnabled(true); showToast('开发者模式已开启'); } };
@@ -400,9 +411,9 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             },
           ]}
         >
-          {/* HERO — fades out early as you scroll up */}
-          <Animated.View style={[styles.heroArea, heroFadeStyle]}>
-            <View style={styles.heroLabelRow}>
+          {/* HERO — elements fade out separately based on scroll position */}
+          <View style={styles.heroArea}>
+            <Animated.View style={[styles.heroLabelRow, heroLabelFadeStyle]}>
               <Pressable
                 accessibilityLabel="返回"
                 hitSlop={16}
@@ -414,14 +425,16 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
               <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
                 已陪伴你
               </Animated.Text>
-            </View>
-            <Animated.View entering={FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
-              <Text style={styles.heroNumber}>
-                {milestones ? milestones.daysTogether : '...'}
-              </Text>
-              <Text style={styles.heroUnit}>天</Text>
             </Animated.View>
-          </Animated.View>
+            <Animated.View style={heroNumberFadeStyle}>
+              <Animated.View entering={FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
+                <Text style={styles.heroNumber}>
+                  {milestones ? milestones.daysTogether : '...'}
+                </Text>
+                <Text style={styles.heroUnit}>天</Text>
+              </Animated.View>
+            </Animated.View>
+          </View>
 
           {/* TIMELINE AREA */}
           <View style={styles.timelineArea}>
@@ -525,31 +538,33 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       {/*
         STICKY FLOATING HEADER
         Absolutely positioned above the ScrollView.
-        Fades in completely (background + title + back btn) after the big hero fades out.
+        Height is kept minimal (36px for back button) so the blur doesn't occupy too much vertical space.
       */}
-      <Animated.View style={[styles.stickyBar, { paddingTop: insets.top, height: insets.top + 44 }, stickyBarStyle]} pointerEvents="box-none">
+      <View style={[styles.stickyBar, { paddingTop: insets.top, height: insets.top + 36 }]} pointerEvents="box-none">
         {/* Animated background that fades in to block content underneath */}
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Animated.View style={[StyleSheet.absoluteFill, stickyBackgroundStyle]} pointerEvents="none">
           <BlurView intensity={80} tint={space === 'personal' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           {/* Fallback semi-transparent background if BlurView isn't enough in some modes */}
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background.page, opacity: 0.85 }]} />
-        </View>
+        </Animated.View>
 
         <View style={styles.stickyBarContent} pointerEvents="box-none">
-          <Pressable
-            accessibilityLabel="返回"
-            hitSlop={16}
-            onPress={onBack}
-            style={({ pressed }) => [styles.stickyBackBtn, pressed && styles.stickyBackBtnPressed]}
-          >
-            <Feather color={colors.text.title} name="arrow-left" size={20} />
-          </Pressable>
+          <Animated.View style={stickyBackgroundStyle} pointerEvents="box-none">
+            <Pressable
+              accessibilityLabel="返回"
+              hitSlop={16}
+              onPress={onBack}
+              style={({ pressed }) => [styles.stickyBackBtn, pressed && styles.stickyBackBtnPressed]}
+            >
+              <Feather color={colors.text.title} name="arrow-left" size={20} />
+            </Pressable>
+          </Animated.View>
           
-          <Text numberOfLines={1} style={styles.stickyTitle}>
+          <Animated.Text numberOfLines={1} style={[styles.stickyTitle, stickyTitleStyle]}>
             已陪伴你 · {milestones ? milestones.daysTogether : '...'} 天
-          </Text>
+          </Animated.Text>
         </View>
-      </Animated.View>
+      </View>
 
       <ParallaxLightSweep opacity={0.35} visible={showSweep} />
     </View>
