@@ -5,7 +5,7 @@ import Animated, { FadeIn, FadeInUp, FadeInDown, useAnimatedScrollHandler, useSh
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Feather } from '@expo/vector-icons';
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import * as Updates from 'expo-updates';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -27,6 +27,7 @@ import {
   type JournalAchievementProjection,
   type JournalAchievementRecord,
 } from '../services/journalAchievementService';
+import { DaysPlaybackEgg, type PlaybackAchievement } from '../components/about/DaysPlaybackEgg';
 
 interface AboutScreenProps {
   onBack: () => void;
@@ -100,6 +101,38 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const [showSweep, setShowSweep] = useState(true);
   const revealTapRef = useRef({ count: 0, startedAt: 0 });
   const insets = useSafeAreaInsets();
+
+  // ── Playback Easter Egg state ──────────────────────────────────────────────
+  const [playbackDay, setPlaybackDay] = useState<number | null>(null);
+  const [playbackAchievement, setPlaybackAchievement] = useState<PlaybackAchievement | null>(null);
+
+  // Build the flat list of achievements with their "day index" relative to firstUseDate
+  const playbackAchievements = useMemo<PlaybackAchievement[]>(() => {
+    if (!milestones || !journal) return [];
+    const { firstUseDate } = milestones;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const list: PlaybackAchievement[] = [];
+    for (const category of journal.categories) {
+      for (const achievement of category.achievements) {
+        const day = Math.max(1, Math.ceil((achievement.occurredAt - firstUseDate) / msPerDay));
+        list.push({
+          day,
+          title: achievement.title,
+          requirement: achievement.requirement,
+          occurredAt: achievement.occurredAt,
+        });
+      }
+    }
+    // Sort ascending by day (multiple achievements on same day will each show in order)
+    list.sort((a, b) => a.day - b.day);
+    return list;
+  }, [milestones, journal]);
+
+  const handlePlaybackDay = useCallback((day: number | null) => setPlaybackDay(day), []);
+  const handlePlaybackAchievement = useCallback(
+    (achievement: PlaybackAchievement | null) => setPlaybackAchievement(achievement),
+    [],
+  );
 
   // Scroll-driven sticky header — runs entirely on the UI thread via JSI
   const scrollY = useSharedValue(isReturning ? (initialJournalUiState.scrollOffset || 0) : 0);
@@ -449,9 +482,17 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <Animated.View style={heroNumberFadeStyle}>
               <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
                 <Text style={styles.heroNumber}>
-                  {milestones ? milestones.daysTogether : '...'}
+                  {milestones ? (playbackDay ?? milestones.daysTogether) : '...'}
                 </Text>
                 <Text style={styles.heroUnit}>天</Text>
+                {milestones ? (
+                  <DaysPlaybackEgg
+                    achievements={playbackAchievements}
+                    onPlaybackAchievement={handlePlaybackAchievement}
+                    onPlaybackDay={handlePlaybackDay}
+                    totalDays={milestones.daysTogether}
+                  />
+                ) : null}
               </Animated.View>
             </Animated.View>
           </View>
@@ -585,7 +626,8 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
               已陪伴你
             </Animated.Text>
             <Animated.Text numberOfLines={1} style={[styles.stickyTitle, { flex: 1 }, stickyLateStyle]}>
-              {' · '}{milestones ? milestones.daysTogether : '...'} 天
+              {' · '}{milestones ? (playbackDay ?? milestones.daysTogether) : '...'} 天
+              {playbackAchievement ? `　${playbackAchievement.title}` : ''}
             </Animated.Text>
           </View>
         </View>
