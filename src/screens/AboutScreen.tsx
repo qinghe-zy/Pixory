@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { Alert, LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, FadeInDown, useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useState, useRef } from 'react';
 import * as Updates from 'expo-updates';
@@ -100,17 +101,21 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     },
   });
 
-  // Hero fades out as it slides toward the status bar (50 → 120 px)
+  // Big Hero fades out very quickly as it starts scrolling up
   const heroFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [50, 120], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [0, 40], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // Sticky bar fades in slightly after hero starts fading (70 → 130 px),
-  // and slides down from 12px above its resting position for a natural feel
-  const stickyBarStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [70, 130], [0, 1], Extrapolation.CLAMP),
+  // The Blur background of the sticky header fades in to prevent overlapping content
+  const headerBackgroundStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [30, 60], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  // The small sticky title only fades in AFTER the large number is fully faded out
+  const stickyTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [50, 80], [0, 1], Extrapolation.CLAMP),
     transform: [
-      { translateY: interpolate(scrollY.value, [70, 130], [-12, 0], Extrapolation.CLAMP) },
+      { translateY: interpolate(scrollY.value, [50, 80], [4, 0], Extrapolation.CLAMP) },
     ],
   }));
   const handleDeveloperTap = () => { if (!isDeveloperModeRevealEnabled) return; const now = Date.now(); const current = revealTapRef.current; const count = now - current.startedAt <= 10000 ? current.count + 1 : 1; revealTapRef.current = { count, startedAt: count === 1 ? now : current.startedAt }; if (count >= 7) { revealTapRef.current = { count: 0, startedAt: 0 }; void setDeveloperModeEnabled(true); showToast('开发者模式已开启'); } };
@@ -394,20 +399,16 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           style={{ flex: 1 }}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: insets.bottom + spacing[12] },
+            { 
+              paddingTop: insets.top + spacing[8],
+              paddingBottom: insets.bottom + spacing[12] 
+            },
           ]}
         >
-          {/* HERO — fades out as it approaches the status bar */}
+          {/* HERO — fades out early as you scroll up */}
           <Animated.View style={[styles.heroArea, heroFadeStyle]}>
             <View style={styles.heroLabelRow}>
-              <Pressable
-                accessibilityLabel="返回"
-                hitSlop={16}
-                onPress={onBack}
-                style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-              >
-                <Feather color={colors.text.title} name="arrow-left" size={20} />
-              </Pressable>
+              {/* Back button removed from here, now in fixed header */}
               <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
                 已陪伴你
               </Animated.Text>
@@ -521,27 +522,36 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
       {/*
         STICKY FLOATING HEADER
-        Absolutely positioned above the ScrollView, entirely outside the scroll tree.
-        Driven by scrollY on the UI thread — no JS involvement after mount.
-        pointerEvents="box-none" lets touches pass through the transparent container
-        while the back Pressable inside still responds normally when visible.
+        Absolutely positioned above the ScrollView.
+        The BlurView background fades in to prevent underlying text collision.
+        The Back Button is ALWAYS visible.
+        The title fades in AFTER the large hero number fades out.
       */}
-      <Animated.View
-        pointerEvents="box-none"
-        style={[styles.stickyBar, { top: insets.top }, stickyBarStyle]}
-      >
-        <Pressable
-          accessibilityLabel="返回"
-          hitSlop={12}
-          onPress={onBack}
-          style={({ pressed }) => [styles.stickyBackBtn, pressed && styles.stickyBackBtnPressed]}
-        >
-          <Feather color={colors.text.title} name="arrow-left" size={18} />
-        </Pressable>
-        <Text numberOfLines={1} style={styles.stickyTitle}>
-          已陪伴你 · {milestones ? milestones.daysTogether : '...'} 天
-        </Text>
-      </Animated.View>
+      <View style={[styles.stickyBar, { paddingTop: insets.top, height: insets.top + 48 }]} pointerEvents="box-none">
+        {/* Animated background that fades in to block content underneath */}
+        <Animated.View style={[StyleSheet.absoluteFill, headerBackgroundStyle]} pointerEvents="none">
+          <BlurView intensity={80} tint={space === 'personal' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          {/* Fallback semi-transparent background if BlurView isn't enough in some modes */}
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background.page, opacity: 0.85 }]} />
+        </Animated.View>
+
+        <View style={styles.stickyBarContent} pointerEvents="box-none">
+          {/* Back button is always fully visible and fixed here now */}
+          <Pressable
+            accessibilityLabel="返回"
+            hitSlop={16}
+            onPress={onBack}
+            style={({ pressed }) => [styles.stickyBackBtn, pressed && styles.stickyBackBtnPressed]}
+          >
+            <Feather color={colors.text.title} name="arrow-left" size={20} />
+          </Pressable>
+          
+          {/* Title fades in when scrolling down */}
+          <Animated.Text numberOfLines={1} style={[styles.stickyTitle, stickyTitleStyle]}>
+            已陪伴你 · {milestones ? milestones.daysTogether : '...'} 天
+          </Animated.Text>
+        </View>
+      </View>
 
       <ParallaxLightSweep opacity={0.35} visible={showSweep} />
     </View>
@@ -562,10 +572,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    top: 0, // Starts from very top
+    zIndex: 10,
+  },
+  stickyBarContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing[4],
-    height: 48,
   },
   stickyBackBtn: {
     width: 36,
@@ -595,7 +609,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing[2],
-    marginLeft: -spacing[2],
   },
   backBtn: {
     width: 36,
@@ -613,6 +626,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: colors.text.secondary,
     marginBottom: 0,
+    marginLeft: 32,
   },
   heroNumberContainer: {
     flexDirection: 'row',
