@@ -386,7 +386,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                 })}
               </View>
               {activeIndexInRow !== null ? (
-                <Animated.Text entering={isReturning ? undefined : FadeInDown.duration(200)} style={styles.statExplanation}>
+                <Animated.Text entering={isReturning ? FadeInDown.duration(0) : FadeInDown.duration(200)} style={styles.statExplanation}>
                   {stats[activeIndexInRow].explanation}
                 </Animated.Text>
               ) : null}
@@ -442,12 +442,12 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
               >
                 <Feather color={colors.text.title} name="arrow-left" size={20} />
               </Pressable>
-              <Animated.Text entering={isReturning ? undefined : FadeIn.duration(1000)} style={styles.heroLabel}>
+              <Animated.Text entering={isReturning ? FadeIn.duration(0) : FadeIn.duration(1000)} style={styles.heroLabel}>
                 已陪伴你
               </Animated.Text>
             </Animated.View>
             <Animated.View style={heroNumberFadeStyle}>
-              <Animated.View entering={isReturning ? undefined : FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
+              <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
                 <Text style={styles.heroNumber}>
                   {milestones ? milestones.daysTogether : '...'}
                 </Text>
@@ -461,7 +461,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <View style={styles.timelineHairline} />
 
             {milestones ? (
-              <Animated.View entering={isReturning ? undefined : FadeInUp.delay(300).duration(800).springify()}>
+              <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.delay(300).duration(800).springify()}>
 
                 {/* NODE 1: 故事开始 */}
                 <View style={styles.timelineNode}>
@@ -470,7 +470,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>故事开始</Text>
                   </Pressable>
                   {expandedNodes.storyBegins && (
-                    <Animated.View entering={isReturning ? undefined : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
+                    <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       <Text style={styles.poetryText}>
                         {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
                         彼时的空白，如今已被时光填满。
@@ -486,7 +486,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>岁月有声</Text>
                   </Pressable>
                   {expandedNodes.firstFootprints && (
-                    <Animated.View entering={isReturning ? undefined : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
+                    <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       <View style={styles.achievementList}>
                         {journal?.categories.map((category) => (
                           <JournalAchievementChapter
@@ -515,7 +515,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>至今</Text>
                   </Pressable>
                   {expandedNodes.now && (
-                    <Animated.View entering={isReturning ? undefined : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
+                    <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       {renderStatsGrid()}
                     </Animated.View>
                   )}
@@ -529,7 +529,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           <View style={styles.spacer} />
 
           {/* ACTION AREA */}
-          <Animated.View entering={isReturning ? undefined : FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
+          <Animated.View entering={isReturning ? FadeInUp.duration(0) : FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
             <Pressable onPress={() => openUrl('https://mist01.com')} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
               <Text style={styles.linkText}>访问官方网站</Text>
               <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
@@ -547,7 +547,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           </Animated.View>
 
           {/* COLOPHON */}
-          <Animated.View entering={isReturning ? undefined : FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
+          <Animated.View entering={isReturning ? FadeInDown.duration(0) : FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
             <Pressable onPress={handleDeveloperTap}><Text style={styles.brandLogoText}>Pixory</Text></Pressable>
             <Pressable onPress={handleDeveloperTap}><Text style={styles.colophonVersion}>v{version}</Text></Pressable>
             <Text style={styles.colophonCopyright}>© {new Date().getFullYear()} Pixory.</Text>
