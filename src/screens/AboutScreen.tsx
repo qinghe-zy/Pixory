@@ -38,6 +38,7 @@ interface AboutJournalUiState {
   expandedNodes: Record<string, boolean>;
   expandedCategoryIds: Set<string>;
   openAchievementId: string | null;
+  scrollOffset: number;
 }
 
 const aboutJournalUiStateBySpace = new Map<PixorySpace, AboutJournalUiState>();
@@ -49,6 +50,7 @@ function getAboutJournalUiState(space: PixorySpace): AboutJournalUiState {
     expandedNodes: { storyBegins: true, firstFootprints: false },
     expandedCategoryIds: new Set(),
     openAchievementId: null,
+    scrollOffset: 0,
   };
   aboutJournalUiStateBySpace.set(space, initial);
   return initial;
@@ -65,16 +67,23 @@ function formatBytes(bytes: number): string {
 export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
   const { showToast } = useToast();
   const version = Constants.expoConfig?.version ?? '2.8.1';
+  const isReturningRef = useRef(aboutJournalUiStateBySpace.has(space));
+  const isReturning = isReturningRef.current;
   const initialJournalUiState = getAboutJournalUiState(space);
+
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
   const [journal, setJournal] = useState<JournalAchievementProjection | null>(null);
 
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
     ...initialJournalUiState.expandedNodes,
-    storyBegins: false,
+    // If returning, restore exact state without forcing storyBegins to false
+    storyBegins: isReturning ? initialJournalUiState.expandedNodes.storyBegins : false,
   });
 
   useEffect(() => {
+    // Only play the auto-expand animation on initial load, not when returning
+    if (isReturning) return;
+    
     const timer = setTimeout(() => {
       if (initialJournalUiState.expandedNodes.storyBegins !== false) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -82,7 +91,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       }
     }, 1100);
     return () => clearTimeout(timer);
-  }, [initialJournalUiState.expandedNodes.storyBegins]);
+  }, [initialJournalUiState.expandedNodes.storyBegins, isReturning]);
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(initialJournalUiState.expandedCategoryIds);
   const [openAchievementId, setOpenAchievementId] = useState<string | null>(initialJournalUiState.openAchievementId);
   const [detailMd, setDetailMd] = useState<string | null>(null);
@@ -93,7 +102,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const insets = useSafeAreaInsets();
 
   // Scroll-driven sticky header — runs entirely on the UI thread via JSI
-  const scrollY = useSharedValue(0);
+  const scrollY = useSharedValue(isReturning ? (initialJournalUiState.scrollOffset || 0) : 0);
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
@@ -140,6 +149,8 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     return () => clearTimeout(timeout);
   }, [activeStatIndex]);
 
+  const isPushingRef = useRef(false);
+
   useEffect(() => {
     let isMounted = true;
     void getJournalAchievementProjection(space).then((data) => {
@@ -170,6 +181,9 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
     return () => {
       isMounted = false;
+      if (!isPushingRef.current) {
+        aboutJournalUiStateBySpace.delete(space);
+      }
     };
   }, [space]);
 
@@ -273,6 +287,11 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
   const navigateAchievement = (achievement: JournalAchievementRecord) => {
     void openAchievement(achievement);
+    // Save scroll position before leaving so we can restore it when returning
+    const stored = getAboutJournalUiState(space);
+    aboutJournalUiStateBySpace.set(space, { ...stored, scrollOffset: scrollY.value });
+    isPushingRef.current = true;
+
     const payload = achievement.sourcePayload;
     switch (achievement.routeKind) {
       case 'asset':
@@ -367,7 +386,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                 })}
               </View>
               {activeIndexInRow !== null ? (
-                <Animated.Text entering={FadeInDown.duration(200)} style={styles.statExplanation}>
+                <Animated.Text entering={isReturning ? undefined : FadeInDown.duration(200)} style={styles.statExplanation}>
                   {stats[activeIndexInRow].explanation}
                 </Animated.Text>
               ) : null}
@@ -403,6 +422,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
+          contentOffset={isReturning && initialJournalUiState.scrollOffset ? { x: 0, y: initialJournalUiState.scrollOffset } : undefined}
           contentContainerStyle={[
             styles.scrollContent,
             { 
@@ -422,12 +442,12 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
               >
                 <Feather color={colors.text.title} name="arrow-left" size={20} />
               </Pressable>
-              <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
+              <Animated.Text entering={isReturning ? undefined : FadeIn.duration(1000)} style={styles.heroLabel}>
                 已陪伴你
               </Animated.Text>
             </Animated.View>
             <Animated.View style={heroNumberFadeStyle}>
-              <Animated.View entering={FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
+              <Animated.View entering={isReturning ? undefined : FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
                 <Text style={styles.heroNumber}>
                   {milestones ? milestones.daysTogether : '...'}
                 </Text>
@@ -441,7 +461,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <View style={styles.timelineHairline} />
 
             {milestones ? (
-              <Animated.View entering={FadeInUp.delay(300).duration(800).springify()}>
+              <Animated.View entering={isReturning ? undefined : FadeInUp.delay(300).duration(800).springify()}>
 
                 {/* NODE 1: 故事开始 */}
                 <View style={styles.timelineNode}>
@@ -450,7 +470,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>故事开始</Text>
                   </Pressable>
                   {expandedNodes.storyBegins && (
-                    <Animated.View entering={FadeInUp.duration(500).springify()} style={styles.nodeContent}>
+                    <Animated.View entering={isReturning ? undefined : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       <Text style={styles.poetryText}>
                         {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
                         彼时的空白，如今已被时光填满。
@@ -466,7 +486,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>岁月有声</Text>
                   </Pressable>
                   {expandedNodes.firstFootprints && (
-                    <Animated.View entering={FadeInUp.duration(500).springify()} style={styles.nodeContent}>
+                    <Animated.View entering={isReturning ? undefined : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       <View style={styles.achievementList}>
                         {journal?.categories.map((category) => (
                           <JournalAchievementChapter
@@ -495,7 +515,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                     <Text style={styles.nodeTitle}>至今</Text>
                   </Pressable>
                   {expandedNodes.now && (
-                    <Animated.View entering={FadeInUp.duration(500).springify()} style={styles.nodeContent}>
+                    <Animated.View entering={isReturning ? undefined : FadeInUp.duration(500).springify()} style={styles.nodeContent}>
                       {renderStatsGrid()}
                     </Animated.View>
                   )}
@@ -509,7 +529,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           <View style={styles.spacer} />
 
           {/* ACTION AREA */}
-          <Animated.View entering={FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
+          <Animated.View entering={isReturning ? undefined : FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
             <Pressable onPress={() => openUrl('https://mist01.com')} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
               <Text style={styles.linkText}>访问官方网站</Text>
               <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
@@ -527,7 +547,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           </Animated.View>
 
           {/* COLOPHON */}
-          <Animated.View entering={FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
+          <Animated.View entering={isReturning ? undefined : FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
             <Pressable onPress={handleDeveloperTap}><Text style={styles.brandLogoText}>Pixory</Text></Pressable>
             <Pressable onPress={handleDeveloperTap}><Text style={styles.colophonVersion}>v{version}</Text></Pressable>
             <Text style={styles.colophonCopyright}>© {new Date().getFullYear()} Pixory.</Text>
