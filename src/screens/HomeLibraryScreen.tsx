@@ -210,6 +210,7 @@ export function HomeLibraryScreen({
     ({ item, index }: ListRenderItemInfo<IpListItem>) => (
       <IPCard
         imagePriority={index === 0 ? 'high' : 'normal'}
+        useGyroEffect={index === 0}
         ip={item}
         onLongPress={handleDeleteIp}
         onPress={onOpenIp}
