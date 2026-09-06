@@ -68,7 +68,7 @@ function formatBytes(bytes: number): string {
 
 export function AboutScreen({ onBack, onPushRoute, space = 'normal', isFocused = true }: AboutScreenProps) {
   const { showToast } = useToast();
-  const version = Constants.expoConfig?.version ?? '2.8.1';
+  const version = Constants.expoConfig?.version ?? '2.8.2';
   const isReturningRef = useRef(aboutJournalUiStateBySpace.has(space));
   const isReturning = isReturningRef.current;
   const initialJournalUiState = getAboutJournalUiState(space);
