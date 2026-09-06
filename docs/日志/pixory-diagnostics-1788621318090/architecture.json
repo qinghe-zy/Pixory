@@ -1,0 +1,15 @@
+{
+  "appVersion": "unknown",
+  "databaseVersion": 61,
+  "diagnosticsVersion": 1,
+  "historyRoundLimit": null,
+  "modelId": null,
+  "privacy": {
+    "contentCapture": "deep_export_only",
+    "secrets": "never",
+    "space": "normal"
+  },
+  "promptVersion": null,
+  "providerType": null,
+  "generatedAt": "2026-09-05T15:15:18.103Z"
+}

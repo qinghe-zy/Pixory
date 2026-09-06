@@ -54,13 +54,16 @@ export function DeveloperModeSettingsScreen({ onBack, space }: { onBack: () => v
           用于查看性能与诊断数据。关闭后只隐藏开发者专用入口，不会删除任何业务数据。
         </Text>
         <View style={styles.statusRow}>
-          <Text style={styles.label}>当前状态</Text>
+          <Text style={styles.label}>开发者模式状态</Text>
           <Text style={styles.status}>{developerMode || isDeveloperModeEnabled() ? '已开启' : '已关闭'}</Text>
         </View>
         <View style={styles.monitorRow}>
           <View style={styles.monitorCopy}>
             <Text style={styles.label}>启用性能监测</Text>
             <Text style={styles.monitorDescription}>首次默认关闭。开启后才会显示“性能与诊断”入口并记录诊断数据。</Text>
+            <Text style={[styles.monitorStatus, diagnostics.enabled ? styles.enabledStatus : styles.disabledStatus]}>
+              性能监测：{diagnostics.enabled ? '已开启' : '已关闭'}
+            </Text>
           </View>
           <Switch value={diagnostics.enabled} onValueChange={(enabled) => { void toggleDiagnostics(enabled); }} />
         </View>
@@ -127,6 +130,17 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: typography.size.caption,
     lineHeight: 18,
+  },
+  monitorStatus: {
+    fontSize: typography.size.caption,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  enabledStatus: {
+    color: colors.primary.active,
+  },
+  disabledStatus: {
+    color: colors.text.secondary,
   },
   button: {
     alignItems: 'center',

@@ -1,0 +1,33 @@
+{
+  "manifest": "manifest.json",
+  "summary": "summary.md",
+  "architecture": "architecture.json",
+  "keyMetrics": {
+    "eventCount": 200,
+    "durationP50Ms": 785,
+    "durationP90Ms": 19213,
+    "durationP95Ms": 27686,
+    "eventTypes": {
+      "generation_start": 36,
+      "prompt_ready": 36,
+      "first_reasoning_delta": 35,
+      "first_answer_delta": 31,
+      "provider_usage": 31,
+      "generation_completed": 30,
+      "generation_empty": 1
+    }
+  },
+  "integrity": {
+    "bufferedEventsFlushed": true,
+    "hasDroppedEvents": false
+  },
+  "files": {
+    "events": "events.jsonl",
+    "generationSpans": "generation-spans.csv",
+    "cacheRequests": "cache-requests.csv",
+    "databaseSpans": "database-spans.csv",
+    "screenSpans": "screen-spans.csv",
+    "attachmentSpans": "attachment-spans.csv",
+    "errors": "errors.jsonl"
+  }
+}

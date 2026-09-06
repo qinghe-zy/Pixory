@@ -45,3 +45,11 @@ test('diagnostic monitoring is opt-in and hides the diagnostics entry when disab
   assert.match(settings, /diagnosticsEnabled[\s\S]*性能与诊断/);
   assert.match(developerSettings, /setDiagnosticsEnabled/);
 });
+
+test('developer settings distinguish developer mode status from performance monitoring status', () => {
+  const developerSettings = fs.readFileSync('src/screens/DeveloperModeSettingsScreen.tsx', 'utf8');
+  assert.match(developerSettings, /开发者模式状态/);
+  assert.match(developerSettings, /性能监测[：:]\s*\{diagnostics\.enabled/);
+  assert.match(developerSettings, /updateDiagnosticsSettings/);
+  assert.match(developerSettings, /setDiagnosticsEnabled/);
+});
