@@ -67,7 +67,20 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
   const [journal, setJournal] = useState<JournalAchievementProjection | null>(null);
 
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>(initialJournalUiState.expandedNodes);
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
+    ...initialJournalUiState.expandedNodes,
+    storyBegins: false,
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (initialJournalUiState.expandedNodes.storyBegins !== false) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setExpandedNodes((prev) => ({ ...prev, storyBegins: true }));
+      }
+    }, 1100);
+    return () => clearTimeout(timer);
+  }, [initialJournalUiState.expandedNodes.storyBegins]);
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(initialJournalUiState.expandedCategoryIds);
   const [openAchievementId, setOpenAchievementId] = useState<string | null>(initialJournalUiState.openAchievementId);
   const [detailMd, setDetailMd] = useState<string | null>(null);
@@ -341,24 +354,31 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     <View style={{ flex: 1 }}>
       <ScreenScaffold
         backgroundVariant="profile"
-        decorativeTitle={space === 'personal' ? 'Journal' : 'Journal'}
-        onBack={onBack}
-        compactBack
         scrollable
-        title=""
+        showHeader={false}
       >
         <View style={styles.container}>
           <View style={styles.heroArea}>
-          <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
-            已陪伴你
-          </Animated.Text>
-          <Animated.View entering={FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
-            <Text style={styles.heroNumber}>
-              {milestones ? milestones.daysTogether : '...'}
-            </Text>
-            <Text style={styles.heroUnit}>天</Text>
-          </Animated.View>
-        </View>
+            <View style={styles.heroLabelRow}>
+              <Pressable
+                accessibilityLabel="返回"
+                hitSlop={16}
+                onPress={onBack}
+                style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
+              >
+                <Feather color={colors.text.title} name="arrow-left" size={20} />
+              </Pressable>
+              <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
+                已陪伴你
+              </Animated.Text>
+            </View>
+            <Animated.View entering={FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
+              <Text style={styles.heroNumber}>
+                {milestones ? milestones.daysTogether : '...'}
+              </Text>
+              <Text style={styles.heroUnit}>天</Text>
+            </Animated.View>
+          </View>
 
         {/* TIMELINE AREA */}
         <View style={styles.timelineArea}>
@@ -468,7 +488,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacing[6],
-    paddingTop: spacing[2],
+    paddingTop: spacing[8],
     paddingBottom: spacing[12],
     minHeight: 700,
   },
@@ -476,8 +496,25 @@ const styles = StyleSheet.create({
   /* --- Hero Area --- */
   heroArea: {
     alignItems: 'flex-start',
-    marginTop: 0,
-    marginBottom: spacing[4],
+    marginTop: spacing[2],
+    marginBottom: spacing[8],
+  },
+  heroLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing[2],
+    marginLeft: -spacing[2],
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing[1],
+  },
+  backBtnPressed: {
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   heroLabel: {
     ...typography.textStyles.caption,
@@ -488,19 +525,20 @@ const styles = StyleSheet.create({
   heroNumberContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    marginLeft: spacing[2],
   },
   heroNumber: {
     fontFamily: typography.family.serif,
-    fontSize: 52,
-    lineHeight: 60,
+    fontSize: 56,
+    lineHeight: 64,
     color: colors.text.title,
     includeFontPadding: false,
   },
   heroUnit: {
     ...typography.textStyles.body,
     color: colors.text.tertiary,
-    marginLeft: spacing[1],
-    marginBottom: spacing[1],
+    marginLeft: spacing[2],
+    marginBottom: spacing[2],
   },
 
   /* --- Pearl Timeline Area --- */
