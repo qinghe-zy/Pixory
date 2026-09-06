@@ -101,18 +101,13 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     },
   });
 
-  // Big Hero fades out very quickly as it starts scrolling up
+  // Big Hero fades out completely before the sticky header appears
   const heroFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 40], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [10, 50], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // The Blur background of the sticky header fades in to prevent overlapping content
-  const headerBackgroundStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [30, 60], [0, 1], Extrapolation.CLAMP),
-  }));
-
-  // The small sticky title only fades in AFTER the large number is fully faded out
-  const stickyTitleStyle = useAnimatedStyle(() => ({
+  // The ENTIRE sticky header (background, back button, title) fades in after hero is gone
+  const stickyBarStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [50, 80], [0, 1], Extrapolation.CLAMP),
     transform: [
       { translateY: interpolate(scrollY.value, [50, 80], [4, 0], Extrapolation.CLAMP) },
@@ -408,7 +403,14 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           {/* HERO — fades out early as you scroll up */}
           <Animated.View style={[styles.heroArea, heroFadeStyle]}>
             <View style={styles.heroLabelRow}>
-              {/* Back button removed from here, now in fixed header */}
+              <Pressable
+                accessibilityLabel="返回"
+                hitSlop={16}
+                onPress={onBack}
+                style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
+              >
+                <Feather color={colors.text.title} name="arrow-left" size={20} />
+              </Pressable>
               <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
                 已陪伴你
               </Animated.Text>
@@ -523,20 +525,17 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       {/*
         STICKY FLOATING HEADER
         Absolutely positioned above the ScrollView.
-        The BlurView background fades in to prevent underlying text collision.
-        The Back Button is ALWAYS visible.
-        The title fades in AFTER the large hero number fades out.
+        Fades in completely (background + title + back btn) after the big hero fades out.
       */}
-      <View style={[styles.stickyBar, { paddingTop: insets.top, height: insets.top + 48 }]} pointerEvents="box-none">
+      <Animated.View style={[styles.stickyBar, { paddingTop: insets.top, height: insets.top + 44 }, stickyBarStyle]} pointerEvents="box-none">
         {/* Animated background that fades in to block content underneath */}
-        <Animated.View style={[StyleSheet.absoluteFill, headerBackgroundStyle]} pointerEvents="none">
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <BlurView intensity={80} tint={space === 'personal' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           {/* Fallback semi-transparent background if BlurView isn't enough in some modes */}
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background.page, opacity: 0.85 }]} />
-        </Animated.View>
+        </View>
 
         <View style={styles.stickyBarContent} pointerEvents="box-none">
-          {/* Back button is always fully visible and fixed here now */}
           <Pressable
             accessibilityLabel="返回"
             hitSlop={16}
@@ -546,12 +545,11 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <Feather color={colors.text.title} name="arrow-left" size={20} />
           </Pressable>
           
-          {/* Title fades in when scrolling down */}
-          <Animated.Text numberOfLines={1} style={[styles.stickyTitle, stickyTitleStyle]}>
+          <Text numberOfLines={1} style={styles.stickyTitle}>
             已陪伴你 · {milestones ? milestones.daysTogether : '...'} 天
-          </Animated.Text>
+          </Text>
         </View>
-      </View>
+      </Animated.View>
 
       <ParallaxLightSweep opacity={0.35} visible={showSweep} />
     </View>
@@ -609,6 +607,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing[2],
+    marginLeft: -spacing[2],
   },
   backBtn: {
     width: 36,
@@ -626,7 +625,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: colors.text.secondary,
     marginBottom: 0,
-    marginLeft: 32,
   },
   heroNumberContainer: {
     flexDirection: 'row',
