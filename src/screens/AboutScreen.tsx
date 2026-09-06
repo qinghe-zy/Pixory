@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import { Alert, LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInUp, FadeInDown, useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useState, useRef } from 'react';
 import * as Updates from 'expo-updates';
@@ -88,6 +89,30 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
   const [showSweep, setShowSweep] = useState(true);
   const revealTapRef = useRef({ count: 0, startedAt: 0 });
+  const insets = useSafeAreaInsets();
+
+  // Scroll-driven sticky header — runs entirely on the UI thread via JSI
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  // Hero fades out as it slides toward the status bar (50 → 120 px)
+  const heroFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [50, 120], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // Sticky bar fades in slightly after hero starts fading (70 → 130 px),
+  // and slides down from 12px above its resting position for a natural feel
+  const stickyBarStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [70, 130], [0, 1], Extrapolation.CLAMP),
+    transform: [
+      { translateY: interpolate(scrollY.value, [70, 130], [-12, 0], Extrapolation.CLAMP) },
+    ],
+  }));
   const handleDeveloperTap = () => { if (!isDeveloperModeRevealEnabled) return; const now = Date.now(); const current = revealTapRef.current; const count = now - current.startedAt <= 10000 ? current.count + 1 : 1; revealTapRef.current = { count, startedAt: count === 1 ? now : current.startedAt }; if (count >= 7) { revealTapRef.current = { count: 0, startedAt: 0 }; void setDeveloperModeEnabled(true); showToast('开发者模式已开启'); } };
 
   useEffect(() => {
@@ -352,13 +377,28 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
   return (
     <View style={{ flex: 1 }}>
+      {/*
+        ScreenScaffold is non-scrollable here — we own the ScrollView so we can wire
+        the reanimated handler directly and keep everything on the UI thread.
+      */}
       <ScreenScaffold
         backgroundVariant="profile"
-        scrollable
+        scrollable={false}
         showHeader={false}
+        contentContainerStyle={{ padding: 0, gap: 0, flex: 1 }}
       >
-        <View style={styles.container}>
-          <View style={styles.heroArea}>
+        <Animated.ScrollView
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + spacing[12] },
+          ]}
+        >
+          {/* HERO — fades out as it approaches the status bar */}
+          <Animated.View style={[styles.heroArea, heroFadeStyle]}>
             <View style={styles.heroLabelRow}>
               <Pressable
                 accessibilityLabel="返回"
@@ -378,119 +418,171 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
               </Text>
               <Text style={styles.heroUnit}>天</Text>
             </Animated.View>
+          </Animated.View>
+
+          {/* TIMELINE AREA */}
+          <View style={styles.timelineArea}>
+            <View style={styles.timelineHairline} />
+
+            {milestones ? (
+              <Animated.View entering={FadeInUp.delay(300).duration(800).springify()}>
+
+                {/* NODE 1: 故事开始 */}
+                <View style={styles.timelineNode}>
+                  <Pressable onPress={() => toggleNode('storyBegins')} style={styles.nodeHeader} hitSlop={12}>
+                    <View style={[styles.pearl, expandedNodes.storyBegins && styles.pearlActive]} />
+                    <Text style={styles.nodeTitle}>故事开始</Text>
+                  </Pressable>
+                  {expandedNodes.storyBegins && (
+                    <Animated.View entering={FadeInDown.duration(280)} style={styles.nodeContent}>
+                      <Text style={styles.poetryText}>
+                        {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
+                        彼时的空白，如今已被时光填满。
+                      </Text>
+                    </Animated.View>
+                  )}
+                </View>
+
+                {/* NODE 2: 岁月有声 */}
+                <View style={styles.timelineNode}>
+                  <Pressable onPress={() => toggleNode('firstFootprints')} style={styles.nodeHeader} hitSlop={12}>
+                    <View style={[styles.pearl, expandedNodes.firstFootprints && styles.pearlActive]} />
+                    <Text style={styles.nodeTitle}>岁月有声</Text>
+                  </Pressable>
+                  {expandedNodes.firstFootprints && (
+                    <View style={styles.nodeContent}>
+                      <View style={styles.achievementList}>
+                        {journal?.categories.map((category) => (
+                          <JournalAchievementChapter
+                            category={category}
+                            expanded={expandedCategoryIds.has(category.id)}
+                            formatDate={formatDate}
+                            key={category.id}
+                            onNavigate={navigateAchievement}
+                            onOpenAchievement={openAchievement}
+                            onToggle={() => toggleCategory(category.id)}
+                            openAchievementId={openAchievementId}
+                          />
+                        ))}
+                        {!journal?.categories.length ? (
+                          <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                {/* NODE 3: 至今 */}
+                <View style={styles.timelineNode}>
+                  <Pressable onPress={() => toggleNode('now')} style={styles.nodeHeader} hitSlop={12}>
+                    <View style={[styles.pearl, expandedNodes.now && styles.pearlActive]} />
+                    <Text style={styles.nodeTitle}>至今</Text>
+                  </Pressable>
+                  {expandedNodes.now && (
+                    <View style={styles.nodeContent}>
+                      {renderStatsGrid()}
+                    </View>
+                  )}
+                </View>
+              </Animated.View>
+            ) : (
+              <View style={{ height: 200 }} />
+            )}
           </View>
 
-        {/* TIMELINE AREA */}
-        <View style={styles.timelineArea}>
-          <View style={styles.timelineHairline} />
+          <View style={styles.spacer} />
 
-          {milestones ? (
-            <Animated.View entering={FadeInUp.delay(300).duration(800).springify()}>
+          {/* ACTION AREA */}
+          <Animated.View entering={FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
+            <Pressable onPress={() => openUrl('https://mist01.com')} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+              <Text style={styles.linkText}>访问官方网站</Text>
+              <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+            </Pressable>
+            <View style={styles.linkSeparator} />
+            <Pressable onPress={() => onPushRoute({ name: 'product-doc', space, preloadedMarkdown: productDocMd })} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+              <Text style={styles.linkText}>产品文档</Text>
+              <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+            </Pressable>
+            <View style={styles.linkSeparator} />
+            <Pressable onPress={handleCheckAllUpdates} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+              <Text style={styles.linkText}>检查更新</Text>
+              <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+            </Pressable>
+          </Animated.View>
 
-              {/* NODE 1: 故事开始 */}
-              <View style={styles.timelineNode}>
-                <Pressable onPress={() => toggleNode('storyBegins')} style={styles.nodeHeader} hitSlop={12}>
-                  <View style={[styles.pearl, expandedNodes.storyBegins && styles.pearlActive]} />
-                  <Text style={styles.nodeTitle}>故事开始</Text>
-                </Pressable>
-                {expandedNodes.storyBegins && (
-                  <Animated.View entering={FadeInDown.duration(280)} style={styles.nodeContent}>
-                    <Text style={styles.poetryText}>
-                      {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
-                      彼时的空白，如今已被时光填满。
-                    </Text>
-                  </Animated.View>
-                )}
-              </View>
-
-              {/* NODE 2: 岁月有声 */}
-              <View style={styles.timelineNode}>
-                <Pressable onPress={() => toggleNode('firstFootprints')} style={styles.nodeHeader} hitSlop={12}>
-                  <View style={[styles.pearl, expandedNodes.firstFootprints && styles.pearlActive]} />
-                  <Text style={styles.nodeTitle}>岁月有声</Text>
-                </Pressable>
-                {expandedNodes.firstFootprints && (
-                  <View style={styles.nodeContent}>
-                    <View style={styles.achievementList}>
-                      {journal?.categories.map((category) => (
-                        <JournalAchievementChapter
-                          category={category}
-                          expanded={expandedCategoryIds.has(category.id)}
-                          formatDate={formatDate}
-                          key={category.id}
-                          onNavigate={navigateAchievement}
-                          onOpenAchievement={openAchievement}
-                          onToggle={() => toggleCategory(category.id)}
-                          openAchievementId={openAchievementId}
-                        />
-                      ))}
-                      {!journal?.categories.length ? (
-                        <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* NODE 3: 至今 */}
-              <View style={styles.timelineNode}>
-                <Pressable onPress={() => toggleNode('now')} style={styles.nodeHeader} hitSlop={12}>
-                  <View style={[styles.pearl, expandedNodes.now && styles.pearlActive]} />
-                  <Text style={styles.nodeTitle}>至今</Text>
-                </Pressable>
-                {expandedNodes.now && (
-                  <View style={styles.nodeContent}>
-                    {renderStatsGrid()}
-                  </View>
-                )}
-              </View>
-            </Animated.View>
-          ) : (
-            <View style={{ height: 200 }} />
-          )}
-        </View>
-
-        <View style={styles.spacer} />
-
-        {/* ACTION AREA */}
-        <Animated.View entering={FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
-          <Pressable onPress={() => openUrl('https://mist01.com')} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
-            <Text style={styles.linkText}>访问官方网站</Text>
-            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
-          </Pressable>
-          <View style={styles.linkSeparator} />
-          <Pressable onPress={() => onPushRoute({ name: 'product-doc', space, preloadedMarkdown: productDocMd })} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
-            <Text style={styles.linkText}>产品文档</Text>
-            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
-          </Pressable>
-          <View style={styles.linkSeparator} />
-          <Pressable onPress={handleCheckAllUpdates} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
-            <Text style={styles.linkText}>检查更新</Text>
-            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
-          </Pressable>
-        </Animated.View>
-
-        {/* COLOPHON */}
-        <Animated.View entering={FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
-          <Pressable onPress={handleDeveloperTap}><Text style={styles.brandLogoText}>Pixory</Text></Pressable>
-          <Pressable onPress={handleDeveloperTap}><Text style={styles.colophonVersion}>v{version}</Text></Pressable>
-          <Text style={styles.colophonCopyright}>© {new Date().getFullYear()} Pixory.</Text>
-        </Animated.View>
-
-      </View>
+          {/* COLOPHON */}
+          <Animated.View entering={FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
+            <Pressable onPress={handleDeveloperTap}><Text style={styles.brandLogoText}>Pixory</Text></Pressable>
+            <Pressable onPress={handleDeveloperTap}><Text style={styles.colophonVersion}>v{version}</Text></Pressable>
+            <Text style={styles.colophonCopyright}>© {new Date().getFullYear()} Pixory.</Text>
+          </Animated.View>
+        </Animated.ScrollView>
       </ScreenScaffold>
+
+      {/*
+        STICKY FLOATING HEADER
+        Absolutely positioned above the ScrollView, entirely outside the scroll tree.
+        Driven by scrollY on the UI thread — no JS involvement after mount.
+        pointerEvents="box-none" lets touches pass through the transparent container
+        while the back Pressable inside still responds normally when visible.
+      */}
+      <Animated.View
+        pointerEvents="box-none"
+        style={[styles.stickyBar, { top: insets.top }, stickyBarStyle]}
+      >
+        <Pressable
+          accessibilityLabel="返回"
+          hitSlop={12}
+          onPress={onBack}
+          style={({ pressed }) => [styles.stickyBackBtn, pressed && styles.stickyBackBtnPressed]}
+        >
+          <Feather color={colors.text.title} name="arrow-left" size={18} />
+        </Pressable>
+        <Text numberOfLines={1} style={styles.stickyTitle}>
+          已陪伴你 · {milestones ? milestones.daysTogether : '...'} 天
+        </Text>
+      </Animated.View>
+
       <ParallaxLightSweep opacity={0.35} visible={showSweep} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  /* ScrollView content container — replaces the old static container View */
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: spacing[6],
     paddingTop: spacing[8],
-    paddingBottom: spacing[12],
     minHeight: 700,
+  },
+
+  /* --- Sticky Floating Header --- */
+  stickyBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[4],
+    height: 48,
+  },
+  stickyBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing[2],
+  },
+  stickyBackBtnPressed: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  stickyTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+    letterSpacing: 0.5,
+    flex: 1,
   },
 
   /* --- Hero Area --- */
