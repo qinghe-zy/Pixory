@@ -27,7 +27,7 @@ interface DaysPlaybackEggProps {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FRAME_MS = 200;
-const ACHIEVEMENT_DISPLAY_MS = 3000;
+const ACHIEVEMENT_DISPLAY_MS = 2000;
 const ACHIEVEMENT_FADEOUT_MS = 500;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ export function DaysPlaybackEgg({
 
       {currentAchievement ? (
         <Animated.View
-          entering={FadeIn.duration(200)}
+          entering={FadeIn.duration(300)}
           exiting={FadeOut.duration(500)}
           key={currentAchievement.title + currentAchievement.day}
           style={styles.displayInfo}
