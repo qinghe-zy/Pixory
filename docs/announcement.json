@@ -1,12 +1,14 @@
 {
   "enabled": true,
   "id": "pixory-2.8.2-release-20260906",
-  "title": "Pixory 2.8.2 已发布",
+  "title": "Pixory v2.8.3 紧急修复",
   "message": "本次大版本更新汇总了近期多项核心 OTA 优化与体验升级，重点重构了视频播放及长列表底层性能，并带来了多项交互细节创新。",
   "detailLines": [
     "性能重构：彻底解决视频播放引发的内存溢出崩溃，全域列表引入精准高度协议大幅提速。",
     "创新交互：新增图片阅读器物理音量键翻页功能；关于页面加入隐秘时光机成就彩蛋。",
     "关键修复：修复了SQLite多条件关联导致消息排序错乱及纯图片消息空白气泡问题。"
   ],
-  "actionLabel": "去体验"
+  "actionLabel": "去体验",
+  "content": "修复了 2.8.2 及 2.8.1 版本中因 expo-keep-awake 原生模块版本过高（SDK 57）导致的 Android 启动闪退问题 (AnyTypeCache ClassNotFound)。",
+  "version": "2.8.3"
 }

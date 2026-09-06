@@ -1,6 +1,6 @@
 {
   "name": "pixory",
-  "version": "2.8.2",
+  "version": "2.8.3",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -36,7 +36,7 @@
     "expo-image": "~3.0.11",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.11",
-    "expo-keep-awake": "^57.0.1",
+    "expo-keep-awake": "~15.0.8",
     "expo-linear-gradient": "~15.0.8",
     "expo-media-library": "~18.2.1",
     "expo-screen-orientation": "~9.0.9",

@@ -11,8 +11,9 @@
     "🛠️ 彻底重构视频播放底层逻辑，大幅减少内存溢出及闪退",
     "🚀 解决 C++ JSI 底层析构崩溃、纯图消息空白等多处历史遗留问题"
   ],
-  "latestVersion": "2.8.2",
+  "latestVersion": "2.8.3",
   "latestVersionCode": 282,
-  "downloadUrl": "https://mist01.com/#download",
-  "changelog": "1. 新增：图片音量键翻页与陪伴成就彩蛋；2. 优化：视频播放器与全域核心性能重构；3. 修复：JSI 底层闪退、空白图文气泡、SQLite 排序混乱等问题。"
+  "downloadUrl": "https://mist01.com/downloads/Pixory-v2.8.3.apk",
+  "changelog": "1. 新增：图片音量键翻页与陪伴成就彩蛋；2. 优化：视频播放器与全域核心性能重构；3. 修复：JSI 底层闪退、空白图文气泡、SQLite 排序混乱等问题。",
+  "releaseNotes": "修复了 Android 端因 expo-keep-awake 原生模块版本过高导致的启动闪退问题。"
 }

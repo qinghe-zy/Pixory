@@ -2,9 +2,9 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.8.2",
+    "version": "2.8.3",
     "orientation": "portrait",
-    "icon": "./icons/02_右上_蓝发女孩.png",
+    "icon": "./icons/02_\u53f3\u4e0a_\u84dd\u53d1\u5973\u5b69.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
@@ -29,7 +29,7 @@
     "web": {
       "favicon": "./assets/pixory-favicon.png"
     },
-    "runtimeVersion": "2.8.2",
+    "runtimeVersion": "2.8.3",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
@@ -52,16 +52,16 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Pixory 需要访问相册以便导入图片和选择本地头像。",
-          "microphonePermission": "Pixory 需要使用麦克风以转写语音输入。"
+          "photosPermission": "Pixory \u9700\u8981\u8bbf\u95ee\u76f8\u518c\u4ee5\u4fbf\u5bfc\u5165\u56fe\u7247\u548c\u9009\u62e9\u672c\u5730\u5934\u50cf\u3002",
+          "microphonePermission": "Pixory \u9700\u8981\u4f7f\u7528\u9ea6\u514b\u98ce\u4ee5\u8f6c\u5199\u8bed\u97f3\u8f93\u5165\u3002"
         }
       ],
       "expo-sqlite",
       [
         "expo-media-library",
         {
-          "photosPermission": "Pixory 需要访问相册以便保存原图。",
-          "savePhotosPermission": "Pixory 需要写入相册以便保存原图。",
+          "photosPermission": "Pixory \u9700\u8981\u8bbf\u95ee\u76f8\u518c\u4ee5\u4fbf\u4fdd\u5b58\u539f\u56fe\u3002",
+          "savePhotosPermission": "Pixory \u9700\u8981\u5199\u5165\u76f8\u518c\u4ee5\u4fbf\u4fdd\u5b58\u539f\u56fe\u3002",
           "granularPermissions": [
             "photo"
           ]
