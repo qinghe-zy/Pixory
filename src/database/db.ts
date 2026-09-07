@@ -486,7 +486,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V40);
     }
 
-    if (currentVersion < 41) {
+    if (currentVersion >= 17 && currentVersion < 41) {
       await database.execAsync(MIGRATION_STATEMENTS_V41);
     }
 

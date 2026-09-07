@@ -9,7 +9,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('website release-facing files reference the current 2.8.1 release', () => {
+test('website release-facing files reference the current 2.8.3 release', () => {
   assert.match(read('docs/index.html'), /当前版本：2\.8\.1/);
   assert.match(read('docs/m.html'), /当前版本：2\.8\.1/);
   assert.match(read('app.json'), /"version": "2\.8\.1"/);
