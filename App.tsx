@@ -2012,7 +2012,7 @@ export default function App() {
         includeIpDocuments={currentRoute.includeIpDocuments}
         branchTreeSelection={currentRoute.branchTreeSelection}
         onOpenHistory={() => pushRoute({ name: 'ai-history', space: currentRoute.space })}
-        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
+        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space, threadId: currentRoute.threadId, mode: 'apply_to_thread' })}
         onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: currentRoute.space })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenBranchTree={(threadId) =>

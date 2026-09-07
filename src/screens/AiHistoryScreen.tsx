@@ -538,7 +538,9 @@ export function AiHistoryScreen({
             style={styles.passwordInput}
             value={personalPassword}
           />
-        ) : null}
+        ) : (
+          <Text style={{ color: aiLightColors.mutedReadable, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>
+        )}
       </AppDialog>
 
       <AppActionSheet

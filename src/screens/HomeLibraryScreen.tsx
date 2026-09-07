@@ -282,9 +282,6 @@ export function HomeLibraryScreen({
   function startMoveSpace(ip: IpListItem) {
     setSpaceMoveIp(ip);
     setPersonalPassword('');
-    if (space === 'personal') {
-      void confirmMoveSpace(ip, '');
-    }
   }
 
   async function confirmMoveSpace(ip = spaceMoveIp, password = personalPassword) {
@@ -457,7 +454,7 @@ export function HomeLibraryScreen({
       visible={Boolean(permanentDeleteIp)}
     />
     <AppDialog
-      message={spaceMoveIp && space === 'normal' ? `将「${spaceMoveIp.name}」移入隐私空间。需要先验证隐私密码，复制和校验目标空间完成后才会清理普通空间数据。` : ''}
+      message={spaceMoveIp ? (space === 'normal' ? `将「${spaceMoveIp.name}」移入隐私空间。需要先验证隐私密码，复制和校验目标空间完成后才会清理普通空间数据。` : `将「${spaceMoveIp.name}」移出隐私空间。复制和校验目标空间完成后才会清理隐私空间数据。`) : ''}
       onClose={() => {
         if (!isMovingSpace) {
           setSpaceMoveIp(null);
@@ -466,20 +463,24 @@ export function HomeLibraryScreen({
       }}
       onPrimary={() => void confirmMoveSpace()}
       primaryDisabled={space === 'normal' && !personalPassword.trim()}
-      primaryLabel={isMovingSpace ? '正在迁移' : '移入隐私空间'}
-      title="移入隐私空间"
-      visible={Boolean(spaceMoveIp && space === 'normal')}
+      primaryLabel={isMovingSpace ? '正在迁移' : (space === 'normal' ? '移入隐私空间' : '移出隐私空间')}
+      title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+      visible={Boolean(spaceMoveIp)}
     >
-      <TextInput
-        secureTextEntry
-        editable={!isMovingSpace}
-        onChangeText={setPersonalPassword}
-        placeholder="输入隐私密码"
-        placeholderTextColor={colors.text.placeholder}
-        selectionColor={colors.primary.default}
-        style={styles.passwordInput}
-        value={personalPassword}
-      />
+      {space === 'normal' ? (
+        <TextInput
+          secureTextEntry
+          editable={!isMovingSpace}
+          onChangeText={setPersonalPassword}
+          placeholder="输入隐私密码"
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={styles.passwordInput}
+          value={personalPassword}
+        />
+      ) : (
+        <Text style={{ color: colors.text.secondary, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>
+      )}
     </AppDialog>
     <AppActionSheet
       items={actionIp ? [

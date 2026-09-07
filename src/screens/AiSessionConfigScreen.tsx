@@ -23,6 +23,7 @@ import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import {
   addThreadSessionManualModel,
+  applyRoleCardToThread,
   clearThreadSessionModelOverride,
   deleteProviderModel,
   deleteProviderModels,
@@ -39,6 +40,7 @@ import {
   updateAiThreadSessionConfig,
   type AiThreadSessionModelConfig,
 } from '../ai/aiChatService';
+import { saveRoleCard } from '../ai/aiRoleCardService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from '../ai/aiContextSettings';
 import { buildExternalContinuityPrompt } from '../ai/aiContinuityImportPrompt';
@@ -628,6 +630,36 @@ export function AiSessionConfigScreen({
     }
   }
 
+  async function handleSaveAsRoleCard() {
+    if (!threadId) {
+      setStatus({ message: '请先进入一个会话后再保存。', tone: 'warning' });
+      return;
+    }
+    setSaving(true);
+    setStatus({ message: '正在保存角色卡...', tone: 'info', title: '保存中' });
+    try {
+      const newRoleCard = await saveRoleCard({
+        space,
+        name: threadTitle || '自定义角色',
+        prompt: systemPrompt || getDefaultSystemPrompt(contextType),
+        avatarEnabled,
+        avatarUri,
+      });
+      await applyRoleCardToThread({
+        roleCardId: newRoleCard.id,
+        space,
+        threadId,
+      });
+      setStatus({ message: '已保存为新角色卡并应用到当前会话。', tone: 'success', title: '保存成功' });
+      await reloadConfig();
+      onSettingsChanged?.();
+    } catch (e) {
+      setStatus({ message: e instanceof Error ? e.message : '角色卡保存失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function confirmRenameThread() {
     if (!threadId) {
       return;
@@ -1094,6 +1126,7 @@ export function AiSessionConfigScreen({
               <Text style={styles.drawerGroupTitle}>角色与展现 Role & Presentation</Text>
               <View style={styles.drawerCardGroup}>
                 <DrawerListRow icon="person-circle-outline" title={roleCardSummary} value="更换" hasChevron onPress={onOpenRoleLibrary} />
+                <DrawerListRow icon="save-outline" title="将当前配置存为新角色" hasChevron={false} onPress={() => void handleSaveAsRoleCard()} disabled={saving} />
                 <DrawerListRow icon="image-outline" title="角色头像" action={avatarUri ? <SecureImage uri={avatarUri} space={space} style={styles.drawerAvatarPreview} /> : null} hasChevron chevronIcon={avatarPickerExpanded ? 'chevron-up' : 'chevron-down'} onPress={() => setAvatarPickerExpanded(!avatarPickerExpanded)} />
                   {avatarPickerExpanded && (
                     <View style={styles.drawerAvatarPickerWrap}>
