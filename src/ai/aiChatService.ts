@@ -46,6 +46,7 @@ import {
   rollbackThreadContinuityImport as rollbackThreadContinuityImportService,
 } from './aiContinuityImportService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
+import { buildNormalChatPrompt as buildUncensoredNormalChatPrompt, buildMaterialBoundPrompt as buildUncensoredMaterialBoundPrompt } from './promptUncensoredBuilder';
 import { loadCurrentIpCitationSnippet, retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import {
   buildCitationRegistry,
@@ -2457,6 +2458,8 @@ async function buildPromptForThread(
     }] : []),
   ];
 
+  const uncensoredModeEnabled = await runWithDatabaseSpace(thread.space, (db) => settingsRepository.getUncensoredModeEnabled(db));
+
   if (thread.contextType === 'normal') {
     const citationRegistry = buildCitationRegistry(threadMaterialSnippets);
     if (generationMetrics) {
@@ -2464,8 +2467,9 @@ async function buildPromptForThread(
       generationMetrics.context.retrievalSnippetCount = threadMaterialSnippets.length;
       generationMetrics.context.stablePrefixEstimatedTokens = null;
     }
+    const builderFn = uncensoredModeEnabled ? buildUncensoredNormalChatPrompt : buildNormalChatPrompt;
     return {
-      prompt: buildNormalChatPrompt({
+      prompt: builderFn({
         chatMode,
         dynamicMemoryContext,
         dynamicSegments,
@@ -2493,8 +2497,9 @@ async function buildPromptForThread(
     generationMetrics.context.stablePrefixEstimatedTokens = null;
   }
 
+  const builderFn = uncensoredModeEnabled ? buildUncensoredMaterialBoundPrompt : buildMaterialBoundPrompt;
   return {
-    prompt: buildMaterialBoundPrompt({
+    prompt: builderFn({
       chatMode,
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
       dynamicMemoryContext,

@@ -8,6 +8,7 @@ import { isOfficialDeepSeekV4Model } from './deepseekModelPolicy';
 export type AiChatMode = 'companion' | 'roleplay' | 'knowledge' | 'personal';
 
 export type AiPromptLayerName =
+  | 'uncensored_app_policy'
   | 'stable_app_policy'
   | 'stable_role'
   | 'stable_material_rules'
