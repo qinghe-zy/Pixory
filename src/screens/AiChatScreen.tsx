@@ -295,7 +295,7 @@ type MessageContextMenuState = {
 type ArtifactContextMenuState = {
   anchorX: number;
   anchorY: number;
-  artifactKind: 'diary' | 'dream';
+  artifactKind: 'diary' | 'dream' | 'dreamJob';
   createdAt: string;
   groupId: string;
   versionId: string;
@@ -6418,7 +6418,7 @@ export function AiChatScreen({
   }
 
   const handleArtifactLongPress = useCallback((
-    artifactKind: 'diary' | 'dream',
+    artifactKind: 'diary' | 'dream' | 'dreamJob',
     groupId: string,
     versionId: string,
     createdAt: string,
@@ -6438,13 +6438,13 @@ export function AiChatScreen({
   const handleHideArtifactFromChat = useCallback(async () => {
     const artifact = artifactContextMenuState;
     const targetThreadId = activeThreadIdRef.current;
-    if (!artifact || !targetThreadId) return;
+    if (!artifact || !targetThreadId || artifact.artifactKind === 'dreamJob') return;
     setArtifactActionPending(true);
     try {
       await runWithDatabaseSpace(space, (db) =>
         companionArtifactChatStateRepository.hide(db, {
           artifactGroupId: artifact.groupId,
-          artifactKind: artifact.artifactKind,
+          artifactKind: artifact.artifactKind as 'diary' | 'dream',
           threadId: targetThreadId,
         }),
       );
@@ -6462,7 +6462,7 @@ export function AiChatScreen({
 
   const handleRegenerateArtifactVersion = useCallback(async () => {
     const artifact = artifactContextMenuState;
-    if (!artifact) return;
+    if (!artifact || artifact.artifactKind === 'dreamJob') return;
     setArtifactActionPending(true);
     try {
       if (artifact.artifactKind === 'diary') {
@@ -6489,25 +6489,49 @@ export function AiChatScreen({
     }
   }, [artifactContextMenuState, reloadRoleDiaries, reloadRoleDreams, space]);
 
+  const handleDeleteDreamJob = useCallback(async () => {
+    const artifact = artifactContextMenuState;
+    if (!artifact || artifact.artifactKind !== 'dreamJob') return;
+    setArtifactActionPending(true);
+    try {
+      await runWithDatabaseSpace(space, (db) => dreamRepository.deleteJob(db, artifact.groupId));
+      await reloadRoleDreams();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? `删除失败：${error.message}` : '删除失败，请稍后重试。');
+    } finally {
+      setArtifactActionPending(false);
+    }
+  }, [artifactContextMenuState, reloadRoleDreams, space]);
+
   const artifactContextMenuActions: AiAnchoredContextMenuAction[] = artifactContextMenuState
-    ? [
-        {
-          disabled: artifactActionPending
-            || (artifactContextMenuState.artifactKind === 'dream'
-              && regeneratingDreamGroupIds.has(artifactContextMenuState.groupId)),
-          icon: 'refresh-outline',
-          key: 'regenerate-artifact',
-          label: '重新生成',
-          onPress: () => { void handleRegenerateArtifactVersion(); },
-        },
-        {
-          disabled: artifactActionPending,
-          icon: 'eye-off-outline',
-          key: 'hide-artifact-from-chat',
-          label: '从聊天中移除',
-          onPress: () => { void handleHideArtifactFromChat(); },
-        },
-      ]
+    ? artifactContextMenuState.artifactKind === 'dreamJob'
+      ? [
+          {
+            disabled: artifactActionPending,
+            icon: 'trash-outline',
+            key: 'delete-dream-job',
+            label: '删除',
+            onPress: () => { void handleDeleteDreamJob(); },
+          },
+        ]
+      : [
+          {
+            disabled: artifactActionPending
+              || (artifactContextMenuState.artifactKind === 'dream'
+                && regeneratingDreamGroupIds.has(artifactContextMenuState.groupId)),
+            icon: 'refresh-outline',
+            key: 'regenerate-artifact',
+            label: '重新生成',
+            onPress: () => { void handleRegenerateArtifactVersion(); },
+          },
+          {
+            disabled: artifactActionPending,
+            icon: 'eye-off-outline',
+            key: 'hide-artifact-from-chat',
+            label: '从聊天中移除',
+            onPress: () => { void handleHideArtifactFromChat(); },
+          },
+        ]
     : [];
 
   const baseMessageContextMenuTarget = messageContextMenuState
@@ -6742,7 +6766,7 @@ export function AiChatScreen({
           />;
         case 'dreamJob':
           const failure = presentDreamFailure(item.job.lastErrorCode);
-          return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onCancel={() => void handleDreamJobCancel(item.job)} onRetry={() => void handleDreamJobRetry(item.job)} />;
+          return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onCancel={() => void handleDreamJobCancel(item.job)} onRetry={() => void handleDreamJobRetry(item.job)} onLongPress={(pageX, pageY) => handleArtifactLongPress('dreamJob', item.job.id, item.job.id, item.job.createdAt, pageX, pageY)} />;
       }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
