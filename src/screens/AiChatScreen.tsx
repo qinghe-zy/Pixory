@@ -2707,6 +2707,11 @@ export function AiChatScreen({
           return nextMessages;
         });
         scheduleIntentionalLatestJump(false);
+        // If the user included attachments, reload from DB immediately so the
+        // image shows up as soon as generation starts rather than after it ends.
+        if (pendingUserMessage?.hasAttachments) {
+          void reloadMessages(targetThreadId);
+        }
       },
       onMessagePatch: (patch) => {
         if (!isCurrentStreamingPatch(targetThreadId, generation, patch)) {
@@ -2776,9 +2781,6 @@ export function AiChatScreen({
           return;
         }
         void (async () => {
-          if (pendingUserMessage?.hasAttachments) {
-            await reloadMessages(targetThreadId);
-          }
           await reloadContinuityMilestones(targetThreadId);
           await reloadMemoryCaptures(targetThreadId);
           if (isCurrentStream(targetThreadId, generation)) {

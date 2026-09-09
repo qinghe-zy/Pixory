@@ -25,6 +25,7 @@ import { classifyAiProviderError, toUserProviderErrorMessage } from './aiProvide
 import type { AiProviderProtocol, AiProviderType } from './types';
 import {
   isAllowedOfficialDeepSeekModel,
+  isAllowedOfficialDeepSeekVisionModel,
   isOfficialDeepSeekProvider,
   migrateDeprecatedDeepSeekModel,
 } from './deepseekModelPolicy';
@@ -486,7 +487,7 @@ export async function syncProviderModels(providerId: string, space: PixorySpace 
       timeout.cancel();
     }
     const syncedModels = modelIds
-      .filter((modelId) => !isOfficialDeepSeekProvider(provider) || isAllowedOfficialDeepSeekModel(modelId))
+      .filter((modelId) => !isOfficialDeepSeekProvider(provider) || isAllowedOfficialDeepSeekModel(modelId) || isAllowedOfficialDeepSeekVisionModel(modelId))
       .map((modelId) => syncedModelRecord(provider, modelId));
     await runWithDatabaseSpace(space, (db) =>
       aiProviderRepository.upsertModels(db, provider.id, syncedModels.length > 0 ? syncedModels : fallbackModels)
@@ -516,7 +517,7 @@ export async function listProviderCards(space: PixorySpace): Promise<
           provider: { ...compatibleProvider, lastVerifyStatus: providerVerifyStatus(compatibleProvider) },
           hasApiKey: await hasProviderApiKeyForSpace(space, provider.id),
           models: (await aiProviderRepository.listModels(db, provider.id))
-            .filter((model) => !isOfficialDeepSeekProvider(provider) || isAllowedOfficialDeepSeekModel(model.modelId)),
+            .filter((model) => !isOfficialDeepSeekProvider(provider) || isAllowedOfficialDeepSeekModel(model.modelId) || isAllowedOfficialDeepSeekVisionModel(model.modelId)),
         };
       })
     );
