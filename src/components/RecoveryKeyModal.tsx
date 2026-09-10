@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View, Platform, ToastAndroid } from 'react-native';
 
 import { colors, radius, spacing, typography } from '../design/tokens';
@@ -15,6 +15,15 @@ export function RecoveryKeyModal({ visible, onClose, initialKey }: Props) {
   const [currentKey, setCurrentKey] = useState(initialKey);
   const [mode, setMode] = useState<'view' | 'custom'>('view');
   const [customInput, setCustomInput] = useState('');
+
+  useEffect(() => {
+    if (visible && initialKey) {
+      setCurrentKey(initialKey);
+      setCustomInput(initialKey);
+      setMode('view');
+    }
+  }, [visible, initialKey]);
+
   
   // Format key like XXX-XXX
   const formatKey = (key: string) => {
@@ -104,25 +113,47 @@ export function RecoveryKeyModal({ visible, onClose, initialKey }: Props) {
                 您可以自定义6位由大写字母和数字组成的恢复密钥。
               </Text>
               
-              <View style={styles.inputWrap}>
+              <View style={styles.customInputContainer}>
+                {[0, 1, 2].map((i) => {
+                  const rawChars = customInput.replace(/[^A-Z0-9]/g, '');
+                  const char = rawChars[i] || '';
+                  const isActive = rawChars.length === i;
+                  return (
+                    <View key={i} style={styles.charBox}>
+                      <Text style={[styles.charText, !char && { color: 'transparent' }]}>{char || 'X'}</Text>
+                      <View style={[styles.cursor, isActive && styles.cursorActive]} />
+                    </View>
+                  );
+                })}
+                <Text style={styles.customHyphen}>-</Text>
+                {[3, 4, 5].map((i) => {
+                  const rawChars = customInput.replace(/[^A-Z0-9]/g, '');
+                  const char = rawChars[i] || '';
+                  const isActive = rawChars.length === i;
+                  return (
+                    <View key={i} style={styles.charBox}>
+                      <Text style={[styles.charText, !char && { color: 'transparent' }]}>{char || 'X'}</Text>
+                      <View style={[styles.cursor, isActive && styles.cursorActive]} />
+                    </View>
+                  );
+                })}
                 <TextInput
                   autoCapitalize="characters"
                   autoFocus
                   keyboardType="default"
-                  maxLength={7}
+                  maxLength={6}
                   onChangeText={(val) => {
-                    const formatted = formatKey(val);
-                    setCustomInput(formatted);
+                    const clean = val.replace(/[^A-Z0-9a-z]/g, '').toUpperCase();
+                    setCustomInput(clean);
                   }}
-                  placeholder="XXX-XXX"
-                  placeholderTextColor={colors.text.placeholder}
-                  style={styles.textInput}
-                  value={customInput}
+                  style={styles.hiddenInput}
+                  value={customInput.replace(/[^A-Z0-9]/g, '')}
+                  caretHidden
                 />
               </View>
 
               <View style={[styles.actions, { marginTop: spacing[4] }]}>
-                <Pressable onPress={() => setMode('view')} style={styles.actionBtn}>
+                <Pressable onPress={() => { setCustomInput(currentKey); setMode('view'); }} style={styles.actionBtn}>
                   <Text style={[styles.actionText, { color: colors.text.secondary }]}>取消</Text>
                 </Pressable>
                 
@@ -140,6 +171,51 @@ export function RecoveryKeyModal({ visible, onClose, initialKey }: Props) {
 }
 
 const styles = StyleSheet.create({
+  customInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[1],
+    paddingVertical: spacing[3],
+    position: 'relative',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  charBox: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  charText: {
+    color: colors.text.primary,
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 4,
+  },
+  cursor: {
+    width: 24,
+    height: 4,
+    backgroundColor: 'transparent',
+    borderRadius: 2,
+  },
+  cursorActive: {
+    backgroundColor: colors.primary.active,
+  },
+  customHyphen: {
+    color: colors.text.primary,
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginHorizontal: spacing[1],
+  },
+  hiddenInput: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0,
+    color: 'transparent',
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

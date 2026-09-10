@@ -17,6 +17,9 @@ interface PersonalUnlockModalProps {
   hasCredential: boolean | null;
   loading: boolean;
   visible: boolean;
+  title?: string;
+  description?: string;
+  hideActions?: boolean;
   onClose: () => void;
   onSetup: (secret: string, method?: 'password' | 'pattern') => Promise<void>;
   onUnlock: (secret: string) => Promise<void>;
@@ -28,6 +31,9 @@ export function PersonalUnlockModal({
   hasCredential,
   loading,
   visible,
+  title,
+  description,
+  hideActions,
   onClose,
   onSetup,
   onUnlock,
@@ -118,7 +124,7 @@ export function PersonalUnlockModal({
   const triggerBiometric = async () => {
     try {
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: '验证指纹/面容进入隐私模式',
+        promptMessage: title || '验证指纹/面容进入隐私模式',
         fallbackLabel: '使用密码',
         disableDeviceFallback: true,
       });

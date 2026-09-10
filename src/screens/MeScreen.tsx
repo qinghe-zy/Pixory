@@ -12,6 +12,7 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
+import { UidService } from '../services/uidService';
 import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
 import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
 import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
@@ -44,6 +45,7 @@ interface MeStats {
   deletedImageCount: number;
   profileAvatarUri: string | null;
   profileNickname: string | null;
+  uid: string | null;
   imageOriginalBytes: number;
   videoOriginalBytes: number;
 }
@@ -177,6 +179,7 @@ export function MeScreen({
         videoOriginalBytes,
         profileAvatarUri,
         profileNickname,
+        uid,
       ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.count(db),
         imageRepository.count(db, { mediaType: 'all' }),
@@ -187,6 +190,7 @@ export function MeScreen({
         imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'video' }),
         settingsRepository.getProfileAvatarUri(db),
         settingsRepository.getProfileNickname(db),
+        UidService.getUid(),
       ]));
 
       return {
@@ -197,6 +201,7 @@ export function MeScreen({
         deletedImageCount,
         profileAvatarUri,
         profileNickname,
+        uid,
         imageOriginalBytes,
         videoOriginalBytes,
       };
@@ -380,6 +385,11 @@ export function MeScreen({
               <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.heroTitleContainer, pressed && styles.pressed]}>
                 <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
                   <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
+                  {data?.uid ? (
+                    <Text style={[typography.textStyles.brandSubtitle, { fontFamily: typography.family.brand, marginTop: 2, fontSize: 11, opacity: 0.6 }]}>
+                      UID: {data.uid}
+                    </Text>
+                  ) : null}
                 </MagneticLiquidContainer>
               </Pressable>
               <ProfileMemoryCore isActive={isActive} />

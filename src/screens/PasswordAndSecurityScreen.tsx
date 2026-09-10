@@ -19,6 +19,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
 import { AppDialog } from '../components/AppDialog';
 import { PasswordInput } from '../components/PasswordInput';
+import { PersonalUnlockModal } from '../components/PersonalUnlockModal';
 import { RecoveryKeyModal } from '../components/RecoveryKeyModal';
 import { SecurityUnlockModule } from '../components/SecurityUnlockModule';
 
@@ -296,27 +297,33 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
       </View>
       {renderChangePasswordDialog()}
 
-      <AppDialog
-        message="为保障安全，请先验证当前数字密码。"
-        onClose={() => setVerifyForRecoveryVisible(false)}
-        onPrimary={() => {
-          void submitVerifyForRecovery();
-        }}
-        primaryDisabled={loading || !currentSecret.trim()}
-        primaryLabel="验证"
-        title="验证身份"
+      <PersonalUnlockModal
         visible={verifyForRecoveryVisible}
-      >
-        <PasswordInput
-          onChangeText={setCurrentSecret}
-          placeholder="当前数字密码"
-          secureTextEntry={!showPassword}
-          showPassword={showPassword}
-          onToggleShowPassword={() => setShowPassword((current) => !current)}
-          value={currentSecret}
-        />
-        {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
-      </AppDialog>
+        onClose={() => setVerifyForRecoveryVisible(false)}
+        hasCredential={config?.hasCredential || false}
+        loading={loading}
+        title="验证身份"
+        description="为保障安全，请先验证您的身份。"
+        hideActions={true}
+        onSetup={async () => {}}
+        onChangePassword={async () => {}}
+        onResetPersonalData={async () => {}}
+        onUnlock={async (secret) => {
+          const result = await verifyPersonalPassword(secret);
+          if (result.ok) {
+            setVerifyForRecoveryVisible(false);
+            let rk = await getPersonalRecoveryKeyPlain();
+            if (!rk) {
+              rk = await generateAndSetRecoveryKey();
+              setConfig(prev => prev ? { ...prev, hasRecoveryKey: true } : null);
+            }
+            setCurrentRecoveryKey(rk);
+            setRecoveryModalVisible(true);
+          } else {
+            throw new Error('密码或验证失败');
+          }
+        }}
+      />
 
       <RecoveryKeyModal 
         visible={recoveryModalVisible} 
