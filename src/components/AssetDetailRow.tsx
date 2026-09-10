@@ -80,7 +80,7 @@ export function AssetDetailRow({
       accessibilityLabel={`${isVideo ? '打开视频' : '打开图片'}：${image.originalFilename}${selected ? '，已选中' : ''}`}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      delayLongPress={220}
+      delayLongPress={500}
       onLayout={onLayout}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}

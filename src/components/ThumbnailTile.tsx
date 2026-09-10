@@ -84,7 +84,7 @@ export function ThumbnailTile({
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="imagebutton"
       accessibilityState={{ selected }}
-      delayLongPress={220}
+      delayLongPress={500}
       onLayout={onLayout}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}

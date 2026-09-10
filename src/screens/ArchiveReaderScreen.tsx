@@ -192,7 +192,7 @@ export function ArchiveReaderScreen({ archiveName, archiveUri, onBack }: Archive
         </Pressable>
       </View>
 
-      <Pressable delayLongPress={260} onLongPress={() => setMoreVisible(true)} style={styles.imageStage}>
+      <Pressable delayLongPress={500} onLongPress={() => setMoreVisible(true)} style={styles.imageStage}>
         {currentImageUri ? (
           <Image resizeMode="contain" source={{ uri: currentImageUri }} style={styles.image} />
         ) : (
