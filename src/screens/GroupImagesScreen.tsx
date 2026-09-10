@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -164,6 +165,26 @@ export function GroupImagesScreen({
     selectableMediaTypes: ['image', 'video'],
   });
 
+    const scrollY = useSharedValue(0);
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ translateY }] };
+  });
+  const heroStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [0, 20], [1, 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+      if (swipeSelection.onScroll) {
+        runOnJS(swipeSelection.onScroll)(event);
+      }
+    },
+  });
+
   const swipeFilterDrawerPanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponderCapture: (evt, gs) => {
@@ -215,6 +236,36 @@ export function GroupImagesScreen({
   function handleImageLongPress(imageId: number) {
     swipeSelection.beginSwipeSelection(imageId);
   }
+
+  
+  const selectAllButton = multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+    <Pressable
+      disabled={selectableAssets.length === 0}
+      onPress={multiSelect.toggleSelectAll}
+      style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+    >
+      <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+    </Pressable>
+  ) : null;
+
+  const sortButton = (
+    <SortMenuButton
+      hasActiveFilters={hasActiveFilters}
+      onChange={setSortOrder}
+      onFilterPress={() => setIsFilterDrawerOpen(true)}
+      orderBy={sortOrder}
+    />
+  );
+
+  const compactRightAction = (
+    <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, compactHeaderStyle]} pointerEvents="box-none">
+      <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
+        {images.length} 张
+      </Text>
+      {selectAllButton}
+      {sortButton}
+    </Animated.View>
+  );
 
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
@@ -279,6 +330,8 @@ export function GroupImagesScreen({
       footer={footer}
       onBack={onBack}
       title={group ? group.name : '分组图片'}
+    
+      rightAction={compactRightAction}
     >
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
@@ -338,7 +391,10 @@ export function GroupImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reload}
       >
-        <View style={styles.galleryHeading}>
+        
+        <VirtualizedAssetCollection
+          headerComponent={<Animated.View style={heroStyle}>
+<View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
             {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
@@ -358,13 +414,13 @@ export function GroupImagesScreen({
             />
           </View>
         </View>
-        <VirtualizedAssetCollection
+</Animated.View>}
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}
           onEndReached={media.loadMore}
           onItemMeasured={swipeSelection.registerMeasuredItemLayout}
-          onScroll={swipeSelection.onScroll}
+          onScroll={handleScroll}
           panHandlers={swipeSelection.panHandlers}
           renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
