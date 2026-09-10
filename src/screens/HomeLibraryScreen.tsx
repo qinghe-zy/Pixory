@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, Platfo
 import { FlatList } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
 
-import { AppActionSheet } from '../components/AppActionSheet';
+import { AiAnchoredContextMenu, type AiAnchoredContextMenuAction } from '../components/ai/AiAnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
@@ -62,7 +62,7 @@ export function HomeLibraryScreen({
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
   const [activeSortOrder, setActiveSortOrder] = useState<IpSortOrder>('default');
-  const [actionIp, setActionIp] = useState<IpListItem | null>(null);
+  const [actionMenuState, setActionMenuState] = useState<{ ip: IpListItem; anchorX: number; anchorY: number } | null>(null);
   const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
   const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
@@ -205,9 +205,18 @@ export function HomeLibraryScreen({
   const isLibraryCompletelyEmpty = !isLoading && !errorMessage && items.length === 0 && activeFilter === 'all';
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
 
-  const handleDeleteIp = useCallback((ip: IpListItem) => {
-    setActionIp(ip);
+  const handleLongPressIp = useCallback((ip: IpListItem, pageX: number, pageY: number) => {
+    setActionMenuState({ ip, anchorX: pageX, anchorY: pageY });
   }, []);
+
+  const handleTogglePin = useCallback(async (ip: IpListItem) => {
+    try {
+      await runWithDatabaseSpace(space, (db) => ipRepository.setPinned(db, ip.id, !ip.isPinned));
+      void reload();
+    } catch (error) {
+      showToast(ip.isPinned ? '取消置顶失败' : '置顶失败');
+    }
+  }, [space, reload, showToast]);
 
   const renderIpCard = useCallback(
     ({ item, index }: ListRenderItemInfo<IpListItem>) => (
@@ -215,12 +224,12 @@ export function HomeLibraryScreen({
         imagePriority={index === 0 ? 'high' : 'normal'}
         useGyroEffect={index === 0}
         ip={item}
-        onLongPress={handleDeleteIp}
+        onLongPress={handleLongPressIp}
         onPress={onOpenIp}
         space={space}
       />
     ),
-    [handleDeleteIp, onOpenIp, space]
+    [handleLongPressIp, onOpenIp, space]
   );
 
   const getIpCardLayout = useCallback(
@@ -487,35 +496,39 @@ export function HomeLibraryScreen({
         <Text style={{ color: colors.text.secondary, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>
       )}
     </AppDialog>
-    <AppActionSheet
-      items={actionIp ? [
+    <AiAnchoredContextMenu
+      actions={actionMenuState ? [
+        {
+          key: 'pin',
+          label: actionMenuState.ip.isPinned ? '取消置顶' : 'IP 置顶',
+          icon: actionMenuState.ip.isPinned ? 'pin' : 'pin-outline',
+          onPress: () => void handleTogglePin(actionMenuState.ip),
+        },
         {
           key: 'space',
           label: space === 'normal' ? '移入隐私空间' : '移出隐私空间',
           icon: space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline',
-          meta: space === 'normal' ? '需要验证隐私密码' : '移动到普通空间',
-          onPress: () => startMoveSpace(actionIp),
+          onPress: () => startMoveSpace(actionMenuState.ip),
         },
         {
           key: 'trash',
           label: '移入回收站',
           icon: 'archive-outline',
-          meta: '推荐，保留本地文件',
-          onPress: () => setTrashIp(actionIp),
+          onPress: () => setTrashIp(actionMenuState.ip),
         },
         {
           key: 'permanent',
           label: '永久删除',
           icon: 'trash-outline',
           danger: true,
-          meta: '删除数据库记录、原图和缩略图',
-          onPress: () => setPermanentDeleteIp(actionIp),
+          onPress: () => setPermanentDeleteIp(actionMenuState.ip),
         },
       ] : []}
-      message="移入回收站更安全；永久删除会清理 Pixory 私有存储中的文件。"
-      onClose={() => setActionIp(null)}
-      title={actionIp?.name ?? 'IP 操作'}
-      visible={Boolean(actionIp)}
+      anchorX={actionMenuState?.anchorX ?? 0}
+      anchorY={actionMenuState?.anchorY ?? 0}
+      dismissAccessibilityLabel="关闭菜单"
+      onClose={() => setActionMenuState(null)}
+      visible={Boolean(actionMenuState)}
     />
       <ParallaxLightSweep fadeOutDuration={750} opacity={0.35} visible={isActive && (showSweep || isLoading)} />
     </>

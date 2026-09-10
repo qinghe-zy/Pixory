@@ -28,6 +28,7 @@ const IP_LIBRARY_SELECT = `
     ips.name,
     ips.description,
     ips.isFavorite,
+    ips.isPinned,
     ips.coverImageAssetId,
     ips.coverBlurEnabled,
     ips.coverBlurRadius,
@@ -78,6 +79,7 @@ const IP_DETAIL_SELECT = `
     ips.name,
     ips.description,
     ips.isFavorite,
+    ips.isPinned,
     ips.coverImageAssetId,
     ips.coverBlurEnabled,
     ips.coverBlurRadius,
@@ -173,7 +175,7 @@ function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array
     }
   }
 
-  const orderByStatement = ` ORDER BY ${orderBy}`;
+  const orderByStatement = ` ORDER BY ips.isPinned DESC, ${orderBy}`;
 
   return {
     sql: `${IP_LIBRARY_SELECT}${whereStatement} GROUP BY ips.id${orderByStatement}`,
@@ -225,7 +227,7 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
       SELECT ips.*
       FROM ips
       WHERE ${whereClauses.join(' AND ')}
-      ORDER BY ${orderBy}
+      ORDER BY ips.isPinned DESC, ${orderBy}
       LIMIT ? OFFSET ?
     ),
     image_stats AS (
@@ -251,6 +253,7 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
       page_ips.name,
       page_ips.description,
       page_ips.isFavorite,
+      page_ips.isPinned,
       page_ips.coverImageAssetId,
       page_ips.coverBlurEnabled,
       page_ips.coverBlurRadius,
@@ -289,7 +292,7 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
     FROM page_ips
     LEFT JOIN image_stats ON image_stats.ipId = page_ips.id
     LEFT JOIN group_stats ON group_stats.ipId = page_ips.id
-    ORDER BY ${orderBy.replaceAll('ips.', 'page_ips.')}`,
+    ORDER BY page_ips.isPinned DESC, ${orderBy.replaceAll('ips.', 'page_ips.')}`,
     values: [...values, limit + 1, offset],
     limit,
   };
@@ -302,10 +305,11 @@ export const ipRepository = {
     const description = normalizeOptionalText(input.description) ?? null;
 
     const result = await db.runAsync(
-      'INSERT INTO ips (name, description, isFavorite, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO ips (name, description, isFavorite, isPinned, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
       name,
       description,
       booleanToSqlite(Boolean(input.isFavorite)),
+      booleanToSqlite(Boolean(input.isPinned)),
       now,
       now
     );
@@ -323,6 +327,7 @@ export const ipRepository = {
       name: input.name !== undefined ? requireNonEmptyText(input.name, 'IP name') : undefined,
       description: normalizeOptionalText(input.description),
       isFavorite: input.isFavorite !== undefined ? booleanToSqlite(input.isFavorite) : undefined,
+      isPinned: input.isPinned !== undefined ? booleanToSqlite(input.isPinned) : undefined,
       coverImageAssetId: input.coverImageAssetId,
       coverBlurEnabled: input.coverBlurEnabled === undefined ? undefined : input.coverBlurEnabled == null ? null : booleanToSqlite(input.coverBlurEnabled),
       coverBlurRadius: input.coverBlurRadius,
@@ -424,6 +429,10 @@ export const ipRepository = {
 
   async clearCoverImage(db: SQLiteDatabase, ipId: number): Promise<IpRecord | null> {
     return this.update(db, ipId, { coverImageAssetId: null });
+  },
+
+  async setPinned(db: SQLiteDatabase, ipId: number, pinned: boolean): Promise<IpRecord | null> {
+    return this.update(db, ipId, { isPinned: pinned });
   },
 
   async setCoverBlurEnabled(db: SQLiteDatabase, ipId: number, enabled: boolean): Promise<IpRecord | null> {

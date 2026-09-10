@@ -28,6 +28,7 @@ export interface IpRecord {
   name: string;
   description: string | null;
   isFavorite: boolean;
+  isPinned: boolean;
   coverImageAssetId: number | null;
   coverBlurEnabled: boolean | null;
   coverBlurRadius: number | null;
@@ -40,19 +41,22 @@ export interface CreateIpInput {
   name: string;
   description?: string | null;
   isFavorite?: boolean;
+  isPinned?: boolean;
 }
 
 export interface UpdateIpInput {
   name?: string;
   description?: string | null;
   isFavorite?: boolean;
+  isPinned?: boolean;
   coverImageAssetId?: number | null;
   coverBlurEnabled?: boolean | null;
   coverBlurRadius?: number | null;
 }
 
-export interface IpRow extends Omit<IpRecord, 'isFavorite' | 'coverBlurEnabled'> {
+export interface IpRow extends Omit<IpRecord, 'isFavorite' | 'isPinned' | 'coverBlurEnabled'> {
   isFavorite: number;
+  isPinned: number;
   coverBlurEnabled: number | null;
 }
 

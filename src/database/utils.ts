@@ -115,6 +115,7 @@ export function mapIpRow(row: IpRow): IpRecord {
   return {
     ...row,
     isFavorite: sqliteToBoolean(row.isFavorite),
+    isPinned: sqliteToBoolean(row.isPinned),
     coverImageAssetId: row.coverImageAssetId ?? null,
     coverBlurEnabled: row.coverBlurEnabled == null ? null : sqliteToBoolean(row.coverBlurEnabled),
     coverBlurRadius: row.coverBlurRadius ?? null,

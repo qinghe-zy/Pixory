@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 63;
+export const DATABASE_VERSION = 64;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2273,6 +2273,12 @@ CREATE TABLE IF NOT EXISTS journal_achievements (
 CREATE INDEX IF NOT EXISTS idx_journal_achievements_space_category_read
   ON journal_achievements(space, category, readAt);
 `;
+
+export const MIGRATION_STATEMENTS_V64 = `
+ALTER TABLE ips ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_ips_is_pinned ON ips(isPinned);
+`;
+
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
 UPDATE ai_memories
 SET status = 'stale',

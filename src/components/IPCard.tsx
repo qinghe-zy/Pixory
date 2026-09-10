@@ -14,7 +14,7 @@ interface IPCardProps {
   ip: IpListItem;
   imagePriority?: ImageProps['priority'];
   space?: PixorySpace;
-  onLongPress?: (ip: IpListItem) => void;
+  onLongPress?: (ip: IpListItem, pageX: number, pageY: number) => void;
   onPress: (ipId: number) => void;
   useGyroEffect?: boolean;
 }
@@ -27,7 +27,8 @@ export function IPCard({ ip, imagePriority = 'normal', space = 'normal', onLongP
     <Pressable
       accessibilityLabel={`打开 ${ip.name}`}
       accessibilityRole="button"
-      onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
+      delayLongPress={500}
+      onLongPress={onLongPress ? (event) => onLongPress(ip, event.nativeEvent.pageX, event.nativeEvent.pageY) : undefined}
       onPress={() => onPress(ip.id)}
       style={({ pressed }) => [styles.card, pressed && !useGyroEffect && styles.cardPressed]}
     >

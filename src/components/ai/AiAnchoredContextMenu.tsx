@@ -11,11 +11,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { metrics, radius, shadows, spacing, typography } from '../../design/tokens';
+import { colors, metrics, radius, shadows, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 import { resolveAiMessageContextMenuPosition } from './aiMessageContextMenuPosition';
 
 export type AiAnchoredContextMenuAction = {
+  danger?: boolean;
   disabled?: boolean;
   icon: ComponentProps<typeof Ionicons>['name'];
   key: string;
@@ -30,7 +31,7 @@ export type AiAnchoredContextMenuProps = {
   anchorY: number;
   dismissAccessibilityLabel: string;
   onClose: () => void;
-  timeLabel: string;
+  timeLabel?: string;
   visible: boolean;
 };
 
@@ -144,7 +145,7 @@ export function AiAnchoredContextMenu({
                 ]}
               >
                 <Ionicons
-                  color={action.selected ? aiLightColors.primaryActive : aiLightColors.ink}
+                  color={action.danger ? colors.semantic.danger : (action.selected ? aiLightColors.primaryActive : aiLightColors.ink)}
                   name={action.icon}
                   size={metrics.iconSizeMd}
                 />
@@ -152,6 +153,7 @@ export function AiAnchoredContextMenu({
                   style={[
                     styles.actionLabel,
                     action.selected && styles.selectedActionLabel,
+                    action.danger && { color: colors.semantic.danger },
                   ]}
                 >
                   {action.label}
@@ -159,9 +161,11 @@ export function AiAnchoredContextMenu({
               </Pressable>
             ))}
           </ScrollView>
-          <View accessibilityRole="text" style={[styles.timeRow, styles.divider]}>
-            <Text style={styles.timeText}>{timeLabel}</Text>
-          </View>
+          {timeLabel ? (
+            <View accessibilityRole="text" style={[styles.timeRow, styles.divider]}>
+              <Text style={styles.timeText}>{timeLabel}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
