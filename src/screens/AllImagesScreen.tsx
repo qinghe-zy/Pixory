@@ -433,6 +433,53 @@ export function AllImagesScreen({
         </View>
       </Animated.View>
 
+      <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
+            <FilterOptionChip label="未分组" selected={activeFilters.ungrouped} onPress={() => toggleBooleanFilter('ungrouped')} />
+            <FilterOptionChip label="无标签" selected={activeFilters.untagged} onPress={() => toggleBooleanFilter('untagged')} />
+            <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
+          </View>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="相似图片" selected={activeFilters.similarDuplicate} onPress={toggleSimilarFilter} />
+          </View>
+        </View>
+
+        <View style={styles.filterOptionGrid}>
+          <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+          <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+          <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+          <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+        </View>
+
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>格式 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="JPEG" selected={activeFilters.mimeType === 'image/jpeg'} onPress={() => toggleMimeFilter('image/jpeg', 'JPEG')} />
+            <FilterOptionChip label="PNG" selected={activeFilters.mimeType === 'image/png'} onPress={() => toggleMimeFilter('image/png', 'PNG')} />
+          </View>
+          <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+            <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+          </View>
+        </View>
+
+        <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+          {groups.map((group) => (
+            <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
+          ))}
+        </ScrollView>
+
+        <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+          {tags.map((tag) => (
+            <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
+          ))}
+        </ScrollView>
+      </AssetFilterDrawer>
+
       <PageStateBlock
         loadingComponent={<GallerySkeleton />}
         emptyActionLabel={commonButtonCopy.importImages}
