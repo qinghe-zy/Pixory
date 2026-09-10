@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Header } from '../components/Header';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
@@ -177,7 +180,9 @@ export function TagResultScreen({
     selectableMediaTypes: ['image', 'video'],
   });
 
-    const scrollY = useSharedValue(0);
+    const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+  const scrollY = useSharedValue(0);
   const compactHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
     const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
@@ -356,11 +361,20 @@ export function TagResultScreen({
     <ScreenScaffold
       backgroundVariant="tags"
       footer={footer}
-      onBack={onBack}
-      title={tag ? `#${tag.name}` : '标签结果'}
-    
-      rightAction={compactRightAction}
+      showHeader={false}
+      fullScreen={true}
     >
+
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }} pointerEvents="box-none">
+        <Animated.View style={[StyleSheet.absoluteFill, compactHeaderStyle]} pointerEvents="none">
+          <BlurView intensity={space === 'personal' ? 60 : 30} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
+        </Animated.View>
+        <Header
+          title={tag ? `#${tag.name}` : '标签结果'}
+          onBack={onBack}
+          rightSlot={compactRightAction}
+        />
+      </View>
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>视图</Text>
@@ -428,7 +442,7 @@ export function TagResultScreen({
       >
         
         <VirtualizedAssetCollection
-          headerComponent={<Animated.View style={heroStyle}>
+          headerComponent={<Animated.View style={[{ paddingTop: statusBarHeight + 56 }, heroStyle]}>
 <View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
