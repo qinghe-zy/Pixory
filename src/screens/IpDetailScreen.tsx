@@ -202,6 +202,26 @@ export function IpDetailScreen({
     onOpenImage(imageId, { type: 'ip-all', ipId, filter: { type: 'all' }, space });
   }
 
+  async function handleCoverPlayPress() {
+    if (!ip) return;
+    try {
+      let targetVideoId = ip.coverImageAssetId;
+      if (!targetVideoId) {
+        const row = await runWithDatabaseSpace(space, (db) => 
+          db.getFirstAsync<{id: number}>(`SELECT id FROM image_assets WHERE ipId = ? AND deletedAt IS NULL ORDER BY updatedAt DESC, id DESC LIMIT 1`, ip.id)
+        );
+        if (row) {
+          targetVideoId = row.id;
+        }
+      }
+      if (targetVideoId) {
+        onOpenImageDetail(targetVideoId);
+      }
+    } catch (error) {
+      console.error('Failed to open cover video:', error);
+    }
+  }
+
   function handleImageLongPress(image: ImageListItem) {
     setActionImage(image);
   }
@@ -246,7 +266,10 @@ export function IpDetailScreen({
       >
         {ip ? (
           <>
-            <View style={styles.cover}>
+            <Pressable
+              style={styles.cover}
+              onPress={ip.videoCount > 0 && ip.imageCount === 0 ? handleCoverPlayPress : undefined}
+            >
               {ip.coverThumbnailFileUri ? (
                 <SecureImage
                   blurRadius={personalCoverBlurRadius}
@@ -260,6 +283,13 @@ export function IpDetailScreen({
                   <Text style={styles.coverInitials}>{getIpInitials(ip.name)}</Text>
                 </View>
               )}
+              
+              {ip.videoCount > 0 && ip.imageCount === 0 ? (
+                <View pointerEvents="none" style={styles.coverPlayOverlay}>
+                  <Ionicons color="rgba(255, 255, 255, 0.5)" name="play" size={56} />
+                </View>
+              ) : null}
+
               {ip.isFavorite ? (
                 <View style={styles.favoriteBadge}>
                   <Ionicons color={colors.semantic.favorite} name="star" size={14} />
@@ -274,7 +304,7 @@ export function IpDetailScreen({
                 <Ionicons color={colors.text.inverse} name="image-outline" size={14} />
                 <Text style={styles.coverActionText}>{ip.coverSource === 'custom' ? '更换封面' : '选择封面'}</Text>
               </Pressable>
-            </View>
+            </Pressable>
             {space === 'personal' ? (
               <>
               <SwitchSettingRow
@@ -595,6 +625,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.elevated,
     flex: 1,
+    justifyContent: 'center',
+  },
+  coverPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   coverInitials: {
