@@ -374,15 +374,15 @@ export const pageBackgroundVariants = {
 export type PageBackgroundVariant = keyof typeof pageBackgroundVariants;
 
 export const pageBackgroundImages = {
-  home: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-home-botanical.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  archive: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-archive-folder.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  tags: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-tags-stationery.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  gallery: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-gallery-film.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  workflow: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-workflow-import.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  profile: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-profile-storage.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  search: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-search-paper.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  detail: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-search-paper.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  backup: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-safety-backup-trash.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
-  trash: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-safety-backup-trash.png') as ImageSourcePropType, aspectRatio: 1080 / 2400 },
+  home: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-home-botanical.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  archive: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-archive-folder.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  tags: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-tags-stationery.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  gallery: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-gallery-film.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  workflow: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-workflow-import.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  profile: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-profile-storage.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  search: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-search-paper.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  detail: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-search-paper.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  backup: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-safety-backup-trash.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
+  trash: { source: require('../../assets/backgrounds/japanese-fresh/generated-full/bg-safety-backup-trash.png') as ImageSourcePropType, aspectRatio: 1080 / 2400, resizeMode: 'cover' },
   aiChat: { source: require('../../docs/black.png') as ImageSourcePropType, aspectRatio: 941 / 1672, resizeMode: 'cover' },
 } as const satisfies Partial<Record<PageBackgroundVariant, PageBackgroundImageRecipe>>;
