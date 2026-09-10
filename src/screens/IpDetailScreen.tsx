@@ -92,7 +92,7 @@ export function IpDetailScreen({
       const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findDetailById(db, ipId),
         groupRepository.findOverviewPreviewByIpId(db, ipId, 4),
-        imageRepository.findRecentByIpId(db, ipId, 15, { mediaType: 'all' }),
+        imageRepository.findRecentByIpId(db, ipId, 9, { mediaType: 'all' }),
         importBatchRepository.findByIpId(db, ipId, 3),
         imageRepository.countNeedsOrganizing(db, ipId),
         imageRepository.getOrganizationProgress(db, ipId),
@@ -333,8 +333,6 @@ export function IpDetailScreen({
               ) : null}
               </>
             ) : null}
-
-            <SectionHeader title="快捷操作" />
             <View style={styles.quickGrid}>
               {QUICK_ACTIONS.map((action) => (
                 <Pressable
@@ -862,6 +860,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    marginTop: rhythm.screenSectionGap,
     rowGap: rhythm.listCardGap,
   },
   quickCard: {
