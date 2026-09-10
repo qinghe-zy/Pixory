@@ -3,8 +3,24 @@ import * as SecureStore from 'expo-secure-store';
 const UID_KEY = 'pixory.uid.current';
 const SERVER_URL = 'https://mist01.com/api/get_id';
 
+let fetchPromise: Promise<string | null> | null = null;
+
 export class UidService {
-  static async getUid(): Promise<string | null> {
+  static getUid(): Promise<string | null> {
+    if (fetchPromise) {
+      return fetchPromise;
+    }
+    fetchPromise = this._getUid().then((res) => {
+      // 允许网络错误后重试，如果失败，下次调用依然可以重新发起
+      if (res === null) {
+        fetchPromise = null;
+      }
+      return res;
+    });
+    return fetchPromise;
+  }
+
+  private static async _getUid(): Promise<string | null> {
     try {
       // 1. 先查本地缓存
       let uid = await SecureStore.getItemAsync(UID_KEY);
@@ -21,9 +37,12 @@ export class UidService {
         const data = await response.json();
         
         if (data && data.success && data.id) {
-          uid = String(data.id);
+          uid = data.id;
           // 3. 拿到后永久存入本地
-          await SecureStore.setItemAsync(UID_KEY, uid);
+          await SecureStore.setItemAsync(UID_KEY, String(uid));
+          if (data.raw !== undefined) {
+            await SecureStore.setItemAsync('pixory.uid.raw', data.raw.toString());
+          }
         }
       }
       return uid;
@@ -36,6 +55,7 @@ export class UidService {
 
   static async clearUid(): Promise<void> {
     try {
+      fetchPromise = null;
       await SecureStore.deleteItemAsync(UID_KEY);
     } catch (e) {
       console.warn('Failed to clear UID:', e);

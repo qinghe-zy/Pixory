@@ -9,7 +9,7 @@ import { AppDialog } from './AppDialog';
 import { PasswordInput } from './PasswordInput';
 import { PrimaryButton } from './PrimaryButton';
 import { SecurityUnlockModule } from './SecurityUnlockModule';
-import { getPersonalCredentialConfig, PersonalCredentialConfig, setPersonalFingerprintEnabled } from '../services/personalSystemService';
+import { getPersonalCredentialConfig, PersonalCredentialConfig, setPersonalFingerprintEnabled, verifyPersonalPassword } from '../services/personalSystemService';
 
 const unlockPatternImage = require('../../docs/black.png');
 
@@ -61,7 +61,13 @@ export function PersonalUnlockModal({
   const [config, setConfig] = useState<PersonalCredentialConfig | null>(null);
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [promptSeen, setPromptSeen] = useState(true);
+  
+  // Change Password flow states
+  type ChangePasswordStep = 'verify_old' | 'choose_new' | 'enter_new_digital' | 'enter_new_pattern' | 'confirm_new_pattern';
+  const [changePasswordStep, setChangePasswordStep] = useState<ChangePasswordStep>('verify_old');
+  const [changePasswordOldMethod, setChangePasswordOldMethod] = useState<'password' | 'pattern'>('pattern');
   const [changePasswordMethod, setChangePasswordMethod] = useState<'password' | 'pattern'>('password');
+  const [changePasswordFirstPattern, setChangePasswordFirstPattern] = useState('');
 
   useEffect(() => {
     LocalAuthentication.hasHardwareAsync().then(setBiometricSupported);
@@ -187,7 +193,9 @@ export function PersonalUnlockModal({
     setChangePasswordVisible(false);
     setCurrentSecret('');
     setNextSecret('');
+    setChangePasswordFirstPattern('');
     setChangePasswordErrorMessage(null);
+    setPatternError(false);
   }
 
   async function submitChangePassword() {
@@ -215,7 +223,11 @@ export function PersonalUnlockModal({
     }
     setCurrentSecret('');
     setNextSecret('');
+    setChangePasswordFirstPattern('');
     setChangePasswordErrorMessage(null);
+    setPatternError(false);
+    setChangePasswordOldMethod(config?.defaultMethod || 'pattern');
+    setChangePasswordStep('verify_old');
     setChangePasswordVisible(true);
   }
 
@@ -397,56 +409,178 @@ export function PersonalUnlockModal({
         </View>
       </View>
     </Modal>
-    <AppDialog
-      message="输入当前密码后设置一个新的隐私模式密码。"
-      onClose={closeChangePasswordDialog}
-      onPrimary={() => {
-        void submitChangePassword();
-      }}
-      primaryDisabled={loading || !currentSecret.trim() || !nextSecret.trim()}
-      primaryLabel="确认更新"
-      title="更新隐私模式密码"
-      visible={changePasswordVisible}
-    >
-      <PasswordInput
-        onChangeText={setCurrentSecret}
-        placeholder="当前密码"
-        secureTextEntry={!showPassword}
-        showPassword={showPassword}
-        onToggleShowPassword={() => setShowPassword((current) => !current)}
-        value={currentSecret}
-      />
-      <View style={{ flexDirection: 'row', gap: spacing[2], marginTop: spacing[1], marginBottom: spacing[2], alignSelf: 'center' }}>
-         <Pressable onPress={() => { setChangePasswordMethod('pattern'); setNextSecret(''); }} style={[{ padding: spacing[1], paddingHorizontal: spacing[2], borderRadius: radius.sm }, changePasswordMethod === 'pattern' && { backgroundColor: colors.primary.weak }]}>
-           <Text style={styles.updatePasswordText}>新图案密码</Text>
-         </Pressable>
-         <Pressable onPress={() => { setChangePasswordMethod('password'); setNextSecret(''); }} style={[{ padding: spacing[1], paddingHorizontal: spacing[2], borderRadius: radius.sm }, changePasswordMethod === 'password' && { backgroundColor: colors.primary.weak }]}>
-           <Text style={styles.updatePasswordText}>新数字密码</Text>
-         </Pressable>
-      </View>
-      
-      {changePasswordMethod === 'password' ? (
-        <PasswordInput
-          onChangeText={setNextSecret}
-          placeholder="新密码"
-          secureTextEntry={!showPassword}
-          showPassword={showPassword}
-          onToggleShowPassword={() => setShowPassword((current) => !current)}
-          value={nextSecret}
-        />
-      ) : (
-        <View style={{ alignItems: 'center' }}>
-          <SecurityUnlockModule 
-            onUnlockAttempt={(str) => { setNextSecret(str); setChangePasswordErrorMessage('已录入，请点击确认更新'); }} 
-            onBiometricSuccess={() => {}} 
-            disableBiometric 
-            size={200} 
-          />
+    <Modal animationType="fade" onRequestClose={closeChangePasswordDialog} transparent visible={changePasswordVisible}>
+      <View style={styles.backdrop}>
+        <View style={styles.panel}>
+          <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
+          <View style={styles.header}>
+            <View style={styles.iconWrap}>
+              <Ionicons color={colors.primary.active} name="lock-closed-outline" size={22} />
+            </View>
+            <View style={styles.titleCopy}>
+              <Text style={styles.title}>
+                {changePasswordStep === 'verify_old' ? '验证当前隐私密码' :
+                 changePasswordStep === 'choose_new' ? '选择新验证方式' :
+                 changePasswordStep === 'enter_new_digital' ? '设置新数字密码' :
+                 changePasswordStep === 'enter_new_pattern' ? '设置新图案密码' :
+                 '请再次绘制以确认'}
+              </Text>
+              <Text style={styles.description}>请完成安全验证。</Text>
+            </View>
+            <Pressable hitSlop={10} onPress={closeChangePasswordDialog} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+              <Ionicons color={colors.text.secondary} name="close" size={18} />
+            </Pressable>
+          </View>
+
+          {changePasswordStep === 'verify_old' && (
+            <>
+              {changePasswordOldMethod === 'password' ? (
+                <>
+                  <PasswordInput
+                    onChangeText={setCurrentSecret}
+                    placeholder="当前数字/字母密码"
+                    secureTextEntry={!showPassword}
+                    showPassword={showPassword}
+                    onToggleShowPassword={() => setShowPassword((current) => !current)}
+                    value={currentSecret}
+                  />
+                  {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
+                  <PrimaryButton
+                    disabled={loading || !currentSecret.trim()}
+                    label="验证"
+                    loading={loading}
+                    onPress={() => {
+                      verifyPersonalPassword(currentSecret).then(result => {
+                        if (result.ok) {
+                          setChangePasswordStep('choose_new');
+                          setChangePasswordErrorMessage(null);
+                          setPatternError(false);
+                        } else {
+                          setChangePasswordErrorMessage(result.message || '密码不正确');
+                        }
+                      }).catch(() => setChangePasswordErrorMessage('验证失败'));
+                    }}
+                  />
+                  {config?.hasPattern || config?.defaultMethod === 'pattern' ? (
+                    <Pressable onPress={() => setChangePasswordOldMethod('pattern')} style={{ marginTop: spacing[2], alignItems: 'center' }}>
+                      <Text style={styles.toggleMethodText}>切换为图案验证</Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : (
+                <View style={{ alignItems: 'center' }}>
+                  <SecurityUnlockModule 
+                    onUnlockAttempt={(str) => {
+                      verifyPersonalPassword(str).then(result => {
+                        if (result.ok) {
+                          setCurrentSecret(str);
+                          setChangePasswordStep('choose_new');
+                          setChangePasswordErrorMessage(null);
+                          setPatternError(false);
+                        } else {
+                          setChangePasswordErrorMessage(result.message || '图案不正确');
+                          setPatternError(true);
+                        }
+                      }).catch(() => { setChangePasswordErrorMessage('验证失败'); setPatternError(true); });
+                    }}
+                    onBiometricSuccess={() => {
+                       setCurrentSecret('__BIOMETRIC_PASSTHROUGH__');
+                       setChangePasswordStep('choose_new');
+                       setChangePasswordErrorMessage(null);
+                       setPatternError(false);
+                    }} 
+                    isError={patternError}
+                    disableBiometric={!config?.fingerprintEnabled} 
+                    size={260} 
+                  />
+                  {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
+                  <Pressable onPress={() => setChangePasswordOldMethod('password')} style={{ marginTop: spacing[3], alignItems: 'center' }}>
+                    <Text style={styles.toggleMethodText}>切换为数字验证</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
+
+          {changePasswordStep === 'choose_new' && (
+            <View style={{ gap: spacing[3], marginTop: spacing[2] }}>
+              <PrimaryButton label="设置图案密码" onPress={() => { setChangePasswordMethod('pattern'); setChangePasswordStep('enter_new_pattern'); setChangePasswordErrorMessage(null); setPatternError(false); }} />
+              <PrimaryButton label="设置数字/字母密码" onPress={() => { setChangePasswordMethod('password'); setChangePasswordStep('enter_new_digital'); setChangePasswordErrorMessage(null); setPatternError(false); }} />
+            </View>
+          )}
+
+          {changePasswordStep === 'enter_new_digital' && (
+            <>
+              <PasswordInput
+                onChangeText={setNextSecret}
+                placeholder="新密码"
+                secureTextEntry={!showPassword}
+                showPassword={showPassword}
+                onToggleShowPassword={() => setShowPassword((current) => !current)}
+                value={nextSecret}
+              />
+              {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
+              <PrimaryButton
+                disabled={loading || !nextSecret.trim()}
+                label="确认修改"
+                loading={loading}
+                onPress={() => submitChangePassword()}
+              />
+            </>
+          )}
+
+          {changePasswordStep === 'enter_new_pattern' && (
+            <View style={{ alignItems: 'center' }}>
+              <SecurityUnlockModule 
+                onUnlockAttempt={(str) => {
+                  setChangePasswordFirstPattern(str);
+                  setChangePasswordStep('confirm_new_pattern');
+                  setChangePasswordErrorMessage(null);
+                  setPatternError(false);
+                }} 
+                onBiometricSuccess={() => {}} 
+                disableBiometric 
+                size={260} 
+              />
+              <Text style={{ marginTop: spacing[2], ...typography.textStyles.caption, color: colors.text.secondary }}>请绘制新图案</Text>
+            </View>
+          )}
+
+          {changePasswordStep === 'confirm_new_pattern' && (
+            <View style={{ alignItems: 'center' }}>
+              <SecurityUnlockModule 
+                onUnlockAttempt={(str) => {
+                  if (str === changePasswordFirstPattern) {
+                    setNextSecret(str);
+                    setChangePasswordErrorMessage(null);
+                    onChangePassword(currentSecret, str, 'pattern')
+                      .then(() => closeChangePasswordDialog())
+                      .catch((err) => {
+                        setChangePasswordErrorMessage(err instanceof Error ? err.message : '修改密码失败');
+                        setPatternError(true);
+                      });
+                  } else {
+                    setChangePasswordErrorMessage('两次绘制的图案不一致，请重试');
+                    setPatternError(true);
+                    setChangePasswordFirstPattern('');
+                    setChangePasswordStep('enter_new_pattern');
+                  }
+                }} 
+                onBiometricSuccess={() => {}} 
+                disableBiometric 
+                isError={patternError}
+                size={260} 
+              />
+              {changePasswordErrorMessage ? (
+                <Text style={styles.errorText}>{changePasswordErrorMessage}</Text>
+              ) : (
+                <Text style={{ marginTop: spacing[2], ...typography.textStyles.caption, color: colors.text.secondary }}>请再次绘制图案以确认</Text>
+              )}
+            </View>
+          )}
         </View>
-      )}
-      
-      {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
-    </AppDialog>
+      </View>
+    </Modal>
     <AppDialog
       danger
       message="这只会删除隐私模式的密码、SQLite、原图、缩略图、临时文件和导出文件；普通模式数据不会被删除。"
