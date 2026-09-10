@@ -243,7 +243,7 @@ export function IpDetailScreen({
 
   return (
     <View style={{ flex: 1 }} {...panResponder.panHandlers}>
-    <ScreenScaffold backgroundVariant="archive" fullScreen scrollable showHeader={false}>
+    <ScreenScaffold backgroundVariant="archive" scrollable showHeader={false}>
       <PageStateBlock
         emptyDescription=""
         emptyTitle=""
@@ -291,12 +291,12 @@ export function IpDetailScreen({
                   {ip.name}
                 </Text>
               </View>
-              <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.coverAction, { top: insets.top + spacing[3] }, pressed && styles.pressed]}>
+              <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.coverAction, pressed && styles.pressed]}>
                 <Ionicons color={colors.text.inverse} name="image-outline" size={14} />
                 <Text style={styles.coverActionText}>{ip.coverSource === 'custom' ? '更换封面' : '选择封面'}</Text>
               </Pressable>
               
-              <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.coverHamburger, { top: insets.top + spacing[3] }, pressed && styles.pressed]}>
+              <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.coverHamburger, pressed && styles.pressed]}>
                 <Ionicons color={colors.text.inverse} name="menu-outline" size={16} />
               </Pressable>
             </Pressable>
@@ -603,9 +603,12 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   cover: {
-    aspectRatio: 1.1,
+    ...shadows.sm,
+    aspectRatio: 1.55,
     backgroundColor: colors.background.surface,
-    marginHorizontal: -layout.pagePaddingHorizontal,
+    borderColor: colors.border.default,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -686,6 +689,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
     right: spacing[3],
+    top: spacing[3],
     height: 32,
     width: 32,
   },
