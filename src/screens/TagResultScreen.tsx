@@ -16,7 +16,7 @@ import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
-import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
@@ -363,16 +363,22 @@ export function TagResultScreen({
       footer={footer}
       showHeader={false}
       fullScreen={true}
+      contentContainerStyle={{ padding: 0, gap: 0, flex: 1 }}
     >
 
-      <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }, compactHeaderStyle]} pointerEvents="box-none">
+      <Animated.View style={[
+        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 32 },
+        compactHeaderStyle
+      ]} pointerEvents="box-none">
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <BlurView intensity={space === 'personal' ? 60 : 30} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
         </View>
-        <Header
-          title={tag ? `#${tag.name}` : '标签结果'}
-          rightSlot={compactRightAction}
-        />
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: layout.pagePaddingHorizontal }}>
+          <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
+            {tag ? `#${tag.name}` : '标签结果'}
+          </Text>
+          {compactRightAction}
+        </View>
       </Animated.View>
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>
@@ -441,28 +447,38 @@ export function TagResultScreen({
       >
         
         <VirtualizedAssetCollection
-          headerComponent={<Animated.View style={[{ paddingTop: statusBarHeight + 56 }, heroStyle]}>
-<View style={styles.galleryHeading}>
-          <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
-          <View style={styles.galleryActions}>
-            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
-              <Pressable
-                disabled={selectableAssets.length === 0}
-                onPress={multiSelect.toggleSelectAll}
-                style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-              >
-                <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-              </Pressable>
-            ) : null}
-            <SortMenuButton
-              hasActiveFilters={hasActiveFilters}
-              onChange={setSortOrder}
-              onFilterPress={() => setIsFilterDrawerOpen(true)}
-              orderBy={sortOrder}
-            />
-          </View>
-        </View>
-</Animated.View>}
+          contentContainerStyle={{ paddingHorizontal: layout.pagePaddingHorizontal }}
+          headerComponent={
+            <Animated.View style={[{ paddingTop: statusBarHeight, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }, heroStyle]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title }}>
+                  {tag ? `#${tag.name}` : '标签结果'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.tertiary }}>
+                  {hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张
+                </Text>
+                <View style={styles.galleryActions}>
+                  {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                    <Pressable
+                      disabled={selectableAssets.length === 0}
+                      onPress={multiSelect.toggleSelectAll}
+                      style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+                    >
+                      <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+                    </Pressable>
+                  ) : null}
+                  <SortMenuButton
+                    hasActiveFilters={hasActiveFilters}
+                    onChange={setSortOrder}
+                    onFilterPress={() => setIsFilterDrawerOpen(true)}
+                    orderBy={sortOrder}
+                  />
+                </View>
+              </View>
+            </Animated.View>
+          }
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}
