@@ -7,7 +7,7 @@ import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fo
 import { MaShanZheng_400Regular } from '@expo-google-fonts/ma-shan-zheng';
 import { ZCOOLXiaoWei_400Regular } from '@expo-google-fonts/zcool-xiaowei';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, Dimensions } from 'react-native';
+import { Alert, AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,6 +89,7 @@ import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { PasswordAndSecurityScreen } from './src/screens/PasswordAndSecurityScreen';
 import { DeveloperModeSettingsScreen } from './src/screens/DeveloperModeSettingsScreen';
 import { initializeDiagnostics } from './src/diagnostics/diagnosticLogger';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
@@ -118,8 +119,12 @@ import {
   changePersonalPassword,
   hasPersonalPassword,
   resetPersonalSystemData,
+  setPersonalPattern,
   setPersonalPassword,
   verifyPersonalPassword,
+  generateAndSetRecoveryKey,
+  forceResetPersonalPassword,
+
 } from './src/services/personalSystemService';
 import { createPersonalTaskToken, invalidatePersonalTaskToken, waitForPersonalTasks, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
@@ -241,6 +246,7 @@ type AppRoute =
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'settings'; space: PixorySpace }
+  | { name: 'password-security-settings'; space: PixorySpace }
   | { name: 'developer-mode-settings'; space: PixorySpace }
   | { name: 'diagnostics-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
@@ -955,10 +961,21 @@ export default function App() {
     }
   }
 
-  async function setupPersonalSpace(secret: string) {
+  async function setupPersonalSpace(secret: string, method: 'password' | 'pattern' = 'password') {
     setPersonalAuthBusy(true);
     try {
-      await setPersonalPassword(secret);
+      if (method === 'pattern') {
+        await setPersonalPattern(secret);
+      } else {
+        await setPersonalPassword(secret);
+      }
+      const newRecoveryKey = await generateAndSetRecoveryKey();
+      Alert.alert(
+        '请保存恢复密钥',
+        `这是您找回隐私密码的唯一凭证，请务必截图或妥善保管：\n\n【 ${newRecoveryKey} 】`,
+        [{ text: '我已保存' }]
+      );
+      
       setPersonalCredentialAvailable(true);
       await unlockPersonalSpace(secret);
     } finally {
@@ -966,10 +983,10 @@ export default function App() {
     }
   }
 
-  async function updatePersonalPassword(currentSecret: string, nextSecret: string) {
+  async function updatePersonalPassword(currentSecret: string, nextSecret: string, method: 'password' | 'pattern' = 'password') {
     setPersonalAuthBusy(true);
     try {
-      await changePersonalPassword(currentSecret, nextSecret);
+      await changePersonalPassword(currentSecret, nextSecret, method);
       setPersonalCredentialAvailable(true);
     } finally {
       setPersonalAuthBusy(false);
@@ -2146,7 +2163,17 @@ export default function App() {
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'settings') {
-    content = <SettingsScreen space={currentRoute.space} onBack={popRoute} onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} />;
+    content = (
+      <SettingsScreen 
+        space={currentRoute.space} 
+        onBack={popRoute} 
+        onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} 
+        onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} 
+        onOpenPasswordSecurity={() => pushRoute({ name: 'password-security-settings', space: currentRoute.space })}
+      />
+    );
+  } else if (currentRoute.name === 'password-security-settings') {
+    content = <PasswordAndSecurityScreen onBack={popRoute} />;
   } else if (currentRoute.name === 'developer-mode-settings') {
     content = <DeveloperModeSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'diagnostics-settings') {
