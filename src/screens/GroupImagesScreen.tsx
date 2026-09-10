@@ -175,13 +175,18 @@ export function GroupImagesScreen({
     const opacity = interpolate(scrollY.value, [0, 20], [1, 0], Extrapolation.CLAMP);
     return { opacity };
   });
+  const handleScrollJS = (y: number) => {
+    const mockEvent = { nativeEvent: { contentOffset: { y } } } as any;
+    if (swipeSelection.onScroll) {
+      swipeSelection.onScroll(mockEvent);
+    }
+  };
+
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
       scrollY.value = event.contentOffset.y;
-      if (swipeSelection.onScroll) {
-        runOnJS(swipeSelection.onScroll)(event);
-      }
+      runOnJS(handleScrollJS)(event.contentOffset.y);
     },
   });
 
