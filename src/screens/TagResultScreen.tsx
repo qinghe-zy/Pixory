@@ -365,16 +365,15 @@ export function TagResultScreen({
       fullScreen={true}
     >
 
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }} pointerEvents="box-none">
-        <Animated.View style={[StyleSheet.absoluteFill, compactHeaderStyle]} pointerEvents="none">
+      <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }, compactHeaderStyle]} pointerEvents="box-none">
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <BlurView intensity={space === 'personal' ? 60 : 30} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
-        </Animated.View>
+        </View>
         <Header
           title={tag ? `#${tag.name}` : '标签结果'}
-          onBack={onBack}
           rightSlot={compactRightAction}
         />
-      </View>
+      </Animated.View>
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>视图</Text>
