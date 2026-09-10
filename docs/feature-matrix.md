@@ -263,7 +263,8 @@
 | --- | --- | --- |
 | 远程更新 | `update-version.json` 拉取、版本比较、官网下载 fallback、GitHub latest fallback | `updateCheckService`, `docs/update-version.json` |
 | 远程公告 | `announcement.json` 拉取、一次性公告 id | `announcementService`, `docs/announcement.json` |
-| OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
+| 用户身份与发号系统 (UID) | 基于服务器端 (Node+PM2) 自增发号器，客户端 SecureStore 永久固化。支持基于原生整数 (raw ID) 的纯离线 A/B 测试基建；支持通过直接修改服务器端 `counter.txt` 游标实现“靓号锁仓”（如调至10即可雪藏前10号），并在客户端配合隐藏彩蛋强行覆写 SecureStore 实现定向发放；支持弱网 3 秒熔断，无感挂载于 App 启动期。 | `src/services/uidService.ts`, `server.js` (服务器端) |
+  | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
 | Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；打包前预览本次本地过程文档，只有 APK 成功复制后才将当前文档平铺归档到对应版本、固化版本更新说明并开启下一补丁区间，失败不移动、重复执行不覆盖；功能矩阵只保留本文件最新版，待办目录不随打包移动；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用 transparent compact 前景和 `#4a7bf7` 纯色底，原素材缩小 12.5% 后按实际内容居中并保留至少 24% 透明边距，中心聊天气泡及图库、视频、相机、爱心、轨道和星点外围装饰完整保留；Expo 配置与原生五档密度资源由同一脚本/compact master 生成，避免 clean prebuild 与直接 Gradle 构建效果分叉 | `AGENTS.md`, `.gitignore`, `app.json`, `icons/splash_foreground_compact.png`, `scripts/version-document-workflow.ps1`, `scripts/generate-android-splash-assets.cjs`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
 | Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、可取消 direct speech recognition、share/open intent、`ComponentCallbacks2` memory-pressure event；原生 Activity/主题/媒体模块均由版本化 Expo config-plugin 模板生成 | `src/native/pixoryMediaModule.ts`, `plugins/withPixoryAndroidIntents.js`, `plugins/pixory-android-intents/templates/` |
