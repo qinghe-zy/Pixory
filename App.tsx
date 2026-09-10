@@ -89,6 +89,7 @@ import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { AdvancedSettingsScreen } from './src/screens/AdvancedSettingsScreen';
 import { PasswordAndSecurityScreen } from './src/screens/PasswordAndSecurityScreen';
 import { DeveloperModeSettingsScreen } from './src/screens/DeveloperModeSettingsScreen';
 import { initializeDiagnostics } from './src/diagnostics/diagnosticLogger';
@@ -246,6 +247,7 @@ type AppRoute =
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'settings'; space: PixorySpace }
+  | { name: 'advanced-settings'; space: PixorySpace }
   | { name: 'password-security-settings'; space: PixorySpace }
   | { name: 'developer-mode-settings'; space: PixorySpace }
   | { name: 'diagnostics-settings'; space: PixorySpace }
@@ -2162,7 +2164,9 @@ export default function App() {
     content = <ProductDocumentationScreen onBack={popRoute} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
-  } else if (currentRoute.name === 'settings') {
+  } else if (currentRoute.name === 'advanced-settings') {
+      content = <AdvancedSettingsScreen space={currentRoute.space} onBack={popRoute} />;
+    } else if (currentRoute.name === 'settings') {
     content = (
       <SettingsScreen 
         space={currentRoute.space} 
@@ -2170,7 +2174,8 @@ export default function App() {
         onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} 
         onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} 
         onOpenPasswordSecurity={() => pushRoute({ name: 'password-security-settings', space: currentRoute.space })}
-      />
+          onOpenAdvancedSettings={() => pushRoute({ name: 'advanced-settings', space: currentRoute.space })}
+        />
     );
   } else if (currentRoute.name === 'password-security-settings') {
     content = <PasswordAndSecurityScreen onBack={popRoute} />;

@@ -2,10 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import * as DocumentPicker from 'expo-document-picker';
-import { StorageAccessFramework } from 'expo-file-system/legacy';
-import { Alert } from 'react-native';
-import { UidService } from '../services/uidService';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import type { PixorySpace } from '../database';
 import { runWithDatabaseSpace } from '../database/db';
@@ -21,43 +17,11 @@ interface SettingsScreenProps {
   onOpenDeveloperMode: () => void;
   onOpenDiagnostics: () => void;
   onOpenPasswordSecurity: () => void;
+  onOpenAdvancedSettings: () => void;
 }
 
-export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagnostics, onOpenPasswordSecurity }: SettingsScreenProps) {
+export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagnostics, onOpenPasswordSecurity, onOpenAdvancedSettings }: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
-
-  async function handleExportIdentity() {
-    try {
-      const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!permissions.granted) return;
-      
-      const destUri = await UidService.exportIdentity(permissions.directoryUri);
-      Alert.alert('凭证导出成功', '已保存至系统文件夹\n请妥善保管这把属于你的顶级防伪私钥证明。');
-    } catch (e: any) {
-      Alert.alert('导出失败', e.message);
-    }
-  }
-
-  async function handleImportIdentity() {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: false,
-      });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      
-      const fileUri = result.assets[0].uri;
-      const success = await UidService.importIdentity(fileUri);
-      if (success) {
-        Alert.alert('凭证载入成功！', '防伪校验通过，欢迎归来。请重启 App 刷新身份。');
-      } else {
-        Alert.alert('凭证无效', '防伪验签失败，该文件可能已被篡改。');
-      }
-    } catch (e: any) {
-      Alert.alert('载入失败', e.message);
-    }
-  }
-
   const [diagnosticsEnabled, setDiagnosticsEnabledState] = useState(false);
   const [showSecurityRedDot, setShowSecurityRedDot] = useState(false);
 
@@ -81,7 +45,6 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
     };
   }, [space]);
 
-
   return (
     <ScreenScaffold onBack={onBack} scrollable title="设置">
       <View style={styles.container}>
@@ -96,17 +59,9 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
               showRedDot={showSecurityRedDot}
             />
             <SettingsRow
-              icon="id-card-outline"
-              title="导出数字身份凭证"
-              description="生成带私钥防伪签名的 .pixoryid 文件"
-              onPress={handleExportIdentity}
-              showBorder
-            />
-            <SettingsRow
-              icon="download-outline"
-              title="载入数字身份凭证"
-              description="跨设备或卸载重装后恢复身份"
-              onPress={handleImportIdentity}
+              icon="options-outline"
+              title="更多设置"
+              onPress={onOpenAdvancedSettings}
             />
           </View>
         </View>
@@ -117,19 +72,18 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
             <View style={styles.card}>
               <SettingsRow
                 icon="code-slash-outline"
-                title="开发者模式"
+                title="开发者工具"
+                description="数据库调试、临时缓存清理与重置工具"
                 onPress={onOpenDeveloperMode}
-                showBorder={diagnosticsEnabled}
+                showBorder
               />
-              {diagnosticsEnabled && (
-                <SettingsRow
-                  icon="speedometer-outline"
-                  title="性能与诊断"
-                  onPress={onOpenDiagnostics}
-                />
-              )}
+              <SettingsRow
+                icon="bug-outline"
+                title="诊断与日志"
+                description={diagnosticsEnabled ? '诊断记录已开启，包含重要文件活动' : '启用或导出本地运行日志，排查错误'}
+                onPress={onOpenDiagnostics}
+              />
             </View>
-            <Text style={styles.sectionFooter}>开发者专用功能只在这里显示，不会出现在一级入口。</Text>
           </View>
         )}
       </View>
@@ -145,7 +99,7 @@ function SettingsRow({
   showBorder,
   showRedDot,
 }: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: keyof typeof Ionicons.glyphMap;
   title: string;
   description?: string;
   onPress: () => void;
@@ -153,83 +107,81 @@ function SettingsRow({
   showRedDot?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, showBorder && styles.rowBorder, pressed && styles.pressed]}>
-      <View style={styles.iconWrap}>
-        <Ionicons color={colors.primary.active} name={icon} size={20} />
+    <Pressable
+      style={({ pressed }) => [styles.row, showBorder && styles.rowBorder, pressed && styles.rowPressed]}
+      onPress={onPress}
+    >
+      <View style={styles.rowIcon}>
+        <Ionicons name={icon} size={20} color={colors.text.primary} />
+        {showRedDot && <View style={styles.redDot} />}
       </View>
-      <View style={styles.copy}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
-          <Text style={styles.rowTitle}>{title}</Text>
-          {showRedDot && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.semantic.danger }} />}
-        </View>
+      <View style={styles.rowContent}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {description && <Text style={styles.rowDescription}>{description}</Text>}
       </View>
-      {description && <Text style={styles.rowDescription}>{description}</Text>}
-      <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
+      <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing[2],
+    padding: spacing[6],
+    gap: spacing[6],
   },
   section: {
-    marginBottom: spacing[6],
+    gap: spacing[3],
   },
   sectionHeader: {
+    ...typography.textStyles.caption,
     color: colors.text.secondary,
-    fontSize: typography.size.caption,
-    fontWeight: '600',
-    paddingHorizontal: spacing[6],
-    marginBottom: spacing[2],
-    textTransform: 'uppercase',
-  },
-  sectionFooter: {
-    color: colors.text.secondary,
-    fontSize: typography.size.caption,
-    paddingHorizontal: spacing[6],
-    marginTop: spacing[2],
+    paddingLeft: spacing[1.5],
   },
   card: {
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderWidth: 1,
     borderRadius: radius.lg,
-    marginHorizontal: spacing[4],
     overflow: 'hidden',
   },
   row: {
-    alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[3],
-    paddingHorizontal: spacing[4],
-    height: 56,
+    alignItems: 'center',
+    padding: spacing[4],
+    minHeight: 56,
+  },
+  rowPressed: {
+    backgroundColor: colors.background.soft,
   },
   rowBorder: {
+    borderBottomWidth: 1,
     borderBottomColor: colors.border.subtle,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  iconWrap: {
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.md,
-    height: 32,
-    justifyContent: 'center',
+  rowIcon: {
     width: 32,
+    alignItems: 'flex-start',
+    position: 'relative',
   },
-  copy: {
+  redDot: {
+    position: 'absolute',
+    top: -2,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.semantic.danger,
+    borderWidth: 1,
+    borderColor: colors.background.surface,
+  },
+  rowContent: {
     flex: 1,
+    paddingRight: spacing[3],
   },
   rowTitle: {
+    ...typography.textStyles.body,
     color: colors.text.primary,
-    fontSize: typography.size.body,
   },
   rowDescription: {
+    ...typography.textStyles.caption,
     color: colors.text.secondary,
-    fontSize: typography.size.caption,
-    marginRight: spacing[1],
-  },
-  pressed: {
-    backgroundColor: colors.background.secondary,
+    marginTop: 2,
   },
 });
