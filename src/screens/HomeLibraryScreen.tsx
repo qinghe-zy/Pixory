@@ -22,6 +22,7 @@ import { IpSortMenuButton } from '../components/IpSortMenuButton';
 import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { BlurView } from 'expo-blur';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
+import { useIpListPreferences } from '../services/ipListPreferences';
 import { useToast } from '../components/AppToast';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
@@ -61,7 +62,7 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
-  const [activeSortOrder, setActiveSortOrder] = useState<IpSortOrder>('default');
+  const { sortOrder: activeSortOrder, setSortOrder: setActiveSortOrder } = useIpListPreferences(space, 'default');
   const [actionMenuState, setActionMenuState] = useState<{ ip: IpListItem; anchorX: number; anchorY: number } | null>(null);
   const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);

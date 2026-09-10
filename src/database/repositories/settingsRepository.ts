@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import type { AppSettingRecord, ImageSortOrder } from '../types';
+import type { AppSettingRecord, ImageSortOrder, IpSortOrder } from '../types';
 import { createTimestamp } from '../utils';
 
 const PROFILE_AVATAR_KEY = 'profileAvatarUri';
@@ -29,6 +29,7 @@ export const MEMORY_MAINTENANCE_TESTED_MODEL_ID_KEY = 'memoryMaintenanceTestedMo
 export const MEMORY_MAINTENANCE_TESTED_BASE_URL_HASH_KEY = 'memoryMaintenanceTestedBaseUrlHash';
 export const ASSET_LIST_VIEW_MODE_KEY = 'assetListViewMode';
 export const ASSET_LIST_SORT_ORDER_KEY = 'assetListSortOrder';
+export const IP_LIST_SORT_ORDER_KEY = 'ipListSortOrder';
 export const IMAGE_IMPORT_SOURCE_MODE_KEY = 'imageImportSourceMode';
 export const VIDEO_IMPORT_NAMING_MODE_KEY = 'videoImportNamingMode';
 export const IMAGE_MEDIA_PICKER_SOURCE_KEY = 'imageMediaPickerSource';
@@ -84,6 +85,18 @@ const VALID_SORT_ORDERS: ImageSortOrder[] = [
 
 function isImageSortOrder(value: string | null): value is ImageSortOrder {
   return Boolean(value && VALID_SORT_ORDERS.includes(value as ImageSortOrder));
+}
+
+const VALID_IP_SORT_ORDERS: IpSortOrder[] = [
+  'default',
+  'createdAtDesc',
+  'createdAtAsc',
+  'nameAsc',
+  'nameDesc',
+];
+
+function isIpSortOrder(value: string | null): value is IpSortOrder {
+  return Boolean(value && VALID_IP_SORT_ORDERS.includes(value as IpSortOrder));
 }
 
 function isMemoryMaintenanceMode(value: string | null): value is MemoryMaintenanceMode {
@@ -357,6 +370,15 @@ export const settingsRepository = {
 
   async setAssetListSortOrder(db: SQLiteDatabase, order: ImageSortOrder): Promise<void> {
     await this.setValue(db, ASSET_LIST_SORT_ORDER_KEY, order);
+  },
+
+  async getIpListSortOrder(db: SQLiteDatabase, fallback: IpSortOrder = 'default'): Promise<IpSortOrder> {
+    const value = await this.getValue(db, IP_LIST_SORT_ORDER_KEY);
+    return isIpSortOrder(value) ? value : fallback;
+  },
+
+  async setIpListSortOrder(db: SQLiteDatabase, order: IpSortOrder): Promise<void> {
+    await this.setValue(db, IP_LIST_SORT_ORDER_KEY, order);
   },
 
   async getImageImportSourceMode(db: SQLiteDatabase): Promise<ImageImportSourceMode> {
