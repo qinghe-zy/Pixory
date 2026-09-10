@@ -84,6 +84,9 @@ export function PersonalUnlockModal({
         setConfig(cfg);
         if (cfg.hasCredential) {
           setUnlockMethod(cfg.defaultMethod);
+          if (cfg.fingerprintEnabled) {
+            triggerBiometric();
+          }
         }
       });
     }
@@ -111,6 +114,23 @@ export function PersonalUnlockModal({
       setErrorMessage(error instanceof Error ? error.message : '隐私模式操作失败');
     }
   }
+
+  const triggerBiometric = async () => {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: '验证指纹/面容进入隐私模式',
+        fallbackLabel: '使用密码',
+        disableDeviceFallback: true,
+      });
+      if (result.success) {
+        handleBiometricUnlock();
+      } else if (result.error && result.error !== 'user_cancel') {
+        setErrorMessage('指纹/面容验证未通过');
+      }
+    } catch (e) {
+      console.log('Biometric auth error:', e);
+    }
+  };
 
   async function handlePatternUnlock(patternStr: string) {
     setErrorMessage(null);
@@ -287,13 +307,22 @@ export function PersonalUnlockModal({
                     onBiometricSuccess={handleBiometricUnlock}
                     isError={patternError}
                     size={260}
-                    disableBiometric={!config?.fingerprintEnabled}
+                    disableBiometric={true}
                   />
                   {errorMessage && !patternError ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
                 </>
               )}
 
-              {biometricSupported && !config?.fingerprintEnabled ? (
+              {hasCredential && config?.fingerprintEnabled ? (
+            <View style={{ alignItems: 'center', marginTop: spacing[2] }}>
+              <Pressable onPress={triggerBiometric} style={({pressed}) => [{ alignItems: 'center', gap: spacing[1], padding: spacing[2] }, pressed && { opacity: 0.7 }]}>
+                <Ionicons name="finger-print" size={48} color={colors.primary.default} />
+                <Text style={{ ...typography.textStyles.caption, color: colors.text.secondary }}>使用指纹/面容解锁</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {biometricSupported && !config?.fingerprintEnabled ? (
                 <Pressable
                   onPress={async () => {
                     if (!promptSeen) {

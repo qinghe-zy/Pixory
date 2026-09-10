@@ -30,16 +30,14 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
       if (mounted) setDiagnosticsEnabledState(settings.enabled);
     });
     
-    if (space === 'personal') {
-      Promise.all([
-        SecureStore.getItemAsync('pixory.personal.recoveryKeyPromptSeen'),
-        getPersonalCredentialConfig()
-      ]).then(([seen, config]) => {
-        if (mounted) {
-          setShowSecurityRedDot(seen !== '1' && !config.hasRecoveryKey);
-        }
-      });
-    }
+    Promise.all([
+      SecureStore.getItemAsync('pixory.personal.recoveryKeyPromptSeen'),
+      getPersonalCredentialConfig()
+    ]).then(([seen, config]) => {
+      if (mounted) {
+        setShowSecurityRedDot(seen !== '1' && !config.hasRecoveryKey);
+      }
+    });
 
     return () => {
       mounted = false;
@@ -53,15 +51,13 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>基础设置</Text>
           <View style={styles.card}>
-            {space === 'personal' && (
-              <SettingsRow
-                icon="shield-checkmark-outline"
-                title="密码与安全"
-                onPress={onOpenPasswordSecurity}
-                showBorder
-                showRedDot={showSecurityRedDot}
-              />
-            )}
+            <SettingsRow
+              icon="shield-checkmark-outline"
+              title="密码与安全"
+              onPress={onOpenPasswordSecurity}
+              showBorder
+              showRedDot={showSecurityRedDot}
+            />
             <SettingsRow
               icon="options-outline"
               title="更多设置"
