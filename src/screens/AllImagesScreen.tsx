@@ -406,6 +406,7 @@ export function AllImagesScreen({
       footer={footer}
       showHeader={false}
       scrollable={false}
+      fullScreen={true}
       contentContainerStyle={{ padding: 0, gap: 0, flex: 1 }}
     >
       {/* Compact Sticky Header */}

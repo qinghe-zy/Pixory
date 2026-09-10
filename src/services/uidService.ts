@@ -47,6 +47,7 @@ export class UidService {
     try {
       let uid = await SecureStore.getItemAsync(UID_KEY);
       
+
       // 【创世用户补发签名】: 给早期的 001 补发私钥签名
       if (uid === 'AAA-001') {
         const sig = await SecureStore.getItemAsync(UID_SIG_KEY);
@@ -55,7 +56,7 @@ export class UidService {
           await SecureStore.setItemAsync(UID_SIG_KEY, genesisSig);
         }
       }
-      
+
       if (!uid) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);

@@ -145,6 +145,9 @@ importers:
       react-native-zip-archive:
         specifier: ^7.1.0
         version: 7.1.0(patch_hash=a06e27a8bd92b6fd4e3ef166b7c780bfc2ffc307bfdb074e2582fe66466618f6)(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.87.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       '@types/react':
         specifier: ~19.1.0
@@ -3373,6 +3376,9 @@ packages:
 
   ts-object-utils@0.0.5:
     resolution: {integrity: sha512-iV0GvHqOmilbIKJsfyfJY9/dNHCs969z3so90dQWsO1eMMozvTpnB1MEaUbb3FYtZTGjv5sIy/xmslEz0Rg2TA==}
+
+  tweetnacl@1.0.3:
+    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
 
   type-detect@4.0.8:
     resolution: {integrity: sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==}
@@ -7776,6 +7782,8 @@ snapshots:
   ts-interface-checker@0.1.13: {}
 
   ts-object-utils@0.0.5: {}
+
+  tweetnacl@1.0.3: {}
 
   type-detect@4.0.8: {}
 
