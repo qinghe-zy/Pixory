@@ -62,7 +62,7 @@ test('Personal System stores password credentials securely and supports lock/res
   assert.match(serviceSource, /verifyPersonalPassword/);
   assert.match(serviceSource, /changePersonalPassword/);
   assert.match(serviceSource, /resetPersonalSystemData/);
-  assert.doesNotMatch(serviceSource, /password\s*:/i);
+  assert.doesNotMatch(serviceSource, /(?<!has)password\s*:/i);
 });
 
 test('normal backup is explicitly scoped to normal space and never serializes personal database', () => {

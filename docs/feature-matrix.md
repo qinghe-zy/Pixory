@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-20（性能加固与本地版本文档工作流完成）
-适用版本：Pixory 2.8.1 → 2.8.2 开发基线
+最后更新：2026-09-10（v2.8.4 隐私安全重构、宽屏背景自适应与聊天交互优化）
+适用版本：Pixory 2.8.4
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -35,14 +35,14 @@
 
 | 功能域 | 当前状态 | 主要用户价值 | 关键入口 |
 | --- | --- | --- | --- |
-| AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复；DeepSeek V4 Prompt Ledger 前缀回放、视觉模型图片门禁，以及开发者模式下可选开启的“设置 → 性能与诊断”标准/深度诊断包入口已接入，监测首次默认关闭 | `AiHomeScreen`, `AiChatScreen`, `src/ai/`, `SettingsScreen`, `DeveloperModeSettingsScreen`, `DiagnosticsSettingsScreen` |
+| AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复；发送图文时图片在 AI 开始回复时即时呈现无需等待生成结束；支持长按彻底删除生成失败或卡住的梦境卡片；临时会话支持一键保存为新角色卡并立即应用；移出隐私空间提供双层风险提示和确认面板；无界沉浸文学模式采用认知潜意识重塑降低道德自省频率并隐藏底层锚点标签；DeepSeek V4 官方识图模型（deepseek-v4-flash-vision-exp）白名单支持 | `AiHomeScreen`, `AiChatScreen`, `src/ai/`, `SettingsScreen`, `DeveloperModeSettingsScreen`, `DiagnosticsSettingsScreen` |
 | 角色日记 | 已实现，首版 | 以北京时间和角色为单位保存当日私密日记；手动、自动和后台唤醒均通过同一准备链路冻结当前已采纳分支、角色提示、线程摘要和来源消息，持久 wake 真正到期时会重新解析用户此刻采用的分支，再创建不可变生成快照。内容优先使用今日完整问答，不足时从历史补齐到最近 30 个完整轮次，并为消息附北京时间；模型会明确区分“今日证据”和“历史背景”，无证据时不得虚构。自动日记由应用初始化/回前台统一协调，Personal 仅在已解锁且任务令牌有效时运行；精确本地口令仅在已启用且绑定角色卡的会话中提供非打扰确认。任务由独立运行时持有，退出聊天页仍会完成，长时间中断的 `generating` 任务在前台恢复；Android 通过 AlarmManager、receiver 与带低打扰系统常驻提示的短时 `dataSync` 前台服务启动 Headless JS，无法使用精确闹钟时退化为 inexact alarm，若系统仍拒绝后台启动则保留 SQLite 任务并在下次前台协调时恢复。完成卡片保存冻结来源版本及有效消息哈希，始终锚定在对应触发消息之后，刷新、分页和重进页面不漂到列表底部；用户确认纳入上下文的最近日记会独立注入，不会被较新未选择日记覆盖 | `src/ai/diary/`, `DiaryChatCard`, `DiaryDeckPager`, `DiaryReaderScreen`, `CompanionInnerLifeScreen`, `PixoryMediaModule` |
-| 陪伴内心运行时（情绪、梦境、思绪） | 已实现，V1 核心 | 情绪/关系投影、角色梦境、离线思绪、内心产物仲裁和后台恢复均已进入主分支；思绪是给 AI 的低权限一次性动态材料，梦境只有用户明确允许才可进入后续上下文，情绪与关系状态不直接暴露内部数值 | `src/ai/companion/`, `src/ai/dream/`, `src/ai/thought/`, `CompanionInnerLifeScreen`, `CompanionRuntimeManagerScreen`, `DreamReaderScreen` |
+| 陪伴内心运行时（情绪、梦境、思绪） | 已实现，V1 核心 | 情绪/关系投影、角色梦境、离线思绪、内心产物仲裁和后台恢复均已进入主分支；思绪是给 AI 的低权限一次性动态材料，梦境只有用户明确允许才可进入后续上下文，情绪与关系状态不直接暴露内部数值；聊天页支持长按彻底删除失败或卡住的梦境卡片 | `src/ai/companion/`, `src/ai/dream/`, `src/ai/thought/`, `CompanionInnerLifeScreen`, `CompanionRuntimeManagerScreen`, `DreamReaderScreen` |
 | 陪伴手帐与数据面板 | 部分实现 | 关于页保留“故事开始”介绍，并在“岁月有声”下按“启程 / 心灵触碰 / 时光守候 / 世界共建 / 光影整理”展示可验证成就；分类可独立展开，单条成就详情互斥展开，成就来源失效后重新投影或隐藏，支持未读点与可用来源跳转；关于页提供随天数数字自增播放的成就彩蛋，带有日期、跳转指示器并在焦点切换时自动暂停恢复 | `AboutScreen`, `JournalAchievementChapter`, `JournalAchievementRow`, `journalAchievementService.ts`, `journalAchievementRules.ts`, `MilestonesDetailScreen`, `milestoneService.ts`, `DaysPlaybackEgg` |
 | IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面；首页、分组和标签总览采用 SQLite 分页与虚拟列表，IP 详情分组预览在数据库层限制为 4 条；首页冷启动只显示 1 个与真实卡片共用宽高/radius token 的 skeleton 并叠加 shimmer，不再显示“正在读取本地资产库”提示；IPCard 列表热路径已移除传感器/超大镜面高光，首卡与后续卡使用同一轻量渲染路径；仅首卡使用 high priority 与 0ms transition，其他卡 normal + 120ms，减少第二卡先显示、首卡后闪 | `HomeLibraryScreen`, `IPCard`, `IPCardSkeleton`, `IpDetailScreen`, `GroupOverviewScreen`, `GlobalGroupsScreen`, `TagsOverviewScreen` |
 | 创意视觉动效与反馈 | 已实现，按性能门禁收敛 | 边缘极光入场（ParallaxLightSweep）、AI 档案行星与星轨系统（OrbitalSpectralRing）、聊天声纹频谱反馈（RhythmBars）、磁性流体拉伸交互（MagneticLiquidContainer）继续用于非列表热路径；ParallaxLightSweep 在不可见或应用后台时取消循环。原 3D 陀螺仪卡片组件仍保留源码，但首页 IPCard 已不挂载传感器和超大镜面层，避免首卡延迟闪现与滚动抢手势 | `ParallaxLightSweep`, `OrbitalSpectralRing`, `RhythmBars`, `MagneticLiquidContainer`, `IPCard` |
 | 图片/视频导入 | 已实现，Android 删除确认待真机验收 | 批量导入、复制原文件、生成独立缩略图、重复检查、导入批次；相册素材按来源创建时间记录来源序号，ZIP/PIXORYPACK 按压缩包条目顺序记录来源序号；Android 11+ 使用系统删除确认，取消/不支持时保留原文件并回退；图片+视频混选共享一次 1000 文件/单文件/32GB/磁盘余量 gate 和同一实际写入 commit budget，并在 metadata 文件 I/O 前按数量和已知大小早拒绝；缺失 metadata 固定最多 4 worker，实际复制字节变化时在数据库提交前复查；整次混合导入进入 Personal task barrier；DocumentPicker cache URI 只有被明确标记为本页所有且仍位于 Expo cache 时才在移除/离页清理 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaImportPreflight`, `mediaImportPreflightRuntime`, `boundedFileConcurrency`, `imageImportService`, `videoImportService`, `mediaSourceDeletionService`, `PixoryMediaModule` |
-| 图片浏览与整理 | 已实现，真机压力待验证 | 全部素材、分组素材、标签素材、收藏、回收站和批量管理统一采用 48 项 keyset cursor 与有界 FlatList window；筛选阅读器携带完整查询 scope，不会在当前已加载页停止。图片阅读器使用 81 项锚点窗口、40 项边界游标页、自适应编码/解码预取、并发上限、Personal 内存会话缓存、退出位置恢复和浏览记录合并写 | `VirtualizedAssetCollection`, `useMediaCursorCollection`, `AllImagesScreen`, `ImageViewerScreen`, `mediaPrefetchPolicy`, `mediaReaderSessionCache` |
+| 图片浏览与整理 | 已实现，真机压力待验证 | 全部素材、分组素材、标签素材、收藏、回收站和批量管理统一采用 48 项 keyset cursor 与有界 FlatList window；筛选阅读器携带完整查询 scope，不会在当前已加载页停止。全部素材与分组素材缩略图长按响应延迟调整，减少下拉滚动时误触长按菜单；图片阅读器使用 81 项锚点窗口、40 项边界游标页、自适应编码/解码预取、并发上限、Personal 内存会话缓存、退出位置恢复和浏览记录合并写 | `VirtualizedAssetCollection`, `useMediaCursorCollection`, `AllImagesScreen`, `ImageViewerScreen`, `mediaPrefetchPolicy`, `mediaReaderSessionCache` |
 | 视频体验 | 已实现，真机音频/解码压力待验证 | 视频详情、沉浸播放、横竖屏、进度偏好；竖滑使用 previous/current/next 三槽视觉和可中断跟手 settle，播放器池保持当前 + 前向 3 + 反向 1 且只有当前项拥有音频，按优先序最多 3 路并行准备，封面在切换 settle 前发布；队列使用 61 项锚点窗口/40 项边界页；0.5×–3× 统一先启用保音高再写 playbackRate | `VideoDetailScreen`, `VideoPlayerScreen`, `videoSwipePolicy`, `videoPreloadPool`, `videoPlaybackRate` |
 | 分组与标签 | 已实现 | 全局分组、IP 分组、标签管理、多选、筛选和结果页；分组采用 SectionList，标签采用双列 FlatList，热门/最近标签由 SQLite 排序并限制返回数量 | `GlobalGroupsScreen`, `GroupOverviewScreen`, `TagsOverviewScreen` |
 | 搜索 | 已实现 | 全局素材搜索、全局搜索历史（支持年/月/日三级树状分组与统计，无缝路由返回）、AI 聊天搜索；全局素材搜索约 250ms 防抖，并在 SQLite 层按 IP、分组、标签、素材分类筛选且每类限制 20 条，避免先全量载入再由 JS 过滤 | `GlobalSearchScreen`, `GlobalSearchHistoryScreen`, `AiChatSearchScreen`, `ipRepository`, `groupRepository`, `tagRepository`, `imageRepository` |
@@ -52,12 +52,12 @@
 | 备份/导入导出 | 已实现，Manifest V2 | 普通、单 IP 与隐私包覆盖数据库、原图/视频、缩略图、AI 文档、聊天附件和角色头像；导出关系使用 400 ID 分块 bulk map，托管文件读取/哈希最多 4 worker、复制去重顺序提交；恢复前校验相对路径、大小与 SHA-256，按内容去重并事务合并，SecureStore 密钥不进入备份 | `BackupScreen`, `BackupExportManagerScreen`, `backupService`, `managedBackupService`, repositories |
 | AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、答案级引用、阅读和带哈希校验的备份恢复；入口、术语、来源更新和跨资料搜索尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService`, `managedBackupService` |
 | Live2D 桌宠 | 完全关闭/不上线 | 已移除聊天页与会话设置页的运行时入口：不会加载模型、渲染 WebView、注册事件监听、启动动画/手势或提供下载与预览入口。保留源码、模型列表、已下载文件和既有 SQLite 设置值，供未来在独立验收后恢复 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
-| 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库，首页/整理/全部素材/分组素材/批量管理首屏查询延后到交互完成。Personal 图片只使用内存图片缓存；锁定会清内存图片、reader session、聊天预取和 Personal 临时文件，但不清普通空间磁盘缩略图。Personal 成功建立会话后才授权后台任务；锁定先使 task token 失效，等待生成/陪伴/记忆/日记/备份恢复/导入任务停稳，再关闭数据库 | `App.tsx`, `SecureImage`, `PersonalUnlockModal`, `useScreenLoad`, `personalSystemService`, `personalTaskToken`, `aiGenerationManager`, `companionMaintenanceQueue`, `diaryGenerationManager`, `aiMemoryMaintenanceService` |
+| 隐私空间 | 已实现 | normal/personal 双空间、全新“密码与安全”管理页面（支持密码与图案分离管理）、轻量 V4 Credential 机制、新增 6 字符（XXX-XXX）自定义恢复密钥与主题展示卡片、重置/恢复密钥防爆破失败锁定加固、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库，首页/整理/全部素材/分组素材/批量管理首屏查询延后到交互完成。Personal 图片只使用内存图片缓存；锁定会清内存图片、reader session、聊天预取和 Personal 临时文件，但不清普通空间磁盘缩略图。Personal 成功建立会话后才授权后台任务；锁定先使 task token 失效，等待生成/陪伴/记忆/日记/备份恢复/导入任务停稳，再关闭数据库 | `App.tsx`, `SecureImage`, `PersonalUnlockModal`, `PasswordAndSecurityScreen`, `RecoveryKeyModal`, `SecurityUnlockModule`, `useScreenLoad`, `personalSystemService`, `personalTaskToken`, `aiGenerationManager`, `companionMaintenanceQueue`, `diaryGenerationManager`, `aiMemoryMaintenanceService` |
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理；预览目录一次 inventory 同时计算总量/图片/视频，备份枚举最多 4 worker；按 normal/personal 隔离的 epoch+TTL 快照先显示后刷新 | `StorageUsageScreen`, `storageUsageService`, `storageUsageSnapshotCache` |
 | 更新与公告 | 已实现 | 远程版本检查、公告、官网下载、GitHub fallback | `updateCheckService`, `announcementService` |
 | 官网与发布 | 已实现 | 官网下载页、更新 JSON、release notes、Android release workflow、关于页内置产品文档入口与应用内 Markdown 阅读；进入关于页会后台预取官网产品文档图片并持久缓存到应用内，后续阅读优先复用本地缓存 | `docs/`, `AGENTS.md`, `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService` |
-| 设计系统/基础组件 | 已实现 | 统一移动端 UI、空状态、按钮、表单、toast、action sheet | `src/components/`, `src/design/tokens/` |
+| 设计系统/基础组件 | 已实现 | 统一移动端 UI、空状态、按钮、表单、toast、action sheet；所有页面背景图统一采用 cover 模式，全面支持平板及宽屏设备自适应等比铺满 | `src/components/`, `src/design/tokens/`, `src/design/backgrounds.ts` |
 
 ### 2.1 2026-08-20 性能加固逐项索引
 

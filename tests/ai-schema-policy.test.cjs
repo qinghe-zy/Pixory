@@ -167,13 +167,14 @@ test('fresh AI database migration skips branch columns already created by the ba
   assert.match(db, /currentVersion >= 19 && currentVersion < 38[\s\S]*MIGRATION_STATEMENTS_V38/);
   assert.match(db, /currentVersion >= 19 && currentVersion < 39[\s\S]*MIGRATION_STATEMENTS_V39/);
   assert.match(db, /currentVersion >= 19 && currentVersion < 40[\s\S]*MIGRATION_STATEMENTS_V40/);
-  assert.match(db, /currentVersion < 41[\s\S]*MIGRATION_STATEMENTS_V41/);
+  assert.match(db, /currentVersion >= 17 && currentVersion < 41[\s\S]*MIGRATION_STATEMENTS_V41/);
   assert.doesNotMatch(db, /if \(currentVersion < 31\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V31\);/);
   assert.doesNotMatch(db, /if \(currentVersion < 36\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V36\);/);
   assert.doesNotMatch(db, /if \(currentVersion < 38\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V38\);/);
   assert.doesNotMatch(db, /if \(currentVersion < 39\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V39\);/);
   assert.doesNotMatch(db, /if \(currentVersion < 40\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V40\);/);
-  assert.match(db, /if \(currentVersion < 41\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V41\);/);
+  assert.doesNotMatch(db, /if \(currentVersion < 41\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V41\);/);
+  assert.match(db, /if \(currentVersion >= 17 && currentVersion < 41\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V41\);/);
 });
 
 test('AI branch schema guard repairs already-versioned local databases', () => {

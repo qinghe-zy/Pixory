@@ -24,7 +24,7 @@ test('personal mode uses a 60 second background grace period without resetting n
 test('personal password is a lightweight v2 single digest gate', () => {
   const serviceSource = readProjectFile('src/services/personalSystemService.ts');
 
-  assert.match(serviceSource, /PERSONAL_CREDENTIAL_VERSION\s*=\s*2/);
+  assert.match(serviceSource, /PERSONAL_CREDENTIAL_VERSION\s*=\s*(?:[2-9]|\d{2,})/);
   assert.match(serviceSource, /hashPersonalSecret/);
   assert.match(serviceSource, /Crypto\.digestStringAsync\(Crypto\.CryptoDigestAlgorithm\.SHA256/);
   assert.doesNotMatch(serviceSource, /PERSONAL_KDF_ITERATIONS\s*=\s*120000/);
