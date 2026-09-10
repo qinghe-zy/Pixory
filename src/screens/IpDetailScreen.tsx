@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -16,7 +17,7 @@ import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { PERSONAL_COVER_BLUR_OPTIONS, resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
@@ -73,6 +74,7 @@ export function IpDetailScreen({
   onChanged,
 }: IpDetailScreenProps) {
   const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
   const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
   const [actionImage, setActionImage] = useState<ImageListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
@@ -123,17 +125,6 @@ export function IpDetailScreen({
           }
         },
       }),
-    []
-  );
-
-  const rightSlot = useMemo(
-    () => (
-      <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons color={colors.primary.default} name="menu-outline" size={24} />
-        </View>
-      </Pressable>
-    ),
     []
   );
 
@@ -252,7 +243,7 @@ export function IpDetailScreen({
 
   return (
     <View style={{ flex: 1 }} {...panResponder.panHandlers}>
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
+    <ScreenScaffold backgroundVariant="archive" fullScreen scrollable showHeader={false}>
       <PageStateBlock
         emptyDescription=""
         emptyTitle=""
@@ -300,9 +291,13 @@ export function IpDetailScreen({
                   {ip.name}
                 </Text>
               </View>
-              <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.coverAction, pressed && styles.pressed]}>
+              <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.coverAction, { top: insets.top + spacing[3] }, pressed && styles.pressed]}>
                 <Ionicons color={colors.text.inverse} name="image-outline" size={14} />
                 <Text style={styles.coverActionText}>{ip.coverSource === 'custom' ? '更换封面' : '选择封面'}</Text>
+              </Pressable>
+              
+              <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.coverHamburger, { top: insets.top + spacing[3] }, pressed && styles.pressed]}>
+                <Ionicons color={colors.text.inverse} name="menu-outline" size={16} />
               </Pressable>
             </Pressable>
             {space === 'personal' ? (
@@ -608,12 +603,9 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   cover: {
-    ...shadows.sm,
-    aspectRatio: 1.55,
+    aspectRatio: 1.1,
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: -layout.pagePaddingHorizontal,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -683,6 +675,19 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.text.inverse,
     fontWeight: '700',
+  },
+  coverHamburger: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(5, 7, 10, 0.48)',
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[3],
+    height: 32,
+    width: 32,
   },
   blurOptions: {
     backgroundColor: colors.background.surface,
