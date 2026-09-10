@@ -17,7 +17,8 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
-import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace, type IpSortOrder } from '../database';
+import { IpSortMenuButton } from '../components/IpSortMenuButton';
 import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { BlurView } from 'expo-blur';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
@@ -60,6 +61,7 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
+  const [activeSortOrder, setActiveSortOrder] = useState<IpSortOrder>('default');
   const [actionIp, setActionIp] = useState<IpListItem | null>(null);
   const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
@@ -154,13 +156,14 @@ export function HomeLibraryScreen({
     async (offset) => runWithDatabaseSpace(space, async (db) => {
       const page = await ipRepository.findLibraryItemsPage(db, {
         filter: activeFilter,
+        orderBy: activeSortOrder,
         limit: IP_LIBRARY_PAGE_SIZE,
         offset,
       });
       return { items: page.items, hasMore: page.hasMore };
     }),
     {
-      requestKey: JSON.stringify([space, activeFilter, refreshKey]),
+      requestKey: JSON.stringify([space, activeFilter, activeSortOrder, refreshKey]),
       getItemKey: (item) => item.id,
       initialMeta: undefined,
       formatError: (error) => {
@@ -371,6 +374,8 @@ export function HomeLibraryScreen({
               onPress={() => setActiveFilter(option.key)}
             />
           ))}
+          <View style={styles.filterSpacer} />
+          <IpSortMenuButton orderBy={activeSortOrder} onChange={setActiveSortOrder} />
         </View>
       </View>
 
@@ -720,7 +725,11 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: componentTokens.filterChip.gap,
+  },
+  filterSpacer: {
+    flex: 1,
   },
   needsPanel: {
     alignItems: 'center',

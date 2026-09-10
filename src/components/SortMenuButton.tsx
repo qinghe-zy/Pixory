@@ -127,7 +127,6 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   pillContainer: {
-    ...shadows.sm,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
     borderRadius: radius.pill,

@@ -91,9 +91,12 @@ export interface MediaPageResult<T> {
   hasNewer: boolean;
 }
 
+export type IpSortOrder = 'default' | 'createdAtAsc' | 'createdAtDesc' | 'nameAsc' | 'nameDesc';
+
 export interface IpLibraryQuery extends PageRequest {
   searchText?: string;
   filter?: IpLibraryFilter;
+  orderBy?: IpSortOrder;
 }
 
 export interface IpListItem extends IpRecord {

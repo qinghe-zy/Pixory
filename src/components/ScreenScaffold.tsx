@@ -36,6 +36,7 @@ interface ScreenScaffoldProps {
   scrollViewRef?: RefObject<ScrollView | null>;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   showHeader?: boolean;
+  fullScreen?: boolean;
 }
 
 export function ScreenScaffold({
@@ -58,6 +59,7 @@ export function ScreenScaffold({
   scrollViewRef,
   onScroll,
   showHeader = true,
+  fullScreen = false,
 }: ScreenScaffoldProps) {
   const insets = useSafeAreaInsets();
 
@@ -82,7 +84,7 @@ export function ScreenScaffold({
           titleSlot={titleSlot}
           titleVariant={titleVariant}
         />
-      ) : (
+      ) : fullScreen ? null : (
         <View style={{ height: insets.top }} />
       )}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

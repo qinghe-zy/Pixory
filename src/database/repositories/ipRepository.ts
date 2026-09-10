@@ -151,13 +151,32 @@ function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array
   }
 
   const whereStatement = whereClauses.length ? ` WHERE ${whereClauses.join(' AND ')}` : '';
-  const orderBy =
-    filter === 'all'
-      ? ' ORDER BY ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
-      : ' ORDER BY ips.updatedAt DESC, ips.id DESC';
+  
+  let orderBy = filter === 'all'
+    ? 'ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
+    : 'ips.updatedAt DESC, ips.id DESC';
+
+  if (query?.orderBy) {
+    switch (query.orderBy) {
+      case 'createdAtAsc':
+        orderBy = 'ips.createdAt ASC, ips.id ASC';
+        break;
+      case 'createdAtDesc':
+        orderBy = 'ips.createdAt DESC, ips.id DESC';
+        break;
+      case 'nameAsc':
+        orderBy = 'ips.name COLLATE NOCASE ASC, ips.id ASC';
+        break;
+      case 'nameDesc':
+        orderBy = 'ips.name COLLATE NOCASE DESC, ips.id DESC';
+        break;
+    }
+  }
+
+  const orderByStatement = ` ORDER BY ${orderBy}`;
 
   return {
-    sql: `${IP_LIBRARY_SELECT}${whereStatement} GROUP BY ips.id${orderBy}`,
+    sql: `${IP_LIBRARY_SELECT}${whereStatement} GROUP BY ips.id${orderByStatement}`,
     values,
   };
 }
@@ -180,9 +199,26 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
     whereClauses.push('ips.isFavorite = 1');
   }
 
-  const orderBy = filter === 'all'
+  let orderBy = filter === 'all'
     ? 'ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
     : 'ips.updatedAt DESC, ips.id DESC';
+
+  if (query?.orderBy) {
+    switch (query.orderBy) {
+      case 'createdAtAsc':
+        orderBy = 'ips.createdAt ASC, ips.id ASC';
+        break;
+      case 'createdAtDesc':
+        orderBy = 'ips.createdAt DESC, ips.id DESC';
+        break;
+      case 'nameAsc':
+        orderBy = 'ips.name COLLATE NOCASE ASC, ips.id ASC';
+        break;
+      case 'nameDesc':
+        orderBy = 'ips.name COLLATE NOCASE DESC, ips.id DESC';
+        break;
+    }
+  }
 
   return {
     sql: `WITH page_ips AS (

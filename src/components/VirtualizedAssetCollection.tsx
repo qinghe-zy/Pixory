@@ -1,14 +1,16 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, memo, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  FlatList,
   StyleSheet,
   View,
   type GestureResponderHandlers,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import type { ImageListItem } from '../database';
 import type { AssetListViewMode } from '../database/repositories/settingsRepository';
@@ -27,16 +29,18 @@ interface VirtualizedAssetCollectionProps {
   headerComponent?: ReactNode;
   images: ImageListItem[];
   isLoadingMore?: boolean;
-  listRef?: RefObject<FlatList<ImageListItem> | null>;
+  listRef?: RefObject<any>;
   onEndReached?: () => void;
   onItemMeasured?: (imageId: number, layout: MeasuredLayout | null) => void;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   panHandlers?: GestureResponderHandlers;
+  scrollOffsetRef?: { current: number };
   renderAsset: (image: ImageListItem, index: number, fillCell: boolean) => ReactNode;
   viewMode: AssetListViewMode;
+  contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
-export function VirtualizedAssetCollection({
+export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollection({
   emptyComponent,
   headerComponent,
   images,
@@ -46,11 +50,12 @@ export function VirtualizedAssetCollection({
   onItemMeasured,
   onScroll,
   panHandlers,
+  scrollOffsetRef = { current: 0 },
   renderAsset,
   viewMode,
+  contentContainerStyle,
 }: VirtualizedAssetCollectionProps) {
 
-  const scrollOffsetRef = useRef(0);
   const isGrid = viewMode === 'grid';
   const numColumns = isGrid ? 3 : 1;
 
@@ -70,13 +75,13 @@ export function VirtualizedAssetCollection({
 
 
   return (
-    <FlatList
+    <Animated.FlatList
       {...panHandlers}
       ListEmptyComponent={emptyComponent ? <View>{emptyComponent}</View> : null}
       ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.active} style={styles.loader} /> : null}
       ListHeaderComponent={headerComponent ? <View style={{ zIndex: 1000, elevation: 100 }}>{headerComponent}</View> : null}
       columnWrapperStyle={isGrid ? styles.gridRow : undefined}
-      contentContainerStyle={[styles.content, images.length === 0 && styles.emptyContent]}
+      contentContainerStyle={[styles.content, images.length === 0 && styles.emptyContent, contentContainerStyle]}
       data={images}
       initialNumToRender={12}
       key={viewMode}
@@ -107,10 +112,7 @@ export function VirtualizedAssetCollection({
       numColumns={isGrid ? 3 : 1}
       onEndReached={onEndReached}
       onEndReachedThreshold={0.6}
-      onScroll={(event) => {
-        scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-        onScroll?.(event);
-      }}
+      onScroll={onScroll}
       ref={listRef}
       removeClippedSubviews
       renderItem={({ item, index }) => (
@@ -124,12 +126,13 @@ export function VirtualizedAssetCollection({
         </MeasuredAssetCell>
       )}
       scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
       style={styles.list}
       updateCellsBatchingPeriod={40}
       windowSize={7}
     />
   );
-}
+});
 
 function MeasuredAssetCell({
   children,

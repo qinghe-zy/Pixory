@@ -1,19 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { Header } from '../components/Header';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { GallerySkeleton } from '../components/GallerySkeleton';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
@@ -81,7 +85,9 @@ export function AllImagesScreen({
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
-  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
+  const scrollViewRef = useRef<any>(null);
+  const insets = useSafeAreaInsets();
+  const scrollY = useSharedValue(0);
   const { data, isLoading: isMetadataLoading, errorMessage: metadataErrorMessage, reload: reloadMetadata } = useScreenLoad<{
     ip: IpRecord | null;
     groups: GroupRecord[];
@@ -203,15 +209,39 @@ export function AllImagesScreen({
     [selectableAssets, multiSelect.selectedImageIds]
   );
 
-  const rightAction = (
-    <Pressable
-      accessibilityLabel={commonButtonCopy.importImages}
-      onPress={onImportImages}
-      style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
-    >
-      <Ionicons color={colors.text.title} name="add" size={22} />
-    </Pressable>
-  );
+  
+  
+  
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+  
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [30, 50], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [30, 50], [5, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ translateY }] };
+  });
+
+  const heroStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+
+  const scrollOffsetRef = useRef(0);
+  
+  const handleScrollJS = (y: number) => {
+    scrollOffsetRef.current = y;
+    const mockEvent = { nativeEvent: { contentOffset: { y } } } as any;
+    swipeSelection.onScroll(mockEvent);
+  };
+
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+      runOnJS(handleScrollJS)(event.contentOffset.y);
+    },
+  });
+
+
 
   function handleOpenImage(imageId: number) {
     const asset = images.find((item) => item.id === imageId);
@@ -311,6 +341,7 @@ export function AllImagesScreen({
     }
   }
 
+
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
       onChanged={reload}
@@ -321,72 +352,85 @@ export function AllImagesScreen({
       totalCount={selectableAssets.length}
     />
   ) : undefined;
+
+  
+  
+  
+  const rightAction = (
+    <Pressable
+      accessibilityLabel={commonButtonCopy.importImages}
+      onPress={onImportImages}
+      style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
+    >
+      <Ionicons color={colors.text.title} name="add" size={24} />
+    </Pressable>
+  );
+
+  const headingNode = (
+    <Animated.View style={[{ paddingTop: statusBarHeight, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }, heroStyle]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title }}>
+          {ip ? `全部素材 · ${ip.name}` : '全部素材'}
+        </Text>
+        {rightAction}
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.tertiary }}>
+          {hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张
+        </Text>
+        <View style={styles.galleryActions}>
+          {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+            <Pressable
+              disabled={selectableAssets.length === 0}
+              onPress={multiSelect.toggleSelectAll}
+              style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+            >
+              <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+            </Pressable>
+          ) : null}
+          <SortMenuButton
+            hasActiveFilters={hasActiveFilters}
+            onChange={setSortOrder}
+            onFilterPress={() => setIsFilterDrawerOpen(true)}
+            orderBy={sortOrder}
+          />
+        </View>
+      </View>
+    </Animated.View>
+  );
+
   return (
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
       backgroundVariant="gallery"
-      decorativeTitle="Gallery"
       footer={footer}
-      onBack={onBack}
-      onScroll={swipeSelection.onScroll}
-      rightAction={rightAction}
-      title={ip ? `全部素材 · ${ip.name}` : '全部素材'}
+      showHeader={false}
+      scrollable={false}
+      contentContainerStyle={{ padding: 0, gap: 0, flex: 1 }}
     >
-
-      <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
-              <View style={styles.drawerSections}>
-                <Text style={styles.drawerSectionTitle}>视图</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
-                  <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
-                </View>
-              </View>
-
-              <View style={styles.drawerSections}>
-                <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
-                  <FilterOptionChip label="未分组" selected={activeFilters.ungrouped} onPress={() => toggleBooleanFilter('ungrouped')} />
-                  <FilterOptionChip label="无标签" selected={activeFilters.untagged} onPress={() => toggleBooleanFilter('untagged')} />
-                  <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
-                </View>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="相似图片" selected={activeFilters.similarDuplicate} onPress={toggleSimilarFilter} />
-                </View>
-              </View>
-
-              <View style={styles.filterOptionGrid}>
-                <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
-                <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
-                <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
-                <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
-              </View>
-
-              <View style={styles.drawerSections}>
-                <Text style={styles.drawerSectionTitle}>格式 · 单选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="JPEG" selected={activeFilters.mimeType === 'image/jpeg'} onPress={() => toggleMimeFilter('image/jpeg', 'JPEG')} />
-                  <FilterOptionChip label="PNG" selected={activeFilters.mimeType === 'image/png'} onPress={() => toggleMimeFilter('image/png', 'PNG')} />
-                </View>
-                <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
-                  <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
-                </View>
-              </View>
-
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {groups.map((group) => (
-                  <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
-                ))}
-              </ScrollView>
-
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {tags.map((tag) => (
-                  <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
-                ))}
-              </ScrollView>
-      </AssetFilterDrawer>
+      {/* Compact Sticky Header */}
+      <Animated.View style={[
+        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 32 },
+        compactHeaderStyle
+      ]} pointerEvents="box-none">
+        <BlurView intensity={space === 'personal' ? 60 : 30} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: layout.pagePaddingHorizontal }}>
+          <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
+            {ip ? `${ip.name} · ` : ''}{images.length} 张
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <SortMenuButton
+              hasActiveFilters={hasActiveFilters}
+              onChange={setSortOrder}
+              onFilterPress={() => setIsFilterDrawerOpen(true)}
+              orderBy={sortOrder}
+            />
+            <Pressable onPress={onImportImages} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed, { width: 32, height: 32 }]}>
+              <Ionicons color={colors.text.title} name="add" size={20} />
+            </Pressable>
+          </View>
+        </View>
+      </Animated.View>
 
       <PageStateBlock
         loadingComponent={<GallerySkeleton />}
@@ -396,44 +440,25 @@ export function AllImagesScreen({
             ? '上传第一张图片后，就可以在这里按分组和标签进行管理'
             : '这个筛选条件下暂时没有素材。'
         }
-        emptyIconName="images-outline"
-        emptyTitle={!hasActiveFilters ? commonEmptyStateCopy.noImagesTitle : commonEmptyStateCopy.noSearchResultTitle}
+        emptyTitle={!hasActiveFilters ? '您的个人素材库' : commonEmptyStateCopy.noSearchResultTitle}
+        onEmptyAction={onImportImages}
         errorMessage={errorMessage}
         isEmpty={!isLoading && images.length === 0}
         loading={isLoading}
         loadingDescription="本地索引加载完成后，这里会展示当前 IP 下的全部素材。"
         loadingTitle="正在读取素材库"
-        onEmptyAction={onImportImages}
-        onRetry={reload}
       >
-        <View style={styles.galleryHeading}>
-          <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
-          <View style={styles.galleryActions}>
-            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
-              <Pressable
-                disabled={selectableAssets.length === 0}
-                onPress={multiSelect.toggleSelectAll}
-                style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-              >
-                <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-              </Pressable>
-            ) : null}
-            <SortMenuButton
-              hasActiveFilters={hasActiveFilters}
-              onChange={setSortOrder}
-              onFilterPress={() => setIsFilterDrawerOpen(true)}
-              orderBy={sortOrder}
-            />
-          </View>
-        </View>
-        <VirtualizedAssetCollection
+      <VirtualizedAssetCollection
+          contentContainerStyle={{ paddingHorizontal: layout.pagePaddingHorizontal }}
+          headerComponent={headingNode}
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}
           onEndReached={media.loadMore}
           onItemMeasured={swipeSelection.registerMeasuredItemLayout}
-          onScroll={swipeSelection.onScroll}
+          onScroll={handleScroll}
           panHandlers={swipeSelection.panHandlers}
+          scrollOffsetRef={scrollOffsetRef}
           renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
                 image={image}
@@ -529,6 +554,30 @@ function hasImageOnlyFilter(filters: AllImagesFilterState): boolean {
 }
 
 const styles = StyleSheet.create({
+  stickyBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 10,
+  },
+  stickyBarContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[4],
+  },
+  stickyTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+    letterSpacing: 0.5,
+  },
+  stickyCount: {
+    ...typography.textStyles.caption,
+    color: colors.text.tertiary,
+    marginLeft: 8,
+  },
   host: {
     flex: 1,
   },
@@ -777,7 +826,12 @@ const styles = StyleSheet.create({
   },
   galleryTitle: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.primary,
+    color: colors.text.title,
+    marginBottom: 4,
+  },
+  gallerySubtitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.tertiary,
   },
   galleryActions: {
     zIndex: 10,
