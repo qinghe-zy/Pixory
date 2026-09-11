@@ -487,6 +487,25 @@ For remote announcements:
 - A `Filename longer than 260 characters` Ninja failure is an environment-path failure, not a source failure. Preserve the first failure output, verify that no Gradle process is still running, then use the short-path workflow instead of blindly retrying the same command.
 - 2026-08-09 incident: `:app:assembleDebug` was first run from `.worktrees/companion-artifact-fixes`; React Native safe-area-context codegen exceeded the Ninja path limit. A follow-up `subst W:` attempt failed because Expo autolinking could not discover `W:\package.json` from `W:\android`. Future isolated Android builds must preflight and use a real short physical worktree instead of repeating either failed path.
 
+## Repository Branch And Push Safety
+
+- `main` is the public branch. It is the only branch that may be pushed to the GitHub `origin` remote for normal project updates.
+- `local-work` and any `local/*` branch are private local branches. They may contain `AGENTS.md`, `.codex/`, `.impeccable.md`, `版本文档/`, `LOCAL_UPDATES_LOG.md`, and `scripts/local/`, but must never be pushed.
+- Keep public and private work in separate commits. A public commit may contain application source, formal tests, `README.md`, `docs/`, release configuration, and other required repository files. A private commit may contain local rules, process documents, one-off tools, and local archives.
+- Before committing, inspect `git status --short` and `git diff --cached --name-only`. Do not use `git add -A` on `main` when private files are present in the working tree.
+- To publish local development, switch to `main` and create or cherry-pick only the public commit. Never merge the full `local-work` branch into `main`, and never cherry-pick a commit that contains private paths.
+- Before pushing, verify `git branch --show-current`, `git branch -vv`, and `git diff --name-only origin/main..HEAD`. Push only with `git push origin main`; do not use `git push --all`, `git push --mirror`, `--no-verify`, or force-push for routine work.
+- The repository pre-push hook rejects `local-work`, `local/*`, non-`main` branch pushes, non-`origin` remotes, and accidental private branch publication. Do not bypass it.
+- Release tags may be pushed only from `main` after the release workflow has completed. Do not push release commits or tags to `gitee`.
+- After a public push, return to `local-work` for continued development and keep the private branch without an upstream remote.
+
+## Local File Organization
+
+- Keep the repository root limited to application entry points, project configuration, and formal public documentation.
+- Keep one-off migration, patch, UI scratch, and local maintenance scripts under `scripts/local/one-off/`; keep temporary server utilities under `scripts/local/server/`; keep local asset helpers under `scripts/local/assets/`.
+- Keep generated logs, screenshots, diagnostics, test output, and temporary exports under ignored local storage such as `.local/archive/`; do not commit them even on `local-work`.
+- The public repository layout and commit/push workflow are documented in `docs/repository-workflow.md`. The local-only script catalog is documented in `scripts/local/README.md`.
+
 ## Commit And Handoff Clarity
 
 - Every non-trivial commit must have a concise subject plus a body that states what changed, why it changed, how it was verified, and any remaining limitation or unverified boundary.
