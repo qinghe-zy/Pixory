@@ -17,7 +17,7 @@
 
 本文档依据当前源码、测试和发布配置整理。若与代码冲突，以代码和可运行行为为准，并优先修正文档。
 
-本文档同时承担最新能力基线；Git 中不再保留功能矩阵快照或旧版 Spec、Plan、Review、规划、算法、调研文档。版本过程证据由本地忽略的 `版本文档/` 按正式版本归档，独立开发的新 AI 软件不属于 Pixory 功能矩阵，两者不默认共享产品定位、数据或发布计划。
+本文档同时承担最新能力基线；公开 `main` 中不再保留功能矩阵快照或旧版 Spec、Plan、Review、规划、算法、调研文档。版本过程证据由本地私有 `local-work` 分支的 `版本文档/` 按正式版本归档，独立开发的新 AI 软件不属于 Pixory 功能矩阵，两者不默认共享产品定位、数据或发布计划。
 
 ### 状态定义
 
@@ -56,12 +56,12 @@
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理；预览目录一次 inventory 同时计算总量/图片/视频，备份枚举最多 4 worker；按 normal/personal 隔离的 epoch+TTL 快照先显示后刷新 | `StorageUsageScreen`, `storageUsageService`, `storageUsageSnapshotCache` |
 | 更新与公告 | 已实现 | 远程版本检查、公告、官网下载、GitHub fallback | `updateCheckService`, `announcementService` |
-| 官网与发布 | 已实现 | 官网下载页、更新 JSON、release notes、Android release workflow、关于页内置产品文档入口与应用内 Markdown 阅读；进入关于页会后台预取官网产品文档图片并持久缓存到应用内，后续阅读优先复用本地缓存 | `docs/`, `AGENTS.md`, `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService` |
+| 官网与发布 | 已实现 | 官网下载页、更新 JSON、release notes、Android release workflow、关于页内置产品文档入口与应用内 Markdown 阅读；进入关于页会后台预取官网产品文档图片并持久缓存到应用内，后续阅读优先复用本地缓存 | `docs/`, `docs/repository-workflow.md`, `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService` |
 | 设计系统/基础组件 | 已实现 | 统一移动端 UI、空状态、按钮、表单、toast、action sheet；所有页面背景图统一采用 cover 模式，全面支持平板及宽屏设备自适应等比铺满 | `src/components/`, `src/design/tokens/`, `src/design/backgrounds.ts` |
 
 ### 2.1 2026-08-20 性能加固逐项索引
 
-完整根因、文件级清单、Review、Spec 与 Plan 已归入本地 `版本文档/当前版本文档/`，正式打包成功后随 v2.8.2 移入历史目录。下表中的“源码/自动化已验”不等同于真机帧率、内存、codec 或声学验收。
+完整根因、文件级清单、Review、Spec 与 Plan 已归入本地私有 `版本文档/当前版本文档/`，正式打包成功后随 v2.8.2 移入历史目录。下表中的“源码/自动化已验”不等同于真机帧率、内存、codec 或声学验收。
 
 | ID | 功能/能力变化 | 实现边界 | 当前验证状态 |
 | --- | --- | --- | --- |
@@ -266,7 +266,7 @@
 | 用户身份与发号系统 (UID) | 基于服务器端 (Node+PM2) 自增发号器，客户端 SecureStore 永久固化。支持基于原生整数 (raw ID) 的纯离线 A/B 测试基建；支持通过直接修改服务器端 `counter.txt` 游标实现“靓号锁仓”（如调至10即可雪藏前10号），并在客户端配合隐藏彩蛋强行覆写 SecureStore 实现定向发放；支持弱网 3 秒熔断，无感挂载于 App 启动期。 | `src/services/uidService.ts`, `server.js` (服务器端) |
   | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
-| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；打包前预览本次本地过程文档，只有 APK 成功复制后才将当前文档平铺归档到对应版本、固化版本更新说明并开启下一补丁区间，失败不移动、重复执行不覆盖；功能矩阵只保留本文件最新版，待办目录不随打包移动；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用 transparent compact 前景和 `#4a7bf7` 纯色底，原素材缩小 12.5% 后按实际内容居中并保留至少 24% 透明边距，中心聊天气泡及图库、视频、相机、爱心、轨道和星点外围装饰完整保留；Expo 配置与原生五档密度资源由同一脚本/compact master 生成，避免 clean prebuild 与直接 Gradle 构建效果分叉 | `AGENTS.md`, `.gitignore`, `app.json`, `icons/splash_foreground_compact.png`, `scripts/version-document-workflow.ps1`, `scripts/generate-android-splash-assets.cjs`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
+| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；打包前预览本次本地过程文档，只有 APK 成功复制后才将当前文档平铺归档到对应版本、固化版本更新说明并开启下一补丁区间，失败不移动、重复执行不覆盖；功能矩阵只保留本文件最新版，待办目录不随打包移动；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用 transparent compact 前景和 `#4a7bf7` 纯色底，原素材缩小 12.5% 后按实际内容居中并保留至少 24% 透明边距，中心聊天气泡及图库、视频、相机、爱心、轨道和星点外围装饰完整保留；Expo 配置与原生五档密度资源由同一脚本/compact master 生成，避免 clean prebuild 与直接 Gradle 构建效果分叉 | `docs/repository-workflow.md`, `.gitignore`, `app.json`, `icons/splash_foreground_compact.png`, `scripts/version-document-workflow.ps1`, `scripts/generate-android-splash-assets.cjs`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
 | Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、可取消 direct speech recognition、share/open intent、`ComponentCallbacks2` memory-pressure event；原生 Activity/主题/媒体模块均由版本化 Expo config-plugin 模板生成 | `src/native/pixoryMediaModule.ts`, `plugins/withPixoryAndroidIntents.js`, `plugins/pixory-android-intents/templates/` |
 | UI 基础组件 | toast、dialog、action sheet、empty state、form、header、cards、chips、sort menu | `src/components/` |
 | 设计 tokens | spacing、rhythm、colors、radius、typography、metrics | `src/design/tokens/` |
@@ -290,6 +290,7 @@
 | 媒体体验 | `mature-media-experience-policy.test.cjs`, `privacy-cover-viewer-policy.test.cjs`, `media-prefetch-policy-unit.test.cjs`, `media-reader-session-cache-unit.test.cjs`, `video-swipe-policy-unit.test.cjs`, `video-preload-pool-unit.test.cjs`, `video-pitch-preservation-unit.test.cjs`, `media-db-benchmark-policy.test.cjs` |
 | 更新与官网 | `update-check-policy.test.cjs`, `website-flow-policy.test.cjs` |
 | 版本文档与打包交接 | `version-document-workflow-policy.test.cjs`（本地归档隔离、单层目录、拒绝覆盖、幂等归档、APK 成功后交接） |
+| 仓库布局与推送边界 | `repository-workflow-policy.test.cjs`（公开分支、本地私有分支、路径布局和 pre-push 约束） |
 | 安全风险 | `security-risk-mitigation.test.cjs` |
 | 可访问性/UX | `accessibility-policy.test.cjs`, `v2-ux-enhancement-policy.test.cjs`, `current-ux-fixes-policy.test.cjs` |
 
