@@ -19,6 +19,7 @@ import { AppScreen } from '../AppScreen';
 import type { PageBackgroundVariant } from '../../design/backgrounds';
 import { layout, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
+import { BackButton } from '../BackButton';
 
 interface AiLightScaffoldProps {
   bodyStyle?: StyleProp<ViewStyle>;
@@ -76,11 +77,7 @@ export function AiLightScaffold({
       {showHeader ? (
         <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
           <View style={styles.side}>
-            {onBack ? (
-              <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={10} onPress={onBack} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-                <Ionicons color={aiLightColors.ink} name="chevron-back" size={20} />
-              </Pressable>
-            ) : null}
+            {onBack ? <BackButton onPress={onBack} color={aiLightColors.ink} /> : null}
           </View>
           <View style={styles.titleWrap}>
             {titleSlot ?? (
@@ -137,16 +134,6 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
-  },
-  iconButton: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: spacing[10],
-    justifyContent: 'center',
-    width: spacing[10],
   },
   errorText: {
     ...typography.textStyles.caption,

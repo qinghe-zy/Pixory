@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, layout, radius, rhythm, shadows, spacing } from '../design/tokens';
@@ -50,7 +51,10 @@ export function AppScreen({
 }: AppScreenProps) {
   const insets = useSafeAreaInsets();
   const floatingFooterHeight = useContext(FloatingFooterContext);
-  const bodyBottomPadding = (footer ? 0 : insets.bottom) + layout.pageBottomOffset + floatingFooterHeight;
+  
+  // When footer is present and absolute, we need extra padding so content isn't hidden
+  const footerEstimateHeight = footer ? 100 : 0;
+  const bodyBottomPadding = (footer ? footerEstimateHeight : insets.bottom) + layout.pageBottomOffset + floatingFooterHeight;
 
   const body = scrollable ? (
     <ScrollView
@@ -80,16 +84,20 @@ export function AppScreen({
     <View style={styles.flex}>
       {bodyContent}
       {footer ? (
-        <View
-          style={[
-            styles.footer,
-            {
-              paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
-            },
-            footerStyle,
-          ]}
-        >
-          {footer}
+        <View style={styles.footerWrap} pointerEvents="box-none">
+          <BlurView
+            intensity={85}
+            tint="light"
+            style={[
+              styles.footer,
+              {
+                paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
+              },
+              footerStyle,
+            ]}
+          >
+            {footer}
+          </BlurView>
         </View>
       ) : null}
     </View>
@@ -134,12 +142,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
     gap: rhythm.screenSectionGap,
   },
+  footerWrap: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
   footer: {
-    backgroundColor: colors.background.page,
-    borderTopLeftRadius: radius.xxl,
-    borderTopRightRadius: radius.xxl,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingTop: spacing[2],
-    ...shadows.hairline,
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.subtle,
   },
 });

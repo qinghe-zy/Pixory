@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { ActivityIndicator, FlatList, Pressable, SectionList, StyleSheet, Text, View, Modal, Dimensions } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -57,6 +57,9 @@ export function GlobalGroupsScreen({
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
   const [isIpDrawerOpen, setIsIpDrawerOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+  const filterBtnRef = useRef<View>(null);
   const {
     items: groups,
     isLoading,
@@ -140,16 +143,34 @@ export function GlobalGroupsScreen({
     })();
   }
 
+  const handleFilterPress = () => {
+    if (ipScopes.length <= 8) {
+      if (isDropdownOpen) {
+        setIsDropdownOpen(false);
+        return;
+      }
+      filterBtnRef.current?.measure((x, y, w, h, px, py) => {
+        const windowWidth = Dimensions.get('window').width;
+        setDropdownPos({ top: py + h + 6, right: windowWidth - px - w });
+        setIsDropdownOpen(true);
+      });
+    } else {
+      setIsIpDrawerOpen(true);
+    }
+  };
+
   const headerRightAction = (
-    <Pressable onPress={() => setIsIpDrawerOpen(true)} style={({ pressed }) => [styles.headerFilterBtn, pressed && styles.pressed]}>
-      <BlurView intensity={50} style={styles.headerFilterBlur} tint="light">
-        <LiquidGlassBezel radius={16} />
-        <View style={styles.headerFilterInner}>
-          <Text numberOfLines={1} style={styles.headerFilterText}>{selectedIpName}</Text>
-          <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
-        </View>
-      </BlurView>
-    </Pressable>
+    <View ref={filterBtnRef}>
+      <Pressable onPress={handleFilterPress} style={({ pressed }) => [styles.headerFilterBtn, pressed && styles.pressed]}>
+        <BlurView intensity={50} style={styles.headerFilterBlur} tint="light">
+          <LiquidGlassBezel radius={16} />
+          <View style={styles.headerFilterInner}>
+            <Text numberOfLines={1} style={styles.headerFilterText}>{selectedIpName}</Text>
+            <Ionicons color={colors.text.secondary} name={ipScopes.length <= 8 ? "chevron-down" : "chevron-back"} size={14} />
+          </View>
+        </BlurView>
+      </Pressable>
+    </View>
   );
 
   return (
@@ -218,7 +239,53 @@ export function GlobalGroupsScreen({
       space={space}
       visible={Boolean(renameGroup)}
     />
-    <AssetFilterDrawer onClose={() => setIsIpDrawerOpen(false)} scrollable={false} visible={isIpDrawerOpen}>
+      <Modal
+        visible={isDropdownOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsDropdownOpen(false)}
+      >
+        <Pressable accessibilityLabel="关闭选择" onPress={() => setIsDropdownOpen(false)} style={StyleSheet.absoluteFill} />
+        <View style={[styles.menu, { top: dropdownPos.top, right: dropdownPos.right }]}>
+          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: radius.lg }]}>
+            <BlurView intensity={65} style={StyleSheet.absoluteFill} tint="light" />
+          </View>
+          <LiquidGlassBezel radius={radius.lg} />
+          <View style={styles.menuContent}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setSelectedIpId(null);
+                setIsDropdownOpen(false);
+              }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
+            >
+              <View style={[StyleSheet.absoluteFill, styles.menuRowBg, selectedIpId === null ? styles.menuRowActiveBg : null]} />
+              <Text numberOfLines={1} style={[styles.menuText, selectedIpId === null ? styles.menuTextActive : null]}>全部 IP</Text>
+              <Ionicons color={selectedIpId === null ? colors.primary.active : colors.text.tertiary} name={selectedIpId === null ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
+            </Pressable>
+            {ipScopes.map((ip) => {
+              const selected = selectedIpId === ip.id;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={ip.id}
+                  onPress={() => {
+                    setSelectedIpId(ip.id);
+                    setIsDropdownOpen(false);
+                  }}
+                  style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
+                >
+                  <View style={[StyleSheet.absoluteFill, styles.menuRowBg, selected ? styles.menuRowActiveBg : null]} />
+                  <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{ip.name}</Text>
+                  <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+      <AssetFilterDrawer onClose={() => setIsIpDrawerOpen(false)} scrollable={false} visible={isIpDrawerOpen}>
       <OptionSelectRow
         label="全部 IP"
         onPress={() => {
@@ -394,5 +461,44 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.textStyles.caption,
     color: colors.text.body,
+  },
+  menu: {
+    ...shadows.floating,
+    borderRadius: radius.lg,
+    minWidth: 156,
+    position: 'absolute',
+    zIndex: 999,
+    elevation: 99,
+    overflow: 'hidden',
+  },
+  menuContent: {
+    padding: spacing[2],
+    gap: spacing[1],
+  },
+  menuRow: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 34,
+    paddingHorizontal: spacing[2],
+    overflow: 'hidden',
+  },
+  menuRowBg: {
+    backgroundColor: 'transparent',
+  },
+  menuRowActiveBg: {
+    backgroundColor: 'rgba(86, 107, 72, 0.28)',
+  },
+  menuText: {
+    ...typography.textStyles.micro,
+    color: colors.text.title,
+    flex: 1,
+    fontWeight: '600',
+    minWidth: 0,
+    zIndex: 1,
+  },
+  menuTextActive: {
+    color: colors.primary.dark,
   },
 });

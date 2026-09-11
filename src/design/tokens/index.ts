@@ -7,3 +7,4 @@ export { rhythm } from './rhythm';
 export { shadows } from './shadows';
 export { spacing } from './spacing';
 export { typography } from './typography';
+export * from './premiumColors';

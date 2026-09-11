@@ -4,6 +4,7 @@ import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutRight } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { ReactNode } from 'react';
+import { BlurView } from 'expo-blur';
 
 export interface AssetFilterDrawerProps {
   onClose: () => void;
@@ -22,6 +23,10 @@ export function AssetFilterDrawer({ onClose, visible, children, scrollable = tru
           <Pressable onPress={onClose} style={styles.backdrop} />
         </Animated.View>
         <Animated.View entering={SlideInRight.duration(300)} exiting={SlideOutRight.duration(250)} style={styles.drawer}>
+          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderTopLeftRadius: radius.xl }]}>
+            <BlurView intensity={75} style={StyleSheet.absoluteFill} tint="light" />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255, 255, 255, 0.45)' }]} />
+          </View>
           <View style={[styles.header, { paddingTop: insets.top + spacing[8] }]}>
             <Text style={styles.title}>筛选库</Text>
             <Pressable onPress={onClose} style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}>
@@ -60,7 +65,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   drawer: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: 'transparent',
     borderTopLeftRadius: radius.xl,
     elevation: 20,
     height: '100%',
@@ -72,7 +77,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: colors.border.subtle,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -97,13 +102,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   footer: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: 'transparent',
     paddingHorizontal: spacing[6],
     paddingTop: spacing[2],
   },
   footerBtn: {
     alignItems: 'center',
-    backgroundColor: colors.background.sunken,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
     borderRadius: radius.pill,
     flexDirection: 'row',
     height: 56,

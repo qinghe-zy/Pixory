@@ -60,3 +60,11 @@ LOCAL_UPDATES_LOG.md
 # generated native folders
 /ios
 /android
+
+# Scratch files
+*.py
+*.txt
+*.sh
+server_new.js
+temp_update.js
+

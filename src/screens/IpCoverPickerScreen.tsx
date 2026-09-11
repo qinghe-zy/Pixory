@@ -1,12 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpDetailRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
+import { componentTokens, rhythm, spacing } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 
@@ -69,15 +68,6 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
 
   return (
     <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Cover" onBack={onBack} scrollable title="选择 IP 封面">
-      <View style={styles.headerPanel}>
-        <View style={styles.iconWrap}>
-          <Ionicons color={colors.primary.active} name="image-outline" size={18} />
-        </View>
-        <View style={styles.headerCopy}>
-          <Text numberOfLines={1} style={styles.headerTitle}>{ip?.name ?? '当前 IP'}</Text>
-          <Text style={styles.headerHint}>选择当前 IP 内的一张图片作为封面，原图不会被修改。</Text>
-        </View>
-      </View>
       <PrimaryButton label="使用系统默认封面" onPress={useDefaultCover} variant="outline" />
 
       <PageStateBlock
@@ -109,37 +99,6 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
 }
 
 const styles = StyleSheet.create({
-  headerPanel: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[3],
-    padding: spacing[3],
-  },
-  iconWrap: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.md,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  headerCopy: {
-    flex: 1,
-    gap: spacing[1],
-    minWidth: 0,
-  },
-  headerTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  headerHint: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

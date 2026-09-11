@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
-import { Keyboard, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Keyboard, StyleSheet, View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
-import { layout, metrics, rhythm, spacing } from '../design/tokens';
+import { layout, metrics, rhythm, spacing, typography } from '../design/tokens';
+import { premiumColors } from '../design/tokens/premiumColors';
 import { FeedbackBanner } from './FeedbackBanner';
-import { PrimaryButton } from './PrimaryButton';
 import { ScreenScaffold } from './ScreenScaffold';
 
 interface FormScreenAction {
@@ -38,11 +40,13 @@ export function FormScreenScaffold({
   children,
   errorMessage,
   primaryAction,
-  secondaryAction,
+  secondaryAction, // Kept in interface but intentionally omitted from UI per user request
   footerExtra,
   scrollContentStyle,
   backgroundVariant,
 }: FormScreenScaffoldProps) {
+  const insets = useSafeAreaInsets();
+
   function handlePrimaryPress() {
     if (primaryAction.loading || primaryAction.disabled) {
       return;
@@ -52,53 +56,97 @@ export function FormScreenScaffold({
     primaryAction.onPress();
   }
 
-  const footer = (
-    <View style={styles.footerWrap}>
-      {footerExtra}
-      {errorMessage ? <FeedbackBanner message={errorMessage} tone="error" /> : null}
-      <View style={styles.actions}>
-        <PrimaryButton
-          disabled={primaryAction.disabled}
-          label={primaryAction.label}
-          loading={primaryAction.loading}
-          onPress={handlePrimaryPress}
-        />
-        {secondaryAction ? (
-          <PrimaryButton
-            disabled={secondaryAction.disabled ?? primaryAction.loading}
-            label={secondaryAction.label}
-            onPress={secondaryAction.onPress}
-            variant="ghost"
-          />
-        ) : null}
+  return (
+    <View style={styles.flex}>
+      <ScreenScaffold
+        backgroundVariant={backgroundVariant}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 140 }, scrollContentStyle]}
+        footer={null}
+        onBack={onBack}
+        scrollable
+        title={title}
+      >
+        <View style={styles.contentWrap}>
+          {children}
+          
+          <View style={styles.footerExtraWrap}>
+            {footerExtra}
+            {errorMessage ? <FeedbackBanner message={errorMessage} tone="error" /> : null}
+          </View>
+        </View>
+      </ScreenScaffold>
+
+      <View pointerEvents="box-none" style={[styles.floatingWrap, { bottom: insets.bottom + spacing[4] }]}>
+        <BlurView intensity={30} style={styles.glassPill} tint="light">
+          <Pressable
+            disabled={primaryAction.disabled || primaryAction.loading}
+            onPress={handlePrimaryPress}
+            style={({ pressed }) => [
+              styles.pillButton,
+              pressed && styles.pillButtonPressed,
+              (primaryAction.disabled || primaryAction.loading) && styles.pillButtonDisabled,
+            ]}
+          >
+            {primaryAction.loading ? (
+              <ActivityIndicator color={premiumColors.buttonText} />
+            ) : (
+              <Text style={styles.pillButtonText}>{primaryAction.label}</Text>
+            )}
+          </Pressable>
+        </BlurView>
       </View>
     </View>
-  );
-
-  return (
-    <ScreenScaffold
-      backgroundVariant={backgroundVariant}
-      contentContainerStyle={[styles.scrollContent, scrollContentStyle]}
-      footer={footer}
-      onBack={onBack}
-      scrollable
-      title={title}
-    >
-      {children}
-    </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  footerWrap: {
-    gap: rhythm.listCardGap,
-    paddingTop: spacing[2],
-  },
-  actions: {
-    gap: rhythm.cardContentGap,
-    minHeight: metrics.bottomActionHeight + layout.stickyFooterBottomOffset,
+  flex: {
+    flex: 1,
   },
   scrollContent: {
-    paddingBottom: layout.pageBottomOffset + metrics.bottomActionHeight * 2,
+    // paddingBottom handled inline to avoid floating button overlap
+  },
+  contentWrap: {
+    gap: rhythm.listCardGap,
+  },
+  footerExtraWrap: {
+    gap: rhythm.listCardGap,
+    paddingTop: spacing[4],
+  },
+  floatingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 10,
+  },
+  glassPill: {
+    borderRadius: 100,
+    elevation: 6,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  pillButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(107, 96, 86, 0.85)', // Transparent premiumColors.buttonBg (#6B6056)
+    justifyContent: 'center',
+    minWidth: 200,
+    paddingHorizontal: 48,
+    paddingVertical: 18,
+  },
+  pillButtonPressed: {
+    backgroundColor: 'rgba(107, 96, 86, 0.95)',
+  },
+  pillButtonDisabled: {
+    backgroundColor: 'rgba(107, 96, 86, 0.4)',
+  },
+  pillButtonText: {
+    ...typography.textStyles.bodyStrong,
+    color: premiumColors.buttonText,
+    letterSpacing: 0.5,
   },
 });

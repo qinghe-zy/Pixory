@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 
 import { pageBackgroundImages, type PageBackgroundVariant } from '../design/backgrounds';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
@@ -21,7 +22,7 @@ interface AppDialogProps {
   danger?: boolean;
   children?: ReactNode;
   primaryDisabled?: boolean;
-  actionLayout?: 'stack' | 'primaryThenSplit';
+  actionLayout?: 'stack' | 'primaryThenSplit' | 'horizontal';
   compactActions?: boolean;
   backgroundVariant?: PageBackgroundVariant;
   accent?: 'default' | 'ai';
@@ -41,7 +42,7 @@ export function AppDialog({
   danger = false,
   children,
   primaryDisabled = false,
-  actionLayout = 'stack',
+  actionLayout = 'horizontal',
   compactActions = false,
   backgroundVariant,
   accent = 'default',
@@ -49,7 +50,7 @@ export function AppDialog({
 }: AppDialogProps) {
   const themedBackground = accent === 'ai' || !backgroundVariant ? undefined : pageBackgroundImages[backgroundVariant];
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);
-  const primaryTone = accent === 'ai' ? (danger ? 'danger' : 'ai') : 'default';
+  const primaryTone = accent === 'ai' ? (danger ? 'danger' : 'ai') : (danger ? 'danger' : 'default');
   const secondaryTone = accent === 'ai' ? 'ai' : 'default';
 
   return (
@@ -57,6 +58,10 @@ export function AppDialog({
       <View style={styles.overlay}>
         {dismissible ? <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} /> : null}
         <View style={[styles.panel, themedBackground ? styles.themedPanel : null, accent === 'ai' ? styles.aiPanel : null]}>
+          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: radius.xl }]}>
+            <BlurView intensity={85} style={StyleSheet.absoluteFill} tint="light" />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255, 255, 255, 0.55)' }]} />
+          </View>
           {accent === 'ai' ? null : themedBackground ? (
             <Image resizeMode="cover" source={themedBackground.source} style={[styles.patternImage, styles.themedPatternImage]} />
           ) : (
@@ -67,21 +72,36 @@ export function AppDialog({
             {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
           </View>
           {children ? <View style={styles.body}>{children}</View> : null}
-          <View style={[styles.actions, compactActions ? styles.compactActions : null]}>
-            <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} tone={primaryTone} />
-            {splitSecondaryActions ? (
-              <View style={styles.secondaryActionRow}>
+          <View style={[styles.actions, compactActions ? styles.compactActions : null, actionLayout === 'horizontal' ? styles.secondaryActionRow : null]}>
+            {actionLayout === 'horizontal' ? (
+              <>
+                {secondaryLabel ? (
+                  <View style={styles.secondaryActionItem}>
+                    <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="outline" />
+                  </View>
+                ) : null}
                 <View style={styles.secondaryActionItem}>
-                  <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} tone={secondaryTone} variant="outline" />
+                  <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} tone={primaryTone} />
                 </View>
-                <View style={styles.secondaryActionItem}>
-                  {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="outline" /> : null}
-                </View>
-              </View>
+              </>
             ) : (
               <>
-                {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} tone={secondaryTone} variant="outline" /> : null}
-                {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="ghost" /> : null}
+                <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} tone={primaryTone} />
+                {splitSecondaryActions ? (
+                  <View style={styles.secondaryActionRow}>
+                    <View style={styles.secondaryActionItem}>
+                      <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} tone={secondaryTone} variant="outline" />
+                    </View>
+                    <View style={styles.secondaryActionItem}>
+                      {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="outline" /> : null}
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} tone={secondaryTone} variant="outline" /> : null}
+                    {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="ghost" /> : null}
+                  </>
+                )}
               </>
             )}
           </View>
@@ -101,13 +121,11 @@ const styles = StyleSheet.create({
   },
   panel: {
     ...shadows.floating,
-    backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.entryCardGap,
     maxWidth: 360,
-    overflow: 'hidden',
     padding: spacing[5],
     width: '100%',
   },

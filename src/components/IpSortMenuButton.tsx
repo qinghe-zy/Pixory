@@ -86,7 +86,9 @@ export function IpSortMenuButton({
       >
         <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={StyleSheet.absoluteFill} />
         <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
-          <BlurView intensity={65} style={StyleSheet.absoluteFill} tint="light" />
+          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: radius.lg }]}>
+            <BlurView intensity={65} style={StyleSheet.absoluteFill} tint="light" />
+          </View>
           <LiquidGlassBezel radius={radius.lg} />
           <View style={styles.menuContent}>
             {IP_SORT_OPTIONS.map((option) => {

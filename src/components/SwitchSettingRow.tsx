@@ -42,6 +42,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 56,
     paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
   },
   copy: {
     flex: 1,

@@ -4,6 +4,7 @@ import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, componentTokens, layout, shadows, spacing, typography } from '../design/tokens';
+import { BackButton } from './BackButton';
 
 interface HeaderProps {
   title: string;
@@ -55,16 +56,7 @@ export function Header({
       ]}
     >
       <View style={[styles.side, styles.leadingSide, { minWidth: onBack ? sideWidth : 0 }]}>
-        {onBack ? (
-          <Pressable
-            accessibilityLabel="返回"
-            hitSlop={10}
-            onPress={onBack}
-            style={({ pressed }) => [styles.iconButton, compactBack && styles.compactIconButton, pressed && styles.iconButtonPressed]}
-          >
-            <Ionicons color={colors.text.title} name="chevron-back" size={compactBack ? 18 : 20} />
-          </Pressable>
-        ) : null}
+        {onBack ? <BackButton onPress={onBack} compact={compactBack} /> : null}
       </View>
 
       <View style={styles.titleWrap}>
@@ -118,27 +110,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 52,
     top: 28,
-  },
-  iconButton: {
-    ...shadows.sm,
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: componentTokens.iconButton.radius,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: componentTokens.iconButton.size,
-    justifyContent: 'center',
-    width: componentTokens.iconButton.size,
-  },
-  iconButtonPressed: {
-    opacity: 0.72,
-  },
-  compactIconButton: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-    elevation: 0,
-    height: 32,
-    shadowOpacity: 0,
-    width: 32,
   },
 });
