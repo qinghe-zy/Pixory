@@ -45,28 +45,12 @@ test('public homepage and README present the current AI-first product scope accu
 });
 
 test('release workflow requires README and update website pages', () => {
-  const agents = read('AGENTS.md');
+  const workflow = read('docs/repository-workflow.md');
 
-  assert.match(agents, /`README\.md`/);
-  assert.match(agents, /`docs\/download\.html`/);
-  assert.match(agents, /`docs\/updates\.html`/);
-  assert.match(agents, /`docs\/sitemap\.xml`/);
-  assert.match(agents, /README current-version text/);
-  assert.match(agents, /website download\/update pages/);
-  assert.match(agents, /remote release-facing website pages/);
-  assert.match(agents, /remote README/);
-  assert.match(agents, /Do not maintain the old Gitee release path/);
-  assert.match(agents, /Do not push release commits or tags to the `gitee` remote/);
-  assert.match(agents, /Do not create or update Gitee Releases/);
-  assert.doesNotMatch(agents, /GITEE_TOKEN/);
-  assert.doesNotMatch(agents, /preflight Gitee Release publishing credentials/);
-  assert.match(agents, /app update popup defaults to the official website download section/);
-  assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.url` points to `https:\/\/mist01\.com\/update-version\.json`/);
-  assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.githubLatestUrl` points to `https:\/\/api\.github\.com\/repos\/qinghe-zy\/Pixory\/releases\/latest`/);
-  assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.fallbackDownloadUrl` points to `https:\/\/mist01\.com\/#download`/);
-  assert.match(agents, /app\.json` `expo\.extra\.announcement\.url` points to `https:\/\/mist01\.com\/announcement\.json`/);
-  assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to `https:\/\/mist01\.com\/#download`/);
-  assert.match(agents, /website download section exposes the official server direct APK as the primary action and GitHub Release as the backup\/history action/);
+  assert.match(workflow, /`main` is the public branch/);
+  assert.match(workflow, /`local-work` is a local-only branch/);
+  assert.match(workflow, /git push origin main/);
+  assert.match(workflow, /Never merge the full `local-work` branch/);
 });
 
 test('public docs describe privacy screenshots consistently with current behavior', () => {

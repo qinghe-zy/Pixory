@@ -92,6 +92,12 @@ yarn-error.*
 /temp_*
 /patch*.js
 /update-version.js
+/scripts/local/
+
+# Local planning notes
+/task_plan.md
+/findings.md
+/progress.md
 
 # OS metadata
 .DS_Store

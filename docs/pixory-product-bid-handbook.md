@@ -14,9 +14,9 @@
 - 招标书/项目方案：用于说明项目建设目标、技术路线、功能范围、实施方法、交付内容、验收依据和维护机制。
 - 内部更新资料：用于后续版本迭代时持续补充功能变化、实现依据、风险边界和测试记录。
 
-本文档以当前仓库中的源码、配置、页面、服务层、数据库 schema、Android 原生模块和测试文件为主要依据。README、AGENTS、历史计划和说明文档只作为辅助线索；当文档描述与代码不一致时，应优先回到代码和可运行行为重新核验。
+本文档以当前仓库中的源码、配置、页面、服务层、数据库 schema、Android 原生模块和测试文件为主要依据。README、`docs/repository-workflow.md`、本地 AGENTS、历史计划和说明文档只作为辅助线索；当文档描述与代码不一致时，应优先回到代码和可运行行为重新核验。
 
-本文档不会将未实现内容描述为已完成能力；对于已有代码基础但仍可继续演进的方向，会使用“可选能力”“演进方向”“建议扩展”等措辞。
+本文档不会将未实现内容描述为已完成能力；对于已有代码基础但仍可继续演进的方向，会使用“可选能力”“演进方向”“建议扩展”等措辞。仓库公开/本地分支边界以 `docs/repository-workflow.md` 为准。
 
 ---
 
@@ -1070,7 +1070,7 @@ pnpm run acceptance:android
 | Android 原生媒体模块 | `android/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt` |
 | 更新 JSON | `docs/update-version.json` |
 | 公告 JSON | `docs/announcement.json` |
-| 辅助说明，不作为唯一依据 | `README.md`、`AGENTS.md` |
+| 辅助说明，不作为唯一依据 | `README.md`、`docs/repository-workflow.md`、本地 `AGENTS.md` |
 
 ---
 
