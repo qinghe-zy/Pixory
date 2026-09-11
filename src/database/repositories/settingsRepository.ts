@@ -17,7 +17,7 @@ export const AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY = 'aiProviderPromptCacheTtlMs';
 export const DIAGNOSTICS_ENABLED_KEY = 'diagnosticsEnabled';
 export const DIAGNOSTICS_RETENTION_DAYS_KEY = 'diagnosticsRetentionDays';
 export const DIAGNOSTICS_MAX_EVENTS_KEY = 'diagnosticsMaxEvents';
-export const UNCENSORED_MODE_ENABLED_KEY = 'uncensoredModeEnabled';
+
 export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
 export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
 export const MEMORY_MAINTENANCE_MODEL_ID_KEY = 'memoryMaintenanceModelId';
@@ -250,15 +250,6 @@ export const settingsRepository = {
 
   async setDefaultAiProviderId(db: SQLiteDatabase, providerId: string | null): Promise<void> {
     await this.setValue(db, AI_DEFAULT_CHAT_PROVIDER_ID_KEY, providerId);
-  },
-
-  async getUncensoredModeEnabled(db: SQLiteDatabase): Promise<boolean> {
-    const value = await this.getValue(db, UNCENSORED_MODE_ENABLED_KEY);
-    return value === 'true';
-  },
-
-  async setUncensoredModeEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
-    await this.setValue(db, UNCENSORED_MODE_ENABLED_KEY, enabled ? 'true' : 'false');
   },
 
   async getMemoryMaintenanceSettings(db: SQLiteDatabase): Promise<MemoryMaintenanceSettingsRecord> {

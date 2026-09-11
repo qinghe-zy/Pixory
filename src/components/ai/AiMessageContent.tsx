@@ -758,17 +758,6 @@ export function AiMessageContent(props: AiMessageContentProps) {
   let { content } = props;
   const { trailingInline, streaming = false, variant = 'assistant' } = props;
 
-  if (variant === 'assistant') {
-    const fullyGenerated = content
-      .replace(/<sandbox_diagnostic>[\s\S]*?<\/sandbox_diagnostic>\s*/g, '')
-      .replace(/<cognitive_anchor>[\s\S]*?<\/cognitive_anchor>\s*/g, '');
-    if (streaming && /(<sandbox_diagnostic>|<cognitive_anchor>)(?![\s\S]*<\/(sandbox_diagnostic|cognitive_anchor)>)/.test(fullyGenerated)) {
-      content = fullyGenerated.replace(/(<sandbox_diagnostic>|<cognitive_anchor>)[\s\S]*$/, '');
-    } else {
-      content = fullyGenerated;
-    }
-  }
-
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

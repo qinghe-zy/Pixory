@@ -46,7 +46,6 @@ import {
   rollbackThreadContinuityImport as rollbackThreadContinuityImportService,
 } from './aiContinuityImportService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
-import { buildNormalChatPrompt as buildUncensoredNormalChatPrompt, buildMaterialBoundPrompt as buildUncensoredMaterialBoundPrompt } from './promptUncensoredBuilder';
 import { loadCurrentIpCitationSnippet, retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import {
   buildCitationRegistry,
@@ -2458,7 +2457,7 @@ async function buildPromptForThread(
     }] : []),
   ];
 
-  const uncensoredModeEnabled = await runWithDatabaseSpace(thread.space, (db) => settingsRepository.getUncensoredModeEnabled(db));
+  
 
   if (thread.contextType === 'normal') {
     const citationRegistry = buildCitationRegistry(threadMaterialSnippets);
@@ -2467,7 +2466,7 @@ async function buildPromptForThread(
       generationMetrics.context.retrievalSnippetCount = threadMaterialSnippets.length;
       generationMetrics.context.stablePrefixEstimatedTokens = null;
     }
-    const builderFn = uncensoredModeEnabled ? buildUncensoredNormalChatPrompt : buildNormalChatPrompt;
+    const builderFn = buildNormalChatPrompt;
     return {
       prompt: builderFn({
         chatMode,
@@ -2497,7 +2496,7 @@ async function buildPromptForThread(
     generationMetrics.context.stablePrefixEstimatedTokens = null;
   }
 
-  const builderFn = uncensoredModeEnabled ? buildUncensoredMaterialBoundPrompt : buildMaterialBoundPrompt;
+  const builderFn = buildMaterialBoundPrompt;
   return {
     prompt: builderFn({
       chatMode,

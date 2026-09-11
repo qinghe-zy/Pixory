@@ -12,18 +12,14 @@ import { isDeveloperModeEnabled, setDeveloperModeEnabled, useDeveloperMode } fro
 export function DeveloperModeSettingsScreen({ onBack, space }: { onBack: () => void; space: PixorySpace }) {
   const developerMode = useDeveloperMode();
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSettingsRecord>({ enabled: false, retentionDays: 7, maxEvents: 20000 });
-  const [uncensoredMode, setUncensoredMode] = useState<boolean>(false);
+
 
   useEffect(() => {
     let mounted = true;
     void runWithDatabaseSpace(space, async (db) => {
-      const [settings, uncensored] = await Promise.all([
-        settingsRepository.getDiagnosticsSettings(db),
-        settingsRepository.getUncensoredModeEnabled(db),
-      ]);
+      const settings = await settingsRepository.getDiagnosticsSettings(db);
       if (mounted) {
         setDiagnostics(settings);
-        setUncensoredMode(uncensored);
       }
     });
     return () => {
@@ -35,11 +31,6 @@ export function DeveloperModeSettingsScreen({ onBack, space }: { onBack: () => v
     const next = await runWithDatabaseSpace(space, (db) => settingsRepository.updateDiagnosticsSettings(db, { enabled }));
     setDiagnostics(next);
     setDiagnosticsEnabled(space, next.enabled);
-  }
-
-  async function toggleUncensoredMode(enabled: boolean) {
-    await runWithDatabaseSpace(space, (db) => settingsRepository.setUncensoredModeEnabled(db, enabled));
-    setUncensoredMode(enabled);
   }
 
   function confirmDisable() {
@@ -69,16 +60,6 @@ export function DeveloperModeSettingsScreen({ onBack, space }: { onBack: () => v
         <View style={styles.statusRow}>
           <Text style={styles.label}>开发者模式状态</Text>
           <Text style={styles.status}>{developerMode || isDeveloperModeEnabled() ? '已开启' : '已关闭'}</Text>
-        </View>
-        <View style={styles.monitorRow}>
-          <View style={styles.monitorCopy}>
-            <Text style={styles.label}>启用无护栏模式</Text>
-            <Text style={styles.monitorDescription}>极致增强版。开启后，将使用专属沙盒策略隔离默认环境，绕过角色道德审查限制。</Text>
-            <Text style={[styles.monitorStatus, uncensoredMode ? styles.enabledStatus : styles.disabledStatus]}>
-              无护栏模式：{uncensoredMode ? '已开启' : '已关闭'}
-            </Text>
-          </View>
-          <Switch value={uncensoredMode} onValueChange={(enabled) => { void toggleUncensoredMode(enabled); }} />
         </View>
         <View style={styles.monitorRow}>
           <View style={styles.monitorCopy}>
