@@ -1,15 +1,18 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Dependencies
 node_modules/
 
-# Expo
+# Expo and build output
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+/android/
+/ios/
+/output/builds/
+/output/release/
+/output/doc/
 
-# Native
+# Native signing material and generated metadata
 .kotlin/
 *.orig.*
 *.jks
@@ -17,54 +20,80 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.pem
 
-# Metro
+# Metro, package managers, and runtime logs
 .metro-health-check*
-
-# debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
-.codex-logs/
-.codex-expo-android*.log
+*.log
+
+# Local agent, IDE, and worktree metadata
+.codex/
+.codex-*/
 .superpowers/
+.playwright-mcp/
 .worktrees/
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
 .local/
+.idea/
+.vscode/
+**/AGENTS.md
+**/agents.md
+**/.impeccable.md
+
+# Local environment and credentials
+.env*.local
 /credentials.json
-/output/builds/*.apk
-/output/release/*.apk
 
-# Local update logs
-LOCAL_UPDATES_LOG.md
+# Local release/version process documents and generated diagnostics
+/LOCAL_UPDATES_LOG.md
 /版本文档/
+/docs/superpowers/
+/docs/日志/
+/docs/**/drafts/
+/docs/**/internal/
+/docs/**/research/
+/docs/**/plans/
+/docs/**/specs/
+/docs/**/reports/
+/docs/**/analysis/
+/docs/**/diagnostics/
+/docs/**/logs/
+/docs/**/traces/
+/docs/**/snapshots/
 
-# Local resumes and editable document exports
+# Editable document exports and temporary report files
 /*.doc
 /*.docx
 /*.pdf
 /*.rtf
 /*.wps
-/output/doc/
 ~$*.docx
+/*.tmp
+/*.bak
+**/generated-before.txt
 
-# typescript
+# TypeScript and test tooling output (test source files remain tracked)
 *.tsbuildinfo
+/coverage/
+/playwright-report/
+/test-results/
+/.nyc_output/
+/*.lcov
+/test_output.txt
 
-# generated native folders
-/ios
-/android
+# Root-level one-off scripts and scratch files
+/*.py
+/*.sh
+/*.mjs
+/old_home.txt
+/server_new.js
+/temp_*
+/patch*.js
+/update-version.js
 
-# Scratch files
-*.py
-*.txt
-*.sh
-server_new.js
-temp_update.js
+# OS metadata
+.DS_Store
+Thumbs.db
 
