@@ -2,16 +2,16 @@
 
 ## 本地优先的陪伴式 AI 与个人材料工作台
 
-Pixory 是一个 Android-first 的本地优先应用，核心是可以长期继续的 AI 陪伴聊天：角色卡、长线程、记忆、分支对话、IP/知识库材料、可恢复流式生成和 Personal 私密空间共同构成完整体验。
+Pixory 是一个 Android-first 的本地优先应用，陪伴型 AI 聊天为核心：角色卡、长线程、深度记忆、分支对话、IP/知识库材料、可恢复流式生成和 Personal 私密空间共同构成完整体验。
 
 图片、视频、角色头像、AI 文档和 IP 资料库是这套体验的本地材料底座。Pixory 不把它们当成孤立的图库条目，而是让它们可以被整理、检索、引用、备份，并在用户明确授权后参与对话。
 
 ![Pixory preview](docs/assets/og-cover.png)
 
-> 当前稳定基线：2.8.5
+> 当前稳定基线：2.8.5（当前版本 `2.8.5`）
 > 当前功能事实以 [docs/feature-matrix.md](docs/feature-matrix.md) 为准。功能矩阵会明确区分已实现、部分实现、实验/不上线、规划和待验证能力。
 
-[官网与下载](https://mist01.com/#download) · [GitHub Releases](https://github.com/qinghe-zy/Pixory/releases) · [功能矩阵](docs/feature-matrix.md) · [产品使用指南](docs/manual.md) · [仓库工作流](docs/repository-workflow.md)
+[官网与下载](https://mist01.com/#download) · [服务器直下 APK](https://mist01.com/downloads/Pixory-v2.8.5.apk) · [GitHub Releases](https://github.com/qinghe-zy/Pixory/releases) · [GitHub 最新 Release](https://github.com/qinghe-zy/Pixory/releases/latest) · [功能矩阵](docs/feature-matrix.md) · [产品使用指南](docs/manual.md) · [仓库工作流](docs/repository-workflow.md)
 
 ## 为什么是 Pixory
 
@@ -39,7 +39,7 @@ IP、图片、视频、PDF、DOCX、Markdown、TXT 和线程材料可以被组�
 
 | 产品域 | 能力概览 | 当前状态 |
 |---|---|---|
-| AI 陪伴聊天 | 长线程、角色聊天、流式回答、停止、重试、继续、搜索、收藏 | 已实现 |
+| AI 陪伴聊天 | 长线程、角色聊天、流式回答、停止、重试、继续、搜索、收藏；多模型供应商但数据边界清楚 | 已实现 |
 | 角色系统 | 角色卡、首次消息、头像、边界、默认语言、模型偏好、SillyTavern 导入 | 已实现 |
 | 分支对话 | 编辑、重新生成、消息版本、分支路由、主线采用 | 已实现 |
 | 记忆系统 | 作用域、记忆车道、来源、置信度、冲突、过期、撤销 | 已实现，持续治理 |
