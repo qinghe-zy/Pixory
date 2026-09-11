@@ -11,6 +11,12 @@ $nativeBuildDir = Join-Path $appDir ".cxx"
 $packageJsonPath = Join-Path $repoRoot "package.json"
 $gradleWrapper = Join-Path $androidDir "gradlew.bat"
 $versionDocumentWorkflow = Join-Path $PSScriptRoot "version-document-workflow.ps1"
+$releaseHandoff = Join-Path $PSScriptRoot "release-handoff.ps1"
+
+$currentBranch = (& git -C $repoRoot branch --show-current).Trim()
+if ($currentBranch -ne 'main') {
+  throw "打包并自动推送只允许在 main 执行，当前分支为 $currentBranch。请先整理公开提交，再运行打包。"
+}
 
 if (-not $Version) {
   $Version = (Get-Content -Raw -LiteralPath $packageJsonPath | ConvertFrom-Json).version
@@ -79,4 +85,9 @@ if ($LASTEXITCODE -ne 0) {
   throw "Version document finalization failed with exit code $LASTEXITCODE."
 }
 
-Write-Host "Built physical-device release APK: $outputApk"
+& $releaseHandoff -Version $Version -ApkPath $outputApk
+if ($LASTEXITCODE -ne 0) {
+  throw "自动远程发版交接失败，退出码 $LASTEXITCODE。"
+}
+
+Write-Host "Built and published physical-device release APK: $outputApk"

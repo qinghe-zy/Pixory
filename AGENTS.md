@@ -489,6 +489,15 @@ For remote announcements:
 
 ## Repository Branch And Push Safety
 
+### Version Documentation And Release Handoff
+
+- 每个版本迭代开始前，在本地 `local-work` 执行 `scripts/version-document-workflow.ps1 -Action InitializeCycle`，必须生成 `版本文档/当前版本文档/PRD.md`、`TDD.md`、`Test-Report.md`、`Release-Notes-External.md` 和 `Release-Notes-Internal.md`。
+- PRD 是业务规则 SSOT，必须包含正向流程、异常流程、状态机和评审后变更记录；TDD 必须说明架构/时序、性能限流降级、事务一致性、迁移与安全；测试报告必须量化质量并给出发版结论与 Known Issues；发版说明必须分别维护用户版和客服/运营版。
+- 版本内“提交”默认只表示本地 Git commit。`\.githooks/post-commit` 会在 `local-work`/`local/*` 上自动调用 `scripts/version-document-workflow.ps1 -Action AppendUpdate`，把事件追加到当前版本日志和索引；热更新必须调用 `scripts/record-hot-update.ps1 -Summary "..."`。
+- 需求与前文冲突时，先修改 PRD/TDD/测试/发版说明的当前有效内容，再在变更记录中标明旧规则、新规则、原因、影响和知会对象；活动内容不得保留相互矛盾的规则。
+- 打包必须在 `main` 执行 `pnpm release:android`。`scripts/build-android-release.ps1` 负责 clean/build 和文档预检，`scripts/version-document-workflow.ps1` 负责 APK 成功后的归档与下一版本文档初始化，`scripts/release-handoff.ps1` 负责公开提交、tag、GitHub 推送和 GitHub Release 说明/APK 上传。
+- `scripts/release-handoff.ps1` 只读取本版本归档的 `Release-Notes-External.md` 作为 GitHub Release 说明，并要求对外、对内和总版本说明都存在且非空；普通本地 commit 和普通热更新绝不执行 GitHub push。
+
 - `main` is the public branch. It is the only branch that may be pushed to the GitHub `origin` remote for normal project updates.
 - `local-work` and any `local/*` branch are private local branches. They may contain `AGENTS.md`, `.codex/`, `.impeccable.md`, `版本文档/`, `LOCAL_UPDATES_LOG.md`, and `scripts/local/`, but must never be pushed.
 - Keep public and private work in separate commits. A public commit may contain application source, formal tests, `README.md`, `docs/`, release configuration, and other required repository files. A private commit may contain local rules, process documents, one-off tools, and local archives.
