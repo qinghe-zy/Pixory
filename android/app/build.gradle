@@ -151,7 +151,7 @@ android {
 android.applicationVariants.all { variant ->
     if (variant.name == "release") {
         variant.outputs.all {
-            outputFileName = "Pixory-v2.8.4-local-release.apk"
+            outputFileName = "Pixory-v2.8.5-local-release.apk"
         }
     }
 }
