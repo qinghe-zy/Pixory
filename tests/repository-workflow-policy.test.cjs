@@ -25,4 +25,5 @@ test('pre-push hook rejects private branches and non-public remotes', () => {
   assert.match(hook, /git ls-tree -r --name-only/);
   assert.match(hook, /forbidden_paths/);
   assert.match(hook, /拒绝推送/);
+  assert.match(hook, /PIXORY_RELEASE_HANDOFF/);
 });

@@ -58,6 +58,10 @@ test('Android release previews documents before Gradle and finalizes only after 
   assert.match(handoff, /gh @releaseArgs|gh release create/);
   assert.match(handoff, /gh release upload/);
   assert.match(handoff, /PRD\.md/);
+  assert.match(handoff, /GIT_INDEX_FILE/);
+  assert.match(handoff, /commit-tree/);
+  assert.match(handoff, /tag -a \$tag \$commit/);
+  assert.match(handoff, /PIXORY_RELEASE_HANDOFF/);
 });
 
 test('successful finalization archives one flat version and opens the next patch cycle', { skip: process.platform !== 'win32' }, () => {

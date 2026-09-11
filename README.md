@@ -214,7 +214,7 @@ scripts/      检查、基准和发布脚本
 - [功能目录](docs/feature-matrix.md)：按领域查看 Pixory 的能力与入口
 - [仓库工作流](docs/repository-workflow.md)：了解项目协作、发布和文档维护方式
 
-每个版本迭代开始前，先在本地 `local-work` 执行 `scripts/version-document-workflow.ps1 -Action InitializeCycle`，准备 PRD、TDD、Test Report、对外和对内发版说明。版本期间的提交默认只写入本地；本地提交和热更新通过 `scripts/version-document-workflow.ps1 -Action AppendUpdate`、`scripts/record-hot-update.ps1` 追加文档记录。需求冲突时，以 PRD 的当前有效内容为 SSOT，并在变更记录中记录替代关系。只有在 `main` 执行 `pnpm release:android` 才会触发 `scripts/release-handoff.ps1` 自动提交、打标签并推送 GitHub；完整规则见 [仓库工作流](docs/repository-workflow.md)。
+每个版本迭代开始前，先在本地 `local-work` 执行 `scripts/version-document-workflow.ps1 -Action InitializeCycle`，准备 PRD、TDD、Test Report、对外和对内发版说明。版本期间的提交默认只写入本地；本地提交和热更新通过 `scripts/version-document-workflow.ps1 -Action AppendUpdate`、`scripts/record-hot-update.ps1` 追加文档记录。需求冲突时，以 PRD 的当前有效内容为 SSOT，并在变更记录中记录替代关系。在 `local-work`（或 `main`）执行 `pnpm release:android` 才会触发 `scripts/release-handoff.ps1`：它只把公开文件生成到 `main` 的 release commit，打标签并推送 GitHub，绝不推送 `local-work`；完整规则见 [仓库工作流](docs/repository-workflow.md)。
 
 ## 反馈与交流
 

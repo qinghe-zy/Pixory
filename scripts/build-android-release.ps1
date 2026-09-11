@@ -14,8 +14,8 @@ $versionDocumentWorkflow = Join-Path $PSScriptRoot "version-document-workflow.ps
 $releaseHandoff = Join-Path $PSScriptRoot "release-handoff.ps1"
 
 $currentBranch = (& git -C $repoRoot branch --show-current).Trim()
-if ($currentBranch -ne 'main') {
-  throw "打包并自动推送只允许在 main 执行，当前分支为 $currentBranch。请先整理公开提交，再运行打包。"
+if ($currentBranch -notin @('local-work', 'main')) {
+  throw "打包只允许在 local-work 或 main 执行，当前分支为 $currentBranch。请回到版本开发分支。"
 }
 
 if (-not $Version) {

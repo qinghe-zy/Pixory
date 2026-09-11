@@ -22,14 +22,14 @@ Generated runtime files still belong in ignored local storage such as `.local/ar
 4. Before an iteration starts, run `scripts/version-document-workflow.ps1 -Action InitializeCycle` to create the required PRD, TDD, Test Report, external release notes, and internal release notes templates.
 5. For each requirement or hot update, run `scripts/version-document-workflow.ps1 -Action AppendUpdate` or `scripts/record-hot-update.ps1 -Summary "..."`. Resolve conflicts by updating the current-valid section and recording the replacement in the change record.
 6. Run `scripts/version-document-workflow.ps1 -Action ValidateCurrent` before packaging. `PreviewRelease` repeats this validation.
-7. Switch to `main` before publishing and inspect `git diff --name-only origin/main..HEAD`.
-8. Run `pnpm release:android` only on `main`. It performs Gradle clean/build, archives the current version documents, creates the next current-document set, then invokes `scripts/release-handoff.ps1` to commit public files, create the version tag, and push GitHub.
+7. Before packaging, inspect `git diff --name-only refs/heads/main` from `local-work`; do not merge the private branch into `main`.
+8. Run `pnpm release:android` on `local-work` (or `main`). It performs Gradle clean/build, archives the current version documents, creates the next current-document set, then `scripts/release-handoff.ps1` builds a temporary public index from `main`, creates the release commit on `main`, creates the version tag, and pushes GitHub. The private `local-work` branch is never pushed.
 9. Push routine work only with `git push origin main`.
 10. Never merge the full `local-work` branch into `main`, push `local-work`, use `git push --all`, use `git push --mirror`, bypass the pre-push hook, or push routine work to `gitee`.
-11. Push release tags only from `main` after the release workflow succeeds.
-12. Return to `local-work` after the public push.
+11. Do not manually push release tags; `release-handoff.ps1` creates the tag on the generated public `main` commit and pushes it as part of packaging.
+12. After the public push, keep developing on `local-work`; the handoff does not fast-forward or merge that private branch.
 
-The repository pre-push hook enforces this boundary by allowing only `main -> main` and version tags to `origin`, while rejecting private branches and other remotes.
+The repository pre-push hook enforces this boundary by allowing only `main -> main` and version tags to `origin`; it rejects private branches unless `release-handoff.ps1` has set its packaging-only handoff token.
 
 ## File Layout
 

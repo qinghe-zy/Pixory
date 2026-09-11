@@ -12,10 +12,10 @@ pnpm release:android
 
 执行链路：
 
-1. `build-android-release.ps1` 检查 `main`、预检当前版本文档、执行 Gradle clean 和 release 构建。
+1. `build-android-release.ps1` 检查当前分支为 `local-work` 或 `main`、预检当前版本文档、执行 Gradle clean 和 release 构建。
 2. `version-document-workflow.ps1 -Action FinalizeRelease` 校验并归档当前版本的 PRD、TDD、Test Report、对外/对内发版说明，然后新建下一版本当前文档集合。
 3. `version-document-workflow.ps1` 在归档前以当前版本 `PRD.md` 为唯一业务规则源，同步更新根目录公开总 PRD，并维护其中的版本路线图；根目录 `PRD.md` 会随公开 release commit 进入 GitHub。
-4. `release-handoff.ps1` 只暂存公开路径，自动创建 release commit 和版本 tag，推送 `origin/main` 与 tag，并用本版本 `Release-Notes-External.md` 创建或更新 GitHub Release、上传 APK。
+4. `release-handoff.ps1` 可由 `local-work` 或 `main` 触发；它通过临时 Git index 只暂存公开路径，基于 `main` 生成 release commit 和版本 tag，推送 `origin/main` 与 tag，并用本版本 `Release-Notes-External.md` 创建或更新 GitHub Release、上传 APK。它不会推送 `local-work`。
 
 打包前必须确认：
 
