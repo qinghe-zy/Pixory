@@ -1,10 +1,14 @@
 param(
-  [ValidateSet('Status', 'PreviewRelease', 'FinalizeRelease', 'MigrateLegacy')]
+  [ValidateSet('Status', 'InitializeCycle', 'AppendUpdate', 'ValidateCurrent', 'PreviewRelease', 'FinalizeRelease', 'MigrateLegacy')]
   [string]$Action = 'Status',
   [string]$ReleasedVersion = '',
   [string]$ApkPath = '',
   [string]$Commit = '',
   [string]$Tag = '',
+  [ValidateSet('LocalCommit', 'HotUpdate', 'Manual')]
+  [string]$EventType = 'Manual',
+  [string]$Summary = '',
+  [string]$SourceCommit = '',
   [string]$RepositoryRoot = '',
   [switch]$ApplyMigration
 )
@@ -44,6 +48,15 @@ $todoDir = Join-Path $versionRoot '待办'
 $rangePath = Join-Path $currentDir '版本区间.json'
 $currentIndexPath = Join-Path $currentDir '版本过程索引.md'
 $localUpdatesPath = Join-Path $repoRoot 'LOCAL_UPDATES_LOG.md'
+$rootPrdPath = Join-Path $repoRoot 'PRD.md'
+
+$requiredDocuments = @(
+  [pscustomobject]@{ Name = 'PRD.md'; Title = '产品需求文档（PRD）'; Purpose = '定义本次迭代做什么、业务规则、异常流程和状态机。' },
+  [pscustomobject]@{ Name = 'TDD.md'; Title = '技术设计文档（TDD）'; Purpose = '定义针对 PRD 的架构、实现、性能、安全和迁移方案。' },
+  [pscustomobject]@{ Name = 'Test-Report.md'; Title = '测试报告（Test Report）'; Purpose = '记录发版前的量化质量结论、遗留缺陷和已知风险。' },
+  [pscustomobject]@{ Name = 'Release-Notes-External.md'; Title = '对外发版说明'; Purpose = '用用户能理解的语言描述本次更新。' },
+  [pscustomobject]@{ Name = 'Release-Notes-Internal.md'; Title = '对内发版说明'; Purpose = '记录客服、运营影响、迁移风险和应对话术。' }
+)
 
 function Assert-PathUnderVersionRoot([string]$Path) {
   $fullPath = [System.IO.Path]::GetFullPath($Path)
@@ -79,17 +92,214 @@ function Get-CurrentDocumentFiles {
   return @(Get-ChildItem -LiteralPath $currentDir -File -Force | Sort-Object Name)
 }
 
+function Get-RequiredDocumentPaths {
+  return @($requiredDocuments | ForEach-Object { Join-Path $currentDir $_.Name })
+}
+
+function New-RequiredDocument([pscustomobject]$Definition, [string]$FromVersion, [string]$ToVersion) {
+  $path = Join-Path $currentDir $Definition.Name
+  if (Test-Path -LiteralPath $path -PathType Leaf) { return }
+  $common = @"
+# Pixory $FromVersion → $ToVersion $($Definition.Title)
+
+> 定位：$($Definition.Purpose)
+> 本文件属于当前迭代的持续文档。每次本地提交和热更新都必须通过 `scripts/version-document-workflow.ps1 -Action AppendUpdate` 追加记录；需求冲突时，必须先修订本文档并在“变更记录”中标明替代关系。
+
+## 当前有效内容
+
+待补充。这里仅保留当前有效规则；被替代的旧内容必须移入变更记录，不得与当前规则并列。
+
+## 变更记录
+<!-- PIXORY_CHANGE_RECORD -->
+
+| 时间 | 事件 | 来源提交/更新 | 变更 | 影响与知会 |
+| --- | --- | --- | --- | --- |
+| $((Get-Date).ToString('yyyy-MM-dd')) | 初始化 | - | 创建本版本文档 | 待评审 |
+"@
+  $specific = switch ($Definition.Name) {
+    'PRD.md' { @"
+
+## 业务范围与规则
+
+### 正向流程
+
+待补充。
+
+### 异常流程
+
+至少覆盖断网、请求报错、数据为空、重复操作、权限不足和恢复/重试路径。
+
+### 状态机
+
+用文字或 Mermaid 明确状态、事件、守卫、动作和终态。
+
+### 评审后需求变更
+
+所有评审后修改必须高亮记录，说明旧规则、新规则、原因、影响和已知会的干系人。
+"@ }
+    'TDD.md' { @"
+
+## 技术方案
+
+### 架构与时序
+
+必要时补充架构图和系统时序图，说明模块边界与交互。
+
+### 性能与安全评估
+
+明确高并发限流/降级、事务一致性、失败恢复、数据脱敏和敏感信息边界。
+
+### 数据库与迁移
+
+如涉及表结构，引用或补充 `DB-Schema.md`，说明迁移、回滚和兼容窗口。
+"@ }
+    'Test-Report.md' { @"
+
+## 质量指标
+
+- 用例执行率：待填写
+- Bug 遗留率：待填写
+- 严重级别 Bug 分布：待填写
+
+## 发布结论
+
+结论：待评审（是否同意发版：是/否）。
+
+## Known Issues
+
+暂无，或明确列出带病上线风险、影响范围和规避方式。
+"@ }
+    'Release-Notes-External.md' { @"
+
+## 用户版
+
+使用非专业术语描述用户能感知的变化、收益、限制和升级注意事项。
+"@ }
+    'Release-Notes-Internal.md' { @"
+
+## 客服与运营版
+
+记录可能引起客诉的变化、旧数据迁移影响、FAQ、应对话术和升级路径。
+"@ }
+  }
+  Write-Utf8File $path ($common + $specific + "`n")
+}
+
+function Ensure-RequiredDocuments([string]$FromVersion, [string]$ToVersion) {
+  foreach ($definition in $requiredDocuments) {
+    New-RequiredDocument $definition $FromVersion $ToVersion
+  }
+}
+
+function New-RoadmapSection([string]$ReleasedVersion, [string]$NextVersion, [string]$ExistingSection = '') {
+  $preserved = $ExistingSection.Trim()
+  if ($preserved -match '(?ms)^### 维护状态\s*.*?(?=^### |\z)') {
+    $preserved = [regex]::Replace($preserved, '(?ms)^### 维护状态\s*.*?(?=^### |\z)', '').Trim()
+  }
+  if (-not $preserved) {
+    $preserved = '- 待根据本版本 PRD、TDD、Test Report 和评审结论补充具体路线项。'
+  }
+  return @"
+## 13. 版本路线图
+<!-- PIXORY_ROADMAP_START -->
+### 维护状态
+
+- 已归档版本：v$ReleasedVersion
+- 当前后续迭代：v$NextVersion
+- 维护来源：当前版本 PRD、TDD、Test Report、功能矩阵和评审变更记录
+
+### 路线内容
+
+$preserved
+
+### 更新规则
+
+- 每次版本迭代和评审后需求变更都要更新本节，不能只追加重复描述。
+- 当前有效路线必须与 PRD 的当前有效内容一致；被替代路线移入变更记录或明确标记为历史。
+<!-- PIXORY_ROADMAP_END -->
+"@
+}
+
+function Sync-RootProductRequirements([string]$Version, [string]$NextVersion) {
+  $sourcePath = Join-Path $currentDir 'PRD.md'
+  if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+    throw "缺少本版本 PRD，无法更新根目录总 PRD：$sourcePath"
+  }
+  $source = (Get-Content -Raw -LiteralPath $sourcePath).Trim()
+  $hasStructuredPrd = ($source -match '## 当前有效内容') -or
+    (($source -match '## 0\.') -and ($source -match '### 0\.2') -and ($source -match '## 1\.'))
+  if ($source.Length -lt 200 -or $source -notmatch '产品需求文档|PRD' -or -not $hasStructuredPrd) {
+    throw "本版本 PRD 结构不完整，拒绝覆盖根目录 PRD：$sourcePath"
+  }
+  $existingRoadmap = ''
+  if (Test-Path -LiteralPath $rootPrdPath -PathType Leaf) {
+    $root = Get-Content -Raw -LiteralPath $rootPrdPath
+    $match = [regex]::Match($root, '(?ms)## \d+\. 版本路线图\s*<!-- PIXORY_ROADMAP_START -->(?<body>.*?)<!-- PIXORY_ROADMAP_END -->')
+    if ($match.Success) { $existingRoadmap = $match.Groups['body'].Value }
+  }
+  $source = [regex]::Replace($source, '(?ms)\r?\n## \d+\. 版本路线图\s*<!-- PIXORY_ROADMAP_START -->.*?<!-- PIXORY_ROADMAP_END -->\s*$', '')
+  $roadmap = New-RoadmapSection $Version $NextVersion $existingRoadmap
+  Write-Utf8File $rootPrdPath ($source.TrimEnd() + "`n`n" + $roadmap.Trim() + "`n")
+  return $rootPrdPath
+}
+
+function Assert-CurrentDocumentsValid {
+  $range = Read-VersionRange
+  Ensure-RequiredDocuments $range.FromVersion $range.ToVersion
+  $missing = @(Get-RequiredDocumentPaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+  if ($missing.Count -gt 0) { throw "缺少本版本必需文档：$($missing -join ', ')" }
+  foreach ($path in Get-RequiredDocumentPaths) {
+    $content = Get-Content -Raw -LiteralPath $path
+    $isPrd = ([System.IO.Path]::GetFileName($path) -eq 'PRD.md')
+    $hasPrdStructure = $isPrd -and ($content -match '## 0\.') -and ($content -match '### 0\.2') -and ($content -match '## 1\.')
+    $hasCurrentSection = $content -match '## 当前有效内容'
+    $hasChangeSection = $content.Contains('<!-- PIXORY_CHANGE_RECORD -->') -or $content -match '## 变更记录'
+    $invalid = $false
+    if (-not $isPrd -and -not $hasCurrentSection) {
+      $invalid = $true
+    }
+    if (-not $hasChangeSection -and -not $isPrd) { $invalid = $true }
+    if ($invalid) {
+      throw "文档缺少当前有效内容或变更记录区块：$path"
+    }
+  }
+  return $range
+}
+
+function Append-VersionUpdate {
+  Ensure-LocalDirectories
+  $range = Assert-CurrentDocumentsValid
+  $commit = if ($SourceCommit) { $SourceCommit } else { Resolve-GitValue @('rev-parse', 'HEAD') '未记录' }
+  $summaryValue = if ($Summary) { $Summary.Trim() } elseif ($EventType -eq 'HotUpdate') { '热更新变更' } elseif ($EventType -eq 'LocalCommit') { '本地提交变更' } else { '版本过程变更' }
+  $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz'
+  $entry = @"
+
+### $stamp · $EventType
+
+- 来源提交/更新：$commit
+- 变更摘要：$summaryValue
+- 文档规则：如与既有需求冲突，先更新 PRD/TDD/测试/发布说明的“当前有效内容”，再在“变更记录”标注替代关系并知会干系人。
+"@
+  Append-Utf8File $localUpdatesPath $entry
+  Append-Utf8File $currentIndexPath $entry
+  Write-Host "已追加版本文档事件：$EventType / $commit"
+}
+
 function Resolve-GitValue([string[]]$Arguments, [string]$Fallback) {
-  $value = (& git -C $repoRoot @Arguments 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -ne 0 -or -not $value) {
+  try {
+    $value = (& git -C $repoRoot @Arguments 2>$null | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0 -or -not $value) {
+      return $Fallback
+    }
+    return ([string]$value).Trim()
+  } catch {
     return $Fallback
   }
-  return ([string]$value).Trim()
 }
 
 function Show-ReleasePlan([string]$Version) {
   Ensure-LocalDirectories
-  $range = Read-VersionRange
+  $range = Assert-CurrentDocumentsValid
   $version = Normalize-Version $Version
   $historyTarget = Join-Path $historyRoot "v$version"
   $releaseNoteTarget = Join-Path $releaseNotesDir "Pixory-v$version-版本更新说明.md"
@@ -147,7 +357,7 @@ function New-CurrentVersionFiles([string]$FromVersion) {
 
 ## 当前文档
 
-当前尚无过程文档。只有用户明确要求写入本版本的 Spec、Plan、Review、规划、算法或调研才添加到这里。
+当前尚无过程文档。必需文档为 PRD、TDD、Test Report、对外发版说明和对内发版说明；只有用户明确要求写入本版本的其他 Spec、Plan、Review、规划、算法或调研才添加到这里。
 
 ## 最终发布信息
 
@@ -172,6 +382,7 @@ function New-CurrentVersionFiles([string]$FromVersion) {
 
 尚未发布。只有 v$to APK 成功生成后才能写入最终版本、提交、标签、时间、验证和产物路径。
 "@
+  Ensure-RequiredDocuments $from $to
 }
 
 function Finalize-Release([string]$Version) {
@@ -185,6 +396,9 @@ function Finalize-Release([string]$Version) {
   $releaseNoteTarget = Join-Path $releaseNotesDir "Pixory-v$version-版本更新说明.md"
   Assert-PathUnderVersionRoot (Join-Path $historyTarget '.path-check')
   Assert-PathUnderVersionRoot $releaseNoteTarget
+
+  $rootPrdBackup = if (Test-Path -LiteralPath $rootPrdPath -PathType Leaf) { Get-Content -Raw -LiteralPath $rootPrdPath } else { $null }
+  Sync-RootProductRequirements $version (Get-NextPatchVersion $version) | Out-Null
 
   if (-not $Commit) { $script:Commit = Resolve-GitValue @('rev-parse', 'HEAD') '未记录' }
   if (-not $Tag) { $script:Tag = Resolve-GitValue @('tag', '--points-at', 'HEAD') '未创建' }
@@ -242,6 +456,11 @@ function Finalize-Release([string]$Version) {
       if (Test-Path -LiteralPath $path) {
         Write-Utf8File $path $originalContents[$path]
       }
+    }
+    if ($null -eq $rootPrdBackup) {
+      if (Test-Path -LiteralPath $rootPrdPath) { Remove-Item -LiteralPath $rootPrdPath -Force }
+    } else {
+      Write-Utf8File $rootPrdPath $rootPrdBackup
     }
     throw $archiveError
   }
@@ -369,12 +588,25 @@ $rows
 switch ($Action) {
   'Status' {
     Ensure-LocalDirectories
-    $range = Read-VersionRange
+    $range = Assert-CurrentDocumentsValid
     Write-Host "当前版本文档区间：v$($range.FromVersion) → v$($range.ToVersion)"
     Write-Host "当前版本文档：$((Get-CurrentDocumentFiles).Count) 个文件"
     Write-Host "历史版本目录：$(@(Get-ChildItem -LiteralPath $historyRoot -Directory).Count) 个"
     Write-Host "版本更新说明：$(@(Get-ChildItem -LiteralPath $releaseNotesDir -File).Count) 个"
     Write-Host "待办文件：$(@(Get-ChildItem -LiteralPath $todoDir -File).Count) 个"
+  }
+  'InitializeCycle' {
+    Ensure-LocalDirectories
+    $range = Read-VersionRange
+    Ensure-RequiredDocuments $range.FromVersion $range.ToVersion
+    Write-Host "已初始化 v$($range.FromVersion) → v$($range.ToVersion) 的必需版本文档：$($requiredDocuments.Name -join ', ')"
+  }
+  'ValidateCurrent' {
+    $range = Assert-CurrentDocumentsValid
+    Write-Host "当前版本文档校验通过：v$($range.FromVersion) → v$($range.ToVersion)"
+  }
+  'AppendUpdate' {
+    Append-VersionUpdate
   }
   'PreviewRelease' {
     if (-not $ReleasedVersion) { throw 'PreviewRelease 必须提供 -ReleasedVersion。' }

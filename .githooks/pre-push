@@ -11,8 +11,10 @@ fi
 
 case "$branch" in
   local-work|local/*)
-    echo "拒绝推送：$branch 是本地私有分支。请切换到 main 后再推送。" >&2
-    exit 1
+    if [ "${PIXORY_RELEASE_HANDOFF:-}" != "1" ]; then
+      echo "拒绝推送：$branch 是本地私有分支。仅允许由打包交接脚本临时放行公开提交。" >&2
+      exit 1
+    fi
     ;;
 esac
 

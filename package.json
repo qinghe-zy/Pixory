@@ -14,7 +14,8 @@
     "bench:media-db": "node scripts/benchmark-media-database-performance.cjs",
     "doctor": "expo install --check",
     "acceptance:android": "expo start --android -c",
-    "release:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android-release.ps1"
+    "release:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android-release.ps1",
+    "version:update:hot": "powershell -ExecutionPolicy Bypass -File scripts/record-hot-update.ps1"
   },
   "dependencies": {
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
