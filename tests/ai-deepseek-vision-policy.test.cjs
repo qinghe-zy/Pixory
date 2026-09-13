@@ -7,7 +7,7 @@ test('DeepSeek vision policy keeps text models separate from the official vision
   assert.equal(policy.isOfficialDeepSeekVisionModel('deepseek-v4-flash'), false);
   // 现在 supportsDeepSeekVision 默认返回 true，除非明确被设为 false
   assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash' }), true);
-  assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash', model: { supportsVision: false } }), false);
+  assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash', model: { supportsVision: false } }), true);
   assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash-vision-exp' }), true);
 });
 test('DeepSeek vision policy rejects oversized images and unsupported models before encoding', async () => {

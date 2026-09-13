@@ -17,7 +17,8 @@ export function isOfficialDeepSeekVisionModel(modelId: string | null | undefined
 export function supportsDeepSeekVision(input: { modelId: string; model?: Pick<AiProviderModelRecord, 'supportsVision'> | null }): boolean {
   // 遵循“让模型自身判断”的原则，不对 DeepSeek 模型进行严格的前端白名单拦截，
   // 允许所有 DeepSeek 模型尝试接收图片，由服务端点决定是否支持并返回报错。
-  if (input.model?.supportsVision === false) return false; // 如果用户显式关闭，则尊重用户设置
+  // 注意：因为同步新模型时数据库默认 `supportsVision: false`，这里必须无条件返回 true，
+  // 否则新模型会被错误判定为不支持视觉而走文字 fallback 拦截逻辑。
   return true;
 }
 
