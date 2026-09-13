@@ -359,6 +359,7 @@ Before packaging or writing release notes, review `docs/feature-matrix.md` again
 ## Local Version Documentation Workflow
 
 - `docs/feature-matrix.md` is the only feature matrix and always describes the latest repository state. Keep it in Git; do not create version snapshots.
+- Every time you create a local Git commit or push a hot update (EAS update), you must synchronously update the current version documentation (e.g., `PRD.md`, `TDD.md`, `Test-Report.md`, `Release-Notes`) inside the `版本文档/当前版本文档/` directory according to software engineering standards, properly logging the code changes, reasons, and impacts.
 - `LOCAL_UPDATES_LOG.md` records the current released-version → target-version interval in Chinese. Keep it at the repository root for the active cycle, but never track it in Git.
 - Keep all Spec, Plan, Review, planning, algorithm, research, and other version-process documents under the local ignored `版本文档/` tree instead of Git:
   - `当前版本文档/`: direct files for the active version only; no nested folders.
