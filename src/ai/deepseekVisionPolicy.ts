@@ -15,11 +15,14 @@ export function isOfficialDeepSeekVisionModel(modelId: string | null | undefined
 }
 
 export function supportsDeepSeekVision(input: { modelId: string; model?: Pick<AiProviderModelRecord, 'supportsVision'> | null }): boolean {
-  return isOfficialDeepSeekVisionModel(input.modelId) || input.model?.supportsVision === true;
+  // 遵循“让模型自身判断”的原则，不对 DeepSeek 模型进行严格的前端白名单拦截，
+  // 允许所有 DeepSeek 模型尝试接收图片，由服务端点决定是否支持并返回报错。
+  if (input.model?.supportsVision === false) return false; // 如果用户显式关闭，则尊重用户设置
+  return true;
 }
 
 export function assertDeepSeekVisionRequest(input: { modelId: string; model?: Pick<AiProviderModelRecord, 'supportsVision'> | null; imageSizes: number[]; requestBodyBytes?: number }): void {
-  if (!supportsDeepSeekVision(input)) throw new Error('当前 DeepSeek 模型不支持图片，请切换到 deepseek-v4-flash-vision-exp。');
+  // 不再抛出“当前 DeepSeek 模型不支持图片”的错误，交由后端处理
   if (input.imageSizes.some((size) => !Number.isFinite(size) || size < 0 || size > DEEPSEEK_VISION_SINGLE_IMAGE_LIMIT_BYTES)) throw new Error('图片超过 DeepSeek 视觉模型单图 32 MiB 限制。');
   if (typeof input.requestBodyBytes === 'number' && input.requestBodyBytes > DEEPSEEK_VISION_INLINE_BODY_LIMIT_BYTES) throw new Error('图片请求超过 DeepSeek 视觉模型 48 MiB 请求体限制。');
 }
