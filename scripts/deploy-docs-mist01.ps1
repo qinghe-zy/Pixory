@@ -19,6 +19,17 @@ $remoteRoot = "/var/www/$HostName/html"
 $remoteApkTemp = "/tmp/pixory-latest.apk"
 $remoteApkFile = ""
 
+Copy-Item -Path "$repoRoot\README.md" -Destination "$docsDir\README.md" -Force
+$r = Get-Content "$docsDir\README.md" -Raw
+$r = $r -replace '(?m)^.*\[官网与下载\].*??
+', ''
+$r = $r -replace '(?m)^.*官网下载区.*??
+', "1. 直接安装使用。
+"
+$r = $r -replace '\]\(docs/manual\.md\)', '](?doc=manual)'
+$r = $r -replace '\]\(docs/pixory-product-bid-handbook\.md\)', '](?doc=handbook)'
+$r = $r -replace '\]\(docs/features\.md\)', '](?doc=feature)'
+Set-Content "$docsDir\README.md" $r -Encoding UTF8
 if (-not (Test-Path -LiteralPath $docsDir)) {
   throw "Docs directory not found: $docsDir"
 }
@@ -77,3 +88,8 @@ Write-Host "Deployed docs to https://$HostName/"
 if ($ApkPath) {
   Write-Host "Deployed latest APK to https://$HostName/downloads/$remoteApkFile"
 }
+
+
+
+
+

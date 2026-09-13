@@ -412,6 +412,7 @@ Default release workflow:
    - `docs/download.html`
    - `docs/updates.html`
    - `docs/sitemap.xml`
+   - `docs/manual.html` (官网阅读文档下拉卡片的版本号)
    - `LOCAL_UPDATES_LOG.md` (Update the current release interval in Chinese. Final Version, Release Time, Commit/Tag, and APK are written by the local version-document finalization step after the APK succeeds; this file stays outside Git).
    - local Android Gradle release fields/output name when present
    - Expo `runtimeVersion` and Android `expo_runtime_version` (CRITICAL: Update `<string name="expo_runtime_version">` in `android/app/src/main/res/values/strings.xml`)
@@ -541,3 +542,4 @@ Pixory should stay focused on:
  # #   P r o b l e m   R e c o r d 
  -   2 0 2 6 - 0 7 :   T h e   A n d r o i d   A P K   b u n d l e d   a   s t a l e   J a v a s c r i p t   p a y l o a d   b e c a u s e   \ . \ g r a d l e w . b a t   c l e a n \   w a s   n o t   r u n   b e f o r e   \  s s e m b l e R e l e a s e \ .   T h i s   c a u s e d   u s e r s   d o w n l o a d i n g   t h e   A P K   d i r e c t l y   t o   g e t   a n   o l d   U I   v e r s i o n   ( 2 . 6 . 0 )   d e s p i t e   t h e   n a t i v e   v e r s i o n   s t r i n g   s a y i n g   2 . 6 . 1 .   T o   f i x   t h i s ,   a l w a y s   c l e a n   t h e   g r a d l e   p r o j e c t   b e f o r e   p a c k a g i n g .  
  
+

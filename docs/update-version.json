@@ -1,5 +1,5 @@
 {
-  "version": "2.8.5",
+  "version": "2.8.6",
   "versionCode": 284,
   "enabled": true,
   "forceUpdate": false,
@@ -11,7 +11,7 @@
     "💬 聊天体验提升：发送图文时图片立即可见，支持长按彻底删除失败梦境卡片，临时会话支持一键保存为新角色卡",
     "⚡ 稳定性与细节：优化素材列表长按响应防误触，修复新安装数据库初始化崩溃及 DeepSeek 识图模型白名单"
   ],
-  "latestVersion": "2.8.5",
+  "latestVersion": "2.8.6",
   "latestVersionCode": 284,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 安全重构：隐私空间全新安全设置与自定义恢复密钥；2. 视觉优化：页面背景图自适应宽屏；3. 聊天与交互：图文即时显示、长按删除失败梦境、列表长按防误触；4. 修复：数据库初始化崩溃与 DeepSeek 识图模型支持。",

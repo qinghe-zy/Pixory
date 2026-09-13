@@ -8,7 +8,6 @@ Pixory 是一款 Android 优先的本地陪伴式 AI 应用。
 
 ![Pixory 预览](docs/assets/og-cover.png)
 
-[官网与下载](https://mist01.com/#download) · [GitHub Releases](https://github.com/qinghe-zy/Pixory/releases) · [产品使用指南](docs/manual.md) · [产品手册](docs/pixory-product-bid-handbook.md)
 
 ## 你可以怎样使用 Pixory
 
@@ -209,7 +208,7 @@ AI 聊天时，应用会根据你选择的角色、聊天、记忆和资料整�
 
 ### 安装步骤
 
-1. 从[官网下载区](https://mist01.com/#download)获取安装包。
+1. 直接安装使用。
 2. 在 Android 设备上完成安装。
 3. 首次导入图片、视频或文档时，根据系统提示选择所需权限。
 4. 在设置中添加模型服务和对应密钥。
@@ -254,9 +253,9 @@ scripts/      检查、基准和发布脚本
 
 ## 文档入口
 
-- [产品使用指南](docs/manual.md)：从安装到日常使用的完整说明
-- [产品手册](docs/pixory-product-bid-handbook.md)：产品理念、用户场景和功能介绍
-- [功能清单](docs/features.md)：查看 Pixory 的底层能力与产品特性说明
+- [产品使用指南](?doc=manual)：从安装到日常使用的完整说明
+- [产品手册](?doc=handbook)：产品理念、用户场景和功能介绍
+- [功能清单](?doc=feature)：查看 Pixory 的底层能力与产品特性说明
 
 ## 反馈与交流
 
@@ -265,6 +264,7 @@ scripts/      检查、基准和发布脚本
 ---
 
 Pixory 让角色、记忆、故事和资料彼此相连，也让每一次回来都能找到继续前进的地方。
+
 
 
 
