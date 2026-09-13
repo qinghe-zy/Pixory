@@ -466,9 +466,12 @@
       align-items: center;
       justify-content: center;
       color: var(--ink);
+      -webkit-tap-highlight-color: transparent;
     }
-    .switcher-trigger:hover {
-      background: rgba(0,0,0,0.05);
+    @media (hover: hover) {
+      .switcher-trigger:hover {
+        background: rgba(0,0,0,0.05);
+      }
     }
     .switcher-trigger svg {
       position: absolute;
