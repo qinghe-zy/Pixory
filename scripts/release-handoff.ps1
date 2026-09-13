@@ -36,28 +36,28 @@ if ($LASTEXITCODE -ne 0) { throw 'GitHub CLI 未登录，无法安全执行远�
 
 function Test-PublicPath {
   param([string]$Path)
+  $Path = $Path.Replace('\', '/')
   if ($Path -eq 'PRD.md') { return $true }
   return $Path -notmatch '(^|/)(AGENTS\.md|\.codex/|\.impeccable\.md$|LOCAL_UPDATES_LOG\.md$|版本文档/|scripts/local/|\.local/|task_plan\.md$|findings\.md$|progress\.md$)'
 }
 $mainOid = (& git -C $repoRoot rev-parse refs/heads/main).Trim()
-$changedPaths = @((& git -C $repoRoot diff --name-only refs/heads/main 2>$null), (& git -C $repoRoot ls-files --others --exclude-standard 2>$null)) |
-  Where-Object { $_ -and (Test-PublicPath $_) } | Sort-Object -Unique
 $tempIndex = Join-Path $repoRoot ".local\release-index-$PID"
+$pathspecPath = Join-Path $repoRoot ".local\release-pathspec-$PID"
 $oldIndex = $env:GIT_INDEX_FILE
 try {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $tempIndex) -Force | Out-Null
+  Remove-Item -LiteralPath $pathspecPath -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Path (Split-Path -Parent $tempIndex) -Force | Out-Null
   $env:GIT_INDEX_FILE = $tempIndex
   Remove-Item -LiteralPath $tempIndex -Force -ErrorAction SilentlyContinue
   & git -C $repoRoot read-tree refs/heads/main
   if ($LASTEXITCODE -ne 0) { throw '读取 main 公开基线失败。' }
-  if ($changedPaths.Count -gt 0) {
-    & git -C $repoRoot add -u -- $changedPaths
-    if ($LASTEXITCODE -ne 0) { throw '公开发布文件更新暂存失败。' }
-    $existingPaths = @($changedPaths | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
-    if ($existingPaths.Count -gt 0) {
-      & git -C $repoRoot add -- $existingPaths
-      if ($LASTEXITCODE -ne 0) { throw '公开发布新增文件暂存失败。' }
-    }
+  & git -C $repoRoot add -A
+  if ($LASTEXITCODE -ne 0) { throw '公开发布文件暂存失败。' }
+  $privateStaged = @(& git -C $repoRoot diff --cached --name-only | Where-Object { -not (Test-PublicPath $_) })
+  foreach ($privatePath in $privateStaged) {
+    & git -C $repoRoot update-index --force-remove -- $privatePath
+    if ($LASTEXITCODE -ne 0) { throw "从公开索引移除私有路径失败：$privatePath" }
   }
   $staged = @(& git -C $repoRoot diff --cached --name-only)
   $forbidden = @($staged | Where-Object { -not (Test-PublicPath $_) })
@@ -67,6 +67,7 @@ try {
 } finally {
   if ($oldIndex) { $env:GIT_INDEX_FILE = $oldIndex } else { Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath $tempIndex -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $pathspecPath -Force -ErrorAction SilentlyContinue
 }
 
 $body = @"

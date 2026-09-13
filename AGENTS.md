@@ -416,6 +416,7 @@ Default release workflow:
    - local Android Gradle release fields/output name when present
    - Expo `runtimeVersion` and Android `expo_runtime_version` (CRITICAL: Update `<string name="expo_runtime_version">` in `android/app/src/main/res/values/strings.xml`)
 5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, the About screen fallback/current version text, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
+   - **CRITICAL**: You MUST synchronously update the content, version numbers, and dates inside all specification documents in `版本文档/当前版本文档/` (including `PRD.md`, `TDD.md`, `Test-Report.md`, `Release-Notes-External.md`, `Release-Notes-Internal.md`). Do not let them hold outdated versions or dates.
    - Do not delete durable project documentation such as `README.md`, `AGENTS.md`, `.impeccable.md`, `docs/update-version.json`, `docs/announcement.json`, or intentionally maintained product/spec documents.
    - Never remove user-made unrelated work just to make the tree clean; if uncertain whether a document is disposable, keep it and mention the uncertainty in the release report.
 7. Do not maintain the old Gitee release path:
