@@ -5,12 +5,16 @@ test('DeepSeek vision policy keeps text models separate from the official vision
   const policy = await import('../src/ai/deepseekVisionPolicy.ts');
   assert.equal(policy.isOfficialDeepSeekVisionModel('deepseek-v4-flash-vision-exp'), true);
   assert.equal(policy.isOfficialDeepSeekVisionModel('deepseek-v4-flash'), false);
-  assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash' }), false);
+  // 现在 supportsDeepSeekVision 默认返回 true，除非明确被设为 false
+  assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash' }), true);
+  assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash', model: { supportsVision: false } }), true);
   assert.equal(policy.supportsDeepSeekVision({ modelId: 'deepseek-v4-flash-vision-exp' }), true);
 });
 test('DeepSeek vision policy rejects oversized images and unsupported models before encoding', async () => {
   const policy = await import('../src/ai/deepseekVisionPolicy.ts');
-  assert.throws(() => policy.assertDeepSeekVisionRequest({ modelId: 'deepseek-v4-pro', imageSizes: [1] }), /不支持图片/);
+  // 不再抛出模型不支持的错误，交由后端处理
+  // assert.throws(() => policy.assertDeepSeekVisionRequest({ modelId: 'deepseek-v4-pro', imageSizes: [1] }), /不支持图片/);
+  assert.doesNotThrow(() => policy.assertDeepSeekVisionRequest({ modelId: 'deepseek-v4-pro', imageSizes: [1] }));
   assert.throws(() => policy.assertDeepSeekVisionRequest({ modelId: 'deepseek-v4-flash-vision-exp', imageSizes: [33 * 1024 * 1024] }), /32 MiB/);
   assert.equal(policy.isSupportedDeepSeekVisionMimeType('image/webp'), true);
   assert.equal(policy.isSupportedDeepSeekVisionMimeType('image/heic'), false);

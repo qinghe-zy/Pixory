@@ -1335,13 +1335,24 @@ function describeOutgoingAttachmentKind(kind: AiOutgoingAttachment['kind']): str
   return '文档';
 }
 
-async function readImageAttachment(attachment: AiOutgoingAttachment, validateDeepSeekVision = false): Promise<AiChatAttachment> {
-  const base64Data = await FileSystem.readAsStringAsync(attachment.uri, {
+async function readImageAttachment(attachment: AiOutgoingAttachment): Promise<AiChatAttachment> {
+  let readUri = attachment.uri;
+  // Android ImagePicker 有时返回 content:// URI，Expo FileSystem 无法直接读取；
+  // 需要先将文件复制到沙盒缓存目录，获得 file:// 路径才能读取。
+  if (readUri.startsWith('content://')) {
+    const ext = attachment.mimeType === 'image/png' ? '.png'
+      : attachment.mimeType === 'image/gif' ? '.gif'
+      : attachment.mimeType === 'image/webp' ? '.webp'
+      : '.jpg';
+    const cacheUri = `${FileSystem.cacheDirectory}pixory_img_${Date.now()}${ext}`;
+    await FileSystem.copyAsync({ from: readUri, to: cacheUri });
+    readUri = cacheUri;
+  }
+  const base64Data = await FileSystem.readAsStringAsync(readUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  if (validateDeepSeekVision) {
-    assertDeepSeekVisionAttachment({ mimeType: attachment.mimeType, size: attachment.size, base64Data });
-  }
+  // 不在前端对 DeepSeek 图片做 MIME/签名校验（mimeType 可能为 null 导致误抛），
+  // 交由服务端点自行判断是否支持，返回 API 报错即可。
   return {
     base64Data,
     mimeType: attachment.mimeType || 'image/jpeg',
@@ -1474,7 +1485,7 @@ async function prepareOutgoingAttachments(input: {
       ? settleWithConcurrency(
           imageAttachments,
           AI_CHAT_ATTACHMENT_READ_CONCURRENCY,
-          (attachment) => readImageAttachment(attachment, input.validateDeepSeekVision),
+          (attachment) => readImageAttachment(attachment),
         )
       : Promise.resolve([]),
     buildDocumentAttachmentContext({ attachments: resolvedAttachments, space: input.space, threadId: input.threadId }),

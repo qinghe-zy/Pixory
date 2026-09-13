@@ -29,10 +29,11 @@ export function isRetiredDeepSeekModel(modelId: string | null | undefined): bool
 
 export function isAllowedOfficialDeepSeekModel(modelId: string | null | undefined): boolean {
   const normalized = modelId?.trim().toLowerCase();
-  return Boolean(
-    normalized
-      && DEEPSEEK_OFFICIAL_MODEL_IDS.includes(normalized as typeof DEEPSEEK_OFFICIAL_MODEL_IDS[number])
-  );
+  if (!normalized) return false;
+  if (isRetiredDeepSeekModel(normalized)) return false;
+  if (DEEPSEEK_OFFICIAL_MODEL_IDS.includes(normalized as any)) return true;
+  if (normalized.startsWith('deepseek-') || normalized.includes('flash') || normalized.includes('pro')) return true;
+  return false;
 }
 
 export function isAllowedOfficialDeepSeekVisionModel(modelId: string | null | undefined): boolean {
