@@ -490,7 +490,6 @@
       position: absolute;
       top: -12px;
       right: -12px;
-      width: 260px; /* fallback */
       width: clamp(240px, 61.8vw, 260px);
       max-width: calc(100vw - 32px);
       padding: 16px;
@@ -498,9 +497,7 @@
       border: 1px solid rgba(0,0,0,0.06);
       border-radius: 16px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1);
-      /* Accurate origin for the trigger button center */
       transform-origin: calc(100% - 32px) 32px;
-      /* Initial state: from near zero */
       transform: scale(0.05) translateY(-10px);
       opacity: 0;
       pointer-events: none;
@@ -510,12 +507,32 @@
       z-index: 100;
     }
     .doc-switcher.open .switcher-popover {
-      transform: scale(1) translateY(0);
       opacity: 1;
       pointer-events: auto;
       visibility: visible;
-      /* Elegant opening transition: slow start, fast middle, graceful settling */
-      transition: all 0.45s cubic-bezier(0.4, 0.1, 0.1, 1);
+      /* Jelly drop bouncy entrance */
+      animation: jellyDropPopover 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+
+    @keyframes jellyDropPopover {
+      0% {
+        transform: translateY(-40px) scaleX(0.8) scaleY(1.1);
+        opacity: 0;
+      }
+      30% {
+        transform: translateY(15px) scaleX(1.12) scaleY(0.9);
+        opacity: 1;
+      }
+      50% {
+        transform: translateY(-8px) scaleX(0.96) scaleY(1.05);
+      }
+      75% {
+        transform: translateY(3px) scaleX(1.02) scaleY(0.98);
+      }
+      100% {
+        transform: translateY(0) scaleX(1) scaleY(1);
+        opacity: 1;
+      }
     }
     .popover-app-header {
       display: flex;
