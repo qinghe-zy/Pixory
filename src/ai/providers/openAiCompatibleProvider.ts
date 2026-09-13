@@ -288,7 +288,7 @@ function shouldDisableDeepSeekThinking(input: AiChatRequest): boolean {
   }
   try {
     const host = new URL(normalizeBaseUrl(input.baseUrl)).hostname.toLowerCase();
-    return host === 'api.deepseek.com' && /^deepseek-v4-/i.test(input.modelId);
+    return host === 'api.deepseek.com' && /^deepseek-v\d+/i.test(input.modelId);
   } catch {
     return false;
   }
