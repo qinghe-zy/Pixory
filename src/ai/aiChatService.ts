@@ -1336,7 +1336,19 @@ function describeOutgoingAttachmentKind(kind: AiOutgoingAttachment['kind']): str
 }
 
 async function readImageAttachment(attachment: AiOutgoingAttachment, validateDeepSeekVision = false): Promise<AiChatAttachment> {
-  const base64Data = await FileSystem.readAsStringAsync(attachment.uri, {
+  let readUri = attachment.uri;
+  // Android ImagePicker 有时返回 content:// URI，Expo FileSystem 无法直接读取；
+  // 需要先将文件复制到沙盒缓存目录，获得 file:// 路径才能读取。
+  if (readUri.startsWith('content://')) {
+    const ext = attachment.mimeType === 'image/png' ? '.png'
+      : attachment.mimeType === 'image/gif' ? '.gif'
+      : attachment.mimeType === 'image/webp' ? '.webp'
+      : '.jpg';
+    const cacheUri = `${FileSystem.cacheDirectory}pixory_img_${Date.now()}${ext}`;
+    await FileSystem.copyAsync({ from: readUri, to: cacheUri });
+    readUri = cacheUri;
+  }
+  const base64Data = await FileSystem.readAsStringAsync(readUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
   if (validateDeepSeekVision) {

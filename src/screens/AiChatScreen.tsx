@@ -5225,6 +5225,9 @@ export function AiChatScreen({
         preferredAssetRepresentationMode:
           ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
         quality: 1,
+        // Android 返回 content:// URI，Expo FileSystem 无法直接读取；
+        // copyToCacheDirectory 强制将图片复制到沙盒路径，获得可读的 file:// URI。
+        copyToCacheDirectory: true,
       });
       if (result.canceled) {
         return;
