@@ -1443,19 +1443,6 @@ export function AiSessionConfigScreen({
                   <Text style={styles.modelOptionTitle}>{option.providerLabel} · {option.label}</Text>
                   <Text style={styles.caption}>{option.hasApiKey ? '可用于当前会话' : '未填写 API key'}</Text>
                 </Pressable>
-                {!isProtectedSessionModelOption(option) ? (
-                  <Pressable
-                    accessibilityLabel={`删除模型 ${option.label}`}
-                    accessibilityRole="button"
-                    disabled={savingModel}
-                    onLongPress={() => beginSessionModelSelection(option)}
-                    onPress={() => confirmDeleteSessionModel(option)}
-                    style={({ pressed }) => [styles.modelOptionDeleteAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
-                  >
-                    <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
-                    <Text style={styles.textActionLabel}>删除模型</Text>
-                  </Pressable>
-                ) : null}
               </View>
             ))}
           </View>

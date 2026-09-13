@@ -792,18 +792,6 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                       <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
                       {selectedForDelete ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
                     </Pressable>
-                    {!isProtectedProviderModel(selectedCard, model.modelId) ? (
-                      <Pressable
-                        accessibilityLabel={`删除模型 ${model.displayName}`}
-                        accessibilityRole="button"
-                        onLongPress={() => beginModelSelection(model)}
-                        onPress={() => confirmDeleteModel(model, 'chat')}
-                        style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
-                      >
-                        <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
-                        <Text style={styles.dropdownDeleteText}>删除模型</Text>
-                      </Pressable>
-                    ) : null}
                   </View>
                 );
               })}
@@ -865,18 +853,6 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                                 <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
                                 {selectedForDelete ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
                               </Pressable>
-                              {!isProtectedProviderModel(selectedCard, model.modelId) ? (
-                                <Pressable
-                                  accessibilityLabel={`删除模型 ${model.displayName}`}
-                                  accessibilityRole="button"
-                                  onLongPress={() => beginModelSelection(model)}
-                                  onPress={() => confirmDeleteModel(model, 'embedding')}
-                                  style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
-                                >
-                                  <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
-                                  <Text style={styles.dropdownDeleteText}>删除</Text>
-                                </Pressable>
-                              ) : null}
                             </View>
                           );
                         })}
