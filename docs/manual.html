@@ -250,6 +250,123 @@
       max-width: 1080px;
     }
 
+    /* Document Switcher Styles */
+    .doc-switcher {
+      position: relative;
+      width: 40px;
+      height: 40px;
+    }
+    .switcher-trigger {
+      position: absolute;
+      z-index: 101;
+      top: 0;
+      right: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink);
+    }
+    .switcher-trigger:hover {
+      background: rgba(0,0,0,0.05);
+    }
+    .switcher-trigger svg {
+      position: absolute;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .switcher-trigger .icon-close {
+      opacity: 0;
+      transform: rotate(-90deg) scale(0.5);
+    }
+    .doc-switcher.open .switcher-trigger .icon-open {
+      opacity: 0;
+      transform: rotate(90deg) scale(0.5);
+    }
+    .doc-switcher.open .switcher-trigger .icon-close {
+      opacity: 1;
+      transform: rotate(0) scale(1);
+    }
+    .switcher-popover {
+      position: absolute;
+      top: -12px;
+      right: -12px;
+      width: 260px;
+      max-width: calc(100vw - 32px);
+      padding: 16px;
+      padding-top: 60px;
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(24px) saturate(150%);
+      -webkit-backdrop-filter: blur(24px) saturate(150%);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1);
+      transform-origin: top right;
+      transform: scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+      visibility: hidden;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+    }
+    .doc-switcher.open .switcher-popover {
+      transform: scale(1);
+      opacity: 1;
+      pointer-events: auto;
+      visibility: visible;
+    }
+    .popover-header {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding-left: 6px;
+      letter-spacing: 0.02em;
+    }
+    .doc-card {
+      display: block;
+      padding: 14px 16px;
+      margin-bottom: 4px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: transparent;
+      text-decoration: none;
+      position: relative;
+      transform: translateY(0);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .doc-card:last-child { margin-bottom: 0; }
+    .doc-card:hover { background: rgba(0,0,0,0.02); }
+    .doc-card.active {
+      background: #ffffff;
+      border: 1px solid rgba(93, 76, 52, 0.04); /* Faint warm border */
+      /* Pixory design token 'floating' shadow: #5D4C34 */
+      box-shadow: 0 14px 36px rgba(93, 76, 52, 0.13), 0 4px 12px rgba(93, 76, 52, 0.04);
+      transform: translateY(-1px);
+      z-index: 2;
+    }
+    .doc-card-title {
+      font-size: 14.5px;
+      font-weight: 500;
+      color: var(--body);
+      margin-bottom: 3px;
+      font-family: 'Inter', -apple-system, sans-serif;
+      transition: color 0.2s;
+    }
+    .doc-card.active .doc-card-title { 
+      color: var(--ink); 
+      font-weight: 600;
+    }
+    .doc-card-desc {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
     /* Markdown Styling */
     .markdown-body {
       color: var(--body);
@@ -495,8 +612,35 @@
       </svg>
       返回
     </a>
-    <div class="logo-text" onclick="location.reload()" style="cursor: pointer;">Pixory</div>
-    <div style="width: 60px;"></div> <!-- Spacer for centering -->
+    <div class="logo-text" onclick="window.scrollTo({top:0, behavior:'smooth'})" style="cursor: pointer;">
+      <span class="desktop-only">Pixory &middot; </span><span id="nav-doc-title">Pixory</span>
+    </div>
+    <style>
+      @media (max-width: 900px) { .desktop-only { display: none; } }
+    </style>
+    
+    <!-- Document Switcher -->
+    <div class="doc-switcher" id="doc-switcher">
+      <button class="switcher-trigger" id="doc-switcher-btn" aria-label="切换文档">
+        <svg class="icon-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <svg class="icon-close" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <div class="switcher-popover">
+        <div class="popover-header">阅读文档</div>
+        <div class="popover-cards" id="doc-cards-container">
+          <!-- JS 自动填充 -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Content Container -->
@@ -526,6 +670,27 @@
       const collapseBtn = document.getElementById('toc-collapse-btn');
       const expandBtn = document.getElementById('toc-expand-btn');
 
+      // Document Configurations
+      const docs = {
+        'readme': { path: '../README.md', title: 'Pixory 项目首页', desc: '全局概览与特性简介' },
+        'manual': { path: 'manual.md', title: '产品使用指南', desc: '从安装到日常使用的完整说明' },
+        'handbook': { path: 'pixory-product-bid-handbook.md', title: '产品手册', desc: '产品理念、用户场景和功能介绍' },
+        'feature': { path: 'feature-matrix.md', title: '功能目录', desc: '项目级功能盘点与维护清单' }
+      };
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const currentDocId = docs[urlParams.get('doc')] ? urlParams.get('doc') : 'manual';
+      const currentDoc = docs[currentDocId];
+
+      // Update Nav Bar Title
+      const navTitle = document.getElementById('nav-doc-title');
+      if (navTitle) navTitle.textContent = currentDoc.title;
+
+      // Setup Switcher UI
+      const switcherBtn = document.getElementById('doc-switcher-btn');
+      const switcherContainer = document.getElementById('doc-switcher');
+      const cardsContainer = document.getElementById('doc-cards-container');
+
       if (collapseBtn && expandBtn && layout) {
         collapseBtn.addEventListener('click', () => {
           layout.classList.add('toc-collapsed');
@@ -535,18 +700,57 @@
         });
       }
 
-      fetch('manual.md')
+      // Populate document cards
+      Object.keys(docs).forEach(key => {
+        const doc = docs[key];
+        const isActive = key === currentDocId;
+        const card = document.createElement('a');
+        card.href = '?doc=' + key;
+        card.className = 'doc-card' + (isActive ? ' active' : '');
+        card.innerHTML = `
+          <div class="doc-card-title">${doc.title}</div>
+          <div class="doc-card-desc">${doc.desc}</div>
+        `;
+        cardsContainer.appendChild(card);
+      });
+
+      // Toggle Switcher Popover
+      switcherBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switcherContainer.classList.toggle('open');
+      });
+      document.addEventListener('click', (e) => {
+        if (!switcherContainer.contains(e.target)) {
+          switcherContainer.classList.remove('open');
+        }
+      });
+
+      // Fetch the selected document
+      fetch(currentDoc.path)
         .then(response => {
           if (!response.ok) throw new Error('Document not found');
           return response.text();
         })
         .then(text => {
+          document.title = currentDoc.title + ' - Pixory';
           document.getElementById('loading').style.display = 'none';
           const contentDiv = document.getElementById('doc-content');
           contentDiv.style.display = 'block';
           // Fix relative image paths for the docs site
           const fixedText = text.replace(/docs\/assets\//g, 'assets/');
           contentDiv.innerHTML = marked.parse(fixedText);
+
+          // Intercept links so internal documents route via the reader instead of raw files/GitHub
+          contentDiv.querySelectorAll('a').forEach(a => {
+            const href = a.getAttribute('href');
+            if (!href) return;
+            
+            if (href.includes('README.md')) a.setAttribute('href', '?doc=readme');
+            else if (href.includes('feature-matrix.md')) a.setAttribute('href', '?doc=feature');
+            else if (href.includes('pixory-product-bid-handbook.md')) a.setAttribute('href', '?doc=handbook');
+            else if (href.includes('manual.md')) a.setAttribute('href', '?doc=manual');
+            else if (href.startsWith('http')) a.setAttribute('target', '_blank'); // Open external links in new tab
+          });
 
           // Generate TOC
           const headings = contentDiv.querySelectorAll('h2, h3');

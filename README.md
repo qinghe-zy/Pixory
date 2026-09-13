@@ -8,7 +8,7 @@ Pixory 是一款 Android 优先的本地陪伴式 AI 应用。
 
 ![Pixory 预览](docs/assets/og-cover.png)
 
-[官网与下载](https://mist01.com/#download) · [GitHub Releases](https://github.com/qinghe-zy/Pixory/releases) · [产品使用指南](docs/manual.md) · [产品手册](docs/pixory-product-bid-handbook.md) · [功能目录](docs/feature-matrix.md)
+[官网与下载](https://mist01.com/#download) · [GitHub Releases](https://github.com/qinghe-zy/Pixory/releases) · [产品使用指南](docs/manual.md) · [产品手册](docs/pixory-product-bid-handbook.md)
 
 ## 你可以怎样使用 Pixory
 
@@ -211,10 +211,7 @@ scripts/      检查、基准和发布脚本
 
 - [产品使用指南](docs/manual.md)：从安装到日常使用的完整说明
 - [产品手册](docs/pixory-product-bid-handbook.md)：产品理念、用户场景和功能介绍
-- [功能目录](docs/feature-matrix.md)：按领域查看 Pixory 的能力与入口
 - [仓库工作流](docs/repository-workflow.md)：了解项目协作、发布和文档维护方式
-
-每个版本迭代开始前，先在本地 `local-work` 执行 `scripts/version-document-workflow.ps1 -Action InitializeCycle`，准备 PRD、TDD、Test Report、对外和对内发版说明。版本期间的提交默认只写入本地；本地提交和热更新通过 `scripts/version-document-workflow.ps1 -Action AppendUpdate`、`scripts/record-hot-update.ps1` 追加文档记录。需求冲突时，以 PRD 的当前有效内容为 SSOT，并在变更记录中记录替代关系。在 `local-work`（或 `main`）执行 `pnpm release:android` 才会触发 `scripts/release-handoff.ps1`：它只把公开文件生成到 `main` 的 release commit，打标签并推送 GitHub，绝不推送 `local-work`；完整规则见 [仓库工作流](docs/repository-workflow.md)。
 
 ## 反馈与交流
 
