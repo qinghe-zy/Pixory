@@ -75,7 +75,7 @@
     .layout {
       max-width: 1440px;
       margin: 0 auto;
-      padding: 64px 40px;
+      padding: 24px 40px 64px 40px;
       display: flex;
       justify-content: center;
       gap: 120px;
@@ -287,6 +287,201 @@
       opacity: 0;
       transform: rotate(90deg) scale(0.5);
     }
+    /* 自定义滚动条使侧边栏更干净 */
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background-color: var(--hairline);
+      border-radius: 4px;
+    }
+    
+    .sidebar::-webkit-scrollbar { display: none; } /* Hide original sidebar scrollbar just in case */
+    
+    .toc-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0;
+      padding-bottom: 20px;
+      padding-top: 10px;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    
+    .toc-toggle {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    
+    .toc-toggle:hover {
+      background-color: rgba(0, 0, 0, 0.05);
+      color: var(--ink);
+    }
+    
+    .toc-expand-btn {
+      position: fixed;
+      top: 100px;
+      left: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--surface-card);
+      border: 1px solid var(--hairline);
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 90;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-20px);
+    }
+
+    .layout.toc-collapsed .toc-expand-btn {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+    
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 100px;
+      align-self: flex-start;
+      max-height: calc(100vh - 120px);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      transform-origin: left center;
+    }
+    
+    .layout.toc-collapsed .sidebar {
+      width: 0;
+      padding-right: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: scaleX(0.9);
+    }
+    
+    .toc-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      border-left: 2px solid var(--hairline);
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 16px;
+    }
+    
+    /* Custom scrollbar for the scrollable list */
+    .toc-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    .toc-list::-webkit-scrollbar-thumb {
+      background-color: var(--hairline);
+      border-radius: 4px;
+    }
+    
+    .toc-list li {
+      margin-bottom: 12px;
+    }
+    
+    .toc-list a {
+      color: var(--body);
+      text-decoration: none;
+      font-size: 14.5px;
+      transition: all 0.2s;
+      display: block;
+      line-height: 1.5;
+      padding-left: 16px;
+      position: relative;
+      left: -2px;
+      border-left: 2px solid transparent;
+    }
+    
+    .toc-list a:hover {
+      color: var(--primary);
+      border-left-color: var(--primary);
+      background-color: rgba(204, 120, 92, 0.05); /* subtle hover background */
+    }
+    
+    .toc-list a.active {
+      color: var(--primary);
+      border-left-color: var(--primary);
+      background-color: rgba(204, 120, 92, 0.08);
+      font-weight: 500;
+    }
+    
+    .toc-list .toc-h3 {
+      padding-left: 28px;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+
+    .container {
+      flex-grow: 1;
+      min-width: 0;
+      max-width: 860px;
+      transition: max-width 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    
+    .layout.toc-collapsed .container {
+      max-width: 1080px;
+    }
+
+    /* Document Switcher Styles */
+    .doc-switcher {
+      position: relative;
+      width: 40px;
+      height: 40px;
+    }
+    .switcher-trigger {
+      position: absolute;
+      z-index: 101;
+      top: 0;
+      right: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink);
+    }
+    .switcher-trigger:hover {
+      background: rgba(0,0,0,0.05);
+    }
+    .switcher-trigger svg {
+      position: absolute;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .switcher-trigger .icon-close {
+      opacity: 0;
+      transform: rotate(-90deg) scale(0.5);
+    }
+    .doc-switcher.open .switcher-trigger .icon-open {
+      opacity: 0;
+      transform: rotate(90deg) scale(0.5);
+    }
     .doc-switcher.open .switcher-trigger .icon-close {
       opacity: 1;
       transform: rotate(0) scale(1);
@@ -295,37 +490,74 @@
       position: absolute;
       top: -12px;
       right: -12px;
-      width: 260px;
+      width: 260px; /* fallback */
+      width: clamp(240px, 61.8vw, 260px);
       max-width: calc(100vw - 32px);
       padding: 16px;
-      padding-top: 60px;
-      background: rgba(255, 255, 255, 0.75);
-      backdrop-filter: blur(24px) saturate(150%);
-      -webkit-backdrop-filter: blur(24px) saturate(150%);
+      background: #ffffff;
       border: 1px solid rgba(0,0,0,0.06);
       border-radius: 16px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1);
-      transform-origin: top right;
-      transform: scale(0.9);
+      /* Accurate origin for the trigger button center */
+      transform-origin: calc(100% - 32px) 32px;
+      /* Initial state: from near zero */
+      transform: scale(0.05) translateY(-10px);
       opacity: 0;
       pointer-events: none;
       visibility: hidden;
-      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      /* Crisp and clean closing transition */
+      transition: all 0.2s cubic-bezier(0.4, 0, 1, 1);
       z-index: 100;
     }
     .doc-switcher.open .switcher-popover {
-      transform: scale(1);
+      transform: scale(1) translateY(0);
       opacity: 1;
       pointer-events: auto;
       visibility: visible;
+      /* Elegant opening transition: slow start, fast middle, graceful settling */
+      transition: all 0.45s cubic-bezier(0.4, 0.1, 0.1, 1);
     }
-    .popover-header {
-      font-size: 13px;
-      font-weight: 500;
+    .popover-app-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-top: 6px;
+      padding-left: 6px;
+      padding-right: 44px; /* Space for the X button */
+    }
+    .popover-app-header img.app-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      margin-right: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .popover-app-header .app-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .popover-app-header .app-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      line-height: 1.2;
+    }
+    .popover-app-header .app-version {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 3px;
+      line-height: 1.2;
+      font-family: 'Inter', -apple-system, monospace;
+    }
+    .popover-section-title {
+      font-size: 12px;
+      font-weight: 600;
       color: var(--muted);
       margin-bottom: 8px;
       padding-left: 6px;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.04em;
     }
     .doc-card {
       display: block;
@@ -336,11 +568,21 @@
       background: transparent;
       text-decoration: none;
       position: relative;
-      transform: translateY(0);
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: translateY(12px) scale(0.96);
+      opacity: 0;
+      transition: all 0.2s cubic-bezier(0.4, 0, 1, 1);
     }
     .doc-card:last-child { margin-bottom: 0; }
-    .doc-card:hover { background: rgba(0,0,0,0.02); }
+    .doc-switcher.open .doc-card {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+        transition: all 0.45s cubic-bezier(0.4, 0.1, 0.1, 1);
+      }
+      .doc-switcher.open .doc-card:nth-child(1) { transition-delay: 0.06s; }
+      .doc-switcher.open .doc-card:nth-child(2) { transition-delay: 0.10s; }
+      .doc-switcher.open .doc-card:nth-child(3) { transition-delay: 0.14s; }
+      .doc-switcher.open .doc-card:nth-child(4) { transition-delay: 0.18s; }
+      .doc-card:hover { background: rgba(0,0,0,0.02); }
     .doc-card.active {
       background: #ffffff;
       border: 1px solid rgba(93, 76, 52, 0.04); /* Faint warm border */
@@ -368,6 +610,7 @@
     }
 
     /* Markdown Styling */
+    .markdown-body > *:first-child { margin-top: 0 !important; }
     .markdown-body {
       color: var(--body);
       font-size: 16px;
@@ -523,7 +766,22 @@
     @media (max-width: 900px) {
       .layout {
         gap: 0;
-        padding: 32px 20px;
+        padding: 12px 20px 32px 20px;
+      }
+      .switcher-popover {
+        width: 195px;
+        padding: 12px;
+      }
+      .switcher-popover .doc-card {
+        padding: 12px 10px;
+        margin-bottom: 6px;
+      }
+      .switcher-popover .doc-card-title {
+        font-size: 13.5px;
+      }
+      .switcher-popover .doc-card-desc {
+        font-size: 11.5px;
+        line-height: 1.3;
       }
       .mobile-toc-overlay.active { 
         display: block; 
@@ -635,7 +893,14 @@
         </svg>
       </button>
       <div class="switcher-popover">
-        <div class="popover-header">阅读文档</div>
+        <div class="popover-app-header">
+          <img src="favicon.svg" alt="Pixory" class="app-icon">
+          <div class="app-info">
+            <span class="app-name">Pixory</span>
+            <span class="app-version">v2.8.6</span>
+          </div>
+        </div>
+        <div class="popover-section-title">阅读文档</div>
         <div class="popover-cards" id="doc-cards-container">
           <!-- JS 自动填充 -->
         </div>
@@ -672,10 +937,10 @@
 
       // Document Configurations
       const docs = {
-        'readme': { path: '../README.md', title: 'Pixory 项目首页', desc: '全局概览与特性简介' },
+        'readme': { path: 'README.md', title: '项目首页', desc: '全局概览与特性简介' },
         'manual': { path: 'manual.md', title: '产品使用指南', desc: '从安装到日常使用的完整说明' },
         'handbook': { path: 'pixory-product-bid-handbook.md', title: '产品手册', desc: '产品理念、用户场景和功能介绍' },
-        'feature': { path: 'feature-matrix.md', title: '功能目录', desc: '项目级功能盘点与维护清单' }
+        'feature': { path: 'features.md', title: '功能清单', desc: '底层能力与产品特性说明' }
       };
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -726,7 +991,7 @@
       });
 
       // Fetch the selected document
-      fetch(currentDoc.path)
+      fetch(currentDoc.path + '?v=2.8.6.1')
         .then(response => {
           if (!response.ok) throw new Error('Document not found');
           return response.text();
@@ -897,3 +1162,10 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
