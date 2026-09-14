@@ -29,10 +29,15 @@ const filesToUpdate = [
   'docs/updates.html',
   'docs/sitemap.xml',
   'docs/manual.html',
+  'docs/pixory-product-bid-handbook.md',
+  'src/content/handbookMarkdown.ts',
   'android/app/src/main/res/values/strings.xml',
   'tests/website-flow-policy.test.cjs',
   'android/app/build.gradle'
 ];
+
+const today = new Date();
+const formattedDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
 
 for (const file of filesToUpdate) {
   if (fs.existsSync(file)) {
@@ -40,6 +45,11 @@ for (const file of filesToUpdate) {
     
     // Replace standard version string globally
     content = content.replace(new RegExp(oldVersion.replace(/\./g, '\\\\.'), 'g'), newVersion);
+    
+    // Replace Handbook date globally
+    if (file.includes('handbook')) {
+      content = content.replace(/最后更新：\d{4}-\d{2}-\d{2}/g, '最后更新：' + formattedDate);
+    }
     
     // Specially handle versionCode in app.json and build.gradle
     if (file === 'app.json' || file === 'android/app/build.gradle') {
@@ -53,5 +63,4 @@ for (const file of filesToUpdate) {
     console.log('Not found: ' + file);
   }
 }
-console.log(Successfully bumped from  to  (Code  -> ));
-
+console.log(`Successfully bumped from ${oldVersion} to ${newVersion} (Code ${oldVersionCode} -> ${newVersionCode})`);

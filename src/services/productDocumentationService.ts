@@ -1,7 +1,13 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { PRODUCT_MANUAL_MARKDOWN } from '../content/productManualMarkdown';
+import { README_MARKDOWN } from '../content/readmeMarkdown';
+import { HANDBOOK_MARKDOWN } from '../content/handbookMarkdown';
+import { FEATURES_MARKDOWN } from '../content/featuresMarkdown';
+import { ALGORITHMS_MARKDOWN } from '../content/algorithmsMarkdown';
 import { ensureLocalDirectory, getAiDocumentsDir, joinStoragePath } from './fileStorageService';
+
+export type ProductDocKey = 'readme' | 'manual' | 'handbook' | 'feature' | 'algorithms';
 
 const PRODUCT_DOC_ASSET_BASE_URL = 'https://mist01.com/';
 const PRODUCT_DOC_ASSET_PUBLIC_PREFIX = 'assets/';
@@ -9,8 +15,16 @@ const PRODUCT_DOC_ASSET_SOURCE_PREFIX = 'docs/assets/';
 const PRODUCT_DOC_ASSET_PATH_PATTERN = /\(((?:docs\/)?assets\/[^)\s]+)\)/g;
 const PRODUCT_DOC_ASSET_CACHE_DIR_NAME = 'product_documentation_assets_v2';
 
-let cachedProductDocumentationMarkdown: string | null = null;
-let productDocumentationMarkdownPromise: Promise<string> | null = null;
+const cachedProductDocumentationMarkdown = new Map<ProductDocKey, string>();
+const productDocumentationMarkdownPromises = new Map<ProductDocKey, Promise<string>>();
+
+const DOC_CONTENTS: Record<ProductDocKey, string> = {
+  readme: README_MARKDOWN,
+  manual: PRODUCT_MANUAL_MARKDOWN,
+  handbook: HANDBOOK_MARKDOWN,
+  feature: FEATURES_MARKDOWN,
+  algorithms: ALGORITHMS_MARKDOWN,
+};
 
 function normalizeProductDocumentationMarkdown(markdown: string): string {
   return markdown.replace(PRODUCT_DOC_ASSET_PATH_PATTERN, (_match, relativePath: string) => {
@@ -143,9 +157,10 @@ async function buildCachedAssetDataUri(relativePath: string): Promise<string | n
   return `data:${getAssetMimeType(relativePath)};base64,${base64}`;
 }
 
-async function buildProductDocumentationMarkdownWithCachedAssets(): Promise<string> {
+async function buildProductDocumentationMarkdownWithCachedAssets(docKey: ProductDocKey): Promise<string> {
   const replacements = new Map<string, string>();
-  const assetPaths = extractProductDocumentationAssetPaths(PRODUCT_MANUAL_MARKDOWN);
+  const rawMarkdown = DOC_CONTENTS[docKey];
+  const assetPaths = extractProductDocumentationAssetPaths(rawMarkdown);
 
   await Promise.all(
     assetPaths.map(async (relativePath) => {
@@ -154,47 +169,45 @@ async function buildProductDocumentationMarkdownWithCachedAssets(): Promise<stri
     })
   );
 
-  return PRODUCT_MANUAL_MARKDOWN.replace(PRODUCT_DOC_ASSET_PATH_PATTERN, (_match, relativePath: string) => {
+  return rawMarkdown.replace(PRODUCT_DOC_ASSET_PATH_PATTERN, (_match, relativePath: string) => {
     return `(${replacements.get(relativePath) ?? getAssetRemoteUri(relativePath)})`;
   });
 }
 
-const normalizedProductDocumentationMarkdown = normalizeProductDocumentationMarkdown(
-  PRODUCT_MANUAL_MARKDOWN
-);
-
-async function resolveProductDocumentationMarkdown(): Promise<string> {
+async function resolveProductDocumentationMarkdown(docKey: ProductDocKey): Promise<string> {
   try {
-    const markdown = await buildProductDocumentationMarkdownWithCachedAssets();
-    cachedProductDocumentationMarkdown = markdown;
+    const markdown = await buildProductDocumentationMarkdownWithCachedAssets(docKey);
+    cachedProductDocumentationMarkdown.set(docKey, markdown);
     return markdown;
   } catch (error) {
     console.warn('Pixory product documentation markdown fallback to remote assets.', {
       error: error instanceof Error ? error.message : 'unknown error',
     });
-    cachedProductDocumentationMarkdown = normalizedProductDocumentationMarkdown;
-    return normalizedProductDocumentationMarkdown;
+    const fallback = normalizeProductDocumentationMarkdown(DOC_CONTENTS[docKey]);
+    cachedProductDocumentationMarkdown.set(docKey, fallback);
+    return fallback;
   }
 }
 
-export async function prefetchProductDocumentationAssets(): Promise<void> {
-  await getProductDocumentationMarkdown();
+export async function prefetchProductDocumentationAssets(docKey: ProductDocKey = 'manual'): Promise<void> {
+  await getProductDocumentationMarkdown(docKey);
 }
 
-export async function getProductDocumentationMarkdown(): Promise<string> {
-  if (cachedProductDocumentationMarkdown) {
-    return cachedProductDocumentationMarkdown;
+export async function getProductDocumentationMarkdown(docKey: ProductDocKey = 'manual'): Promise<string> {
+  if (cachedProductDocumentationMarkdown.has(docKey)) {
+    return cachedProductDocumentationMarkdown.get(docKey)!;
   }
 
-  if (!productDocumentationMarkdownPromise) {
-    productDocumentationMarkdownPromise = resolveProductDocumentationMarkdown().finally(() => {
-      productDocumentationMarkdownPromise = null;
+  if (!productDocumentationMarkdownPromises.has(docKey)) {
+    const promise = resolveProductDocumentationMarkdown(docKey).finally(() => {
+      productDocumentationMarkdownPromises.delete(docKey);
     });
+    productDocumentationMarkdownPromises.set(docKey, promise);
   }
 
-  return productDocumentationMarkdownPromise;
+  return productDocumentationMarkdownPromises.get(docKey)!;
 }
 
-export function getPreloadedProductDocumentationMarkdown(): string {
-  return cachedProductDocumentationMarkdown ?? normalizedProductDocumentationMarkdown;
+export function getPreloadedProductDocumentationMarkdown(docKey: ProductDocKey = 'manual'): string {
+  return cachedProductDocumentationMarkdown.get(docKey) ?? normalizeProductDocumentationMarkdown(DOC_CONTENTS[docKey]);
 }
