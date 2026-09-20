@@ -990,7 +990,7 @@ easing: 'easeOutQuad'
 采用深邃苍翠翠墨大色块 (#172B28 / #0D1F1C)，彰显坚不可摧的物理设备安全
 两套独立 SQLite、物理沙盒隔离、瞬间内存销毁机制
 ========================================== -->
-<section class="py-32 px-8 md:px-20 bg-emerald-void text-[#FAF8F5] relative overflow-hidden min-h-screen" id="act-3">
+<section style="background-color: #172B28; color: #FAF8F5;" class="py-32 px-8 md:px-20 bg-emerald-void text-[#FAF8F5] relative overflow-hidden min-h-screen" id="act-3">
 <!-- 翠墨与暗金浮光 -->
 <div class="absolute -top-32 -left-32 w-[640px] h-[640px] rounded-full bg-[#234E46]/30 blur-[160px] pointer-events-none"></div>
 <div class="absolute -bottom-32 -right-32 w-[600px] h-[600px] rounded-full bg-[#D4A840]/15 blur-[160px] pointer-events-none"></div>
@@ -1160,7 +1160,7 @@ Manifest V2 自主归档与迁移
 映射三份核心文档（manual.md, pixory-product-bid-handbook.md, features.md, 项目首页）
 采用纯净极雅的书目检索形式，摒弃低级卡片堆砌
 ========================================== -->
-<section class="py-32 px-8 md:px-20 relative bg-[#112320] text-[#FAF8F5] border-t border-[#D4A840]/25 min-h-screen" id="epilogue">
+<section style="background-color: #112320; color: #FAF8F5;" class="py-32 px-8 md:px-20 relative bg-[#112320] text-[#FAF8F5] border-t border-[#D4A840]/25 min-h-screen" id="epilogue">
 <div class="max-w-[1440px] mx-auto">
 <!-- 导读总览题记 -->
 <div class="max-w-[720px] mb-20 scroll-reveal in-view">
@@ -1559,14 +1559,14 @@ sessionStorage.setItem('pixory_index_scroll', window.scrollY);
             // 向下滚动：只寻找下方靠近的 section，绝不反向拽回
             targetSection = snapSections.find(sec => {
               const rect = sec.getBoundingClientRect();
-              // 如果下个 section 的顶部在视口内或附近（放宽到 600px 容差）
-              return rect.top > 10 && rect.top < 600; 
+              // 吸附阈值减小到 250px
+              return rect.top > 10 && rect.top < 250; 
             });
           } else {
             // 向上滚动：只寻找上方靠近的 section
             targetSection = [...snapSections].reverse().find(sec => {
               const rect = sec.getBoundingClientRect();
-              return rect.top < -10 && rect.top > -600; 
+              return rect.top < -10 && rect.top > -250; 
             });
           }
           
