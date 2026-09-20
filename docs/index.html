@@ -70,13 +70,62 @@
       -webkit-backdrop-filter: blur(24px);
     }
     
-    /* 苹果级磨砂玻璃 (Apple Material Vibrancy) */
+    /* 苹果 Liquid Glass 导航栏 */
     .apple-glass {
-      background: rgba(255, 255, 255, 0.55);
-      backdrop-filter: saturate(180%) blur(24px);
-      -webkit-backdrop-filter: saturate(180%) blur(24px);
-      /* 极其微弱的内发光边缘，模拟玻璃厚度折射 */
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 4px 30px rgba(57, 102, 95, 0.04);
+      /* 极淡底色，让环境光透过 */
+      background: rgba(255, 255, 255, 0.50);
+      /* blur 去细节 + saturate(180%) 保颜色鲜活 — saturate 是苹果的核心秘密 */
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      /* 玻璃截面的折射边缘：多层 inset 模拟光在玻璃厚度上的折射 */
+      box-shadow:
+        inset 0 0.5px 0 0 rgba(255, 255, 255, 0.85),    /* 顶边亮线 */
+        inset 0 -0.5px 0 0 rgba(57, 102, 95, 0.10),      /* 底边天青阴影 */
+        inset 1px 0 0 0 rgba(255, 255, 255, 0.30),        /* 左边亮线 */
+        inset -1px 0 0 0 rgba(255, 255, 255, 0.20),       /* 右边亮线 */
+        0 8px 32px -4px rgba(57, 102, 95, 0.08),          /* 底部景深 */
+        0 2px 8px rgba(0, 0, 0, 0.04);                    /* 近景阴影 */
+      border: none;
+      position: relative;
+      overflow: hidden;
+      transition: background 0.4s ease, box-shadow 0.4s ease;
+    }
+    /* Chrome/Edge：叠加 SVG 折射（Safari 降级到纯 CSS，属预期行为）*/
+    @supports (backdrop-filter: url(#test-support)) {
+      .apple-glass {
+        backdrop-filter: blur(18px) saturate(160%) url(#pixory-glass-filter);
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
+      }
+    }
+    /* 顶部弧面高光 — 模拟光源从上方打在玻璃顶面的漫反射 */
+    .apple-glass::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.30) 0%,
+        rgba(255, 255, 255, 0.08) 40%,
+        transparent 70%
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+    /* 鼠标跟随镜面高光（由 JS 更新 --gx/--gy CSS 自定义属性）*/
+    .apple-glass::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(
+        circle 110px at var(--gx, 50%) var(--gy, -20%),
+        rgba(255, 255, 255, 0.22) 0%,
+        transparent 65%
+      );
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.15s ease;
     }
 
     /* 丝滑滚动显现动画 (5+ distinct reveal animations) */
@@ -214,10 +263,15 @@
       margin: 1.5em 0;
     }
 
-    /* Header Dark Mode (activated via JS when scrolling over dark sections) */
+    /* Header Dark Mode — Liquid Glass 深色变体 */
     .dark-mode-header {
-      background: rgba(255, 255, 255, 0.12) !important;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15), 0 4px 30px rgba(0, 0, 0, 0.2) !important;
+      background: rgba(20, 36, 34, 0.38) !important;
+      backdrop-filter: blur(24px) saturate(140%) !important;
+      -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+      box-shadow:
+        inset 0 0.5px 0 0 rgba(255, 255, 255, 0.22),
+        inset 0 -0.5px 0 0 rgba(0, 0, 0, 0.25),
+        0 8px 32px -4px rgba(0, 0, 0, 0.28) !important;
     }
     .dark-mode-header a.text-\[\#172B28\]\/70,
     .dark-mode-header span.text-\[\#172B28\] {
@@ -1326,5 +1380,46 @@
       });
     });
   });
+
 </script>
+
+<!-- Liquid Glass SVG 折射滤镜（Chrome/Edge 下生效，Safari 自动降级为纯 CSS blur） -->
+<svg width="0" height="0" style="position:absolute;overflow:hidden;" aria-hidden="true">
+  <defs>
+    <filter id="pixory-glass-filter" color-interpolation-filters="sRGB"
+            x="-5%" y="-5%" width="110%" height="110%">
+      <!-- 生成有机分形噪声场作为折射贴图 -->
+      <feTurbulence type="fractalNoise" baseFrequency="0.010 0.013"
+                    numOctaves="3" seed="12" result="noise"/>
+      <!-- 用噪声位移背景像素，scale 控制折射强度（12~20 适合导航栏）-->
+      <feDisplacementMap in="SourceGraphic" in2="noise"
+                         scale="14" xChannelSelector="R" yChannelSelector="G"
+                         result="displaced"/>
+      <!-- 轻微模糊软化锯齿 -->
+      <feGaussianBlur in="displaced" stdDeviation="0.4" result="softened"/>
+      <!-- 用原始形状裁剪，防止位移后像素溢出 -->
+      <feComposite in="softened" in2="SourceGraphic" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<script>
+  // 鼠标跟随镜面高光 — 更新 CSS 自定义属性 --gx/--gy
+  (function() {
+    const glass = document.querySelector('header > div');
+    if (!glass) return;
+    document.addEventListener('mousemove', function(e) {
+      const rect = glass.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1) + '%';
+      const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1) + '%';
+      glass.style.setProperty('--gx', x);
+      glass.style.setProperty('--gy', y);
+    });
+    document.addEventListener('mouseleave', function() {
+      glass.style.removeProperty('--gx');
+      glass.style.removeProperty('--gy');
+    });
+  })();
+</script>
+
 </body></html>
