@@ -1533,14 +1533,14 @@ sessionStorage.setItem('pixory_index_scroll', window.scrollY);
             // 向下滚动：只寻找下方靠近的 section，绝不反向拽回
             targetSection = snapSections.find(sec => {
               const rect = sec.getBoundingClientRect();
-              // 吸附阈值减小到 250px
-              return rect.top > 10 && rect.top < 250; 
+              // 吸附阈值减小到 100px
+              return rect.top > 10 && rect.top < 100; 
             });
           } else {
             // 向上滚动：只寻找上方靠近的 section
             targetSection = [...snapSections].reverse().find(sec => {
               const rect = sec.getBoundingClientRect();
-              return rect.top < -10 && rect.top > -250; 
+              return rect.top < -10 && rect.top > -100; 
             });
           }
           
