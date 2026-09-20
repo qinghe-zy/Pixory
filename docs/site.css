@@ -1887,10 +1887,12 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   .hero-video-switcher {
     gap: 12px;
     margin-top: 32px;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    max-width: 340px;
   }
-  .switcher-btn { font-size: 12px; }
+  .switcher-btn { font-size: 12px; padding: 10px 8px; width: 100%; }
   .hero-subtext-en { font-size: 13px; }
 
   /* Hide specific pill links on mobile to save space */
@@ -1899,20 +1901,25 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   /* Adjust capsule size for mobile */
   .nav-pill {
     padding: 3px;
+    gap: 4px;
   }
   .nav-pill-link {
-    font-size: 13px;
-    padding: 6px 12px;
+    font-size: 12px;
+    padding: 4px 6px;
   }
   .nav-pill-btn {
-    font-size: 13px;
-    padding: 6px 16px;
+    font-size: 12px;
+    padding: 6px 12px;
   }
 
   /* Download modal mobile */
-  .download-modal-content { padding: 32px 20px; }
-  .download-options { flex-direction: column; width: 100%; }
-  .download-options > a { width: 100%; box-sizing: border-box; }
+  .download-modal-content { 
+    padding: 28px 20px; 
+    max-width: 320px; 
+    width: calc(100% - 32px);
+  }
+  .download-options { flex-direction: column; width: 100%; gap: 10px; }
+  .download-options > a { width: 100%; box-sizing: border-box; padding: 12px 16px !important; }
 }
 
 /* --- Download Modal --- */
