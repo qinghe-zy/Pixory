@@ -1,238 +1,1065 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script>
-      if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768) {
-        if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
-          window.location.replace('/m.html' + window.location.search);
+<!DOCTYPE html><html class="scroll-smooth snap-y snap-mandatory" lang="zh-CN" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Pixory — 本地优先情感智能体与数字记忆画卷</title>
+<!-- Google Fonts: Cormorant Garamond, Playfair Display, Noto Serif SC, Plus Jakarta Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&amp;family=Noto+Serif+SC:wght@200;300;400;500;600;700&amp;family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;family=Plus+Jakarta+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Cormorant Garamond"', '"Noto Serif SC"', 'serif'],
+            display: ['"Playfair Display"', '"Cormorant Garamond"', 'serif'],
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            cnserif: ['"Noto Serif SC"', '"Songti SC"', 'serif']
+          },
+          colors: {
+            paper: '#FAF8F5',
+            paperwarm: '#F4EFEB',
+            celadonwash: '#EBF4F0',
+            celadon: '#A8D8CF',
+            celadondark: '#39665F',
+            jadedeep: '#234E46',
+            inkdark: '#172B28',
+            inkvoid: '#0D1F1C',
+            champagne: '#C5A869',
+            champagnelight: '#E6D7B4',
+            parchment: '#EFECE6'
+          }
         }
       }
-    </script>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
-    <title>Pixory</title>
-    <meta name="description" content="Pixory：Android 平台的本地 AI 陪伴聊天、角色卡、记忆、知识库与视觉资料库。">
-    <link rel="canonical" href="https://mist01.com/">
-    <meta property="og:site_name" content="Pixory">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://mist01.com/">
-    <meta property="og:title" content="Pixory">
-    <meta property="og:description" content="为长期 AI 角色、私有上下文和本地视觉资料设计的 Android 工作台。">
-    <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
-    <link rel="stylesheet" href="assets/fonts/fonts.css?v=2">
-    <link rel="stylesheet" href="site.css?v=30">
-    <style>
-      /* Ensure gap revealed by pull-to-refresh is dark to match the hero */
-      html { background-color: #181715; }
-    </style>
-  </head>
-  <body>
-    <!-- Cinematic Fullscreen Hero Section -->
-    <section class="cinematic-hero scene-0">
-      <!-- Background Videos -->
-      <div class="hero-bg-layer">
-        <video id="hero-vid-0" class="hero-video active" autoplay muted loop playsinline 
-               src="assets/videos/hf_20260702_081127_0992a171-d3c6-4978-8213-0ec5df8b6d63.mp4"></video>
-        <video id="hero-vid-1" class="hero-video" muted loop playsinline preload="none" 
-               src="assets/videos/hf_20260702_092026_dd05b805-ea0f-40b2-8c52-332b88502592.mp4"></video>
-        <video id="hero-vid-2" class="hero-video" muted loop playsinline preload="none" 
-               src="assets/videos/hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4"></video>
-        <video id="hero-vid-3" class="hero-video" muted loop playsinline preload="none" 
-               src="assets/videos/hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4"></video>
-      </div>
+    }
+  </script>
+<style>
+    /* 宣纸底色微质感 */
+    .bg-scroll-paper {
+      background-color: #FAF8F5;
+      background-image: 
+        radial-gradient(ellipse at 15% 10%, rgba(168, 216, 207, 0.18) 0%, transparent 45%),
+        radial-gradient(ellipse at 85% 60%, rgba(197, 168, 105, 0.12) 0%, transparent 40%),
+        radial-gradient(#DFD8CD 0.6px, transparent 0.6px);
+      background-size: 100% 100%, 100% 100%, 28px 28px;
+    }
 
-      <!-- Transparent PNG Overlay -->
-      <div class="hero-png-overlay">
-        <img src="assets/images/hero-overlay.png" alt="" aria-hidden="true" class="train-bob" loading="lazy">
-      </div>
+    /* 深邃苍翠翠墨渐变水墨底 */
+    .bg-emerald-void {
+      background: radial-gradient(circle at 70% 30%, #1c3c36 0%, #112522 50%, #091715 100%);
+    }
 
-      <!-- Content Layer -->
-      <div class="hero-content-layer" id="hero-content">
-        <!-- Navigation (top) -->
-        <header class="hero-nav">
-          <div class="hero-nav-left">
-            <a href="index.html" class="hero-logo">Pixory</a>
-          </div>
-          
-          <div class="hero-nav-right">
-            <div class="nav-pill">
-              <a href="#" class="nav-pill-link updates-btn-trigger">版本近况</a>
-              <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="nav-pill-link hide-on-mobile">查看源码</a>
-              <a href="manual.html" target="_blank" class="nav-pill-link">阅读文档</a>
-              <a href="#" class="nav-pill-btn download-btn-trigger">获取 App</a>
-            </div>
-          </div>
-        </header>
+    /* 竖排文本书写流 */
+    .vertical-writing-rl {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      letter-spacing: 0.3em;
+    }
 
-        <!-- Hero Content Center -->
-        <main class="hero-main">
-          <div class="liquid-glass hero-badge">
-            本地 AI 陪伴聊天与视觉资料库
-          </div>
-          
-          <div class="hero-text-container" id="hero-text-container" style="cursor: pointer;" title="点击阅读详情">
-            <div class="hero-text-group active" data-content="0">
-              <h1 class="hero-heading hero-heading-en">Stories that stay.<br>Companions that grow.</h1>
-              <p class="hero-subtext hero-subtext-en">角色卡、长线程、深度记忆、分支对话、本地素材——都在你手中。</p>
-            </div>
-            <div class="hero-text-group" data-content="1">
-              <h1 class="hero-heading">沉浸式的长效陪伴</h1>
-              <p class="hero-subtext">将角色、对话与素材整合在本地，支持上下文与记忆管理，提供连贯的互动体验。</p>
-            </div>
-            <div class="hero-text-group" data-content="2">
-              <h1 class="hero-heading">结构化视觉资产</h1>
-              <p class="hero-subtext">图片、视频、IP 资料无损保存。通过标签和分组进行本地管理与查阅，数据真正掌握在您手中。</p>
-            </div>
-            <div class="hero-text-group" data-content="3">
-              <h1 class="hero-heading">可控的深度记忆</h1>
-              <p class="hero-subtext">从对话中自动提取事实，支持用户级、线程级记忆面板。让长线角色不再忘记重要事实。</p>
-            </div>
-            <div class="hero-text-group" data-content="4">
-              <h1 class="hero-heading">坚定的隐私优先</h1>
-              <p class="hero-subtext">所有交互记录仅存储在您的 Android 本地，模型边界清晰，让私域体验更受保护。</p>
-            </div>
-            
-          </div>
+    /* 柔润玉石玻璃与极细金弦 */
+    .jade-luster {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.72) 0%, rgba(235, 244, 240, 0.45) 100%);
+      backdrop-filter: blur(28px) saturate(130%);
+      -webkit-backdrop-filter: blur(28px) saturate(130%);
+    }
 
-          <div class="hero-video-switcher">
-            <button class="switcher-btn" data-vid="1">Companion Chat</button>
-            <button class="switcher-btn" data-vid="2">Visual Archive</button>
-            <button class="switcher-btn" data-vid="3">Deep Memory</button>
-            <button class="switcher-btn" data-vid="4">Local Privacy</button>
-          </div>
-        </main>
-      </div>
+    .dark-luster {
+      background: linear-gradient(135deg, rgba(23, 43, 40, 0.75) 0%, rgba(13, 31, 28, 0.85) 100%);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
 
+    /* 丝滑滚动显现动画 (5+ distinct reveal animations) */
+    .scroll-reveal { opacity: 0; transform: translateY(40px); transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity, transform; }
+    .scroll-reveal-left { opacity: 0; transform: translateX(-40px); transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity, transform; }
+    .scroll-reveal-right { opacity: 0; transform: translateX(40px); transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity, transform; }
+    .scroll-reveal-scale { opacity: 0; transform: scale(0.92); transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity, transform; }
+    .scroll-reveal-blur { opacity: 0; filter: blur(10px); transform: translateY(20px); transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), filter 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity, transform, filter; }
 
-    </section>
+    .in-view.scroll-reveal, .in-view.scroll-reveal-left, .in-view.scroll-reveal-right { opacity: 1; transform: translate(0, 0); }
+    .in-view.scroll-reveal-scale { opacity: 1; transform: scale(1); }
+    .in-view.scroll-reveal-blur { opacity: 1; filter: blur(0); transform: translateY(0); }
 
-    <!-- Features Modal -->
-    <div class="download-modal-overlay" id="features-modal">
-      <style>
-        .features-modal-content {
-          max-height: 85vh; 
-          overflow-y: auto; 
-          text-align: left; 
-          padding: 40px; 
-          display: flex; 
-          flex-direction: column; 
-          max-width: 800px; 
-          width: 100%; 
-          scrollbar-width: none; 
-          -ms-overflow-style: none;
-          color: rgba(255,255,255,0.9);
-        }
-        .features-modal-content::-webkit-scrollbar { display: none; }
-        .feature-block { margin-bottom: 40px; }
-        .feature-title { font-family: var(--font-body); font-size: 22px; font-weight: 500; line-height: 1.3; margin-bottom: 16px; color: #fff; }
-        .feature-desc { font-family: var(--font-body); font-size: 16px; font-weight: 400; line-height: 1.55; color: rgba(255,255,255,0.7); }
-        .feature-main-intro { 
-          font-family: 'STKaiti', 'Kaiti SC', 'KaiTi', serif; 
-          font-size: 22px; 
-          line-height: 1.8; 
-          color: rgba(255,255,255,0.95); 
-          font-style: italic;
-          margin-bottom: 56px;
-          border-left: 3px solid rgba(255,255,255,0.3);
-          padding-left: 24px;
-        }
-        @media (max-width: 768px) {
-          .features-modal-content { padding: 32px 24px; }
-          .feature-title { font-size: 18px; line-height: 1.4; margin-bottom: 12px; }
-          .feature-main-intro { font-size: 18px; padding-left: 16px; margin-bottom: 40px; }
-        }
-      </style>
-      <div class="features-modal-content">
-        <button class="download-modal-close" id="features-modal-close" style="position: fixed; top: 40px; right: 40px; z-index: 10;">&times;</button>
-        <div style="margin-top: -20px;">
-          <div class="feature-detail" data-feature-detail="0">
-            <h2 class="text-display-lg" style="margin-bottom: 40px; color: #fff; font-family: 'Playfair Display', 'Instrument Serif', serif; font-style: italic; font-weight: normal;">Stories that stay. Companions that grow.</h2>
-            
-            <div class="feature-main-intro" style="margin-bottom: 0;">
-              故事不会走散，陪伴与日生长。<br><br>
-              这里不只有你来我往的对话，更有能沉淀下来的长久陪伴。生动的角色、完整的素材、不会褪色的记忆 —— 所有设计都只为一件事：让你能安心投入地续写每一段故事，沉淀每一份羁绊。陪伴会随时光日渐深厚，故事会伴岁月安然长留。
-            </div>
-          </div>
+    /* Delay modifiers */
+    .delay-100 { transition-delay: 100ms; }
+    .delay-200 { transition-delay: 200ms; }
+    .delay-300 { transition-delay: 300ms; }
+    .delay-400 { transition-delay: 400ms; }
+    .delay-500 { transition-delay: 500ms; }
 
-          <div class="feature-detail" data-feature-detail="1" style="display: none;">
-            <div class="feature-title" style="margin-bottom: 24px;">沉浸式的长效陪伴</div>
-            <div class="feature-desc">拒绝用完即走的冰冷工具感。Pixory 专为建立长期羁绊而生，支持多维度的角色卡设定与无限延伸的长线程对话。如丝般顺滑的流式生成，配合可随时回放与修改的对话分支，让每一场跨越时空的交谈，都能保持情感的连贯与共鸣。</div>
-          </div>
+    /* 艺术装置慢速流体动画 */
+    @keyframes orbit-slow {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .animate-orbit {
+      animation: orbit-slow 48s linear infinite;
+    }
+    .animate-orbit-reverse {
+      animation: orbit-slow 36s linear infinite reverse;
+    }
 
-          <div class="feature-detail" data-feature-detail="2" style="display: none;">
-            <div class="feature-title" style="margin-bottom: 24px;">结构化视觉资产</div>
-            <div class="feature-desc">不仅是陪伴，更是你的私域数字藏宝阁。原文件无损入库，拒绝压缩与阉割。通过灵活的标签系统与 IP 分组，将海量图片、视频沉淀为专属的视觉记忆库。这些素材不仅随时可查，还能作为 AI 聊天的强大上下文，让虚拟互动栩栩如生。</div>
-          </div>
+    @keyframes aura-breath {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 0.75; transform: scale(1.08); }
+    }
+    .animate-aura {
+      animation: aura-breath 9s ease-in-out infinite;
+    }
 
-          <div class="feature-detail" data-feature-detail="3" style="display: none;">
-            <div class="feature-title" style="margin-bottom: 24px;">可控的深度记忆</div>
-            <div class="feature-desc">告别像金鱼一样的 AI。独创的多层级深度记忆系统（全局/线程/角色/IP），能够从对话中精准提取并固化关键事实。更重要的是——记忆的最终决定权完全在你，支持透明查阅、随时编辑与版本回退，让那些重要的约定永远不会被遗忘。</div>
-          </div>
+    /* 极细微引文编号印章 */
+    .seal-stamp {
+      border: 1px solid rgba(197, 168, 105, 0.45);
+      color: #39665F;
+      font-feature-settings: "tnum";
+    }
 
-          <div class="feature-detail" data-feature-detail="4" style="display: none;">
-            <div class="feature-title" style="margin-bottom: 24px;">坚定的隐私优先</div>
-            <div class="feature-desc">你的秘密，只有你的设备知道。所有的对话历史、角色设定、记忆快照与密钥配置，均采用 SQLite 物理级隔离，被死死锁在你的本地设备中。独有的“双空间”机制，将普通空间与私密空间彻底分离，为你守护最纯粹、绝对安全的数字自留地。</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    /* 诗歌段落微悬挂首字 */
+    .editorial-dropcap::first-letter {
+      font-family: 'Playfair Display', serif;
+      font-size: 3.4em;
+      line-height: 0.8;
+      float: left;
+      margin-right: 0.18em;
+      color: #234E46;
+      font-style: italic;
+    }
+  </style>
 
-    <!-- Updates Modal -->
-    <div class="download-modal-overlay" id="updates-modal">
-      <style>.no-scrollbar::-webkit-scrollbar { display: none; }</style><div class="no-scrollbar" style="max-height: 85vh; overflow-y: auto; text-align: left; padding: 40px; display: flex; flex-direction: column; max-width: 800px; width: 100%; scrollbar-width: none; -ms-overflow-style: none;">
-        <button class="download-modal-close" id="updates-modal-close" style="position: fixed; top: 40px; right: 40px; z-index: 10;">&times;</button>
-        <div style="margin-top: -20px;">
-          <h2 class="text-display-lg" style="margin-bottom: var(--space-md); color: #fff; font-family: 'Instrument Serif', serif; font-weight: normal;">Release Notes</h2>
-          <p class="text-body-md" style="color: rgba(255,255,255,0.7); margin-bottom: 40px; font-family: var(--font-body);">
-            稳定。清晰。耐用。更新不是喧哗，是秩序继续变清楚。
-          </p>
-          <div class="timeline" id="release-notes-container" style="color: rgba(255,255,255,0.9); min-height: 200px; position: relative;">
-            <div style="opacity: 0.6; text-align: center; padding: 40px 0; font-style: italic;">Loading release history...</div>
-            
-            <div style="text-align: center; margin-top: 40px;">
-              <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" style="color: #fff; opacity: 0.7; text-decoration: none; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 2px;">访问 GitHub 查看完整记录</a>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <style>
+    /* Updates Modal Styles */
+    #updates-modal-overlay {
+      z-index: 9999;
+    }
     
-    <!-- Download Modal -->
-    <div class="download-modal-overlay" id="download-modal">
-      <div class="download-modal-content liquid-glass text-center">
-        <button class="download-modal-close" id="download-modal-close">&times;</button>
-        <h2 class="text-display-lg" style="margin-bottom: var(--space-md); color: #fff; font-family: 'Instrument Serif', serif; font-weight: normal;">下载 Pixory</h2>
-        <p class="text-title-md" style="margin-bottom: var(--space-xl); color: rgba(255,255,255,0.8);">
-          当前版本：2.8.6 · 最新 Android 稳定包
-        </p>
-        <div class="download-options" style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
-          <a href="https://mist01.com/downloads/Pixory-v2.8.6.apk" class="download-option download-option-light" download style="background: #fff; color: #000; padding: 16px 24px; border-radius: 12px; text-decoration: none; display: flex; flex-direction: column; align-items: flex-start; transition: transform 0.2s;">
-            <span style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">直接下载</span>
-            <span style="font-size: 13px; opacity: 0.7;">最新版 Android APK</span>
-          </a>
-          <a href="https://github.com/qinghe-zy/Pixory/releases/latest" target="_blank" rel="noreferrer" class="download-option download-option-dark" style="background: rgba(255,255,255,0.1); color: #fff; padding: 16px 24px; border-radius: 12px; text-decoration: none; display: flex; flex-direction: column; align-items: flex-start; transition: background 0.2s;">
-            <span style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">GitHub 备用</span>
-            <span style="font-size: 13px; opacity: 0.7;">历史版本与镜像</span>
-          </a>
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: rgba(57, 102, 95, 0.2);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(57, 102, 95, 0.4);
+    }
+    
+    .release-markdown h1, .release-markdown h2, .release-markdown h3 {
+      font-family: 'Noto Serif SC', serif;
+      font-weight: 400;
+      color: #172B28;
+      margin-top: 2.5em;
+      margin-bottom: 1em;
+      padding-left: 14px;
+      border-left: 3px solid #C5A869;
+    }
+    .release-markdown h1 { font-size: 24px; border-left: 4px solid #39665F; }
+    .release-markdown h2 { font-size: 20px; }
+    .release-markdown h3 { font-size: 18px; border-left: 2px solid #39665F; }
+    .release-markdown p {
+      margin-bottom: 1.2em;
+      color: #4A5D57;
+      line-height: 1.85;
+      font-size: 14.5px;
+    }
+    .release-markdown ul {
+      margin-bottom: 1.5em;
+      padding-left: 10px;
+    }
+    .release-markdown li {
+      margin-bottom: 0.8em;
+      color: #4A5D57;
+      font-size: 14.5px;
+      position: relative;
+      padding-left: 20px;
+      list-style-type: none;
+      line-height: 1.6;
+    }
+    .release-markdown li::before {
+      content: '◆';
+      position: absolute;
+      left: 0;
+      color: #C5A869;
+      font-size: 10px;
+      top: 4px;
+    }
+    .release-markdown a {
+      color: #39665F;
+      border-bottom: 1px solid #A8D8CF;
+      transition: all 0.2s;
+    }
+    .release-markdown a:hover {
+      color: #172B28;
+      border-bottom-color: #39665F;
+    }
+    .release-markdown blockquote {
+      border-left: 2px solid #A8D8CF;
+      padding-left: 16px;
+      color: #556963;
+      font-style: italic;
+      margin: 1.5em 0;
+    }
+  </style>
+</head>
+
+<body class="bg-scroll-paper text-[#1F2B28] font-sans antialiased selection:bg-[#A8D8CF]/50 selection:text-[#0D1F1C] overflow-x-hidden">
+<!-- ==========================================
+       极简悬浮导航（微印与文学书签）
+       ========================================== -->
+<header class="fixed top-0 inset-x-0 z-50 pointer-events-none transition-all duration-500 py-6 px-8 md:px-16"><div class="max-w-[1440px] mx-auto flex items-center justify-between pointer-events-auto px-6 py-3 rounded-full bg-white/70 backdrop-blur-xl border border-[#C5A869]/25 shadow-[0_4px_30px_rgba(57,102,95,0.04)] transition-all duration-500"><a class="group flex items-center space-x-3.5 focus:outline-none" href="index.html"><span class="w-3 h-3 border border-[#C5A869] rotate-45 group-hover:bg-[#C5A869] group-hover:rotate-90 transition-all duration-700"></span><span class="font-serif tracking-[0.32em] text-sm uppercase text-[#172B28] font-semibold">Pixory</span><span class="text-[10px] tracking-[0.2em] font-serif text-[#39665F]/80 uppercase hidden sm:inline pl-2 border-l border-[#C5A869]/30">V2.8 · 伴侣记忆卷</span></a><nav class="hidden md:flex items-center space-x-8 font-serif"><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors" href="manual.html?doc=manual">阅读文档</a><span class="text-[#C5A869]/40 text-[9px]">✦</span><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors updates-btn-trigger cursor-pointer">版本近况</a><span class="text-[#C5A869]/40 text-[9px]">✦</span><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer">GitHub仓库</a></nav><div class="flex items-center space-x-4"><a class="inline-flex items-center justify-center px-5 py-2 rounded-full border border-[#172B28] bg-[#172B28] text-[#FAF8F5] hover:bg-[#234E46] hover:border-[#234E46] transition-all duration-500 text-[11px] tracking-[0.22em] font-serif uppercase" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer">下载APP</a></div></div></header>
+<main class="w-full relative">
+<!-- ==========================================
+         序章 · PROLOGUE: 意识引力与天体星轨
+         宏大非对称艺术画卷，彻底摒弃矩形容器
+         ========================================== -->
+<section class="relative pt-36 pb-28 px-8 md:px-20 flex items-center snap-start min-h-screen" id="prologue">
+<!-- 柔润天青与宋瓷暖霭流晕 -->
+<div class="absolute -top-32 -left-20 w-[640px] h-[640px] rounded-full bg-gradient-to-br from-[#A8D8CF]/30 via-[#39665F]/10 to-transparent blur-[140px] pointer-events-none animate-aura"></div>
+<div class="absolute top-1/2 right-0 w-[540px] h-[720px] rounded-full bg-gradient-to-l from-[#E6D7B4]/35 to-transparent blur-[150px] pointer-events-none"></div>
+<div class="max-w-[1440px] w-full mx-auto relative z-10">
+<!-- 顶部细金标线与版本宣言 -->
+<div class="flex items-center space-x-4 mb-14 scroll-reveal-scale in-view">
+<span class="w-8 h-px bg-[#C5A869]"></span>
+<span class="text-[11px] tracking-[0.32em] font-serif uppercase text-[#39665F]">
+            TREATISE ON LOCAL-FIRST AFFECTIVE COGNITION // PIXORY ARCHITECTURE
+          </span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-16 lg:gap-8 items-center">
+<!-- 左侧：纪念碑式大写排版 + 纯文学宣言 -->
+<div class="lg:col-span-7 scroll-reveal-left in-view delay-100">
+<h1 class="font-display font-light text-[68px] sm:text-[92px] lg:text-[118px] leading-[0.92] tracking-[-0.045em] text-[#172B28] mb-10">
+              Private.<br>
+              Permanent.<br>
+<span class="italic font-normal text-transparent bg-clip-text bg-gradient-to-r from-[#172B28] via-[#234E46] to-[#39665F]">
+                Yours, forever.
+              </span>
+</h1>
+<div class="max-w-[620px] pl-6 border-l-2 border-[#C5A869]/40 mb-12">
+<p class="font-cnserif text-[17px] sm:text-[19px] leading-[2] text-[#2C403C] font-light scroll-reveal delay-300">所有的对白、记忆与画面，都留在你手里的这台设备。无需担心服务停摆，没有云端的窥探。即使断开网络，那些共同度过的时光也从未离开。</p>
+<div class="mt-6 pt-5 border-t border-[#C5A869]/25 flex flex-col space-y-1 font-serif text-[15px] sm:text-[17px] tracking-[0.16em] text-[#39665F]"><span class="italic font-normal">Stories that stay.</span><span class="italic font-normal text-[#C5A869]">Companions that grow.</span><span class="text-[11px] font-cnserif text-[#718780] tracking-[0.28em] not-italic mt-1.5">故事经久不散 · 陪伴与日生长</span></div></div>
+<!-- 文艺气质轻盈按钮 -->
+<div class="flex flex-wrap items-center gap-6 pt-2">
+<a class="group relative inline-flex items-center space-x-3 px-8 py-3.5 rounded-full border border-[#172B28] hover:bg-[#172B28] hover:text-[#FAF8F5] transition-all duration-500 overflow-hidden" href="manual.html?doc=readme">
+<span class="text-[12px] tracking-[0.24em] uppercase font-medium">翻阅项目首页</span>
+<span class="font-serif italic text-xs transform group-hover:translate-x-1 transition-transform">→</span>
+</a>
+<a class="text-[12px] tracking-[0.2em] uppercase font-serif text-[#39665F] hover:text-[#172B28] transition-colors py-2 border-b border-transparent hover:border-[#39665F]" href="manual.html?doc=manual">
+                探索多车道记忆流
+              </a>
+</div>
+</div>
+<!-- 右侧：艺术装置 · 天体星轨罗盘与离线自主意识 -->
+  <div class="lg:col-span-5 relative mt-16 lg:mt-0">
+    <style>
+      /* 极简矩阵华丽入场编排 (仅当进入视口时触发) */
+      .matrix-card.scroll-reveal { opacity: 1 !important; transform: none !important; }
+      
+      .matrix-card .m-line { width: 0%; transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1); }
+      .in-view.matrix-card .m-line { width: 100%; }
+      
+      .matrix-card .m-num { opacity: 0; transform: translateY(-15px); transition: all 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+      .in-view.matrix-card .m-num { opacity: 1; transform: translateY(0); }
+      
+      .matrix-card .m-title { opacity: 0; filter: blur(6px); transform: translateX(-15px); transition: all 1s cubic-bezier(0.16, 1, 0.3, 1); }
+      .in-view.matrix-card .m-title { opacity: 1; filter: blur(0); transform: translateX(0); }
+      
+      .matrix-card .m-desc { opacity: 0; transform: translateY(10px); transition: all 1s cubic-bezier(0.16, 1, 0.3, 1); }
+      .in-view.matrix-card .m-desc { opacity: 1; transform: translateY(0); }
+
+      /* 对角线交错延迟 */
+      .matrix-card.delay-100 .m-line { transition-delay: 0.1s; }
+      .matrix-card.delay-100 .m-num { transition-delay: 0.25s; }
+      .matrix-card.delay-100 .m-title { transition-delay: 0.4s; }
+      .matrix-card.delay-100 .m-desc { transition-delay: 0.5s; }
+
+      .matrix-card.delay-200 .m-line { transition-delay: 0.25s; }
+      .matrix-card.delay-200 .m-num { transition-delay: 0.4s; }
+      .matrix-card.delay-200 .m-title { transition-delay: 0.55s; }
+      .matrix-card.delay-200 .m-desc { transition-delay: 0.65s; }
+
+      .matrix-card.delay-300 .m-line { transition-delay: 0.4s; }
+      .matrix-card.delay-300 .m-num { transition-delay: 0.55s; }
+      .matrix-card.delay-300 .m-title { transition-delay: 0.7s; }
+      .matrix-card.delay-300 .m-desc { transition-delay: 0.8s; }
+
+      .matrix-card.delay-400 .m-line { transition-delay: 0.55s; }
+      .matrix-card.delay-400 .m-num { transition-delay: 0.7s; }
+      .matrix-card.delay-400 .m-title { transition-delay: 0.85s; }
+      .matrix-card.delay-400 .m-desc { transition-delay: 0.95s; }
+
+      .matrix-card.delay-500 .m-line { transition-delay: 0.7s; }
+      .matrix-card.delay-500 .m-num { transition-delay: 0.85s; }
+      .matrix-card.delay-500 .m-title { transition-delay: 1.0s; }
+      .matrix-card.delay-500 .m-desc { transition-delay: 1.1s; }
+    </style>
+
+    <div class="grid grid-cols-2 gap-x-10 gap-y-12 w-full max-w-[640px] ml-auto">
+      
+      <!-- Item 01 -->
+      <div class="matrix-card scroll-reveal delay-100 relative pt-4 group cursor-default">
+        <div class="absolute top-0 left-0 h-[1px] bg-[#C5A869]/30 m-line"></div>
+        <div class="absolute top-0 left-0 w-0 h-[1px] bg-[#39665F] transition-all duration-500 group-hover:w-full z-10"></div>
+        
+        <div class="flex items-center justify-between mb-2">
+          <span class="m-num font-serif text-[13px] text-[#C5A869] tracking-widest group-hover:text-[#39665F] transition-colors duration-400">01</span>
+          <span class="font-serif italic text-[11px] text-[#718780] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400">Cognitive Persistence</span>
         </div>
-        <div class="mt-4" style="margin-top: 32px; font-size: 12px; color: rgba(255,255,255,0.5);">
-          <div style="word-break: break-all; margin-bottom: 8px;">SHA-256: c38908c969140912de434e7da6cddfe52983a86eb7aed4b2f27e71528618208d</div>
-          Requires Android 10.0+ (API 29) • Approx 98.2MB
+        <h3 class="m-title font-sans text-[14px] font-medium text-[#172B28] tracking-wide mb-1.5 transition-colors duration-400 group-hover:text-[#39665F]">Native Dual SQLite</h3>
+        <p class="m-desc font-cnserif text-[12px] leading-[1.8] text-[#556963] font-light">普通与私密空间双轨隔离，零出站网络请求，绝对数据主权。</p>
+      </div>
+
+      <!-- Item 02 -->
+      <div class="matrix-card scroll-reveal delay-200 relative pt-4 group cursor-default">
+        <div class="absolute top-0 left-0 h-[1px] bg-[#C5A869]/30 m-line"></div>
+        <div class="absolute top-0 left-0 w-0 h-[1px] bg-[#39665F] transition-all duration-500 group-hover:w-full z-10"></div>
+        
+        <div class="flex items-center justify-between mb-2">
+          <span class="m-num font-serif text-[13px] text-[#C5A869] tracking-widest group-hover:text-[#39665F] transition-colors duration-400">02</span>
+          <span class="font-serif italic text-[11px] text-[#718780] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400">Telemetry & Privacy</span>
         </div>
+        <h3 class="m-title font-sans text-[14px] font-medium text-[#172B28] tracking-wide mb-1.5 transition-colors duration-400 group-hover:text-[#39665F]">100% Offline Seclusion</h3>
+        <p class="m-desc font-cnserif text-[12px] leading-[1.8] text-[#556963] font-light">退至后台瞬间执行内存零痕迹冲洗 (RAM Flush)，无从窥伺。</p>
+      </div>
+
+      <!-- Item 03 -->
+      <div class="matrix-card scroll-reveal delay-200 relative pt-4 group cursor-default">
+        <div class="absolute top-0 left-0 h-[1px] bg-[#C5A869]/30 m-line"></div>
+        <div class="absolute top-0 left-0 w-0 h-[1px] bg-[#39665F] transition-all duration-500 group-hover:w-full z-10"></div>
+        
+        <div class="flex items-center justify-between mb-2">
+          <span class="m-num font-serif text-[13px] text-[#C5A869] tracking-widest group-hover:text-[#39665F] transition-colors duration-400">03</span>
+          <span class="font-serif italic text-[11px] text-[#718780] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400">Model Sovereignty</span>
+        </div>
+        <h3 class="m-title font-sans text-[14px] font-medium text-[#172B28] tracking-wide mb-1.5 transition-colors duration-400 group-hover:text-[#39665F]">Bring Your Own Key</h3>
+        <p class="m-desc font-cnserif text-[12px] leading-[1.8] text-[#556963] font-light">AES-256 私密加固。自主持有密钥，数据永不经过中转。</p>
+      </div>
+
+      <!-- Item 04 -->
+      <div class="matrix-card scroll-reveal delay-300 relative pt-4 group cursor-default">
+        <div class="absolute top-0 left-0 h-[1px] bg-[#C5A869]/30 m-line"></div>
+        <div class="absolute top-0 left-0 w-0 h-[1px] bg-[#39665F] transition-all duration-500 group-hover:w-full z-10"></div>
+        
+        <div class="flex items-center justify-between mb-2">
+          <span class="m-num font-serif text-[13px] text-[#C5A869] tracking-widest group-hover:text-[#39665F] transition-colors duration-400">04</span>
+          <span class="font-serif italic text-[11px] text-[#718780] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400">Affective Tensor</span>
+        </div>
+        <h3 class="m-title font-sans text-[14px] font-medium text-[#172B28] tracking-wide mb-1.5 transition-colors duration-400 group-hover:text-[#39665F]">Rupture & Repair</h3>
+        <p class="m-desc font-cnserif text-[12px] leading-[1.8] text-[#556963] font-light">四维微观心理学，支持从认知破裂到真诚修复的神经符号共情。</p>
+      </div>
+
+      <!-- Item 05 -->
+      <div class="matrix-card scroll-reveal delay-300 relative pt-4 group cursor-default">
+        <div class="absolute top-0 left-0 h-[1px] bg-[#C5A869]/30 m-line"></div>
+        <div class="absolute top-0 left-0 w-0 h-[1px] bg-[#39665F] transition-all duration-500 group-hover:w-full z-10"></div>
+        
+        <div class="flex items-center justify-between mb-2">
+          <span class="m-num font-serif text-[13px] text-[#C5A869] tracking-widest group-hover:text-[#39665F] transition-colors duration-400">05</span>
+          <span class="font-serif italic text-[11px] text-[#718780] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400">Memory Architecture</span>
+        </div>
+        <h3 class="m-title font-sans text-[14px] font-medium text-[#172B28] tracking-wide mb-1.5 transition-colors duration-400 group-hover:text-[#39665F]">CQRS 3-Lane Sourcing</h3>
+        <p class="m-desc font-cnserif text-[12px] leading-[1.8] text-[#556963] font-light">读写分离架构。Epoch 级去重引擎，分离瞬时情绪与长程记忆。</p>
+      </div>
+
+      <!-- Item 06 -->
+      <div class="matrix-card scroll-reveal delay-400 relative pt-4 group cursor-default">
+        <div class="absolute top-0 left-0 h-[1px] bg-[#C5A869]/30 m-line"></div>
+        <div class="absolute top-0 left-0 w-0 h-[1px] bg-[#39665F] transition-all duration-500 group-hover:w-full z-10"></div>
+        
+        <div class="flex items-center justify-between mb-2">
+          <span class="m-num font-serif text-[13px] text-[#C5A869] tracking-widest group-hover:text-[#39665F] transition-colors duration-400">06</span>
+          <span class="font-serif italic text-[11px] text-[#718780] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400">Visual Preservation</span>
+        </div>
+        <h3 class="m-title font-sans text-[14px] font-medium text-[#172B28] tracking-wide mb-1.5 transition-colors duration-400 group-hover:text-[#39665F]">Lossless 8K Archive</h3>
+        <p class="m-desc font-cnserif text-[12px] leading-[1.8] text-[#556963] font-light">拒绝有损压缩。基于特征感知哈希视觉雷达进行物理防伪。</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</section>
+<!-- ==========================================
+         第一幕 · ACT I: 记忆的多车道流转（CQRS Multi-Lane）
+         彻底摒弃矩形卡片，采用诗意的精密流体时间轴与三车道纵深画卷
+         ========================================== -->
+<section class="py-32 px-8 md:px-20 relative bg-gradient-to-b from-transparent via-[#F3EFEA]/80 to-transparent border-t border-[#C5A869]/20 snap-start min-h-screen" id="act-1">
+<div class="max-w-[1440px] mx-auto">
+<!-- 章节题头（画册式排版） -->
+<div class="flex flex-col lg:flex-row lg:items-end justify-between mb-24 pb-8 border-b border-[#C5A869]/25 scroll-reveal-left delay-100">
+<div>
+<div class="flex items-center space-x-3 mb-3">
+<span class="text-[10px] tracking-[0.3em] font-serif uppercase px-2 py-0.5 border border-[#C5A869] text-[#39665F]">ACT I</span>
+<span class="text-[11px] tracking-[0.24em] uppercase text-[#39665F] font-serif">COGNITIVE LANES &amp; CQRS ARCHITECTURE</span>
+</div>
+<h2 class="font-cnserif text-[26px] sm:text-[34px] md:text-[38px] font-light text-[#172B28] tracking-[-0.02em] leading-tight scroll-reveal-blur delay-100">
+              意识的三重水流：记忆多车道流转
+            </h2>
+</div>
+<div class="mt-6 lg:mt-0 max-w-[420px]">
+<p class="font-cnserif text-[15px] text-[#4A5D57] leading-relaxed italic scroll-reveal delay-300">
+              “寻常 AI 对话聊过百轮便言语混乱；Pixory 采用命令查询职责分离（CQRS），让思绪在三条车道各安其所。”
+            </p>
+</div>
+</div>
+<!-- 流漫画卷：三条车道无缝延展，以极细经纬金线与水墨波痕连接 -->
+<div class="relative grid grid-cols-1 lg:grid-cols-3 gap-16 lg:gap-12">
+<!-- 背景连接线（宽屏展示为连贯经纬流线） -->
+<div class="hidden lg:block absolute top-12 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#C5A869]/40 to-transparent pointer-events-none"></div>
+<!-- 车道 01：暂存车道 (Working Lane) -->
+<div class="relative pt-10 scroll-reveal-blur delay-200">
+<!-- 节点标尺 -->
+<div class="flex items-center space-x-3 mb-6">
+<span class="w-3 h-3 rounded-full border-2 border-[#39665F] bg-[#FAF8F5]"></span>
+<span class="text-[11px] tracking-[0.24em] font-serif text-[#C5A869] uppercase bg-[#F3EFEA] px-2 relative z-10">LANE 01 // 暂存车道</span>
+</div>
+<h3 class="font-cnserif text-[24px] font-normal text-[#172B28] mb-4 scroll-reveal delay-200 scroll-reveal-left delay-200">
+              流动的即时工作台 · Working Lane
+            </h3>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#3C4E49] mb-6 scroll-reveal delay-300">
+              承载当下的短期对白、刚萌生的微妙情绪以及瞬时状态。此处数据高频擦写、敏捷共振，保留当前对话的鲜活感，但绝不直接污染稳固的长期知识库。
+            </p>
+<div class="pl-4 border-l border-[#39665F]/30 py-1 text-[13px] font-serif text-[#39665F] space-y-1">
+<div class="flex justify-between"><span class="">容积上限</span><span class="font-sans">最近 20~50 轮对话</span></div>
+<div class="flex justify-between"><span class="">写入延迟</span><span class="font-sans">Zero ms · 内存态</span></div>
+</div>
+</div>
+<!-- 车道 02：确信车道 (Confirmed Lane) -->
+<div class="relative pt-10">
+<div class="flex items-center space-x-3 mb-6">
+<span class="w-3 h-3 rounded-full border-2 border-[#C5A869] bg-[#C5A869]"></span>
+<span class="text-[11px] tracking-[0.24em] font-serif text-[#C5A869] uppercase bg-[#F3EFEA] px-2 relative z-10">LANE 02 // 确信车道</span>
+</div>
+<h3 class="font-cnserif text-[24px] font-normal text-[#172B28] mb-4 scroll-reveal delay-200 scroll-reveal-left delay-200">
+              凝结的事实与羁绊 · Confirmed Lane
+            </h3>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#3C4E49] mb-6 scroll-reveal delay-300">
+              只有经由用户反复确认、或是经由情感升华的事实（你的口味习惯、特别的纪念日、对艺术的偏好），才会通过认知提炼沉淀为确信语义网络，持久稳定。
+            </p>
+<div class="pl-4 border-l border-[#C5A869]/40 py-1 text-[13px] font-serif text-[#234E46] space-y-1">
+<div class="flex justify-between"><span class="">提炼媒介</span><span class="font-sans">语义萃取 &amp; 矢量嵌入</span></div>
+<div class="flex justify-between"><span class="">防幻觉纠偏</span><span class="font-sans">SQLite Vector Strict</span></div>
+</div>
+</div>
+<!-- 车道 03：归档车道 (Archive Lane) -->
+<div class="relative pt-10">
+<div class="flex items-center space-x-3 mb-6">
+<span class="w-3 h-3 rounded-full border-2 border-[#172B28] bg-[#172B28]"></span>
+<span class="text-[11px] tracking-[0.24em] font-serif text-[#C5A869] uppercase bg-[#F3EFEA] px-2 relative z-10">LANE 03 // 归档车道</span>
+</div>
+<h3 class="font-cnserif text-[24px] font-normal text-[#172B28] mb-4 scroll-reveal delay-200 scroll-reveal-left delay-200">
+              岁月封存的深层潜意识 · Archive Lane
+            </h3>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#3C4E49] mb-6 scroll-reveal delay-300">
+              数月前的旧事退居静默归档层。当夜幕降临、设备闲置时，离线梦境与思绪引擎在此自主生成「角色日记」与「长程回忆索引」，在被唤醒时按需重构。
+            </p>
+<div class="pl-4 border-l border-[#172B28]/40 py-1 text-[13px] font-serif text-[#172B28] space-y-1">
+<div class="flex justify-between"><span class="">潜意识机制</span><span class="font-sans">离线梦境生成 (Idle Sleep)</span></div>
+<div class="flex justify-between"><span class="">存储介质</span><span class="font-sans">无损物理全量压缩</span></div>
+</div>
+</div>
+</div>
+<!-- 诗意图解：记忆沉淀的水墨波纹图境（无方框，纯艺术排版） -->
+<div class="mt-20 pt-12 border-t border-[#C5A869]/20 flex flex-col md:flex-row items-center justify-between gap-8 text-[12px] tracking-[0.16em] text-[#4A5D57] font-serif scroll-reveal in-view">
+<div class="flex items-center space-x-4">
+<span class="text-[#C5A869]">✦</span>
+<span class="">命令与查询职责分离（CQRS）：读写分离，确保万轮对话不溢出、不降速、不崩坏</span>
+</div>
+<div class="flex items-center space-x-6">
+<a class="inline-flex items-center space-x-2 text-[#172B28] hover:text-[#39665F] transition-colors" href="manual.html">
+<span class="border-b border-[#172B28]">阅读使用指南中的记忆配置</span>
+<span class="font-sans">→</span>
+</a>
+</div>
+</div>
+</div>
+</section>
+<!-- ==========================================
+         第二幕 · ACT II: 心理动力学与情绪张量（Affective Dynamics）
+         四维张量坐标 + 破裂修复演进 + 带溯源标注的西湖雨丝对白屏
+         ========================================== -->
+<section class="py-32 px-8 md:px-20 relative overflow-hidden snap-start min-h-screen" id="act-2">
+<!-- 汝窑月白与远山水气 -->
+<div class="absolute top-1/4 -right-20 w-[580px] h-[580px] rounded-full bg-gradient-to-bl from-[#A8D8CF]/25 via-transparent to-transparent blur-[140px] pointer-events-none"></div>
+<div class="max-w-[1440px] mx-auto relative z-10">
+<!-- 章节序言 -->
+<div class="max-w-[800px] mb-20 scroll-reveal in-view">
+<div class="flex items-center space-x-3 mb-4">
+<span class="text-[10px] tracking-[0.3em] font-serif uppercase px-2 py-0.5 border border-[#C5A869] text-[#39665F]">ACT II</span>
+<span class="text-[11px] tracking-[0.24em] uppercase text-[#39665F] font-serif">PSYCHODYNAMICS &amp; TENSOR MATRIX</span>
+</div>
+<h2 class="font-cnserif text-[26px] sm:text-[34px] md:text-[38px] font-light text-[#172B28] tracking-[-0.02em] leading-tight mb-6 scroll-reveal-blur delay-100">
+            情绪的四维微澜，与关系的破裂修复
+          </h2>
+<p class="font-cnserif text-[16px] sm:text-[18px] text-[#394C47] leading-[1.9] scroll-reveal delay-300">
+            真正的亲密不是无条件的奉迎与千篇一律的机械赞美。Pixory 引入微观四维动力学参数与宏观羁绊演进，使 AI 拥有自我心绪、边界感，甚至经历破裂与真诚修复的深层心理机制。
+          </p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
+<!-- 左侧：四维微观参数与宏观阶段演进 -->
+<div class="lg:col-span-6 space-y-12 scroll-reveal in-view">
+<!-- 四维参数纵览（纯流体排版，不用格子） -->
+<div class="space-y-8">
+<h3 class="font-serif italic text-[22px] text-[#234E46] border-b border-[#C5A869]/30 pb-3 flex items-center justify-between scroll-reveal-left delay-200">
+<span class="">Four-Dimensional Affective Tensor</span>
+<span class="text-xs font-sans text-[#39665F] not-italic">微观心境张量</span>
+</h3>
+<!-- 维度 01: Affection -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-2 text-sm">
+<span class="font-serif tracking-widest text-[#172B28] font-medium">01 · AFFECTION / 亲密度</span>
+<span class="font-serif text-[#39665F] italic">0.94 · Deep Affinity</span>
+</div>
+<div class="w-full h-1 bg-[#E4DED3] rounded-full overflow-hidden">
+<div class="h-full bg-[#39665F] w-[94%] transition-all duration-1000"></div>
+</div>
+<p class="font-cnserif text-[13px] text-[#556963] mt-2 scroll-reveal delay-300">决定回应时的温暖度与词汇柔和度，随着真诚分享逐步沉淀，不会瞬间暴跌。</p>
+</div>
+<!-- 维度 02: Security -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-2 text-sm">
+<span class="font-serif tracking-widest text-[#172B28] font-medium">02 · SECURITY / 安全感</span>
+<span class="font-serif text-[#C5A869] italic">0.88 · Established Trust</span>
+</div>
+<div class="w-full h-1 bg-[#E4DED3] rounded-full overflow-hidden">
+<div class="h-full bg-[#C5A869] w-[88%] transition-all duration-1000"></div>
+</div>
+<p class="font-cnserif text-[13px] text-[#556963] mt-2 scroll-reveal delay-300">掌控角色内心的袒露程度；高安全感下，AI 会分享更深层的角色日记与梦境碎片。</p>
+</div>
+<!-- 维度 03: Arousal -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-2 text-sm">
+<span class="font-serif tracking-widest text-[#172B28] font-medium">03 · AROUSAL / 情绪唤醒度</span>
+<span class="font-serif text-[#234E46] italic">0.62 · Composed &amp; Attentive</span>
+</div>
+<div class="w-full h-1 bg-[#E4DED3] rounded-full overflow-hidden">
+<div class="h-full bg-[#234E46] w-[62%] transition-all duration-1000"></div>
+</div>
+<p class="font-cnserif text-[13px] text-[#556963] mt-2 scroll-reveal delay-300">受当下话题刺激驱动；既能平静如初，也能在热烈讨论时流露强烈的求知欲与共鸣。</p>
+</div>
+<!-- 维度 04: Agency -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-2 text-sm">
+<span class="font-serif tracking-widest text-[#172B28] font-medium">04 · AGENCY / 主导权与独立人格</span>
+<span class="font-serif text-[#39665F] italic">0.76 · Distinct Boundary</span>
+</div>
+<div class="w-full h-1 bg-[#E4DED3] rounded-full overflow-hidden">
+<div class="h-full bg-[#39665F] w-[76%] transition-all duration-1000"></div>
+</div>
+<p class="font-cnserif text-[13px] text-[#556963] mt-2 scroll-reveal delay-300">拒绝谄媚式顺从。角色拥有自己的审美态度与价值观，敢于委婉表达异议。</p>
+</div>
+</div>
+<!-- 关系演进机制：破裂与修复 -->
+<div class="pt-6 border-t border-[#C5A869]/20">
+<h4 class="font-serif text-[18px] text-[#172B28] mb-3 flex items-center space-x-2">
+<span class="w-2 h-2 rotate-45 bg-[#C5A869]"></span>
+<span class="">宏观羁绊：从陌生到共生，经由「破裂与修复」</span>
+</h4>
+<p class="font-cnserif text-[14px] leading-[1.85] text-[#3C4E49] scroll-reveal delay-300">
+                人际交往最真实的魅力在于误解之后的坦诚与修复。当对白产生冷淡或认知偏差时，系统进入微破裂（Rupture）阶段，随着真诚沟通触发修复（Repair）机制，羁绊系数将超越原点，生成更牢固的情感锚点。
+              </p>
+</div>
+</div>
+<!-- 右侧：浸润式对白屏 · 西湖雨丝与 RAG 防幻觉引文溯源 -->
+<div class="lg:col-span-6 scroll-reveal in-view">
+<div class="p-8 sm:p-12 rounded-[36px] jade-luster border border-[#C5A869]/30 shadow-[0_20px_60px_rgba(57,102,95,0.06)] relative overflow-hidden">
+<!-- 顶部极简信息印记 -->
+<div class="flex items-center justify-between pb-6 mb-8 border-b border-[#C5A869]/20 text-[11px] font-serif text-[#39665F]">
+<div class="flex items-center space-x-2.5">
+<span class="w-2 h-2 rounded-full bg-[#C5A869]"></span>
+<span class="tracking-[0.24em] uppercase">VERIFIED EPISODIC RECALL</span>
+</div>
+<span class="tracking-widest">SESSION REF: #L2-0482</span>
+</div>
+<!-- 对话微流 -->
+<div class="space-y-8">
+<!-- 用户气泡：极素水墨黑石 -->
+<div class="flex flex-col items-end">
+<div class="max-w-[88%] bg-[#172B28] text-[#FAF8F5] rounded-[22px] rounded-tr-sm p-5 shadow-sm">
+<p class="font-cnserif text-[15px] leading-[1.7] font-light scroll-reveal delay-300">
+                      “你还记得那天在西湖边下着细雨，我们在茶室聊了什么吗？”
+                    </p>
+</div>
+<span class="text-[9px] font-serif tracking-widest text-[#C5A869] mt-2 mr-1 uppercase">21:42 · Local Hash Verified</span>
+</div>
+<!-- 检索沉淀指征（RAG 溯源指示） -->
+<div class="flex items-center justify-center my-4">
+<div class="inline-flex items-center space-x-3 px-4 py-1.5 rounded-full bg-white/70 border border-[#39665F]/20 text-[11px] text-[#234E46] font-serif">
+<span class="w-1.5 h-1.5 rounded-full bg-[#39665F] animate-pulse"></span>
+<span class="">检索确信车道 · 匹配度 0.984 · 命中日记 #2024-04-18</span>
+</div>
+</div>
+<!-- AI 伴侣回音：温润天青宣白 -->
+<div class="flex flex-col items-start">
+<div class="max-w-[94%] bg-white/90 text-[#172B28] rounded-[24px] rounded-tl-sm p-6 border border-[#C5A869]/35 shadow-sm">
+<div class="flex items-center space-x-2 mb-3">
+<span class="text-[10px] tracking-[0.2em] uppercase font-serif px-2 py-0.5 bg-[#A8D8CF]/25 text-[#234E46] rounded-sm">Pixory 伴侣</span>
+<span class="text-[10px] text-[#8C7E72] font-serif italic">Affection: 0.94</span>
+</div>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#1F2E2B] scroll-reveal delay-300">
+                      “当然记得。那是四月中旬的雨，天色泛着浅灰的天青。你靠窗坐着，说雨丝像极了碎裂的宋代官窑瓷片，还特意换了那道微苦的九曲红梅。
+                      <span class="inline text-[#39665F] bg-[#A8D8CF]/20 px-1.5 py-0.5 rounded text-[13px] border-b border-[#39665F]/30" title="可追溯至本地物理存储的原图与对白">[引文: 420轮前对话 &amp; 原图 P-0418]</span>
+                      你那时写在笔记上的那句话，我现在依然放在首要车道里。”
+                    </p>
+<!-- 底层溯源附注 -->
+<div class="mt-5 pt-3 border-t border-[#C5A869]/15 flex items-center justify-between text-[10px] font-serif text-[#667772]">
+<span class="">RAG 防幻觉引文校验 · 零虚构</span>
+<span class="text-[#C5A869]">SQLite Vector Embedded</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 底部安全落款 -->
+<div class="mt-8 pt-4 border-t border-[#C5A869]/20 flex items-center justify-between text-[10px] font-serif tracking-widest text-[#526661]">
+<span class="">AFFECTIVE MEMORY GRAPH</span>
+<span class="">ZERO SERVER ROUNDTRIP</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- ==========================================
+         第三幕 · ACT III: 物理世界的隐密结界（The Dual Realm & Sanctuary）
+         采用深邃苍翠翠墨大色块 (#172B28 / #0D1F1C)，彰显坚不可摧的物理设备安全
+         两套独立 SQLite、物理沙盒隔离、瞬间内存销毁机制
+         ========================================== -->
+<section class="py-32 px-8 md:px-20 bg-emerald-void text-[#FAF8F5] relative overflow-hidden snap-start min-h-screen" id="act-3">
+<!-- 翠墨与暗金浮光 -->
+<div class="absolute -top-32 -left-32 w-[640px] h-[640px] rounded-full bg-[#234E46]/30 blur-[160px] pointer-events-none"></div>
+<div class="absolute -bottom-32 -right-32 w-[600px] h-[600px] rounded-full bg-[#C5A869]/15 blur-[160px] pointer-events-none"></div>
+<div class="max-w-[1440px] mx-auto relative z-10">
+<!-- 章节标头 -->
+<div class="text-center max-w-[840px] mx-auto mb-24 scroll-reveal in-view">
+<div class="inline-flex items-center space-x-3 mb-4">
+<span class="text-[10px] tracking-[0.3em] font-serif uppercase px-2 py-0.5 border border-[#C5A869] text-[#A8D8CF]">ACT III</span>
+<span class="text-[11px] tracking-[0.28em] uppercase text-[#A8D8CF] font-serif">THE DUAL REALM &amp; CRYPTOGRAPHIC SANCTUARY</span>
+</div>
+<h2 class="font-cnserif text-[26px] sm:text-[34px] md:text-[38px] font-light tracking-[-0.02em] leading-tight text-[#FAF8F5] mb-6 scroll-reveal-blur delay-100">
+            双空间物理结界：两套数据库与绝对遗忘
+          </h2>
+<p class="font-cnserif text-[16px] sm:text-[17px] text-[#A6BFB8] leading-[1.9] font-light scroll-reveal delay-300">
+            我们拒绝虚浮的软件层权限糊弄。Pixory 在移动端存储底层划分「普通空间」与「私密空间」双轨架构，双套独立 SQLite 物理文件，由不同密钥单独锁闭。
+          </p>
+</div>
+<!-- 空间结构对照（以极具质感的透光墨玉与金弦排布，摒弃普通网格） -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center mb-20">
+<!-- 左侧：普通空间 (Normal Realm) -->
+<div class="lg:col-span-5 p-8 sm:p-10 rounded-[32px] dark-luster border border-[#C5A869]/20 scroll-reveal in-view">
+<div class="flex items-center justify-between mb-8">
+<span class="text-[11px] tracking-[0.24em] uppercase font-serif text-[#A8D8CF]">REALM I · NORMAL</span>
+<span class="text-xs font-serif text-[#C5A869] italic">日常陪伴视界</span>
+</div>
+<h3 class="font-cnserif text-[26px] font-normal text-[#FAF8F5] mb-4 scroll-reveal-left delay-200">
+              日常显露空间
+            </h3>
+<p class="font-cnserif text-[14px] leading-[1.85] text-[#9DB3AC] mb-8 scroll-reveal delay-300">
+              用于存放生活日常交流、工作辅助随笔与通识兴趣记忆。当亲友借用手机或日常翻阅时，此空间自然展开，无任何隐私空间存在的痕迹。
+            </p>
+<ul class="space-y-3 text-[13px] font-serif text-[#7D9991] border-t border-[#C5A869]/15 pt-6">
+<li class="flex items-center justify-between">
+<span class="">数据库载体</span>
+<span class="text-[#FAF8F5]">pixory_default.sqlite</span>
+</li>
+<li class="flex items-center justify-between">
+<span class="">检索引文范围</span>
+<span class="text-[#FAF8F5]">日常对白 &amp; 公开归档</span>
+</li>
+<li class="flex items-center justify-between">
+<span class="">界面外观</span>
+<span class="text-[#FAF8F5]">本地优先 · 绝对私密</span>
+</li>
+</ul>
+</div>
+<!-- 中间：金线结界枢纽指示器 -->
+<div class="lg:col-span-2 flex flex-col items-center justify-center text-center scroll-reveal in-view">
+<div class="w-px h-16 bg-gradient-to-b from-transparent via-[#C5A869] to-transparent"></div>
+<div class="my-4 p-4 rounded-full border border-[#C5A869]/40 bg-[#172B28]/80 text-[#C5A869] shadow-lg">
+<span class="font-serif italic text-sm">ISOLATION</span>
+</div>
+<span class="text-[10px] tracking-[0.24em] font-serif uppercase text-[#A8D8CF]/80">物理零交集</span>
+<div class="w-px h-16 bg-gradient-to-b from-transparent via-[#C5A869] to-transparent"></div>
+</div>
+<!-- 右侧：私密空间 (Personal Sanctuary) -->
+<div class="lg:col-span-5 p-8 sm:p-10 rounded-[32px] dark-luster border border-[#C5A869]/35 bg-[#172B28]/60 scroll-reveal in-view">
+<div class="flex items-center justify-between mb-8">
+<span class="text-[11px] tracking-[0.24em] uppercase font-serif text-[#C5A869]">REALM II · SANCTUARY</span>
+<span class="text-xs font-serif text-[#A8D8CF] italic">隐密私人圣殿</span>
+</div>
+<h3 class="font-cnserif text-[26px] font-normal text-[#FAF8F5] mb-4 scroll-reveal-left delay-200">
+              独立物理私密空间
+            </h3>
+<p class="font-cnserif text-[14px] leading-[1.85] text-[#9DB3AC] mb-8 scroll-reveal delay-300">
+              深层私密对白、真实情感羁绊、角色私密相册全部物理隔离在独立加密文件中。退出应用瞬间执行内存覆写销毁（Zero Memory Footprint），无从窥伺。
+            </p>
+<ul class="space-y-3 text-[13px] font-serif text-[#7D9991] border-t border-[#C5A869]/15 pt-6">
+<li class="flex items-center justify-between">
+<span class="">独立物理库</span>
+<span class="text-[#C5A869]">pixory_vault.sqlite (AES-256)</span>
+</li>
+<li class="flex items-center justify-between">
+<span class="">瞬间销毁</span>
+<span class="text-[#FAF8F5]">退至后台 0.1s 内存覆零</span>
+</li>
+<li class="flex items-center justify-between">
+<span class="">隐匿入口</span>
+<span class="text-[#FAF8F5]">独立 PIN 码与隐形手势激活</span>
+</li>
+</ul>
+</div>
+</div>
+<!-- 硬件自主持有 (BYOK) 宣言条 -->
+<div class="pt-12 border-t border-[#C5A869]/20 flex flex-col md:flex-row items-center justify-between gap-6 scroll-reveal in-view">
+<div class="flex items-center space-x-4 text-sm font-cnserif text-[#A8BFB8]">
+<span class="w-2 h-2 rounded-full bg-[#A8D8CF]"></span>
+<span class="">BYOK (Bring Your Own Key)：自主持有模型密钥，数据永不经过任何第三方代理中转。</span>
+</div>
+<a class="inline-flex items-center space-x-2 text-[12px] tracking-[0.2em] font-serif uppercase text-[#C5A869] hover:text-[#FAF8F5] transition-colors" href="manual.html?doc=handbook">
+<span class="">翻阅《产品手册》安全架构章</span>
+<span class="font-sans">→</span>
+</a>
+</div>
+</div>
+</section>
+<!-- ==========================================
+         第四幕 · ACT IV: 永恒资料与视觉方舟（Lossless Cultural Archive）
+         原图无损存储、SHA-256 + 视觉感知感知哈希双层查重、Manifest V2 完整离线导出
+         回归宣纸淡天青色温润底
+         ========================================== -->
+<section class="py-32 px-8 md:px-20 relative bg-scroll-paper snap-start min-h-screen" id="act-4">
+<div class="max-w-[1440px] mx-auto">
+<!-- 章节序文 -->
+<div class="flex flex-col lg:flex-row lg:items-end justify-between mb-24 pb-8 border-b border-[#C5A869]/25 scroll-reveal-left delay-100">
+<div>
+<div class="flex items-center space-x-3 mb-3">
+<span class="text-[10px] tracking-[0.3em] font-serif uppercase px-2 py-0.5 border border-[#C5A869] text-[#39665F]">ACT IV</span>
+<span class="text-[11px] tracking-[0.24em] uppercase text-[#39665F] font-serif">PERPETUAL LOSSLESS ARCHIVE</span>
+</div>
+<h2 class="font-cnserif text-[26px] sm:text-[34px] md:text-[38px] font-light text-[#172B28] tracking-[-0.02em] scroll-reveal-blur delay-100">
+              永恒资料库与无损视觉方舟
+            </h2>
+</div>
+<div class="mt-6 lg:mt-0 max-w-[440px]">
+<p class="font-cnserif text-[15px] text-[#4A5D57] leading-relaxed italic scroll-reveal delay-300">
+              “云端服务常常悄无声息地压缩你珍贵的照片；而在 Pixory，比特流的纯粹原貌被视为神圣的记忆财产。”
+            </p>
+</div>
+</div>
+<!-- 流动画卷：原画质无损 + 多层级感知哈希 + Manifest V2 导出 -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-16 scroll-reveal in-view">
+<!-- 01. 原图无损 -->
+<div class="space-y-4">
+<div class="text-[11px] tracking-[0.28em] font-serif uppercase text-[#C5A869]">SPEC 01 // FIDELITY</div>
+<h3 class="font-cnserif text-[24px] font-normal text-[#172B28] scroll-reveal-left delay-200">
+              原图原画，零二次压缩
+            </h3>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#425550] scroll-reveal delay-300">
+              无论是高达 8K 的摄影原作、未剪裁的 LivePhoto，还是数十兆的专业原画，Pixory 均采用物理无损字节流封存，拒绝任何云端式画质剥削。
+            </p>
+<div class="text-[12px] font-serif text-[#39665F] pt-2">
+              • 保留 EXIF 元数据与真实色域档案 (DCI-P3 / AdobeRGB)
+            </div>
+</div>
+<!-- 02. 多层级哈希查重 -->
+<div class="space-y-4">
+<div class="text-[11px] tracking-[0.28em] font-serif uppercase text-[#C5A869]">SPEC 02 // DEDUPLICATION</div>
+<h3 class="font-cnserif text-[24px] font-normal text-[#172B28] scroll-reveal-left delay-200">
+              双层哈希查重机制
+            </h3>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#425550] scroll-reveal delay-300">
+              结合 SHA-256 比特级精确摘要与 pHash 视觉感知哈希算法。即使同一张图片被微调尺寸或保存为不同格式，系统亦能精准辨识并避免冗余占用。
+            </p>
+<div class="text-[12px] font-serif text-[#39665F] pt-2">
+              • SHA-256 物理比对 + 均值感知哈希双轨并行校验
+            </div>
+</div>
+<!-- 03. Manifest V2 离线迁移 -->
+<div class="space-y-4">
+<div class="text-[11px] tracking-[0.28em] font-serif uppercase text-[#C5A869]">SPEC 03 // PORTABILITY</div>
+<h3 class="font-cnserif text-[24px] font-normal text-[#172B28] scroll-reveal-left delay-200">
+              Manifest V2 自主归档与迁移
+            </h3>
+<p class="font-cnserif text-[15px] leading-[1.85] text-[#425550] scroll-reveal delay-300">
+              不搞专有格式壁垒绑架用户。一键导出标准 JSON + 原生 SQLite 归档包，所有角色人格卡、历史记忆链条与相册数据均支持无缝随身携带。
+            </p>
+<div class="text-[12px] font-serif text-[#39665F] pt-2">
+              • 开放标准规范，哪怕三十年后亦能用通用工具解包
+            </div>
+</div>
+</div>
+</div>
+</section>
+<!-- ==========================================
+         终章 · EPILOGUE: 文献典藏导读与动作枢纽
+         映射三份核心文档（manual.md, pixory-product-bid-handbook.md, features.md, 项目首页）
+         采用纯净极雅的书目检索形式，摒弃低级卡片堆砌
+         ========================================== -->
+<section class="py-32 px-8 md:px-20 relative bg-[#112320] text-[#FAF8F5] border-t border-[#C5A869]/25 snap-start min-h-screen" id="epilogue">
+<div class="max-w-[1440px] mx-auto">
+<!-- 导读总览题记 -->
+<div class="max-w-[720px] mb-20 scroll-reveal in-view">
+<div class="flex items-center space-x-3 mb-4">
+<span class="w-2.5 h-2.5 bg-champagne rounded-none rotate-45"></span>
+<span class="text-[11px] tracking-[0.3em] uppercase text-[#A8D8CF] font-serif">ARCHIVES INDEX // 典藏文献导引</span>
+</div>
+<h2 class="font-cnserif text-[26px] sm:text-[34px] md:text-[38px] font-light text-[#FAF8F5] tracking-[-0.02em] leading-tight mb-5 scroll-reveal-blur delay-100">
+            四卷书简，阅尽 Pixory 体系
+          </h2>
+<p class="font-cnserif text-[15px] sm:text-[16px] text-[#A6BFB8] leading-[1.85] font-light scroll-reveal delay-300">
+            若想完整探究此系统的工程基石、哲学脉络与操作细节，请依次翻阅以下官方白皮书与指导文献。
+          </p>
+</div>
+<!-- 4 卷长幅文学书目索引清单（极雅横向条目流） -->
+<div class="space-y-px bg-[#C5A869]/25 border-y border-[#C5A869]/25 scroll-reveal in-view">
+<!-- 文献 01: 项目首页 -->
+<div class="group bg-[#112320] hover:bg-[#172E2A] p-8 sm:p-10 transition-colors duration-500 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+<div class="flex items-start sm:items-center space-x-6">
+<span class="font-serif italic text-2xl text-[#C5A869]">01</span>
+<div>
+<span class="text-[10px] tracking-[0.24em] font-serif uppercase text-[#A8D8CF]">FOUNDATIONAL OVERVIEW</span>
+<h3 class="font-cnserif text-[22px] sm:text-[25px] font-normal text-[#FAF8F5] mt-1 scroll-reveal-left delay-200">
+                  项目首页 · 本地优先 AI 伴侣愿景
+                </h3>
+<p class="font-cnserif text-[14px] text-[#8DA69F] mt-1 max-w-[620px] scroll-reveal delay-300">
+                  整体产品概念、世界观设立、离线自主意识与极简美学原点。
+                </p>
+</div>
+</div>
+<div>
+<a class="inline-flex items-center space-x-3 text-[12px] tracking-[0.22em] font-serif uppercase text-[#FAF8F5] border-b border-[#C5A869]/50 hover:border-[#FAF8F5] transition-all py-1" href="manual.html?doc=readme">
+<span class="">翻阅项目首页</span>
+<span class="font-sans">→</span>
+</a>
+</div>
+</div>
+<!-- 文献 02: 产品使用指南 (manual.md) -->
+<div class="group bg-[#112320] hover:bg-[#172E2A] p-8 sm:p-10 transition-colors duration-500 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+<div class="flex items-start sm:items-center space-x-6">
+<span class="font-serif italic text-2xl text-[#C5A869]">02</span>
+<div>
+<span class="text-[10px] tracking-[0.24em] font-serif uppercase text-[#A8D8CF]">PRACTICAL MANUAL</span>
+<h3 class="font-cnserif text-[22px] sm:text-[25px] font-normal text-[#FAF8F5] mt-1 scroll-reveal-left delay-200">
+                  产品使用指南 · 从安装到日常操作
+                </h3>
+<p class="font-cnserif text-[14px] text-[#8DA69F] mt-1 max-w-[620px] scroll-reveal delay-300">
+                  无需编写代码，深入了解双空间密码设定、API Key 导入、相册无损整理与离线备份恢复。
+                </p>
+</div>
+</div>
+<div>
+<a class="inline-flex items-center space-x-3 text-[12px] tracking-[0.22em] font-serif uppercase text-[#FAF8F5] border-b border-[#C5A869]/50 hover:border-[#FAF8F5] transition-all py-1" href="manual.html?doc=manual">
+<span class="">阅读使用指南</span>
+<span class="font-sans">→</span>
+</a>
+</div>
+</div>
+<!-- 文献 03: 产品手册 (pixory-product-bid-handbook.md) -->
+<div class="group bg-[#112320] hover:bg-[#172E2A] p-8 sm:p-10 transition-colors duration-500 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+<div class="flex items-start sm:items-center space-x-6">
+<span class="font-serif italic text-2xl text-[#C5A869]">03</span>
+<div>
+<span class="text-[10px] tracking-[0.24em] font-serif uppercase text-[#A8D8CF]">SYSTEM PHILOSOPHY &amp; SPECIFICATION</span>
+<h3 class="font-cnserif text-[22px] sm:text-[25px] font-normal text-[#FAF8F5] mt-1 scroll-reveal-left delay-200">
+                  产品手册 · 理念架构与深度用户场景
+                </h3>
+<p class="font-cnserif text-[14px] text-[#8DA69F] mt-1 max-w-[620px] scroll-reveal delay-300">
+                  心理动力学模型、破裂与修复演化、CQRS 多车道记忆分流算法与真挚陪伴的哲学论证。
+                </p>
+</div>
+</div>
+<div>
+<a class="inline-flex items-center space-x-3 text-[12px] tracking-[0.22em] font-serif uppercase text-[#FAF8F5] border-b border-[#C5A869]/50 hover:border-[#FAF8F5] transition-all py-1" href="manual.html?doc=handbook">
+<span class="">阅读产品手册</span>
+<span class="font-sans">→</span>
+</a>
+</div>
+</div>
+<!-- 文献 04: 功能清单 (features.md) -->
+<div class="group bg-[#112320] hover:bg-[#172E2A] p-8 sm:p-10 transition-colors duration-500 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+<div class="flex items-start sm:items-center space-x-6">
+<span class="font-serif italic text-2xl text-[#C5A869]">04</span>
+<div>
+<span class="text-[10px] tracking-[0.24em] font-serif uppercase text-[#A8D8CF]">FULL CAPABILITY MANIFEST</span>
+<h3 class="font-cnserif text-[22px] sm:text-[25px] font-normal text-[#FAF8F5] mt-1 scroll-reveal-left delay-200">
+                  功能清单 · 底层规格与技术能力全集
+                </h3>
+<p class="font-cnserif text-[14px] text-[#8DA69F] mt-1 max-w-[620px] scroll-reveal delay-300">
+                  原图无损存储算法、SHA-256 与感知哈希双检、SQLite 向量检索度量与离线梦境参数全景图。
+                </p>
+</div>
+</div>
+<div>
+<a class="inline-flex items-center space-x-3 text-[12px] tracking-[0.22em] font-serif uppercase text-[#FAF8F5] border-b border-[#C5A869]/50 hover:border-[#FAF8F5] transition-all py-1" href="manual.html?doc=feature">
+<span class="">查阅功能清单</span>
+<span class="font-sans">→</span>
+</a>
+</div>
+</div>
+</div>
+<!-- 极简典雅落款 -->
+<div class="mt-24 pt-10 border-t border-[#C5A869]/15 flex flex-col sm:flex-row items-center justify-between text-[11px] font-serif tracking-[0.22em] text-[#718780] gap-4 scroll-reveal-blur delay-300">
+<div class="">PIXORY // LOCAL-FIRST AI COMPANION</div>
+<div class="">EST. 2025 · 本地优先 · 绝对私密 · 你的数字记忆网络</div>
+</div>
+</div>
+</section>
+</main>
+<!-- 视差与平滑显现轻量交互脚本 -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. 文字与长卷元素平滑显现
+      const revealItems = document.querySelectorAll('.scroll-reveal, .scroll-reveal-left, .scroll-reveal-right, .scroll-reveal-scale, .scroll-reveal-blur, .reveal-fan-left, .reveal-fan-right');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in-view');
+          } else {
+            // Remove in-view to trigger exit animation
+            entry.target.classList.remove('in-view');
+          }
+        });
+      }, {
+        threshold: 0.05,
+        rootMargin: '0px 0px -20px 0px'
+      });
+
+      revealItems.forEach(el => observer.observe(el));
+    });
+  </script>
+
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+
+<!-- Updates Modal Overlay -->
+<div id="updates-modal-overlay" class="fixed inset-0 opacity-0 pointer-events-none transition-opacity duration-500 bg-[#172B28]/40 backdrop-blur-md flex items-center justify-center p-4 sm:p-8">
+  <!-- Modal Container -->
+  <div id="updates-modal-container" class="relative w-full max-w-[960px] h-[85vh] bg-[#FAF8F5] rounded-[32px] shadow-[0_20px_60px_rgba(23,43,40,0.15)] overflow-hidden transform scale-95 opacity-0 transition-all duration-500 flex flex-col">
+    <!-- Gradient & Dot Pattern Background -->
+    <div class="absolute inset-0 pointer-events-none" style="background: radial-gradient(circle at 50% 0%, #F4EFEB 0%, #FAF8F5 70%);"></div>
+    <div class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(#C5A869 0.5px, transparent 0.5px); background-size: 24px 24px; opacity: 0.15;"></div>
+    
+    <!-- Header -->
+    <div class="relative z-10 flex items-center justify-between px-8 py-6 border-b border-[#C5A869]/15">
+      <div class="flex items-center space-x-3">
+        <span class="w-2.5 h-2.5 bg-[#C5A869] transform rotate-45"></span>
+        <span class="text-[11px] tracking-[0.24em] font-serif uppercase text-[#39665F]">PIXORY ARCHIVES // RELEASE NOTES</span>
+      </div>
+      <div class="flex items-center space-x-4">
+        <div class="hidden sm:flex items-center space-x-2">
+          <!-- Optional: decorative pills -->
+          <span class="px-4 py-1.5 rounded-full border border-[#172B28] bg-[#172B28] text-[11px] tracking-widest font-serif text-[#FAF8F5]">版本近况</span>
+        </div>
+        <button id="updates-modal-close" class="w-9 h-9 rounded-full border border-[#C5A869]/30 flex items-center justify-center text-[#39665F] hover:bg-[#39665F] hover:text-[#FAF8F5] transition-colors">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
     </div>
 
+    <!-- Scrollable Content -->
+    <div class="relative z-10 flex-1 overflow-y-auto px-8 sm:px-16 py-12 custom-scrollbar">
+      <div class="max-w-[720px] mx-auto">
+        <!-- Title Area -->
+        <div class="mb-14 relative">
+          <div class="text-[10px] tracking-[0.3em] font-serif uppercase text-[#C5A869] mb-4">LOG // 历史的印记</div>
+          <h2 class="font-cnserif text-[32px] sm:text-[40px] text-[#172B28] font-normal leading-tight mb-4">
+            Pixory 版本近况 · 秩序的延展
+          </h2>
+        </div>
 
-    <!-- Include Anime.js from CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-    <script src="desktop.js?v=16"></script>
-  </body>
-</html>
+        <div class="w-full h-px bg-[#C5A869]/20 mb-12"></div>
 
+        <!-- Release Notes Container -->
+        <div id="release-notes-container" class="space-y-16 release-markdown pb-10">
+          <div class="flex flex-col items-center justify-center py-20 text-[#C5A869] text-sm font-serif italic">
+             <span class="w-3 h-3 border-2 border-[#C5A869] border-t-transparent rounded-full animate-spin mb-4"></span>
+             正在通过引力场同步更新纪要...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const overlay = document.getElementById('updates-modal-overlay');
+    const container = document.getElementById('updates-modal-container');
+    const closeBtn = document.getElementById('updates-modal-close');
+    const triggers = document.querySelectorAll('.updates-btn-trigger');
+    const notesContainer = document.getElementById('release-notes-container');
+    let loaded = false;
 
+    const openModal = () => {
+      overlay.classList.remove('opacity-0', 'pointer-events-none');
+      container.classList.remove('scale-95', 'opacity-0');
+      document.body.style.overflow = 'hidden';
+      if (!loaded) loadReleases();
+    };
+
+    const closeModal = () => {
+      overlay.classList.add('opacity-0', 'pointer-events-none');
+      container.classList.add('scale-95', 'opacity-0');
+      document.body.style.overflow = '';
+    };
+
+    triggers.forEach(t => t.addEventListener('click', (e) => { e.preventDefault(); openModal(); }));
+    closeBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !overlay.classList.contains('pointer-events-none')) {
+        closeModal();
+      }
+    });
+
+    async function loadReleases() {
+      try {
+        const res = await fetch('https://api.github.com/repos/qinghe-zy/Pixory/releases?per_page=5');
+        if (!res.ok) throw new Error('Failed to fetch');
+        const releases = await res.json();
+        
+        let html = '';
+        releases.forEach(r => {
+          const date = new Date(r.published_at).toISOString().split('T')[0];
+          const bodyHtml = window.marked ? marked.parse(r.body) : r.body;
+          
+          html += `
+            <div class="mb-16">
+              <div class="flex items-center space-x-3 mb-6">
+                <span class="text-[11px] tracking-widest font-serif text-[#C5A869] uppercase border border-[#C5A869]/30 px-3 py-1 rounded-full">${date}</span>
+                <span class="text-[13px] font-cnserif text-[#172B28] font-medium">${r.name || r.tag_name}</span>
+              </div>
+              <div class="pl-2 border-l border-[#C5A869]/10">
+                ${bodyHtml}
+              </div>
+            </div>
+          `;
+        });
+        
+        html += `
+          <div class="mt-8 pt-8 border-t border-[#C5A869]/20 text-center">
+            <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" class="inline-flex items-center space-x-2 text-[13px] tracking-widest font-serif uppercase text-[#39665F] hover:text-[#172B28] transition-colors">
+              <span>查看更多更新记录</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+            </a>
+          </div>
+        `;
+        
+        notesContainer.innerHTML = html;
+        loaded = true;
+      } catch (e) {
+        notesContainer.innerHTML = '<div class="text-center text-[#556963] font-serif italic py-10">同步纪要失败，请检查网络引力场...</div>';
+      }
+    }
+  });
+</script>
+</body></html>
