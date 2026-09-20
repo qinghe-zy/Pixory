@@ -1,4 +1,4 @@
-<!DOCTYPE html><html class="scroll-smooth" lang="zh-CN"><head>
+<!DOCTYPE html><html class="scroll-smooth overflow-x-hidden" lang="zh-CN"><head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -1527,32 +1527,43 @@ sessionStorage.setItem('pixory_index_scroll', window.scrollY);
 });
 
     // ==========================================
-    // 磁性滚动吸附 (Magnetic Scroll Snap)
+    // 磁性滚动吸附 (Magnetic Scroll Snap) - 优化版，顺应滚动方向
     // ==========================================
     if (window.innerWidth >= 768 && window.matchMedia('(hover: hover)').matches) {
       let scrollTimeout;
-      const sections = document.querySelectorAll('section');
+      let lastScrollY = window.scrollY;
+      const snapSections = Array.from(document.querySelectorAll('section'));
+      
       window.addEventListener('scroll', () => {
+        const currentScrollY = window.scrollY;
+        const direction = currentScrollY > lastScrollY ? 'down' : 'up';
+        lastScrollY = currentScrollY;
+        
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
-          let closestSection = null;
-          let minDistance = Infinity;
-          sections.forEach(sec => {
-            const rect = sec.getBoundingClientRect();
-            const distance = Math.abs(rect.top);
-            if (distance < minDistance) {
-              minDistance = distance;
-              closestSection = sec;
-            }
-          });
-          // 如果离顶部距离在 5px 到 250px 之间，并且当前没有明显跨区，轻轻吸附
-          if (closestSection && minDistance > 5 && minDistance < 250) {
+          let targetSection = null;
+          
+          if (direction === 'down') {
+            // 向下滚动：只能把下方即将进入视野的 section 吸上来，绝不向上拽回
+            targetSection = snapSections.find(sec => {
+              const rect = sec.getBoundingClientRect();
+              return rect.top > 10 && rect.top < 350; // 在下方 350px 范围内
+            });
+          } else {
+            // 向上滚动：只能把上方即将进入视野的 section 吸下来
+            targetSection = [...snapSections].reverse().find(sec => {
+              const rect = sec.getBoundingClientRect();
+              return rect.top < -10 && rect.top > -350; // 在上方 350px 范围内
+            });
+          }
+          
+          if (targetSection) {
             window.scrollTo({
-              top: window.scrollY + closestSection.getBoundingClientRect().top - 40, // 留出40px避免贴得太死
+              top: window.scrollY + targetSection.getBoundingClientRect().top - 40,
               behavior: 'smooth'
             });
           }
-        }, 200); // 等待200ms确认停止滚动
+        }, 150);
       }, { passive: true });
     }
   });
