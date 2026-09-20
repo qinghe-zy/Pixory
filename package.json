@@ -65,6 +65,8 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
     "@types/react": "~19.1.0",
     "archiver": "^8.0.0",
     "axios": "^1.18.1",
@@ -73,4 +75,3 @@
   },
   "private": true
 }
-
