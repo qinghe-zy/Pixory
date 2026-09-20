@@ -1009,25 +1009,27 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 
 <!-- Updates Modal Overlay -->
-<div id="updates-modal-overlay" class="fixed inset-0 opacity-0 pointer-events-none transition-opacity duration-500 bg-[#172B28]/40 backdrop-blur-md flex items-center justify-center p-4 sm:p-8">
+<div id="updates-modal-overlay" class="fixed inset-0 opacity-0 pointer-events-none transition-opacity duration-500 bg-[#172B28]/50 backdrop-blur-md flex items-center justify-center p-4 sm:p-8" style="z-index:500;">
   <!-- Modal Container -->
-  <div id="updates-modal-container" class="relative w-full max-w-[960px] h-[85vh] bg-[#FAF8F5] rounded-[32px] shadow-[0_20px_60px_rgba(23,43,40,0.15)] overflow-hidden transform scale-95 opacity-0 transition-all duration-500 flex flex-col">
-    <!-- Gradient & Dot Pattern Background -->
-    <div class="absolute inset-0 pointer-events-none" style="background: radial-gradient(circle at 50% 0%, #F4EFEB 0%, #FAF8F5 70%);"></div>
-    <div class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(#C5A869 0.5px, transparent 0.5px); background-size: 24px 24px; opacity: 0.15;"></div>
+  <div id="updates-modal-container" class="relative w-full max-w-[960px] h-[85vh] rounded-[28px] shadow-[0_24px_80px_rgba(23,43,40,0.25)] overflow-hidden transform scale-95 opacity-0 transition-all duration-500 flex flex-col" style="background: linear-gradient(160deg, #EEF5F4 0%, #D9ECEA 35%, #C8E3E0 65%, #B8D9D5 100%);">
+    <!-- Subtle dot pattern overlay -->
+    <div class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(rgba(57,102,95,0.12) 0.5px, transparent 0.5px); background-size: 22px 22px; opacity: 1;"></div>
+    <!-- Top-right glow orb -->
+    <div class="absolute top-0 right-0 w-[480px] h-[320px] rounded-full pointer-events-none" style="background: radial-gradient(ellipse at top right, rgba(168,216,207,0.55) 0%, transparent 70%);"></div>
+    <!-- Bottom-left glow orb -->
+    <div class="absolute bottom-0 left-0 w-[360px] h-[280px] rounded-full pointer-events-none" style="background: radial-gradient(ellipse at bottom left, rgba(57,102,95,0.15) 0%, transparent 70%);"></div>
     
     <!-- Header -->
-    <div class="relative z-10 flex items-center justify-between px-8 py-6 border-b border-[#C5A869]/15">
+    <div class="relative z-10 flex items-center justify-between px-8 py-5 border-b border-[#39665F]/15">
       <div class="flex items-center space-x-3">
-        <span class="w-2.5 h-2.5 bg-[#C5A869] transform rotate-45"></span>
+        <span class="w-2.5 h-2.5 bg-[#39665F] transform rotate-45"></span>
         <span class="text-[11px] tracking-[0.24em] font-serif uppercase text-[#39665F]">PIXORY ARCHIVES // RELEASE NOTES</span>
       </div>
       <div class="flex items-center space-x-4">
         <div class="hidden sm:flex items-center space-x-2">
-          <!-- Optional: decorative pills -->
-          <span class="px-4 py-1.5 rounded-full border border-[#172B28] bg-[#172B28] text-[11px] tracking-widest font-serif text-[#FAF8F5]">版本近况</span>
+          <span class="px-4 py-1.5 rounded-full border border-[#39665F]/40 bg-[#39665F]/10 text-[11px] tracking-widest font-serif text-[#234E46]">版本近况</span>
         </div>
-        <button id="updates-modal-close" class="w-9 h-9 rounded-full border border-[#C5A869]/30 flex items-center justify-center text-[#39665F] hover:bg-[#39665F] hover:text-[#FAF8F5] transition-colors">
+        <button id="updates-modal-close" class="w-9 h-9 rounded-full border border-[#39665F]/30 bg-white/30 flex items-center justify-center text-[#39665F] hover:bg-[#39665F] hover:text-[#FAF8F5] transition-all duration-300">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -1038,22 +1040,32 @@
       <div class="max-w-[720px] mx-auto">
         <!-- Title Area -->
         <div class="mb-14 relative">
-          <div class="text-[10px] tracking-[0.3em] font-serif uppercase text-[#C5A869] mb-4">LOG // 历史的印记</div>
+          <div class="text-[10px] tracking-[0.3em] font-serif uppercase text-[#39665F]/70 mb-4">LOG // 历史的印记</div>
           <h2 class="font-cnserif text-[32px] sm:text-[40px] text-[#172B28] font-normal leading-tight mb-4">
             Pixory 版本近况 · 秩序的延展
           </h2>
         </div>
 
-        <div class="w-full h-px bg-[#C5A869]/20 mb-12"></div>
+        <div class="w-full h-px bg-[#39665F]/20 mb-12"></div>
 
         <!-- Release Notes Container -->
         <div id="release-notes-container" class="space-y-16 release-markdown pb-10">
-          <div class="flex flex-col items-center justify-center py-20 text-[#C5A869] text-sm font-serif italic">
-             <span class="w-3 h-3 border-2 border-[#C5A869] border-t-transparent rounded-full animate-spin mb-4"></span>
+          <div class="flex flex-col items-center justify-center py-20 text-[#39665F] text-sm font-serif italic">
+             <span class="w-3 h-3 border-2 border-[#39665F] border-t-transparent rounded-full animate-spin mb-4"></span>
              正在通过引力场同步更新纪要...
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Sticky Footer: GitHub link -->
+    <div class="relative z-10 flex-shrink-0 flex items-center justify-between px-8 sm:px-16 py-4 border-t border-[#39665F]/15" style="background: rgba(184,217,213,0.6); backdrop-filter: blur(8px);">
+      <span class="font-serif text-[12px] text-[#39665F]/70 tracking-[0.12em]">Pixory · 持续进化中</span>
+      <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center space-x-2 font-serif text-[12px] tracking-[0.18em] uppercase text-[#234E46] hover:text-[#172B28] transition-colors group">
+        <span class="border-b border-[#39665F]/40 group-hover:border-[#172B28] transition-colors pb-px">查看更多版本信息</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="transform group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      </a>
     </div>
   </div>
 </div>
