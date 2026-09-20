@@ -212,7 +212,65 @@
 <!-- ==========================================
        极简悬浮导航（微印与文学书签）
        ========================================== -->
-<header class="fixed top-0 inset-x-0 z-50 pointer-events-none transition-all duration-500 py-6 px-8 md:px-16"><div class="max-w-[1440px] mx-auto flex items-center justify-between pointer-events-auto px-6 py-3 rounded-full bg-white/70 backdrop-blur-xl border border-[#D4A840]/25 shadow-[0_4px_30px_rgba(57,102,95,0.04)] transition-all duration-500"><a class="group flex items-center space-x-3.5 focus:outline-none" href="index.html"><span class="w-3 h-3 border border-[#D4A840] rotate-45 group-hover:bg-[#D4A840] group-hover:rotate-90 transition-all duration-700"></span><span class="font-serif tracking-[0.32em] text-sm uppercase text-[#172B28] font-semibold">Pixory</span><span class="text-[10px] tracking-[0.2em] font-serif text-[#39665F]/80 uppercase hidden sm:inline pl-2 border-l border-[#D4A840]/30">V2.8 · 伴侣记忆卷</span></a><nav class="hidden md:flex items-center space-x-8 font-serif"><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors" href="manual.html?doc=manual">阅读文档</a><span class="text-[#D4A840]/40 text-[9px]">✦</span><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors updates-btn-trigger cursor-pointer">版本近况</a><span class="text-[#D4A840]/40 text-[9px]">✦</span><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer">GitHub仓库</a></nav><div class="flex items-center space-x-4"><a class="inline-flex items-center justify-center px-5 py-2 rounded-full border border-[#172B28] bg-[#172B28] text-[#FAF8F5] hover:bg-[#234E46] hover:border-[#234E46] transition-all duration-500 text-[11px] tracking-[0.22em] font-serif uppercase" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer">下载APP</a></div></div></header>
+<header class="fixed top-0 inset-x-0 z-50 pointer-events-none transition-all duration-500 py-6 px-8 md:px-16"><div class="max-w-[1440px] mx-auto flex items-center justify-between pointer-events-auto px-6 py-3 rounded-full bg-white/70 backdrop-blur-xl border border-[#D4A840]/25 shadow-[0_4px_30px_rgba(57,102,95,0.04)] transition-all duration-500"><a class="group flex items-center space-x-3.5 focus:outline-none" href="index.html"><span class="w-3 h-3 border border-[#D4A840] rotate-45 group-hover:bg-[#D4A840] group-hover:rotate-90 transition-all duration-700"></span><span class="font-serif tracking-[0.32em] text-sm uppercase text-[#172B28] font-semibold">Pixory</span><span class="text-[10px] tracking-[0.2em] font-serif text-[#39665F]/80 uppercase hidden sm:inline pl-2 border-l border-[#D4A840]/30">V2.8 · 伴侣记忆卷</span></a><nav class="hidden md:flex items-center space-x-8 font-serif"><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors" href="manual.html?doc=manual">阅读文档</a><span class="text-[#D4A840]/40 text-[9px]">✦</span><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors updates-btn-trigger cursor-pointer">版本近况</a><span class="text-[#D4A840]/40 text-[9px]">✦</span><a class="text-[12px] tracking-[0.2em] text-[#172B28]/70 hover:text-[#234E46] transition-colors" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer">GitHub仓库</a></nav><div class="flex items-center space-x-4"><button class="download-modal-trigger inline-flex items-center justify-center px-5 py-2 rounded-full border border-[#172B28] bg-[#172B28] text-[#FAF8F5] hover:bg-[#234E46] hover:border-[#234E46] transition-all duration-500 text-[11px] tracking-[0.22em] font-serif uppercase cursor-pointer">下载APP</button></div></div></header>
+
+<!-- ==========================================
+     下载弹窗 · Download Modal
+     ========================================== -->
+<div id="download-modal-overlay" class="fixed inset-0 opacity-0 pointer-events-none transition-opacity duration-500 bg-[#172B28]/55 backdrop-blur-md flex items-center justify-center p-4 sm:p-8" style="z-index:500;">
+  <div id="download-modal-container" class="relative w-full max-w-[680px] rounded-[28px] shadow-[0_24px_80px_rgba(23,43,40,0.22)] overflow-hidden transform scale-95 opacity-0 transition-all duration-500 flex flex-col" style="background: linear-gradient(175deg, #F8FAF9 0%, #F2F8F6 40%, #EBF5F2 75%, #E6F2EF 100%);">
+    <div class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(rgba(212,168,64,0.2) 0.5px, transparent 0.5px); background-size: 22px 22px;"></div>
+    <div class="absolute top-0 right-0 w-[400px] h-[240px] rounded-full pointer-events-none" style="background: radial-gradient(ellipse at top right, rgba(168,216,207,0.3) 0%, transparent 70%);"></div>
+    <!-- Header -->
+    <div class="relative z-10 flex items-center justify-between px-8 py-5 border-b border-[#39665F]/12">
+      <div class="flex items-center space-x-3">
+        <span class="w-2.5 h-2.5 bg-[#39665F] transform rotate-45"></span>
+        <span class="text-[11px] tracking-[0.24em] font-serif uppercase text-[#39665F]">PIXORY · ANDROID RELEASE</span>
+      </div>
+      <button id="download-modal-close" class="w-9 h-9 rounded-full border border-[#39665F]/30 bg-white/30 flex items-center justify-center text-[#39665F] hover:bg-[#39665F] hover:text-[#FAF8F5] transition-all duration-300">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <!-- Body -->
+    <div class="relative z-10 px-8 sm:px-12 py-10">
+      <div class="flex items-center space-x-5 mb-8">
+        <img src="assets/app-icon.png" alt="Pixory" class="w-16 h-16 rounded-[16px] shadow-[0_8px_24px_rgba(23,43,40,0.15)] flex-shrink-0">
+        <div>
+          <h2 class="font-display text-[28px] text-[#172B28] leading-tight tracking-[-0.02em]">下载 Pixory</h2>
+          <p class="font-serif text-[13px] text-[#39665F] mt-1 tracking-[0.06em]" id="dl-version-subtitle">当前版本：<span id="dl-ver-num">2.8.6</span> · 最新 Android 稳定包</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4 mb-8">
+        <a id="dl-direct-btn" href="https://mist01.com/downloads/Pixory-v2.8.6.apk"
+           class="group block p-5 rounded-[16px] bg-white shadow-[0_4px_20px_rgba(23,43,40,0.1)] hover:shadow-[0_8px_32px_rgba(23,43,40,0.15)] transition-all duration-400 border border-[#39665F]/8 hover:-translate-y-0.5">
+          <div class="flex items-center space-x-2.5 mb-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#39665F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="font-sans text-[15px] font-semibold text-[#172B28]">直接下载</span>
+          </div>
+          <p class="font-cnserif text-[13px] text-[#556963]">最新版 Android APK</p>
+          <p class="font-serif text-[11px] text-[#D4A840] tracking-[0.08em] mt-1.5 uppercase">官方服务器 · mist01.com</p>
+        </a>
+        <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer"
+           class="group block p-5 rounded-[16px] bg-white/50 hover:bg-white/80 transition-all duration-400 border border-[#39665F]/15 hover:-translate-y-0.5">
+          <div class="flex items-center space-x-2.5 mb-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#39665F"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+            <span class="font-sans text-[15px] font-semibold text-[#172B28]">GitHub 备用</span>
+          </div>
+          <p class="font-cnserif text-[13px] text-[#556963]">历史版本与镜像</p>
+          <p class="font-serif text-[11px] text-[#39665F]/60 tracking-[0.08em] mt-1.5 uppercase">github.com/qinghe-zy</p>
+        </a>
+      </div>
+      <div class="space-y-2 text-center">
+        <p class="font-mono text-[11px] text-[#556963]/70 tracking-[0.04em] break-all" id="dl-sha256"></p>
+        <p class="font-serif text-[12px] text-[#39665F]/70 tracking-[0.06em]">Requires Android 10.0+ (API 29)</p>
+      </div>
+    </div>
+    <!-- Footer -->
+    <div class="relative z-10 flex-shrink-0 flex items-center justify-center px-8 py-3.5 border-t border-[#39665F]/12" style="background: rgba(230,242,239,0.85); backdrop-filter: blur(8px);">
+      <span class="font-serif text-[11px] text-[#39665F]/60 tracking-[0.12em]">本地优先 · 数据完全在你手中 · 开源可审计</span>
+    </div>
+  </div>
+</div>
 <main class="w-full relative">
 <!-- ==========================================
          序章 · PROLOGUE: 意识引力与天体星轨
@@ -1072,6 +1130,55 @@
 
 <script>
   document.addEventListener('DOMContentLoaded', () => {
+    // ==========================================
+    // 下载弹窗控制器 · Download Modal
+    // ==========================================
+    const dlOverlay = document.getElementById('download-modal-overlay');
+    const dlContainer = document.getElementById('download-modal-container');
+    const dlCloseBtn = document.getElementById('download-modal-close');
+    const dlTriggers = document.querySelectorAll('.download-modal-trigger');
+    const dlDirectBtn = document.getElementById('dl-direct-btn');
+    const dlVerNum = document.getElementById('dl-ver-num');
+    const dlSha256 = document.getElementById('dl-sha256');
+
+    const openDlModal = () => {
+      dlOverlay.classList.remove('opacity-0', 'pointer-events-none');
+      dlContainer.classList.remove('scale-95', 'opacity-0');
+      document.body.style.overflow = 'hidden';
+    };
+    const closeDlModal = () => {
+      dlOverlay.classList.add('opacity-0', 'pointer-events-none');
+      dlContainer.classList.add('scale-95', 'opacity-0');
+      document.body.style.overflow = '';
+    };
+
+    dlTriggers.forEach(t => t.addEventListener('click', (e) => { e.preventDefault(); openDlModal(); }));
+    dlCloseBtn.addEventListener('click', closeDlModal);
+    dlOverlay.addEventListener('click', (e) => { if (e.target === dlOverlay) closeDlModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !dlOverlay.classList.contains('pointer-events-none')) closeDlModal();
+    });
+
+    // 从服务器动态读取最新版本
+    fetch('https://mist01.com/update-version.json?v=' + Date.now())
+      .then(r => r.json())
+      .then(data => {
+        const ver = data.latestVersion || data.version || '2.8.6';
+        if (dlVerNum) dlVerNum.textContent = ver;
+        if (dlDirectBtn) {
+          dlDirectBtn.href = 'https://mist01.com/downloads/Pixory-v' + ver + '.apk';
+        }
+        if (dlSha256 && data.sha256) {
+          dlSha256.textContent = 'SHA-256: ' + data.sha256;
+        } else if (dlSha256) {
+          dlSha256.textContent = '';
+        }
+      })
+      .catch(() => { /* 保持默认值 */ });
+
+    // ==========================================
+    // 版本近况弹窗控制器
+    // ==========================================
     const overlay = document.getElementById('updates-modal-overlay');
     const container = document.getElementById('updates-modal-container');
     const closeBtn = document.getElementById('updates-modal-close');
