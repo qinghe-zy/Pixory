@@ -1011,13 +1011,11 @@
 <!-- Updates Modal Overlay -->
 <div id="updates-modal-overlay" class="fixed inset-0 opacity-0 pointer-events-none transition-opacity duration-500 bg-[#172B28]/50 backdrop-blur-md flex items-center justify-center p-4 sm:p-8" style="z-index:500;">
   <!-- Modal Container -->
-  <div id="updates-modal-container" class="relative w-full max-w-[960px] h-[85vh] rounded-[28px] shadow-[0_24px_80px_rgba(23,43,40,0.25)] overflow-hidden transform scale-95 opacity-0 transition-all duration-500 flex flex-col" style="background: linear-gradient(160deg, #EEF5F4 0%, #D9ECEA 35%, #C8E3E0 65%, #B8D9D5 100%);">
+  <div id="updates-modal-container" class="relative w-full max-w-[960px] h-[85vh] rounded-[28px] shadow-[0_24px_80px_rgba(23,43,40,0.22)] overflow-hidden transform scale-95 opacity-0 transition-all duration-500 flex flex-col" style="background: linear-gradient(175deg, #F8FAF9 0%, #F2F8F6 40%, #EBF5F2 75%, #E6F2EF 100%);">
     <!-- Subtle dot pattern overlay -->
-    <div class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(rgba(57,102,95,0.12) 0.5px, transparent 0.5px); background-size: 22px 22px; opacity: 1;"></div>
-    <!-- Top-right glow orb -->
-    <div class="absolute top-0 right-0 w-[480px] h-[320px] rounded-full pointer-events-none" style="background: radial-gradient(ellipse at top right, rgba(168,216,207,0.55) 0%, transparent 70%);"></div>
-    <!-- Bottom-left glow orb -->
-    <div class="absolute bottom-0 left-0 w-[360px] h-[280px] rounded-full pointer-events-none" style="background: radial-gradient(ellipse at bottom left, rgba(57,102,95,0.15) 0%, transparent 70%);"></div>
+    <div class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(rgba(197,168,105,0.25) 0.5px, transparent 0.5px); background-size: 22px 22px;"></div>
+    <!-- Top-right very faint glow -->
+    <div class="absolute top-0 right-0 w-[500px] h-[300px] rounded-full pointer-events-none" style="background: radial-gradient(ellipse at top right, rgba(168,216,207,0.25) 0%, transparent 70%);"></div>
     
     <!-- Header -->
     <div class="relative z-10 flex items-center justify-between px-8 py-5 border-b border-[#39665F]/15">
@@ -1059,7 +1057,7 @@
     </div>
 
     <!-- Sticky Footer: GitHub link -->
-    <div class="relative z-10 flex-shrink-0 flex items-center justify-between px-8 sm:px-16 py-4 border-t border-[#39665F]/15" style="background: rgba(184,217,213,0.6); backdrop-filter: blur(8px);">
+    <div class="relative z-10 flex-shrink-0 flex items-center justify-between px-8 sm:px-16 py-4 border-t border-[#39665F]/12" style="background: rgba(230,242,239,0.85); backdrop-filter: blur(8px);">
       <span class="font-serif text-[12px] text-[#39665F]/70 tracking-[0.12em]">Pixory · 持续进化中</span>
       <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer"
          class="inline-flex items-center space-x-2 font-serif text-[12px] tracking-[0.18em] uppercase text-[#234E46] hover:text-[#172B28] transition-colors group">
