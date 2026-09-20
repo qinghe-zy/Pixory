@@ -1,4 +1,4 @@
-<!DOCTYPE html><html class="scroll-smooth snap-y snap-mandatory overflow-x-hidden" lang="zh-CN"><head>
+<!DOCTYPE html><html class="scroll-smooth" lang="zh-CN"><head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -188,7 +188,6 @@ margin-right: 0.18em;
 color: #234E46;
 font-style: italic;
 }
-html { scroll-padding-top: 80px; }
 </style>
 
 <style>
@@ -299,7 +298,6 @@ background-color: #D4A840 !important;
 border-color: #D4A840 !important;
 color: #FAF8F5 !important;
 }
-html { scroll-padding-top: 80px; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
 </head>
@@ -387,7 +385,7 @@ class="group block p-5 rounded-[16px] bg-white/50 hover:bg-white/80 transition-a
 序章 · PROLOGUE: 意识引力与天体星轨
 宏大非对称艺术画卷，彻底摒弃矩形容器
 ========================================== -->
-<section class="relative pt-36 pb-28 px-8 md:px-20 flex items-center snap-start min-h-screen" id="prologue">
+<section class="relative pt-36 pb-28 px-8 md:px-20 flex items-center min-h-screen" id="prologue">
 <!-- 柔润天青与宋瓷暖霭流晕 -->
 <div class="absolute -top-32 -left-20 w-[640px] h-[640px] rounded-full bg-gradient-to-br from-[#A8D8CF]/30 via-[#39665F]/10 to-transparent blur-[140px] pointer-events-none animate-aura"></div>
 <div class="absolute top-1/2 right-0 w-[540px] h-[720px] rounded-full bg-gradient-to-l from-[#E6D7B4]/35 to-transparent blur-[150px] pointer-events-none"></div>
@@ -405,8 +403,16 @@ TREATISE ON LOCAL-FIRST AFFECTIVE COGNITION // PIXORY ARCHITECTURE
 <!-- 左侧：纪念碑式大写排版 + 纯文学宣言 -->
 <div class="lg:col-span-7 hero-left-container relative z-10">
 <h1 class="font-display font-light text-[68px] sm:text-[92px] lg:text-[118px] leading-[0.92] tracking-[-0.045em] text-[#172B28] mb-10">
-<div class="overflow-hidden py-1"><div class="hero-line-1 opacity-0 transform -translate-y-12">Private.</div></div>
-<div class="overflow-hidden py-1"><div class="hero-line-2 opacity-0 transform translate-x-12">Permanent.</div></div>
+<div class="overflow-hidden py-1"><div class="hero-line-1 opacity-0 transform -translate-y-12">
+<span class="italic font-normal text-transparent bg-clip-text bg-gradient-to-r from-[#172B28] via-[#234E46] to-[#39665F]">
+Private.
+</span>
+</div></div>
+<div class="overflow-hidden py-1"><div class="hero-line-2 opacity-0 transform translate-x-12">
+<span class="italic font-normal text-transparent bg-clip-text bg-gradient-to-r from-[#172B28] via-[#234E46] to-[#39665F]">
+Permanent.
+</span>
+</div></div>
 <div class="overflow-hidden py-1"><div class="hero-line-3 opacity-0 transform translate-y-12">
 <span class="italic font-normal text-transparent bg-clip-text bg-gradient-to-r from-[#172B28] via-[#234E46] to-[#39665F]">
 Yours, forever.
@@ -743,7 +749,7 @@ easing: 'easeOutQuad'
 第一幕 · ACT I: 记忆的多车道流转（CQRS Multi-Lane）
 彻底摒弃矩形卡片，采用诗意的精密流体时间轴与三车道纵深画卷
 ========================================== -->
-<section class="py-32 px-8 md:px-20 relative bg-gradient-to-b from-transparent via-[#F3EFEA]/80 to-transparent border-t border-[#D4A840]/20 snap-start min-h-screen" id="act-1">
+<section class="py-32 px-8 md:px-20 relative bg-gradient-to-b from-transparent via-[#F3EFEA]/80 to-transparent border-t border-[#D4A840]/20 min-h-screen" id="act-1">
 <div class="max-w-[1440px] mx-auto">
 <!-- 章节题头（画册式排版） -->
 <div class="flex flex-col lg:flex-row lg:items-end justify-between mb-24 pb-8 border-b border-[#D4A840]/25 scroll-reveal-left delay-100">
@@ -838,7 +844,7 @@ easing: 'easeOutQuad'
 第二幕 · ACT II: 心理动力学与情绪张量（Affective Dynamics）
 四维张量坐标 + 破裂修复演进 + 带溯源标注的西湖雨丝对白屏
 ========================================== -->
-<section class="py-32 px-8 md:px-20 relative overflow-hidden snap-start min-h-screen" id="act-2">
+<section class="py-32 px-8 md:px-20 relative overflow-hidden min-h-screen" id="act-2">
 <!-- 汝窑月白与远山水气 -->
 <div class="absolute top-1/4 -right-20 w-[580px] h-[580px] rounded-full bg-gradient-to-bl from-[#A8D8CF]/25 via-transparent to-transparent blur-[140px] pointer-events-none"></div>
 <div class="max-w-[1440px] mx-auto relative z-10">
@@ -984,7 +990,7 @@ easing: 'easeOutQuad'
 采用深邃苍翠翠墨大色块 (#172B28 / #0D1F1C)，彰显坚不可摧的物理设备安全
 两套独立 SQLite、物理沙盒隔离、瞬间内存销毁机制
 ========================================== -->
-<section class="py-32 px-8 md:px-20 bg-emerald-void text-[#FAF8F5] relative overflow-hidden snap-start min-h-screen" id="act-3">
+<section class="py-32 px-8 md:px-20 bg-emerald-void text-[#FAF8F5] relative overflow-hidden min-h-screen" id="act-3">
 <!-- 翠墨与暗金浮光 -->
 <div class="absolute -top-32 -left-32 w-[640px] h-[640px] rounded-full bg-[#234E46]/30 blur-[160px] pointer-events-none"></div>
 <div class="absolute -bottom-32 -right-32 w-[600px] h-[600px] rounded-full bg-[#D4A840]/15 blur-[160px] pointer-events-none"></div>
@@ -1086,7 +1092,7 @@ easing: 'easeOutQuad'
 原图无损存储、SHA-256 + 视觉感知感知哈希双层查重、Manifest V2 完整离线导出
 回归宣纸淡天青色温润底
 ========================================== -->
-<section class="py-32 px-8 md:px-20 relative bg-scroll-paper snap-start min-h-screen" id="act-4">
+<section class="py-32 px-8 md:px-20 relative bg-scroll-paper min-h-screen" id="act-4">
 <div class="max-w-[1440px] mx-auto">
 <!-- 章节序文 -->
 <div class="flex flex-col lg:flex-row lg:items-end justify-between mb-24 pb-8 border-b border-[#D4A840]/25 scroll-reveal-left delay-100">
@@ -1154,7 +1160,7 @@ Manifest V2 自主归档与迁移
 映射三份核心文档（manual.md, pixory-product-bid-handbook.md, features.md, 项目首页）
 采用纯净极雅的书目检索形式，摒弃低级卡片堆砌
 ========================================== -->
-<section class="py-32 px-8 md:px-20 relative bg-[#112320] text-[#FAF8F5] border-t border-[#D4A840]/25 snap-start min-h-screen" id="epilogue">
+<section class="py-32 px-8 md:px-20 relative bg-[#112320] text-[#FAF8F5] border-t border-[#D4A840]/25 min-h-screen" id="epilogue">
 <div class="max-w-[1440px] mx-auto">
 <!-- 导读总览题记 -->
 <div class="max-w-[720px] mb-20 scroll-reveal in-view">
@@ -1519,7 +1525,37 @@ link.addEventListener('click', () => {
 sessionStorage.setItem('pixory_index_scroll', window.scrollY);
 });
 });
-});
+
+    // ==========================================
+    // 磁性滚动吸附 (Magnetic Scroll Snap)
+    // ==========================================
+    if (window.innerWidth >= 768 && window.matchMedia('(hover: hover)').matches) {
+      let scrollTimeout;
+      const sections = document.querySelectorAll('section');
+      window.addEventListener('scroll', () => {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          let closestSection = null;
+          let minDistance = Infinity;
+          sections.forEach(sec => {
+            const rect = sec.getBoundingClientRect();
+            const distance = Math.abs(rect.top);
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestSection = sec;
+            }
+          });
+          // 如果离顶部距离在 5px 到 250px 之间，并且当前没有明显跨区，轻轻吸附
+          if (closestSection && minDistance > 5 && minDistance < 250) {
+            window.scrollTo({
+              top: window.scrollY + closestSection.getBoundingClientRect().top - 40, // 留出40px避免贴得太死
+              behavior: 'smooth'
+            });
+          }
+        }, 200); // 等待200ms确认停止滚动
+      }, { passive: true });
+    }
+  });
 
 </script>
 
