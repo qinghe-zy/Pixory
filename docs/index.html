@@ -72,60 +72,50 @@
     
     /* 苹果 Liquid Glass 导航栏 */
     .apple-glass {
-      /* 极淡底色，让环境光透过 */
-      background: rgba(255, 255, 255, 0.50);
-      /* blur 去细节 + saturate(180%) 保颜色鲜活 — saturate 是苹果的核心秘密 */
+      /*
+       * 高光和底色全部放进 background 多层渐变，不用 ::before/::after。
+       * 原因：::after z-index:0 会盖住非定位子元素（导航链接），
+       * 把所有视觉层合并到 background 属性可以完全避免这个问题。
+       *
+       * 层次（从上到下）：
+       *   ① 鼠标跟随镜面高光 (radial-gradient, JS 更新 --gx/--gy)
+       *   ② 顶部弧面漫反射高光 (linear-gradient 上浓下淡)
+       *   ③ 极淡白色底色 (让背景色透过，呈现环境色)
+       */
+      background:
+        radial-gradient(
+          circle 130px at var(--gx, 50%) var(--gy, -30%),
+          rgba(255, 255, 255, 0.22) 0%,
+          transparent 65%
+        ),
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.24) 0%,
+          rgba(255, 255, 255, 0.06) 45%,
+          transparent 80%
+        ),
+        rgba(255, 255, 255, 0.22);
+
+      /* blur(24px) 让背景细节柔化；saturate(180%) 让透出的颜色鲜活不发灰 */
       backdrop-filter: blur(24px) saturate(180%);
       -webkit-backdrop-filter: blur(24px) saturate(180%);
-      /* 玻璃截面的折射边缘：多层 inset 模拟光在玻璃厚度上的折射 */
+
+      /* 玻璃截面多层折射边缘 */
       box-shadow:
-        inset 0 0.5px 0 0 rgba(255, 255, 255, 0.85),    /* 顶边亮线 */
-        inset 0 -0.5px 0 0 rgba(57, 102, 95, 0.10),      /* 底边天青阴影 */
-        inset 1px 0 0 0 rgba(255, 255, 255, 0.30),        /* 左边亮线 */
-        inset -1px 0 0 0 rgba(255, 255, 255, 0.20),       /* 右边亮线 */
-        0 8px 32px -4px rgba(57, 102, 95, 0.08),          /* 底部景深 */
-        0 2px 8px rgba(0, 0, 0, 0.04);                    /* 近景阴影 */
+        inset 0 0.5px 0 0 rgba(255, 255, 255, 0.80),
+        inset 0 -0.5px 0 0 rgba(57, 102, 95, 0.08),
+        0 8px 32px -4px rgba(57, 102, 95, 0.07),
+        0 2px 6px rgba(0, 0, 0, 0.04);
+
       border: none;
-      position: relative;
-      overflow: hidden;
       transition: background 0.4s ease, box-shadow 0.4s ease;
     }
-    /* Chrome/Edge：叠加 SVG 折射（Safari 降级到纯 CSS，属预期行为）*/
+    /* Chrome/Edge 专属 SVG 折射（Safari 自动降级为纯 CSS） */
     @supports (backdrop-filter: url(#test-support)) {
       .apple-glass {
         backdrop-filter: blur(18px) saturate(160%) url(#pixory-glass-filter);
         -webkit-backdrop-filter: blur(18px) saturate(160%);
       }
-    }
-    /* 顶部弧面高光 — 模拟光源从上方打在玻璃顶面的漫反射 */
-    .apple-glass::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.30) 0%,
-        rgba(255, 255, 255, 0.08) 40%,
-        transparent 70%
-      );
-      pointer-events: none;
-      z-index: 0;
-    }
-    /* 鼠标跟随镜面高光（由 JS 更新 --gx/--gy CSS 自定义属性）*/
-    .apple-glass::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background: radial-gradient(
-        circle 110px at var(--gx, 50%) var(--gy, -20%),
-        rgba(255, 255, 255, 0.22) 0%,
-        transparent 65%
-      );
-      pointer-events: none;
-      z-index: 0;
-      transition: background 0.15s ease;
     }
 
     /* 丝滑滚动显现动画 (5+ distinct reveal animations) */
