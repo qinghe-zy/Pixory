@@ -891,7 +891,7 @@
 
   <!-- Navigation Bar -->
   <div class="nav-bar">
-    <a href="index.html" class="back-btn">
+    <a href="index.html" class="back-btn" id="nav-back-btn">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="19" y1="12" x2="5" y2="12"></line>
         <polyline points="12 19 5 12 12 5"></polyline>
@@ -1005,6 +1005,17 @@
         `;
         cardsContainer.appendChild(card);
       });
+
+      // 优化返回按钮逻辑：优先使用 history.back()
+      const backBtn = document.getElementById('nav-back-btn');
+      if (backBtn) {
+        backBtn.addEventListener('click', (e) => {
+          if (window.history.length > 1) {
+            e.preventDefault();
+            window.history.back();
+          }
+        });
+      }
 
       // Toggle Switcher Popover
       switcherBtn.addEventListener('click', (e) => {
@@ -1180,6 +1191,20 @@
           };
           window.addEventListener('scroll', scrollSpy);
           scrollSpy(); // Trigger once on load
+          
+          // 处理 scrollTo URL 参数进行精确定位
+          const urlParams = new URLSearchParams(window.location.search);
+          const scrollToParam = urlParams.get('scrollTo');
+          if (scrollToParam) {
+            const targetHeading = Array.from(headings).find(h => h.textContent.includes(scrollToParam));
+            if (targetHeading) {
+              setTimeout(() => {
+                targetHeading.scrollIntoView({ behavior: 'auto' });
+                // 调整一点点偏移量以防被导航栏挡住
+                window.scrollBy(0, -80);
+              }, 150);
+            }
+          }
         })
         .catch(err => {
           document.getElementById('loading').innerText = '加载文档失败，请检查网络或稍后重试。';

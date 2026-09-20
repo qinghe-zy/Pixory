@@ -251,7 +251,7 @@
 <span class="text-[12px] tracking-[0.24em] uppercase font-medium">翻阅项目首页</span>
 <span class="font-serif italic text-xs transform group-hover:translate-x-1 transition-transform">→</span>
 </a>
-<a class="text-[12px] tracking-[0.2em] uppercase font-serif text-[#39665F] hover:text-[#172B28] transition-colors py-2 border-b border-transparent hover:border-[#39665F]" href="manual.html?doc=manual">
+<a class="text-[12px] tracking-[0.2em] uppercase font-serif text-[#39665F] hover:text-[#172B28] transition-colors py-2 border-b border-transparent hover:border-[#39665F]" href="manual.html?doc=manual&scrollTo=多车道流动机制">
                 探索多车道记忆流
               </a>
 </div>
@@ -542,7 +542,7 @@
 <span class="">命令与查询职责分离（CQRS）：读写分离，确保万轮对话不溢出、不降速、不崩坏</span>
 </div>
 <div class="flex items-center space-x-6">
-<a class="inline-flex items-center space-x-2 text-[#172B28] hover:text-[#39665F] transition-colors" href="manual.html">
+<a class="inline-flex items-center space-x-2 text-[#172B28] hover:text-[#39665F] transition-colors" href="manual.html?doc=manual&scrollTo=多车道流动机制">
 <span class="border-b border-[#172B28]">阅读使用指南中的记忆配置</span>
 <span class="font-sans">→</span>
 </a>
@@ -1131,6 +1131,27 @@
         notesContainer.innerHTML = '<div class="text-center text-[#556963] font-serif italic py-10">同步纪要失败，请检查网络引力场...</div>';
       }
     }
+  });
+  
+  // ==========================================
+  // 保存与恢复滚动位置 (实现返回时不刷新回顶部)
+  // ==========================================
+  document.addEventListener('DOMContentLoaded', () => {
+    // 恢复滚动
+    const savedPos = sessionStorage.getItem('pixory_index_scroll');
+    if (savedPos) {
+      // 稍微延迟以等待动画和布局初始化完成
+      setTimeout(() => {
+        window.scrollTo({ top: parseInt(savedPos, 10), behavior: 'auto' });
+      }, 50);
+    }
+    
+    // 监听所有会离开当前页面的内部链接，保存滚动位置
+    document.querySelectorAll('a[href^="manual.html"]').forEach(link => {
+      link.addEventListener('click', () => {
+        sessionStorage.setItem('pixory_index_scroll', window.scrollY);
+      });
+    });
   });
 </script>
 </body></html>
