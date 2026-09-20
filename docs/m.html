@@ -646,7 +646,7 @@ if (rightContainer) {
         playMatrixExit();
       }
     });
-  }, { threshold: 0.1, rootMargin: "-10% 0px -10% 0px" });
+  }, { threshold: 0.1, rootMargin: "0px 0px 100px 0px" });
   matrixObserver.observe(rightContainer);
 }
 
@@ -1276,7 +1276,7 @@ document.querySelectorAll('.matrix-card').forEach(card => {
         });
       }, {
         threshold: 0.05,
-        rootMargin: '0px 0px -20px 0px'
+        rootMargin: "0px 0px 200px 0px"
       });
 
       revealItems.forEach(el => observer.observe(el));
