@@ -204,6 +204,32 @@
       font-style: italic;
       margin: 1.5em 0;
     }
+
+    /* Header Dark Mode (activated via JS when scrolling over dark sections) */
+    .dark-mode-header {
+      background-color: rgba(23, 43, 40, 0.55) !important;
+      border-color: rgba(212, 168, 64, 0.3) !important;
+    }
+    .dark-mode-header a.text-\[\#172B28\]\/70,
+    .dark-mode-header span.text-\[\#172B28\] {
+      color: rgba(250, 248, 245, 0.9) !important;
+    }
+    .dark-mode-header span.text-\[\#39665F\]\/80 {
+      color: rgba(250, 248, 245, 0.6) !important;
+    }
+    .dark-mode-header nav a:hover {
+      color: #D4A840 !important;
+    }
+    .dark-mode-header .download-modal-trigger {
+      background-color: #FAF8F5 !important;
+      border-color: #FAF8F5 !important;
+      color: #172B28 !important;
+    }
+    .dark-mode-header .download-modal-trigger:hover {
+      background-color: #D4A840 !important;
+      border-color: #D4A840 !important;
+      color: #FAF8F5 !important;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
 </head>
@@ -1110,6 +1136,45 @@
 
 <script>
   document.addEventListener('DOMContentLoaded', () => {
+    // ==========================================
+    // 顶部导航栏智能变色逻辑 (自动适应深色背景)
+    // ==========================================
+    const headerInner = document.querySelector('header > div');
+    const darkSections = document.querySelectorAll('.bg-emerald-void, .bg-\\[\\#112320\\]');
+    let ticking = false;
+
+    const checkHeaderBackground = () => {
+      if (!headerInner) return;
+      const rect = headerInner.getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      let isDark = false;
+      
+      darkSections.forEach(sec => {
+        const secRect = sec.getBoundingClientRect();
+        if (centerY >= secRect.top && centerY <= secRect.bottom) {
+          isDark = true;
+        }
+      });
+      
+      if (isDark) {
+        headerInner.classList.add('dark-mode-header');
+      } else {
+        headerInner.classList.remove('dark-mode-header');
+      }
+    };
+
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          checkHeaderBackground();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    });
+    // 初始化检查一次
+    checkHeaderBackground();
+
     // ==========================================
     // 下载弹窗控制器 · Download Modal
     // ==========================================
