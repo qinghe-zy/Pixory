@@ -359,6 +359,7 @@ export function TagResultScreen({
   return (
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
+      backgroundColor="#FFFFFF"
       backgroundVariant="tags"
       footer={footer}
       showHeader={false}

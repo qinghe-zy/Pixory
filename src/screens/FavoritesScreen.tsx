@@ -374,6 +374,7 @@ export function FavoritesScreen({
   );
   return (
     <ScreenScaffold
+      backgroundColor="#FFFFFF"
       backgroundVariant="gallery"
       decorativeTitle="Favorites"
       footer={footer}

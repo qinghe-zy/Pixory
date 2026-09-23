@@ -706,7 +706,7 @@ export function BatchManageImagesScreen({
   return (
     <>
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
-    <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false}>
+    <ScreenScaffold backgroundColor="#FFFFFF" backgroundVariant="workflow" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false}>
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>

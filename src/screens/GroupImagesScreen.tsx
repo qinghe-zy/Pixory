@@ -335,6 +335,7 @@ export function GroupImagesScreen({
   return (
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
+      backgroundColor="#FFFFFF"
       backgroundVariant="gallery"
       decorativeTitle="Gallery"
       footer={footer}

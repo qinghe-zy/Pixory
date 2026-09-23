@@ -33,6 +33,7 @@ interface ScreenScaffoldProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
   backgroundVariant?: PageBackgroundVariant;
   backgroundDimmed?: boolean;
+  backgroundColor?: string;
   scrollViewRef?: RefObject<ScrollView | null>;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   showHeader?: boolean;
@@ -56,6 +57,7 @@ export function ScreenScaffold({
   contentContainerStyle,
   backgroundVariant,
   backgroundDimmed,
+  backgroundColor,
   scrollViewRef,
   onScroll,
   showHeader = true,
@@ -67,6 +69,7 @@ export function ScreenScaffold({
     <AppScreen
       backgroundDimmed={backgroundDimmed}
       backgroundVariant={backgroundVariant}
+      backgroundColor={backgroundColor}
       contentStyle={contentContainerStyle}
       footer={footer}
       onScroll={onScroll}
