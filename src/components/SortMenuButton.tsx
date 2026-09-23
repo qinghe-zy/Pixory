@@ -117,7 +117,7 @@ export function SortMenuButton({
                 style={({ pressed }) => [styles.menuRow, selected ? styles.menuRowActive : null, pressed && styles.pressed]}
               >
                 <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{option.label}</Text>
-                <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
+                {selected && <Ionicons color={colors.primary.active} name="checkmark" size={15} />}
               </Pressable>
             );
           })}
@@ -181,9 +181,9 @@ const styles = StyleSheet.create({
   },
   menu: {
     ...shadows.floating,
-    backgroundColor: colors.background.surface,
+    backgroundColor: '#FFFFFF',
     borderColor: colors.border.default,
-    borderRadius: radius.lg,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[1],
     minWidth: 156,
@@ -194,14 +194,14 @@ const styles = StyleSheet.create({
   },
   menuRow: {
     alignItems: 'center',
-    borderRadius: radius.md,
+    borderRadius: 6,
     flexDirection: 'row',
     gap: spacing[2],
     minHeight: 34,
     paddingHorizontal: spacing[2],
   },
   menuRowActive: {
-    backgroundColor: colors.primary.weak,
+    backgroundColor: '#F3F4F6',
   },
   menuText: {
     ...typography.textStyles.micro,

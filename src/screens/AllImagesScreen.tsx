@@ -247,7 +247,7 @@ export function AllImagesScreen({
 
   function handleOpenImage(imageId: number) {
     const asset = images.find((item) => item.id === imageId);
-    if (multiSelect.isSelectionMode) {
+    if (multiSelect.isSelectionMode || forceSelectionMode) {
       multiSelect.toggleSelection(imageId);
       return;
     }
@@ -383,7 +383,7 @@ export function AllImagesScreen({
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable style={styles.importPillButton} onPress={onImportImages}>
-            <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
               <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
             <Text style={styles.importPillText}>导入</Text>
@@ -463,7 +463,7 @@ export function AllImagesScreen({
   );
 
   return (
-    <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
+    <View style={styles.host}>
     <ScreenScaffold
       backgroundColor="#FFFFFF"
       footer={footer}
