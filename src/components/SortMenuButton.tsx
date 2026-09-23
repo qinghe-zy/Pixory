@@ -40,7 +40,7 @@ export function SortMenuButton({
   filterIcon?: keyof typeof Ionicons.glyphMap;
 }) {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<View>(null);
 
   const handleOpen = () => {
@@ -49,8 +49,7 @@ export function SortMenuButton({
       return;
     }
     buttonRef.current?.measure((x, y, w, h, px, py) => {
-      const windowWidth = Dimensions.get('window').width;
-      setMenuPos({ top: py + h + 6, right: windowWidth - px - w });
+      setMenuPos({ top: py + h + 6, left: px });
       setSortMenuVisible(true);
     });
   };
@@ -103,7 +102,7 @@ export function SortMenuButton({
         onRequestClose={() => setSortMenuVisible(false)}
       >
         <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={StyleSheet.absoluteFill} />
-        <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
+        <View style={[styles.menu, { top: menuPos.top, left: menuPos.left }]}>
           {IMAGE_SORT_OPTIONS.map((option) => {
             const selected = option.value === orderBy;
             return (
@@ -117,7 +116,7 @@ export function SortMenuButton({
                 style={({ pressed }) => [styles.menuRow, selected ? styles.menuRowActive : null, pressed && styles.pressed]}
               >
                 <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{option.label}</Text>
-                {selected && <Ionicons color={colors.primary.active} name="checkmark" size={15} />}
+                {selected && <Ionicons color="#111827" name="checkmark" size={15} />}
               </Pressable>
             );
           })}
@@ -133,8 +132,8 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   pillContainer: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
+    backgroundColor: '#F3F4F6',
+    borderColor: 'rgba(0,0,0,0.06)',
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -161,7 +160,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border.subtle,
   },
   buttonActive: {
-    backgroundColor: colors.primary.weak,
+    backgroundColor: '#E5E7EB',
   },
   text: {
     ...typography.textStyles.micro,
@@ -169,7 +168,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   textActive: {
-    color: colors.primary.active,
+    color: '#111827',
   },
   dismissLayer: {
     bottom: -1000,
@@ -211,7 +210,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   menuTextActive: {
-    color: colors.primary.active,
+    color: '#111827',
   },
   pressed: {
     opacity: 0.78,
