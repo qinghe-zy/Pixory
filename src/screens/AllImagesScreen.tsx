@@ -217,13 +217,13 @@ export function AllImagesScreen({
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   
   const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [30, 50], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [30, 50], [5, 0], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollY.value, [90, 110], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [90, 110], [5, 0], Extrapolation.CLAMP);
     return { opacity, transform: [{ translateY }] };
   });
 
   const heroStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollY.value, [90, 110], [1, 0], Extrapolation.CLAMP);
     return { opacity };
   });
 
@@ -474,23 +474,39 @@ export function AllImagesScreen({
     >
       {/* Compact Sticky Header */}
       <Animated.View style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 32 },
+        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 48 },
         compactHeaderStyle
       ]} pointerEvents="box-none">
-        <BlurView intensity={space === 'personal' ? 60 : 30} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: layout.pagePaddingHorizontal }}>
-          <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
-            {ip ? `${ip.name} · ` : ''}{images.length} 张
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
+        {/* iOS Top Status Bar Background */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: 'rgba(255,255,255,0.9)' }} />
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, backgroundColor: 'rgba(255,255,255,0.9)', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2 }}>
+              {ip ? `${ip.name}` : '全部素材'}
+            </Text>
+            <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
+              <Text style={{ fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontWeight: '500', color: '#4B5563', lineHeight: 12 }}>
+                {images.length}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <SortMenuButton
-              hasActiveFilters={hasActiveFilters}
               onChange={setSortOrder}
-              onFilterPress={() => setIsFilterDrawerOpen(true)}
               orderBy={sortOrder}
+              compact={true}
             />
-            <Pressable onPress={onImportImages} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed, { width: 32, height: 32 }]}>
-              <Ionicons color={colors.text.title} name="add" size={20} />
+            <Pressable onPress={() => setIsFilterDrawerOpen(true)} style={{ height: 28, width: 28, borderRadius: 999, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
+              <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color="#4B5563">
+                <Path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </Pressable>
+            <Pressable onPress={onImportImages} style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#111827', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
+                <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+              <Text style={{ fontSize: 11, fontWeight: '500', color: '#FFFFFF', letterSpacing: 0.5 }}>导入</Text>
             </Pressable>
           </View>
         </View>

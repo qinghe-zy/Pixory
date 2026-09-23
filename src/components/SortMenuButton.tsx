@@ -32,8 +32,10 @@ export function SortMenuButton({
   onFilterPress,
   hasActiveFilters,
   filterIcon,
+  compact,
 }: {
   orderBy: ImageSortOrder;
+  compact?: boolean;
   onChange: (orderBy: ImageSortOrder) => void;
   onFilterPress?: () => void;
   hasActiveFilters?: boolean;
@@ -56,23 +58,23 @@ export function SortMenuButton({
 
   return (
     <View style={styles.wrap} ref={buttonRef}>
-      <View style={styles.pillContainer}>
+      <View style={[styles.pillContainer, compact && { height: 28 }]}>
         <Pressable
           accessibilityLabel="选择素材排序"
           onPress={handleOpen}
           style={({ pressed }) => [
-            styles.sortButton,
+            styles.sortButton, compact && { paddingHorizontal: 8 },
             sortMenuVisible && styles.buttonActive,
             pressed && styles.pressed,
           ]}
         >
-          <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color="#6B7280">
+          <Svg width={compact ? 12 : 14} height={compact ? 12 : 14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color="#6B7280">
             <Path d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0-3.75-3.75M17.25 21 21 17.25" strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
-          <Text numberOfLines={1} style={[styles.text, sortMenuVisible && styles.textActive]}>
-            {getImageSortLabel(orderBy)}
+          <Text numberOfLines={1} style={[styles.text, compact && { fontSize: 11 }, sortMenuVisible && styles.textActive]}>
+            {compact ? getImageSortLabel(orderBy).replace('最近', '').replace('最新', '最新') : getImageSortLabel(orderBy)}
           </Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" color="#9CA3AF">
+          <Svg width={compact ? 10 : 12} height={compact ? 10 : 12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" color="#9CA3AF">
             <Path d="m19.5 8.25-7.5 7.5-7.5-7.5" strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
         </Pressable>
@@ -84,7 +86,7 @@ export function SortMenuButton({
               accessibilityLabel="打开筛选"
               onPress={onFilterPress}
               style={({ pressed }) => [
-                styles.filterButton,
+                styles.filterButton, compact && { paddingHorizontal: 8 },
                 hasActiveFilters && styles.buttonActive,
                 pressed && styles.pressed,
               ]}
