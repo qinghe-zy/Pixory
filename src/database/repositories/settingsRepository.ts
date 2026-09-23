@@ -347,7 +347,7 @@ export const settingsRepository = {
 
   async getAssetListViewMode(db: SQLiteDatabase): Promise<AssetListViewMode> {
     const value = await this.getValue(db, ASSET_LIST_VIEW_MODE_KEY);
-    return value === 'detail' ? 'detail' : 'grid';
+    return value === 'detail' ? 'detail' : value === 'justified' ? 'justified' : 'grid';
   },
 
   async setAssetListViewMode(db: SQLiteDatabase, mode: AssetListViewMode): Promise<void> {

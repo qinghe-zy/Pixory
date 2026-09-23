@@ -403,7 +403,6 @@ export function AllImagesScreen({
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
       backgroundColor="#FFFFFF"
-      backgroundVariant="gallery"
       footer={footer}
       showHeader={false}
       scrollable={false}
@@ -940,3 +939,4 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+

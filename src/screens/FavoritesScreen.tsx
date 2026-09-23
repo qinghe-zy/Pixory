@@ -375,7 +375,6 @@ export function FavoritesScreen({
   return (
     <ScreenScaffold
       backgroundColor="#FFFFFF"
-      backgroundVariant="gallery"
       decorativeTitle="Favorites"
       footer={footer}
       onBack={onBack}
@@ -827,3 +826,4 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+

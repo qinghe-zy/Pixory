@@ -709,7 +709,7 @@ export function BatchManageImagesScreen({
   return (
     <>
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
-    <ScreenScaffold backgroundColor="#FFFFFF" backgroundVariant="workflow" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false}>
+    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false}>
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>
@@ -1399,4 +1399,6 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
 });
+
+
 

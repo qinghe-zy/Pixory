@@ -198,7 +198,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
 
   return (
     <>
-    <ScreenScaffold backgroundColor="#FFFFFF" backgroundVariant="trash" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} rightAction={rightAction} title={titleSlot ? '' : "回收站"} titleSlot={titleSlot}>
+    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} rightAction={rightAction} title={titleSlot ? '' : "回收站"} titleSlot={titleSlot}>
       <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
         <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
         <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
@@ -490,3 +490,5 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
 });
+
+

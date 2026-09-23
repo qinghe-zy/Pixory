@@ -360,7 +360,6 @@ export function TagResultScreen({
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
       backgroundColor="#FFFFFF"
-      backgroundVariant="tags"
       footer={footer}
       showHeader={false}
       fullScreen={true}
@@ -802,3 +801,4 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
