@@ -54,7 +54,6 @@ const EMPTY_FAVORITE_FILTERS: FavoriteFilterState = {
   size: null,
 };
 
-type FavoriteFilterDropdown = 'ip' | 'size' | 'group' | 'tag';
 const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
 
 export function FavoritesScreen({
@@ -67,7 +66,6 @@ export function FavoritesScreen({
   onStartBatchManagement,
 }: FavoritesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<FavoriteFilterState>(EMPTY_FAVORITE_FILTERS);
-  const [activeFilterDropdown, setActiveFilterDropdown] = useState<FavoriteFilterDropdown | null>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [favoriteMode, setFavoriteMode] = useState<'images' | 'ai'>('images');
   const [aiMessages, setAiMessages] = useState<AiMessageFavoriteListItem[]>([]);
@@ -268,17 +266,7 @@ export function FavoritesScreen({
     setActiveFilters((current) => ({ ...current, size: current.size?.label === size.label ? null : size }));
   }
 
-  function clearFilterGroup(group: FavoriteFilterDropdown) {
-    if (group === 'ip') {
-      setActiveFilters((current) => ({ ...current, ipIds: [] }));
-    } else if (group === 'size') {
-      setActiveFilters((current) => ({ ...current, aspectRatio: null, aspectLabel: null, size: null }));
-    } else if (group === 'group') {
-      setActiveFilters((current) => ({ ...current, groupIds: [] }));
-    } else {
-      setActiveFilters((current) => ({ ...current, tagIds: [] }));
-    }
-  }
+
 
   const footer = favoriteMode === 'images' && multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
@@ -321,106 +309,40 @@ export function FavoritesScreen({
                   </Text>
                 </Pressable>
               }
-              middleContent={
-        <View style={styles.filterBarWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-            <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
-            <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
-            <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
-            <FilterMenuButton active={activeFilters.tagIds.length > 0} label={`标签${activeFilters.tagIds.length > 0 ? ` ${activeFilters.tagIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'tag' ? null : 'tag'))} />
-            {hasActiveFilters ? (
-              <Pressable onPress={() => setActiveFilters(EMPTY_FAVORITE_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
-                <Text style={styles.clearFilterText}>清空</Text>
-              </Pressable>
-            ) : null}
-          </ScrollView>
-          <Text numberOfLines={1} style={styles.filterStatus}>
-            {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${filterLabel}` : '未设置筛选'}
-          </Text>
-          {activeFilterDropdown ? (
-            <FilterDrawer
-              mode={getFavoriteFilterMode(activeFilterDropdown)}
-              onClear={() => clearFilterGroup(activeFilterDropdown)}
-              title={getFavoriteFilterTitle(activeFilterDropdown)}
-            >
-              {activeFilterDropdown === 'ip' ? (
-                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                  {ips.map((ip) => (
-                    <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
-                  ))}
-                </ScrollView>
-              ) : null}
-              {activeFilterDropdown === 'size' ? (
-                <View style={styles.drawerSections}>
-                  <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
-                  <View style={styles.filterOptionGrid}>
-                    <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
-                    <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
-                    <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
-                    <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+              middleContent={undefined}
+              bottomContent={undefined}
+              topRightActions={
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={[styles.favoriteModeTabs, { padding: 2, minHeight: 28 }]}>
+                    <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed, { minHeight: 24, paddingHorizontal: 8 }]}>
+                      <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null, { fontSize: 11 }]}>图片</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed, { minHeight: 24, paddingHorizontal: 8 }]}>
+                      <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null, { fontSize: 11 }]}>AI</Text>
+                    </Pressable>
                   </View>
-                  <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
-                  <View style={styles.filterOptionGrid}>
-                    <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
-                    <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
-                  </View>
+
+                  <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
+
+                  {favoriteMode === 'images' && (
+                    multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                      <Pressable onPress={() => { multiSelect.clearSelection(); }} style={galleryHeaderStyles.selectionModeTextButton}>
+                        <Text style={galleryHeaderStyles.selectionModeText}>完成</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable onPress={() => multiSelect.enterSelection(images[0]?.id ?? 0)} style={galleryHeaderStyles.selectionModeTextButton}>
+                        <Text style={galleryHeaderStyles.selectionModeText}>选择</Text>
+                      </Pressable>
+                    )
+                  )}
+
+                  <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+                    <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+                    <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
+                      {hasActiveFilters ? '已筛选' : '筛选'}
+                    </Text>
+                  </Pressable>
                 </View>
-              ) : null}
-              {activeFilterDropdown === 'group' ? (
-                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                  {groups.map((group) => (
-                    <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
-                  ))}
-                </ScrollView>
-              ) : null}
-              {activeFilterDropdown === 'tag' ? (
-                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                  {tags.map((tag) => (
-                    <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
-                  ))}
-                </ScrollView>
-              ) : null}
-            </FilterDrawer>
-          ) : null}
-        </View>
-              }
-              bottomContent={
-                <>
-                  <View style={styles.favoriteModeTabs}>
-                    <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
-                      <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null]}>图片</Text>
-                    </Pressable>
-                    <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
-                      <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null]}>AI 消息</Text>
-                    </Pressable>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-                    <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={galleryHeaderStyles.densityToggle}>
-                        <Pressable onPress={() => setViewMode('grid')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'grid' ? galleryHeaderStyles.densityIconButtonActive : null]}>
-                           <GridIcon color={viewMode === 'grid' ? '#111827' : '#9CA3AF'} />
-                        </Pressable>
-                        <Pressable onPress={() => setViewMode('justified')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'justified' ? galleryHeaderStyles.densityIconButtonActive : null]}>
-                           <JustifiedIcon color={viewMode === 'justified' ? '#111827' : '#9CA3AF'} />
-                        </Pressable>
-                        <Pressable onPress={() => setViewMode('detail')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'detail' ? galleryHeaderStyles.densityIconButtonActive : null]}>
-                           <Ionicons color={viewMode === 'detail' ? '#111827' : '#9CA3AF'} name="list-outline" size={14} />
-                        </Pressable>
-                      </View>
-                      
-                      {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
-                        <Pressable onPress={() => { multiSelect.clearSelection(); }} style={galleryHeaderStyles.selectionModeTextButton}>
-                          <Text style={galleryHeaderStyles.selectionModeText}>完成</Text>
-                        </Pressable>
-                      ) : (
-                        <Pressable onPress={() => multiSelect.enterSelection(images[0]?.id ?? 0)} style={galleryHeaderStyles.selectionModeTextButton}>
-                          <Text style={galleryHeaderStyles.selectionModeText}>选择</Text>
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
-                </>
               }
             />
           }
@@ -542,7 +464,7 @@ export function FavoritesScreen({
                 </Pressable>
               ) : null}
               <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
-              <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setActiveFilterDropdown('size')}>
+              <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setIsFilterDrawerOpen(true)}>
                 <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
               </Pressable>
             </>
@@ -550,35 +472,67 @@ export function FavoritesScreen({
         }
       />
 
+      <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>视图</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
+            <FilterOptionChip label="自适应排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
+            <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
+          </View>
+        </View>
+
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+            <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+            <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+            <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+          </View>
+          <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+            <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+          </View>
+        </View>
+
+        {ips.length > 0 && (
+          <View style={styles.drawerSections}>
+            <Text style={styles.drawerSectionTitle}>IP · 多选</Text>
+            <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+              {ips.map((ip) => (
+                <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {groups.length > 0 && (
+          <View style={styles.drawerSections}>
+            <Text style={styles.drawerSectionTitle}>分组 · 多选</Text>
+            <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+              {groups.map((group) => (
+                <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {tags.length > 0 && (
+          <View style={styles.drawerSections}>
+            <Text style={styles.drawerSectionTitle}>标签 · 多选</Text>
+            <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+              {tags.map((tag) => (
+                <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </AssetFilterDrawer>
 
       {favoriteMode === 'ai' ? aiFavoritesContent : imageFavoritesContent}
     </ScreenScaffold>
-  );
-}
-
-function FilterMenuButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterMenuButton, active ? styles.filterMenuButtonActive : null, pressed && styles.pressed]}>
-      <Text numberOfLines={1} style={[styles.filterMenuText, active ? styles.filterMenuTextActive : null]}>{label}</Text>
-      <Ionicons color={active ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
-    </Pressable>
-  );
-}
-
-function FilterDrawer({ children, mode, onClear, title }: { children: ReactNode; mode: '多选' | '单选'; onClear: () => void; title: string }) {
-  return (
-    <View style={styles.filterDrawer}>
-      <View style={styles.filterDrawerHeader}>
-        <View style={styles.filterDrawerTitleRow}>
-          <Text style={styles.filterDrawerTitle}>{title}</Text>
-          <Text style={styles.filterDrawerMode}>{mode}</Text>
-        </View>
-        <Pressable onPress={onClear} style={({ pressed }) => [styles.drawerClearButton, pressed && styles.pressed]}>
-          <Text style={styles.drawerClearText}>清空本类</Text>
-        </Pressable>
-      </View>
-      {children}
-    </View>
   );
 }
 
@@ -598,17 +552,6 @@ function FilterOptionRow({ label, onPress, selected }: { label: string; onPress:
       <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
     </Pressable>
   );
-}
-
-function getFavoriteFilterTitle(filter: FavoriteFilterDropdown) {
-  if (filter === 'ip') return 'IP 筛选';
-  if (filter === 'size') return '尺寸筛选';
-  if (filter === 'group') return '分组筛选';
-  return '标签筛选';
-}
-
-function getFavoriteFilterMode(filter: FavoriteFilterDropdown): '多选' | '单选' {
-  return filter === 'size' ? '单选' : '多选';
 }
 
 const styles = StyleSheet.create({
@@ -714,86 +657,6 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.text.tertiary,
   },
-  filterBar: {
-    flexGrow: 1,
-    gap: spacing[2],
-    justifyContent: 'center',
-    paddingHorizontal: spacing[1],
-    paddingTop: spacing[1],
-    paddingRight: spacing[2],
-  },
-  filterMenuButton: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[1],
-    minHeight: 34,
-    paddingHorizontal: spacing[3],
-  },
-  filterMenuButtonActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
-  },
-  filterMenuText: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    fontWeight: '600',
-  },
-  filterMenuTextActive: {
-    color: colors.primary.active,
-  },
-  filterStatus: {
-    ...typography.textStyles.micro,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-    paddingHorizontal: spacing[1],
-    paddingTop: 2,
-  },
-  filterDrawer: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    padding: spacing[3],
-  },
-  filterDrawerHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[2],
-    justifyContent: 'space-between',
-  },
-  filterDrawerTitleRow: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing[2],
-    minWidth: 0,
-  },
-  filterDrawerTitle: {
-    ...typography.textStyles.caption,
-    color: colors.text.title,
-    fontWeight: '700',
-  },
-  filterDrawerMode: {
-    ...typography.textStyles.micro,
-    color: colors.text.tertiary,
-  },
-  drawerClearButton: {
-    backgroundColor: colors.background.input,
-    borderRadius: radius.pill,
-    justifyContent: 'center',
-    minHeight: 28,
-    paddingHorizontal: spacing[3],
-  },
-  drawerClearText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
-    fontWeight: '700',
-  },
   drawerSections: {
     gap: spacing[2],
   },
@@ -855,21 +718,6 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.secondary,
     flex: 1,
-    fontWeight: '700',
-  },
-  clearFilterPill: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: 'center',
-    minHeight: 34,
-    paddingHorizontal: spacing[3],
-  },
-  clearFilterText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
     fontWeight: '700',
   },
   gridHeader: {

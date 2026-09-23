@@ -111,8 +111,7 @@ export function RecentViewedScreen({
   const justifiedRows = useMemo(() => {
     if (!images || images.length === 0) return [];
     const windowWidth = Dimensions.get('window').width;
-    const contentWidth = windowWidth - layout.pagePaddingHorizontal * 2;
-    return computeJustifiedLayout(images, { containerWidth: contentWidth });
+    return computeJustifiedLayout(images, { containerWidth: windowWidth });
   }, [images]);
 
   const footer = multiSelect.isSelectionMode ? (
