@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
+import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
@@ -67,6 +68,7 @@ export function FavoritesScreen({
 }: FavoritesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<FavoriteFilterState>(EMPTY_FAVORITE_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<FavoriteFilterDropdown | null>(null);
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [favoriteMode, setFavoriteMode] = useState<'images' | 'ai'>('images');
   const [aiMessages, setAiMessages] = useState<AiMessageFavoriteListItem[]>([]);
   const [aiFavoriteErrorMessage, setAiFavoriteErrorMessage] = useState<string | null>(null);
@@ -304,7 +306,7 @@ export function FavoritesScreen({
       >
 
         <VirtualizedAssetCollection
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          contentContainerStyle={{}}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
             <GalleryNormalHeader

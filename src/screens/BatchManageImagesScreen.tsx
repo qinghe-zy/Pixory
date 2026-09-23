@@ -814,7 +814,6 @@ export function BatchManageImagesScreen({
         onRetry={reloadAll}
       >
         <VirtualizedAssetCollection
-          contentContainerStyle={{ paddingHorizontal: 16 }}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={<View>
             <GalleryNormalHeader

@@ -104,7 +104,7 @@ export function GalleryNormalHeader({ title, count, animatedStyle, topRightActio
   const { top: statusBarHeight } = useSafeAreaInsets();
   
   return (
-    <Animated.View style={[{ paddingTop: statusBarHeight + 12, paddingBottom: 10, marginHorizontal: -layout.pagePaddingHorizontal, paddingHorizontal: layout.pagePaddingHorizontal, backgroundColor: '#FAFAFA' }, animatedStyle]}>
+    <Animated.View style={[{ paddingTop: statusBarHeight + 12, paddingBottom: 10, paddingHorizontal: layout.pagePaddingHorizontal, backgroundColor: '#FAFAFA' }, animatedStyle]}>
       {/* Row 1: Title and Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>

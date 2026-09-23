@@ -263,7 +263,6 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         onRetry={reloadAll}
       >
         <VirtualizedAssetCollection
-          contentContainerStyle={{ paddingHorizontal: 16 }}
           headerComponent={headerComponent}
           onScroll={handleScroll}
           scrollOffsetRef={scrollOffsetRef}

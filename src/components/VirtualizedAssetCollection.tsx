@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   // bleed to the screen edges. Row spacing is fully owned by the algorithm's
   // `top` offsets + getItemLayout `length` — no extra margin needed here.
   justifiedRowWrap: {
-    marginHorizontal: -layout.pagePaddingHorizontal,
+    
   },
   justifiedCellInner: {
     flex: 1,
@@ -329,10 +329,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   gridCell: {
-    width: '31.8%',
+    width: (Dimensions.get('window').width - 8) / 3,
   },
   gridRow: {
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start', gap: 4,
   },
   loader: {
     paddingVertical: spacing[4],

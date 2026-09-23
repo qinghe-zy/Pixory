@@ -416,7 +416,6 @@ export function GroupImagesScreen({
         onRetry={reload}
       >
         <VirtualizedAssetCollection
-          contentContainerStyle={{ paddingHorizontal: 16 }}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
             <GalleryNormalHeader

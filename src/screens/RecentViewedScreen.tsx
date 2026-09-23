@@ -128,7 +128,7 @@ export function RecentViewedScreen({
 
   return (
     <View style={styles.host}>
-      <ScreenScaffold
+      <ScreenScaffold contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
         backgroundVariant="gallery"
         decorativeTitle="Recent"
         footer={footer}
@@ -170,7 +170,7 @@ export function RecentViewedScreen({
           ref={scrollViewRef}
           onScroll={swipeSelection.onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={{ paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }}
+          contentContainerStyle={{ paddingBottom: 8 }}
         >
           <PageStateBlock
             loadingComponent={<GallerySkeleton />}
