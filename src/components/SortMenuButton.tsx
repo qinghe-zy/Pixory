@@ -42,7 +42,7 @@ export function SortMenuButton({
   filterIcon?: keyof typeof Ionicons.glyphMap;
 }) {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
   const buttonRef = useRef<View>(null);
 
   const handleOpen = () => {
@@ -51,14 +51,14 @@ export function SortMenuButton({
       return;
     }
     buttonRef.current?.measure((x, y, w, h, px, py) => {
-      setMenuPos({ top: py + h + 6, left: px });
+      setMenuPos({ top: py + h, left: px, width: w });
       setSortMenuVisible(true);
     });
   };
 
   return (
     <View style={styles.wrap} ref={buttonRef}>
-      <View style={[styles.pillContainer, compact && { height: 28 }]}>
+      <View style={[styles.pillContainer, compact && { height: 28 }, { minWidth: compact ? 96 : 110 }, sortMenuVisible && styles.pillContainerOpen]}>
         <Pressable
           accessibilityLabel="选择素材排序"
           onPress={handleOpen}
@@ -104,7 +104,7 @@ export function SortMenuButton({
         onRequestClose={() => setSortMenuVisible(false)}
       >
         <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={StyleSheet.absoluteFill} />
-        <View style={[styles.menu, { top: menuPos.top, left: menuPos.left }]}>
+        <View style={[styles.menu, { top: menuPos.top, left: menuPos.left, width: menuPos.width }]}>
           {IMAGE_SORT_OPTIONS.map((option) => {
             const selected = option.value === orderBy;
             return (
@@ -180,18 +180,30 @@ const styles = StyleSheet.create({
     top: -1000,
     zIndex: 21,
   },
+  pillContainerOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+  },
   menu: {
-    ...shadows.floating,
-    backgroundColor: '#FFFFFF',
-    borderColor: colors.border.default,
-    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderColor: 'rgba(0,0,0,0.06)',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
-    minWidth: 156,
-    padding: spacing[2],
+    borderTopWidth: 0,
+    gap: 4,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
     position: 'absolute',
     zIndex: 999,
     elevation: 99,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
   menuRow: {
     alignItems: 'center',
