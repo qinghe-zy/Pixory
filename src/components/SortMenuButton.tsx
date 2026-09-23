@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, Modal, Dimensions } from 'react-native';
 import { useRef } from 'react';
+import Svg, { Path } from 'react-native-svg';
 
 import type { ImageSortOrder } from '../database';
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
@@ -66,10 +67,15 @@ export function SortMenuButton({
             pressed && styles.pressed,
           ]}
         >
+          <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color="#6B7280">
+            <Path d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0-3.75-3.75M17.25 21 21 17.25" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
           <Text numberOfLines={1} style={[styles.text, sortMenuVisible && styles.textActive]}>
             {getImageSortLabel(orderBy)}
           </Text>
-          <Ionicons color={sortMenuVisible ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
+          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" color="#9CA3AF">
+            <Path d="m19.5 8.25-7.5 7.5-7.5-7.5" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
         </Pressable>
 
         {onFilterPress && (

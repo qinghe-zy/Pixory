@@ -3,6 +3,7 @@ import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { FlatList, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
@@ -368,38 +369,39 @@ export function AllImagesScreen({
   );
 
     const headingNode = (
-    <Animated.View style={[{ paddingTop: statusBarHeight + 4, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 12, backgroundColor: '#FAFAFA' }, heroStyle]}>
+    <Animated.View style={[{ paddingTop: statusBarHeight + 12, paddingBottom: 10, marginHorizontal: -layout.pagePaddingHorizontal, paddingHorizontal: layout.pagePaddingHorizontal, backgroundColor: '#FAFAFA' }, heroStyle]}>
       {/* Row 1: Title and Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-          <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title, fontSize: 24, fontWeight: '700' }}>
+          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 24, fontWeight: 'bold', letterSpacing: -0.5, color: '#111827' }}>
             {ip ? `全部素材 · ${ip.name}` : '全部素材'}
           </Text>
-          <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.tertiary, fontSize: 13, fontWeight: '500' }}>
+          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF' }}>
             {images.length} 张素材
           </Text>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Pressable style={styles.searchIconButton}>
-            <Ionicons name="search" size={18} color={colors.text.title} />
-          </Pressable>
           <Pressable style={styles.importPillButton} onPress={onImportImages}>
-            <Ionicons name="add" size={16} color="#FFFFFF" />
+            <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
             <Text style={styles.importPillText}>导入</Text>
           </Pressable>
         </View>
       </View>
 
       {/* Row 2: Quick Filter Chips */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingRight: 16 }} style={{ flex: 1, marginRight: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingRight: 16 }} style={{ flex: 1, marginRight: 4 }}>
           <Pressable onPress={() => setActiveFilters(EMPTY_FILTERS)} style={[styles.filterChip, !hasActiveFilters && styles.filterChipActive]}>
             <Text style={[styles.filterChipText, !hasActiveFilters && styles.filterChipTextActive]}>全部</Text>
           </Pressable>
           
           <Pressable onPress={() => setActiveFilters(prev => ({...prev, favorite: !prev.favorite}))} style={[styles.filterChip, activeFilters.favorite && styles.filterChipActive]}>
-            <Ionicons name="star-outline" size={12} color={activeFilters.favorite ? '#FFFFFF' : colors.text.secondary} style={{ marginRight: 4 }} />
+            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color={activeFilters.favorite ? '#FFFFFF' : '#6B7280'} style={{ marginRight: 4 }}>
+              <Path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.601a.562.562 0 0 1 .321-.989l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
             <Text style={[styles.filterChipText, activeFilters.favorite && styles.filterChipTextActive]}>收藏</Text>
           </Pressable>
 
@@ -410,28 +412,34 @@ export function AllImagesScreen({
           ))}
         </ScrollView>
 
-        <View style={{ paddingLeft: 4, backgroundColor: '#FAFAFA' }}>
+        <View style={{ backgroundColor: '#FAFAFA', paddingLeft: 6 }}>
           <Pressable style={styles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
-            <Ionicons name="options-outline" size={14} color={colors.text.secondary} />
+            <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color="#4B5563">
+              <Path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
             <Text style={styles.advancedFilterText}>筛选</Text>
           </Pressable>
         </View>
       </View>
 
       {/* Row 3: Sort & Density Controls */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.06)' }}>
         <SortMenuButton
           onChange={setSortOrder}
           orderBy={sortOrder}
         />
         
-        <View style={styles.galleryActions}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <View style={styles.densityToggle}>
-            <Pressable onPress={() => setViewMode('grid')} style={[styles.densityIconButton, viewMode === 'grid' && styles.densityIconButtonActive]}>
-               <Ionicons name="grid-outline" size={18} color={viewMode === 'grid' ? colors.text.title : colors.text.tertiary} />
+            <Pressable onPress={() => setViewMode('grid')} style={[styles.densityIconButton, viewMode === 'grid' ? styles.densityIconButtonActive : null]}>
+               <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color={viewMode === 'grid' ? '#111827' : '#9CA3AF'}>
+                 <Path d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" strokeLinecap="round" strokeLinejoin="round" />
+               </Svg>
             </Pressable>
-            <Pressable onPress={() => setViewMode('justified')} style={[styles.densityIconButton, viewMode === 'justified' && styles.densityIconButtonActive]}>
-               <Ionicons name="menu-outline" size={20} color={viewMode === 'justified' ? colors.text.title : colors.text.tertiary} />
+            <Pressable onPress={() => setViewMode('justified')} style={[styles.densityIconButton, viewMode === 'justified' ? styles.densityIconButtonActive : null]}>
+               <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" color={viewMode === 'justified' ? '#111827' : '#9CA3AF'}>
+                 <Path d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" strokeLinecap="round" strokeLinejoin="round" />
+               </Svg>
             </Pressable>
           </View>
           
@@ -690,18 +698,10 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginLeft: 8,
   },
-  searchIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F5F5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   importPillButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.text.title,
+    backgroundColor: '#111827',
     height: 36,
     paddingHorizontal: 14,
     borderRadius: 18,
@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
   },
   importPillText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
@@ -722,12 +722,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F3F4F6',
     flexDirection: 'row',
     alignItems: 'center',
   },
   filterChipActive: {
-    backgroundColor: colors.text.title,
+    backgroundColor: '#111827',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -737,7 +737,7 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: 12,
     fontWeight: '500',
-    color: colors.text.secondary,
+    color: '#374151',
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -745,7 +745,7 @@ const styles = StyleSheet.create({
   advancedFilterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F3F4F6',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0,0,0,0.06)',
     paddingHorizontal: 10,
@@ -761,27 +761,36 @@ const styles = StyleSheet.create({
   advancedFilterText: {
     fontSize: 12,
     fontWeight: '500',
-    color: colors.text.secondary,
+    color: '#374151',
   },
   densityToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginRight: 16,
+    backgroundColor: '#F3F4F6',
+    padding: 2,
+    borderRadius: 8,
+    gap: 4,
   },
   densityIconButton: {
     padding: 4,
+    borderRadius: 6,
   },
   densityIconButtonActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
   },
   selectionModeTextButton: {
     paddingHorizontal: 4,
     paddingVertical: 4,
   },
   selectionModeText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.text.title,
+    color: '#1F2937',
   },
   host: {
     flex: 1,
