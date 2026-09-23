@@ -1,4 +1,4 @@
-import { useEffect, useRef, memo, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, memo, useMemo, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -14,8 +14,16 @@ import Animated from 'react-native-reanimated';
 
 import type { ImageListItem } from '../database';
 import type { AssetListViewMode } from '../database/repositories/settingsRepository';
-import { colors, rhythm, spacing } from '../design/tokens';
+import { colors, layout, rhythm, spacing } from '../design/tokens';
 import { globalViewState } from '../services/globalViewState';
+import { JustifiedRowView } from './JustifiedRowView';
+import {
+  computeJustifiedLayout,
+  JUSTIFIED_GAP,
+  JUSTIFIED_TARGET_HEIGHT,
+  type JustifiedRow,
+} from '../utils/justifiedLayout';
+
 
 interface MeasuredLayout {
   height: number;
@@ -57,23 +65,122 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
 }: VirtualizedAssetCollectionProps) {
 
   const isGrid = viewMode === 'grid';
+  const isJustified = viewMode === 'justified';
   const numColumns = isGrid ? 3 : 1;
 
+  // ── Justified layout pre-computation ──────────────────────────────────────
+  // Runs O(N) in JS before any render.  Memoised so it only re-runs when the
+  // image list or container width changes (not on every scroll frame).
+  const justifiedRows = useMemo<JustifiedRow[]>(() => {
+    if (!isJustified) return [];
+    const containerWidth = Dimensions.get('window').width; // full-bleed
+    return computeJustifiedLayout(images, {
+      containerWidth,
+      gap: JUSTIFIED_GAP,
+      targetHeight: JUSTIFIED_TARGET_HEIGHT,
+    });
+  }, [isJustified, images]);
+
+  // ── Initial scroll restoration ─────────────────────────────────────────────
   const initialIndex = useRef<number | undefined>(undefined);
   if (initialIndex.current === undefined) {
     if (globalViewState.lastViewedImageId !== -1) {
-      const idx = images.findIndex(img => img.id === globalViewState.lastViewedImageId);
-      if (idx !== -1) {
-        initialIndex.current = Math.floor(idx / numColumns);
+      if (isJustified) {
+        // Find which row contains the last-viewed image.
+        const rowIdx = justifiedRows.findIndex((row) =>
+          row.cells.some((cell) => cell.item.id === globalViewState.lastViewedImageId)
+        );
+        initialIndex.current = rowIdx !== -1 ? rowIdx : -1;
       } else {
-        initialIndex.current = -1;
+        const idx = images.findIndex((img) => img.id === globalViewState.lastViewedImageId);
+        initialIndex.current = idx !== -1 ? Math.floor(idx / numColumns) : -1;
       }
     } else {
       initialIndex.current = -1;
     }
   }
 
+  // ── Justified rendering path ───────────────────────────────────────────────
+  if (isJustified) {
+    // Build an id→item lookup so renderAsset can be called per cell.
+    const itemById = new Map(images.map((img) => [img.id, img]));
 
+    return (
+      <Animated.FlatList<JustifiedRow>
+        {...panHandlers}
+        ListEmptyComponent={emptyComponent ? <View>{emptyComponent}</View> : null}
+        ListFooterComponent={
+          isLoadingMore ? (
+            <ActivityIndicator color={colors.primary.active} style={styles.loader} />
+          ) : null
+        }
+        ListHeaderComponent={
+          headerComponent ? (
+            <View style={{ zIndex: 1000, elevation: 100 }}>{headerComponent}</View>
+          ) : null
+        }
+        contentContainerStyle={[
+          styles.justifiedContent,
+          justifiedRows.length === 0 && styles.emptyContent,
+          contentContainerStyle,
+        ]}
+        data={justifiedRows}
+        // One item = one row → O(1) getItemLayout via pre-computed offsets.
+        getItemLayout={(_data, index) => {
+          const row = justifiedRows[index];
+          if (!row) return { length: 0, offset: 0, index };
+          return {
+            length: row.height + JUSTIFIED_GAP,
+            offset: row.top,
+            index,
+          };
+        }}
+        initialNumToRender={8}
+        initialScrollIndex={
+          initialIndex.current !== -1 ? initialIndex.current : undefined
+        }
+        key="justified"
+        keyExtractor={(_row, index) => `jr-${index}`}
+        maxToRenderPerBatch={8}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.6}
+        onScroll={onScroll}
+        onScrollToIndexFailed={(info) => {
+          if (justifiedRows.length > 0) {
+            setTimeout(() => {
+              listRef?.current?.scrollToIndex({ index: info.index, animated: false });
+            }, 100);
+          }
+        }}
+        ref={listRef}
+        removeClippedSubviews
+        renderItem={({ item: row }) => (
+          // Full-bleed: negative horizontal margin cancels the page padding
+          // applied by AppScreen so images reach the screen edges.
+          <View style={styles.justifiedRowWrap}>
+            <JustifiedRowView
+              gap={JUSTIFIED_GAP}
+              row={row}
+              renderCell={(itemId, cellWidth, cellHeight) => {
+                const image = itemById.get(itemId as number);
+                if (!image) return null;
+                // Pass a synthetic ImageListItem-shaped call through renderAsset.
+                // fillCell = true signals callers to stretch to the given size.
+                return renderAsset(image, images.indexOf(image), true);
+              }}
+            />
+          </View>
+        )}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        style={styles.list}
+        updateCellsBatchingPeriod={40}
+        windowSize={7}
+      />
+    );
+  }
+
+  // ── Grid / Detail rendering path (unchanged) ───────────────────────────────
   return (
     <Animated.FlatList
       {...panHandlers}
@@ -172,6 +279,17 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
     paddingBottom: spacing[6],
   },
+  // Justified mode: no horizontal padding (full-bleed), minimal vertical gap.
+  justifiedContent: {
+    paddingBottom: spacing[6],
+  },
+  // Each justified row cancels the AppScreen horizontal padding so images
+  // bleed to the screen edges.  The gap between rows is handled by the
+  // algorithm's `top` offsets; we rely on `gap` in JustifiedRowView cells.
+  justifiedRowWrap: {
+    marginHorizontal: -layout.pagePaddingHorizontal,
+    marginBottom: JUSTIFIED_GAP,
+  },
   detailCell: {
     width: '100%',
   },
@@ -204,3 +322,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+

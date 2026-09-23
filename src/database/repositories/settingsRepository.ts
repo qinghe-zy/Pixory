@@ -36,7 +36,7 @@ export const IMAGE_MEDIA_PICKER_SOURCE_KEY = 'imageMediaPickerSource';
 export const VIDEO_MEDIA_PICKER_SOURCE_KEY = 'videoMediaPickerSource';
 export const MOVE_IMPORT_WARNING_DISMISSED_KEY = 'moveImportWarningDismissed';
 
-export type AssetListViewMode = 'grid' | 'detail';
+export type AssetListViewMode = 'grid' | 'detail' | 'justified';
 export type ImageImportSourceMode = 'copy' | 'move';
 export type MediaPickerSource = 'album' | 'files';
 export type VideoImportNamingMode = 'generated' | 'preserveOriginal';

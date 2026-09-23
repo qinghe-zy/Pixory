@@ -288,10 +288,10 @@ export function FavoritesScreen({
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
           <SortMenuButton
-            filterIcon={viewMode === 'detail' ? 'list-outline' : 'grid-outline'}
-            hasActiveFilters={viewMode === 'detail'}
+            filterIcon={viewMode === 'detail' ? 'list-outline' : viewMode === 'justified' ? 'albums-outline' : 'grid-outline'}
+            hasActiveFilters={viewMode !== 'grid'}
             onChange={setSortOrder}
-            onFilterPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
+            onFilterPress={() => setViewMode(viewMode === 'grid' ? 'justified' : viewMode === 'justified' ? 'detail' : 'grid')}
             orderBy={sortOrder}
           />
         </View>
