@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
@@ -345,49 +346,71 @@ export function BatchImageOrganizePanel({
 
   const renderDock = () => (
     <View style={styles.dockContainer}>
+      {/* Selection counter badge - left side */}
       <View style={styles.dockBadge}>
-        <Text style={styles.dockBadgeText}>已选 <Text style={styles.dockBadgeTextBold}>{selectedCount}</Text>/{totalCount}</Text>
+        <Text style={styles.dockBadgeText}>
+          已选 <Text style={styles.dockBadgeTextBold}>{selectedCount}</Text>/{totalCount}
+        </Text>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dockActions}>
+      {/* Quick action buttons + more button - right side scrollable */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.dockActions}
+        style={styles.dockScrollArea}
+      >
+        {/* 加入分组 - folder icon from stitch design */}
         <Pressable
           disabled={!canUseGroupActions || isSubmitting}
           onPress={() => resetMode('add-group')}
           style={({ pressed }) => [styles.dockButton, (!canUseGroupActions || isSubmitting) && styles.disabled, pressed && styles.pressed]}
         >
-          <Ionicons name="folder-open-outline" size={16} color="#4B5563" />
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
+            <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </Svg>
           <Text style={styles.dockButtonText}>加入分组</Text>
         </Pressable>
 
+        {/* 添加标签 - tag icon from stitch design */}
         <Pressable
           disabled={isSubmitting}
           onPress={() => resetMode('add-tags')}
           style={({ pressed }) => [styles.dockButton, isSubmitting && styles.disabled, pressed && styles.pressed]}
         >
-          <Ionicons name="pricetags-outline" size={16} color="#4B5563" />
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
+            <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </Svg>
           <Text style={styles.dockButtonText}>添加标签</Text>
         </Pressable>
 
+        {/* 收藏 - star icon from stitch design */}
         <Pressable
           disabled={isSubmitting}
           onPress={() => handleFavoriteUpdate(!allFavorite)}
           style={({ pressed }) => [styles.dockButton, isSubmitting && styles.disabled, pressed && styles.pressed]}
         >
-          <Ionicons name={allFavorite ? 'star-half-outline' : 'star-outline'} size={16} color="#4B5563" />
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
+            <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+          </Svg>
           <Text style={styles.dockButtonText}>{allFavorite ? '取消收藏' : '收藏'}</Text>
         </Pressable>
 
+        {/* 更多 - black pill from stitch design */}
         <Pressable
           disabled={isSubmitting}
           onPress={() => setIsExpanded(true)}
           style={({ pressed }) => [styles.dockMoreButton, pressed && styles.pressed]}
         >
           <Text style={styles.dockMoreText}>更多</Text>
-          <Ionicons name="chevron-up" size={14} color="#FFFFFF" />
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2">
+            <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </Svg>
         </Pressable>
       </ScrollView>
     </View>
   );
+
 
   const renderExpandedHeader = () => (
     <View style={styles.sheetHeader}>
@@ -442,7 +465,7 @@ export function BatchImageOrganizePanel({
   return (
     <>
       {(!isExpanded && mode === 'idle') ? (
-        <View style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
+        <View style={{ paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }}>
           {renderDock()}
         </View>
       ) : (
@@ -691,15 +714,16 @@ function getGroupModeHint(mode: OrganizeMode): string {
 const styles = StyleSheet.create({
   // Dock styles
   dockContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 9999,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     marginHorizontal: 16,
     borderColor: 'rgba(0,0,0,0.1)',
     borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 60,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -711,7 +735,7 @@ const styles = StyleSheet.create({
         elevation: 12,
       },
     }),
-    gap: 8,
+    gap: 6,
   },
   dockBadge: {
     backgroundColor: '#F3F4F6',
@@ -730,10 +754,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
+  dockScrollArea: {
+    flex: 1,
+  },
   dockActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   dockButton: {
     flexDirection: 'row',
@@ -751,11 +780,12 @@ const styles = StyleSheet.create({
   dockMoreButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     backgroundColor: '#111111',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 9999,
+    flexShrink: 0,
   },
   dockMoreText: {
     color: '#FFFFFF',

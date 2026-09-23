@@ -470,7 +470,7 @@ export function AllImagesScreen({
       showHeader={false}
       scrollable={false}
       fullScreen={true}
-      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
       {/* Compact Sticky Header */}
       <Animated.View style={[
