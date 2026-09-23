@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
+import { AssetDetailRow } from '../components/AssetDetailRow';
+import { useAssetListPreferences } from '../services/assetListPreferences';
 import { AppDialog } from '../components/AppDialog';
 import { AlbumSaveDialog } from '../components/AlbumSaveDialog';
 import { LightFormSection } from '../components/LightFormSection';
@@ -80,6 +82,7 @@ export function BatchManageImagesScreen({
   onDeleted,
 }: BatchManageImagesScreenProps) {
   const { showToast, showUndoSnackbar } = useToast();
+  const { viewMode, setViewMode } = useAssetListPreferences(space, 'createdAtDesc');
   const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
   const [sortOrder, setSortOrder] = useState<ImageSortOrder>(() => (importBatchId != null ? 'sourceOrderAsc' : 'createdAtDesc'));
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -726,6 +729,15 @@ export function BatchManageImagesScreen({
         </View>
 
         <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>视图排版</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => { setViewMode('grid'); setIsFilterDrawerOpen(false); }} />
+            <FilterOptionChip label="行流排版" selected={viewMode === 'justified'} onPress={() => { setViewMode('justified'); setIsFilterDrawerOpen(false); }} />
+            <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => { setViewMode('detail'); setIsFilterDrawerOpen(false); }} />
+          </View>
+        </View>
+
+        <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>规则模式</Text>
           <View style={styles.filterOptionGrid}>
             {BATCH_SELECTION_RULE_OPTIONS.filter((option) =>
@@ -885,7 +897,19 @@ export function BatchManageImagesScreen({
           onItemMeasured={swipeSelection.registerMeasuredItemLayout}
           onScroll={swipeSelection.onScroll}
           panHandlers={swipeSelection.panHandlers}
-          renderAsset={(image, index, fillCell) => (
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
+              <AssetDetailRow
+                image={image}
+                isSelectionMode={true}
+                onLongPress={() => {
+                  enterImageSelection(image.id);
+                  swipeSelection.beginSwipeSelection(image.id);
+                }}
+                onPress={handleOpenImage}
+                selected={selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ) : (
             <ThumbnailTile
               aspectRatio={componentTokens.thumbnail.squareAspectRatio}
               containerStyle={fillCell ? styles.fillCell : undefined}
@@ -900,7 +924,7 @@ export function BatchManageImagesScreen({
               space={space}
             />
           )}
-          viewMode="grid"
+          viewMode={viewMode}
         />
       </PageStateBlock>
     </ScreenScaffold>
@@ -1375,3 +1399,4 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
 });
+

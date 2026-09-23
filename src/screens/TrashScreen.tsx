@@ -17,6 +17,9 @@ import { clearTrash, clearTrashItems, TRASH_RETENTION_DAYS } from '../services/t
 import { formatDateTime, formatDuration, formatFileSize } from '../utils/formatters';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useToast } from '../components/AppToast';
+import { useAssetListPreferences } from '../services/assetListPreferences';
+import { ThumbnailTile } from '../components/ThumbnailTile';
+import { componentTokens } from '../design/tokens';
 
 interface TrashScreenProps {
   space: PixorySpace;
@@ -29,6 +32,7 @@ interface TrashScreenProps {
 
 export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMode = false, titleSlot }: TrashScreenProps) {
   const { showToast } = useToast();
+  const { viewMode, setViewMode } = useAssetListPreferences(space, 'createdAtDesc');
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
   const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
@@ -171,12 +175,18 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
     })();
   }
 
-  const rightAction =
-    trashCount > 0 ? (
+  const rightAction = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Pressable onPress={() => setViewMode(viewMode === 'grid' ? 'justified' : viewMode === 'justified' ? 'detail' : 'grid')} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed, { width: 36, height: 36 }]}>
+        <Ionicons color={colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : viewMode === 'justified' ? 'albums-outline' : 'grid-outline'} size={18} />
+      </Pressable>
+      {trashCount > 0 && (
       <Pressable onPress={() => setIsClearDialogVisible(true)} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
         <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
       </Pressable>
-    ) : undefined;
+      )}
+    </View>
+  );
   const footer = multiSelect.isSelectionMode ? (
     <View style={styles.footerPanel}>
       <Text style={styles.footerTitle}>已选择 {selectedImages.length} 张</Text>
@@ -216,7 +226,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
           isLoadingMore={media.isLoadingMore}
           listRef={listRef}
           onEndReached={media.loadMore}
-          renderAsset={(image) => (
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
             <Pressable
               onLongPress={() => multiSelect.enterSelection(image.id)}
               onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
@@ -252,8 +262,20 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
                 </Pressable>
               </View>
             </Pressable>
+          ) : (
+            <ThumbnailTile
+              aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+              containerStyle={fillCell ? { flex: 1, minHeight: 0 } : undefined}
+              image={image}
+              index={index}
+              onLongPress={() => multiSelect.enterSelection(image.id)}
+              onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
+              isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
+              space={space}
+            />
           )}
-          viewMode="detail"
+          viewMode={viewMode}
         />
       </PageStateBlock>
     </ScreenScaffold>
