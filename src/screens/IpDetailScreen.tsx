@@ -22,7 +22,7 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { formatDateTime, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
-import { calculateJustifiedLayout } from '../utils/justifiedLayout';
+import { computeJustifiedLayout } from '../utils/justifiedLayout';
 import { useAssetListPreferences } from '../services/assetListPreferences';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { Dimensions } from 'react-native';
@@ -151,11 +151,11 @@ export function IpDetailScreen({
     // Justified: compute layout for all 15, slice to 3 rows, find how many items that is
     const windowWidth = Dimensions.get('window').width;
     const contentWidth = windowWidth - layout.pagePaddingHorizontal * 2;
-    const layoutInfo = calculateJustifiedLayout(recentImages, contentWidth, 150);
+    const layoutInfo = computeJustifiedLayout(recentImages, { containerWidth: contentWidth });
     const maxRows = Math.min(layoutInfo.length, 3);
     let itemLimit = 0;
     for (let i = 0; i < maxRows; i++) {
-      itemLimit += layoutInfo[i].items.length;
+      itemLimit += layoutInfo[i].cells.length;
     }
     return recentImages.slice(0, itemLimit);
   }, [recentImages, viewMode]);

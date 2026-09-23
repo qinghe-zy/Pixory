@@ -1500,62 +1500,62 @@ sessionStorage.setItem('pixory_index_scroll', window.scrollY);
 });
 });
 
-    // ==========================================
-    // 磁性滚动吸附 (Magnetic Scroll Snap) - 意图判定增强版
-    // ==========================================
-    if (window.innerWidth >= 768 && window.matchMedia('(hover: hover)').matches) {
-      let scrollTimeout;
-      let scrollStartY = window.scrollY;
-      let isScrolling = false;
-      const snapSections = Array.from(document.querySelectorAll('section'));
-      
-      window.addEventListener('scroll', () => {
-        if (!isScrolling) {
-          isScrolling = true;
-          scrollStartY = window.scrollY;
-        }
-        
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          const currentScrollY = window.scrollY;
-          const diff = currentScrollY - scrollStartY;
-          
-          // 如果滚动距离太小（包含触摸板轻微反弹），不作为真实意图
-          if (Math.abs(diff) < 30) {
-            isScrolling = false;
-            return;
-          }
-          
-          const direction = diff > 0 ? 'down' : 'up';
-          let targetSection = null;
-          
-          if (direction === 'down') {
-            // 向下滚动：只寻找下方靠近的 section，绝不反向拽回
-            targetSection = snapSections.find(sec => {
-              const rect = sec.getBoundingClientRect();
-              // 吸附阈值减小到 100px
-              return rect.top > 10 && rect.top < 100; 
-            });
-          } else {
-            // 向上滚动：只寻找上方靠近的 section
-            targetSection = [...snapSections].reverse().find(sec => {
-              const rect = sec.getBoundingClientRect();
-              return rect.top < -10 && rect.top > -100; 
-            });
-          }
-          
-          if (targetSection) {
-            window.scrollTo({
-              top: window.scrollY + targetSection.getBoundingClientRect().top - 80,
-              behavior: 'smooth'
-            });
-          }
-          
-          isScrolling = false;
-        }, 150);
-      }, { passive: true });
-    }
-  });
+// ==========================================
+// 磁性滚动吸附 (Magnetic Scroll Snap) - 意图判定增强版
+// ==========================================
+if (window.innerWidth>= 768 && window.matchMedia('(hover: hover)').matches) {
+let scrollTimeout;
+let scrollStartY = window.scrollY;
+let isScrolling = false;
+const snapSections = Array.from(document.querySelectorAll('section'));
+
+window.addEventListener('scroll', () => {
+if (!isScrolling) {
+isScrolling = true;
+scrollStartY = window.scrollY;
+}
+
+clearTimeout(scrollTimeout);
+scrollTimeout = setTimeout(() => {
+const currentScrollY = window.scrollY;
+const diff = currentScrollY - scrollStartY;
+
+// 如果滚动距离太小（包含触摸板轻微反弹），不作为真实意图
+if (Math.abs(diff) < 30) {
+isScrolling = false;
+return;
+}
+
+const direction = diff> 0 ? 'down' : 'up';
+let targetSection = null;
+
+if (direction === 'down') {
+// 向下滚动：只寻找下方靠近的 section，绝不反向拽回
+targetSection = snapSections.find(sec => {
+const rect = sec.getBoundingClientRect();
+// 吸附阈值减小到 100px
+return rect.top> 10 && rect.top < 100; 
+});
+} else {
+// 向上滚动：只寻找上方靠近的 section
+targetSection = [...snapSections].reverse().find(sec => {
+const rect = sec.getBoundingClientRect();
+return rect.top < -10 && rect.top> -100; 
+});
+}
+
+if (targetSection) {
+window.scrollTo({
+top: window.scrollY + targetSection.getBoundingClientRect().top - 80,
+behavior: 'smooth'
+});
+}
+
+isScrolling = false;
+}, 150);
+}, { passive: true });
+}
+});
 
 </script>
 
