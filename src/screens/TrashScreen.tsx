@@ -264,7 +264,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
             </Pressable>
           ) : (
             <ThumbnailTile
-              aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+              aspectRatio={viewMode === 'justified' ? 'auto' : componentTokens.thumbnail.squareAspectRatio}
               containerStyle={fillCell ? { flex: 1, minHeight: 0 } : undefined}
               image={image}
               index={index}
@@ -490,5 +490,8 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
 });
+
+
+
 
 

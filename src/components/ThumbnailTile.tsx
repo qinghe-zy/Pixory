@@ -12,7 +12,7 @@ interface ThumbnailTileProps {
   space?: PixorySpace;
   onPress?: (imageId: number) => void;
   onLongPress?: (imageId: number) => void;
-  aspectRatio?: number;
+  aspectRatio?: number | 'auto';
   selected?: boolean;
   isSelectionMode?: boolean;
   onLayout?: (event: LayoutChangeEvent) => void;
@@ -42,7 +42,7 @@ export function ThumbnailTile({
       : `打开图片：${image.originalFilename}`;
   const entering = index !== undefined ? FadeIn.delay(Math.min(index * 20, 200)).duration(500) : FadeIn.duration(400);
   const content = (
-    <Animated.View entering={entering} style={[styles.tile, styles.tileFloating, selected ? styles.selectedTile : null, { aspectRatio }]}>
+    <Animated.View entering={entering} style={[styles.tile, styles.tileFloating, selected ? styles.selectedTile : null, aspectRatio !== 'auto' ? { aspectRatio } : styles.autoFill]}>
       {image.thumbnailFileUri ? (
         <SecureImage contentFit="cover" space={space} style={styles.image} uri={image.thumbnailFileUri} />
       ) : (
@@ -88,7 +88,7 @@ export function ThumbnailTile({
       onLayout={onLayout}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}
-      style={({ pressed }) => [styles.pressable, containerStyle, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.pressable, aspectRatio === 'auto' && styles.fillPressable, containerStyle, pressed && styles.pressed]}
     >
       {content}
     </Pressable>
@@ -99,6 +99,13 @@ const styles = StyleSheet.create({
   pressable: {
     width: '31.8%',
   },
+  // In justified mode the Pressable must stretch to fill the cell so the
+  // height chain (row → cell → Pressable → Animated.View) stays connected.
+  fillPressable: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   pressed: {
     opacity: 0.84,
   },
@@ -108,6 +115,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     width: '100%',
+  },
+  // In justified mode the parent cell View already has exact pixel width+height
+  // from the layout algorithm. The tile must stretch to fill it completely.
+  autoFill: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   tileFloating: {
     ...shadows.sm,

@@ -117,7 +117,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
   // renderCell is stable across re-renders as long as itemById/indexById/renderAsset
   // haven't changed — lets JustifiedRowView's memo actually bail out.
   const justifiedRenderCell = useCallback(
-    (itemId: number | string) => {
+    (itemId: number | string, cellWidth: number, cellHeight: number) => {
       const image = itemById.get(itemId as number);
       if (!image) return null;
       return (
@@ -125,7 +125,10 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
           imageId={image.id}
           onMeasured={onItemMeasured}
           scrollOffsetRef={scrollOffsetRef}
-          style={[styles.justifiedCellInner, image.id === globalViewState.lastViewedImageId ? styles.lastViewedHighlight : null]}
+          style={[
+            { width: cellWidth, height: cellHeight, overflow: 'hidden' },
+            image.id === globalViewState.lastViewedImageId ? styles.lastViewedHighlight : null,
+          ]}
         >
           {renderAsset(image, indexById.get(itemId as number) ?? 0, true)}
         </MeasuredAssetCell>

@@ -498,7 +498,7 @@ export function TagResultScreen({
               />
           ) : (
               <ThumbnailTile
-                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                aspectRatio={viewMode === 'justified' ? 'auto' : componentTokens.thumbnail.squareAspectRatio}
                 containerStyle={fillCell ? styles.fillCell : undefined}
                 image={image}
                 index={index}
@@ -801,4 +801,7 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
+
+
 
