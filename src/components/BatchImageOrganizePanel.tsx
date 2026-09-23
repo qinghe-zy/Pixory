@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 
@@ -464,7 +464,8 @@ export function BatchImageOrganizePanel({
           {renderDock()}
         </View>
       ) : (
-        <View style={[styles.expandedSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={[styles.expandedSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           {/* Handle */}
           <View style={styles.sheetHandleWrap}>
             <View style={styles.sheetHandle} />
@@ -519,14 +520,14 @@ export function BatchImageOrganizePanel({
                   </LightFormSection>
                   <View style={styles.inlineActions}>
                     <View style={styles.primaryGrow}>
-                      <PrimaryButton disabled={isSubmitting} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} />
+                      <PrimaryButton disabled={isSubmitting} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} tone="dark" />
                     </View>
                     <PrimaryButton fullWidth={false} label="取消" onPress={() => resetMode()} variant="ghost" />
                   </View>
                 </View>
               ) : mode === 'add-tags' ? (
                 <View style={styles.inlinePanel}>
-                  <LightFormSection title="添加标签" hint="追加到已选素材，不覆盖原有标签。">
+                  <LightFormSection title="添加标签">
                     <TagMultiSelectPanel
                       availableTags={availableTags}
                       inputValue={tagInput}
@@ -537,14 +538,14 @@ export function BatchImageOrganizePanel({
                   </LightFormSection>
                   <View style={styles.inlineActions}>
                     <View style={styles.primaryGrow}>
-                      <PrimaryButton disabled={isSubmitting} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
+                      <PrimaryButton disabled={isSubmitting} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} tone="dark" />
                     </View>
                     <PrimaryButton fullWidth={false} label="取消" onPress={() => resetMode()} variant="ghost" />
                   </View>
                 </View>
               ) : mode === 'move-asset-ip' ? (
                 <View style={styles.inlinePanel}>
-                  <LightFormSection title="移动到 IP" hint="目标必须是另一个已有 IP；分组会按名称自动映射或创建。">
+                  <LightFormSection title="移动到 IP">
                     <ScrollView style={styles.optionScroll} contentContainerStyle={styles.optionList}>
                       {moveTargetIps.map((ip) => (
                         <OptionSelectRow
@@ -559,7 +560,7 @@ export function BatchImageOrganizePanel({
                   </LightFormSection>
                   <View style={styles.inlineActions}>
                     <View style={styles.primaryGrow}>
-                      <PrimaryButton disabled={isSubmitting || targetIpId == null} label="确认移动素材" loading={isSubmitting} onPress={handleMoveAssetsToIp} />
+                      <PrimaryButton disabled={isSubmitting || targetIpId == null} label="确认移动素材" loading={isSubmitting} onPress={handleMoveAssetsToIp} tone="dark" />
                     </View>
                     <PrimaryButton fullWidth={false} label="取消" onPress={() => resetMode()} variant="ghost" />
                   </View>
@@ -567,7 +568,8 @@ export function BatchImageOrganizePanel({
               ) : null}
             </View>
           )}
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       )}
 
       {/* Dialogs */}
@@ -688,19 +690,22 @@ function isGroupMode(mode: OrganizeMode): mode is 'replace-group' | 'add-group' 
 function getGroupActionLabel(mode: OrganizeMode): string {
   if (mode === 'add-group') return '确认加入分组';
   if (mode === 'remove-group') return '确认移出分组';
-  return '确认替换分组';
+  if (mode === 'replace-group') return '确认替换分组';
+  return '';
 }
 
 function getGroupModeTitle(mode: OrganizeMode): string {
   if (mode === 'add-group') return '加入分组';
   if (mode === 'remove-group') return '移出分组';
-  return '替换分组';
+  if (mode === 'replace-group') return '替换分组';
+  return '';
 }
 
 function getGroupModeHint(mode: OrganizeMode): string {
   if (mode === 'add-group') return '给已选素材追加一个分组，保留原有分组。';
   if (mode === 'remove-group') return '直接从当前分组移出，或从已选素材中移除指定分组。';
-  return '用选中的分组替换已选素材当前分组。';
+  if (mode === 'replace-group') return '用选中的分组替换已选素材当前分组。';
+  return '';
 }
 
 const styles = StyleSheet.create({

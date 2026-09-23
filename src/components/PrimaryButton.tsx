@@ -4,7 +4,7 @@ import { colors, componentTokens, spacing, typography } from '../design/tokens';
 import { aiLightColors } from './ai/aiLightTheme';
 
 type ButtonVariant = 'solid' | 'ghost' | 'outline';
-type ButtonTone = 'default' | 'ai' | 'danger';
+type ButtonTone = 'default' | 'ai' | 'danger' | 'dark';
 
 interface PrimaryButtonProps {
   label: string;
@@ -49,6 +49,7 @@ export function PrimaryButton({
         variant === 'solid' ? styles.solid : variant === 'outline' ? styles.outline : styles.ghost,
         variant === 'solid' && tone === 'ai' ? styles.aiSolid : null,
         variant === 'solid' && tone === 'danger' ? styles.dangerSolid : null,
+        variant === 'solid' && tone === 'dark' ? styles.darkSolid : null,
         variant === 'outline' && tone === 'ai' ? styles.aiOutline : null,
         isDisabled && styles.disabled,
         fullWidth && styles.fullWidth,
@@ -96,6 +97,9 @@ const styles = StyleSheet.create({
   },
   dangerSolid: {
     backgroundColor: colors.semantic.danger,
+  },
+  darkSolid: {
+    backgroundColor: '#111111',
   },
   outline: {
     backgroundColor: colors.background.input,
