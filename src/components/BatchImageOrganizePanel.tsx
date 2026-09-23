@@ -353,20 +353,15 @@ export function BatchImageOrganizePanel({
         </Text>
       </View>
 
-      {/* Quick action buttons + more button - right side scrollable */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.dockActions}
-        style={styles.dockScrollArea}
-      >
+      {/* Quick action buttons + more button - right side flex */}
+      <View style={styles.dockActions}>
         {/* 加入分组 - folder icon from stitch design */}
         <Pressable
           disabled={!canUseGroupActions || isSubmitting}
           onPress={() => resetMode('add-group')}
           style={({ pressed }) => [styles.dockButton, (!canUseGroupActions || isSubmitting) && styles.disabled, pressed && styles.pressed]}
         >
-          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </Svg>
           <Text style={styles.dockButtonText}>加入分组</Text>
@@ -378,7 +373,7 @@ export function BatchImageOrganizePanel({
           onPress={() => resetMode('add-tags')}
           style={({ pressed }) => [styles.dockButton, isSubmitting && styles.disabled, pressed && styles.pressed]}
         >
-          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </Svg>
           <Text style={styles.dockButtonText}>添加标签</Text>
@@ -390,7 +385,7 @@ export function BatchImageOrganizePanel({
           onPress={() => handleFavoriteUpdate(!allFavorite)}
           style={({ pressed }) => [styles.dockButton, isSubmitting && styles.disabled, pressed && styles.pressed]}
         >
-          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
           </Svg>
           <Text style={styles.dockButtonText}>{allFavorite ? '取消收藏' : '收藏'}</Text>
@@ -403,11 +398,11 @@ export function BatchImageOrganizePanel({
           style={({ pressed }) => [styles.dockMoreButton, pressed && styles.pressed]}
         >
           <Text style={styles.dockMoreText}>更多</Text>
-          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2">
+          <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
           </Svg>
         </Pressable>
-      </ScrollView>
+      </View>
     </View>
   );
 
@@ -437,19 +432,19 @@ export function BatchImageOrganizePanel({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>分类与整理 (ORGANIZE)</Text>
         <View style={styles.grid2}>
-          <SheetActionItem icon="folder-open-outline" label="加入分组" desc="归档至主题文件夹" onPress={() => resetMode('add-group')} disabled={!canUseGroupActions} />
-          <SheetActionItem icon="remove-circle-outline" label="移出分组" desc="保留在全部素材" onPress={() => resetMode('remove-group')} disabled={!canUseGroupActions} />
-          <SheetActionItem icon="swap-horizontal-outline" label="替换分组" desc="转移并清空原组" onPress={() => resetMode('replace-group')} disabled={!canUseGroupActions} />
-          <SheetActionItem icon="pricetags-outline" label="添加标签" desc="多维属性标记" onPress={() => resetMode('add-tags')} />
+          <SheetActionItem icon="folder-open-outline" label="加入分组" onPress={() => resetMode('add-group')} disabled={!canUseGroupActions} />
+          <SheetActionItem icon="remove-circle-outline" label="移出分组" onPress={() => resetMode('remove-group')} disabled={!canUseGroupActions} />
+          <SheetActionItem icon="swap-horizontal-outline" label="替换分组" onPress={() => resetMode('replace-group')} disabled={!canUseGroupActions} />
+          <SheetActionItem icon="pricetags-outline" label="添加标签" onPress={() => resetMode('add-tags')} />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>存储与流转 (EXPORT & STORAGE)</Text>
         <View style={styles.grid3}>
-          <SheetVerticalItem icon={allFavorite ? 'star-half-outline' : 'star-outline'} iconColor="#F59E0B" label={allFavorite ? '取消收藏' : '加入收藏'} onPress={() => handleFavoriteUpdate(!allFavorite)} />
-          <SheetVerticalItem icon="download-outline" iconColor="#2563EB" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} disabled={isSavingToAlbum} />
-          <SheetVerticalItem icon="trail-sign-outline" iconColor="#9333EA" label="移动到 IP" onPress={() => resetMode('move-asset-ip')} disabled={moveTargetIps.length === 0} />
+          <SheetVerticalItem icon={allFavorite ? 'star-half-outline' : 'star-outline'} iconColor="#111111" label={allFavorite ? '取消收藏' : '加入收藏'} onPress={() => handleFavoriteUpdate(!allFavorite)} />
+          <SheetVerticalItem icon="download-outline" iconColor="#111111" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} disabled={isSavingToAlbum} />
+          <SheetVerticalItem icon="trail-sign-outline" iconColor="#111111" label="移动到 IP" onPress={() => resetMode('move-asset-ip')} disabled={moveTargetIps.length === 0} />
         </View>
       </View>
 
@@ -636,13 +631,11 @@ function SheetActionItem({
   disabled,
   icon,
   label,
-  desc,
   onPress,
 }: {
   disabled?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  desc: string;
   onPress: () => void;
 }) {
   return (
@@ -652,11 +645,10 @@ function SheetActionItem({
       style={({ pressed }) => [styles.sheetActionItem, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
     >
       <View style={styles.sheetActionIconBox}>
-        <Ionicons name={icon} size={20} color="#374151" />
+        <Ionicons name={icon} size={20} color="#111111" />
       </View>
       <View style={styles.sheetActionCopy}>
         <Text style={styles.sheetActionLabel}>{label}</Text>
-        <Text style={styles.sheetActionDesc} numberOfLines={1}>{desc}</Text>
       </View>
     </Pressable>
   );
@@ -718,12 +710,12 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginHorizontal: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    marginHorizontal: 8,
     borderColor: 'rgba(0,0,0,0.1)',
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 60,
+    minHeight: 56,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -735,24 +727,24 @@ const styles = StyleSheet.create({
         elevation: 12,
       },
     }),
-    gap: 6,
+    gap: 4,
   },
   dockBadge: {
     backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 9999,
     flexShrink: 0,
   },
   dockBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#374151',
     fontWeight: '600',
   },
   dockBadgeTextBold: {
     color: '#000000',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 13,
   },
   dockScrollArea: {
     flex: 1,
@@ -760,36 +752,36 @@ const styles = StyleSheet.create({
   dockActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
     flexGrow: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
   },
   dockButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: 4,
+    paddingHorizontal: 8,
     paddingVertical: 8,
     borderRadius: 9999,
   },
   dockButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
     color: '#374151',
   },
   dockMoreButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
     backgroundColor: '#111111',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 9999,
     flexShrink: 0,
   },
   dockMoreText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
 
@@ -817,7 +809,7 @@ const styles = StyleSheet.create({
   },
   sheetHandleWrap: {
     alignItems: 'center',
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   sheetHandle: {
     width: 38,
@@ -829,7 +821,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingBottom: 20,
+    paddingBottom: 16,
   },
   sheetHeaderLeft: {
     flexDirection: 'row',
@@ -872,37 +864,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   section: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
     color: '#9CA3AF',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: 8,
     paddingHorizontal: 4,
   },
   grid2: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 8,
     justifyContent: 'space-between',
   },
   sheetActionItem: {
     width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
     backgroundColor: '#F8F9FA',
     borderColor: '#F3F4F6',
     borderWidth: 1,
   },
   sheetActionIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -926,33 +918,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
   },
-  sheetActionDesc: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
   grid3: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     justifyContent: 'space-between',
   },
   sheetVerticalItem: {
     flex: 1,
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 14,
     backgroundColor: '#F8F9FA',
     borderColor: '#F3F4F6',
     borderWidth: 1,
   },
   sheetVerticalIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     ...Platform.select({
       ios: {
         shadowColor: '#000',

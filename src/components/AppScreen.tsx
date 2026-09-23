@@ -28,6 +28,7 @@ interface AppScreenProps {
   contentStyle?: StyleProp<ViewStyle>;
   backgroundColor?: string;
   footer?: ReactNode;
+  footerNaked?: boolean;
   footerStyle?: StyleProp<ViewStyle>;
   dismissKeyboardOnTouch?: boolean;
   backgroundVariant?: PageBackgroundVariant;
@@ -42,6 +43,7 @@ export function AppScreen({
   contentStyle,
   backgroundColor = colors.background.page,
   footer,
+  footerNaked = false,
   footerStyle,
   dismissKeyboardOnTouch = false,
   backgroundVariant,
@@ -84,21 +86,28 @@ export function AppScreen({
     <View style={styles.flex}>
       {bodyContent}
       {footer ? (
-        <View style={styles.footerWrap} pointerEvents="box-none">
-          <BlurView
-            intensity={85}
-            tint="light"
-            style={[
-              styles.footer,
-              {
-                paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
-              },
-              footerStyle,
-            ]}
-          >
+        footerNaked ? (
+          // Naked mode: no BlurView, no background — just an absolute transparent wrapper
+          <View style={styles.footerWrap} pointerEvents="box-none">
             {footer}
-          </BlurView>
-        </View>
+          </View>
+        ) : (
+          <View style={styles.footerWrap} pointerEvents="box-none">
+            <BlurView
+              intensity={85}
+              tint="light"
+              style={[
+                styles.footer,
+                {
+                  paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
+                },
+                footerStyle,
+              ]}
+            >
+              {footer}
+            </BlurView>
+          </View>
+        )
       ) : null}
     </View>
   );

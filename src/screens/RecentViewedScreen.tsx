@@ -1,17 +1,19 @@
 import { useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View, type ScrollView } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Dimensions, type ScrollView } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
-import { AssetDetailRow } from '../components/AssetDetailRow';
+
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { GallerySkeleton } from '../components/GallerySkeleton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography, layout } from '../design/tokens';
+import { computeJustifiedLayout, JUSTIFIED_GAP } from '../utils/justifiedLayout';
+import { JustifiedRowView } from '../components/JustifiedRowView';
 import { useToast } from '../components/AppToast';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
@@ -41,7 +43,7 @@ export function RecentViewedScreen({
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
   const { showToast } = useToast();
-  const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'lastViewedAtDesc');
+  const { sortOrder, setSortOrder } = useAssetListPreferences(space, 'lastViewedAtDesc');
   const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
   const [isClearingRecentViewed, setIsClearingRecentViewed] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
@@ -105,6 +107,13 @@ export function RecentViewedScreen({
     }
   }
 
+  const justifiedRows = useMemo(() => {
+    if (!images || images.length === 0) return [];
+    const windowWidth = Dimensions.get('window').width;
+    const contentWidth = windowWidth - layout.pagePaddingHorizontal * 2;
+    return computeJustifiedLayout(images, { containerWidth: contentWidth });
+  }, [images]);
+
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
       onChanged={reload}
@@ -121,6 +130,7 @@ export function RecentViewedScreen({
       backgroundVariant="gallery"
       decorativeTitle="Recent"
       footer={footer}
+      footerNaked={true}
       onBack={onBack}
       onScroll={swipeSelection.onScroll}
       scrollViewRef={scrollViewRef}
@@ -172,48 +182,38 @@ export function RecentViewedScreen({
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
           <SortMenuButton
-            filterIcon={viewMode === 'detail' ? 'list-outline' : 'grid-outline'}
-            hasActiveFilters={viewMode === 'detail'}
             onChange={setSortOrder}
-            onFilterPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
             orderBy={sortOrder}
           />
         </View>
-        {viewMode === 'detail' ? (
-          <View {...swipeSelection.panHandlers} style={styles.detailList}>
-            {images.map((image) => (
-              <AssetDetailRow
-                image={image}
-                key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
-                onLongPress={() => handleImageLongPress(image)}
-                onPress={handleOpenImage}
-                selected={multiSelect.selectedImageIds.includes(image.id)}
-                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
-                space={space}
+        <View {...swipeSelection.panHandlers}>
+          {justifiedRows.map((row, rowIndex) => (
+            <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', gap: JUSTIFIED_GAP, marginBottom: rowIndex < justifiedRows.length - 1 ? JUSTIFIED_GAP : 0 }}>
+              <JustifiedRowView
+                gap={JUSTIFIED_GAP}
+                row={row}
+                renderCell={(itemId: number | string, cellWidth: number, cellHeight: number) => {
+                  const image = images.find((img) => img.id === itemId);
+                  if (!image) return null;
+                  return (
+                    <View key={itemId} style={{ width: cellWidth, height: cellHeight, overflow: 'hidden' }} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
+                      <ThumbnailTile
+                        aspectRatio="auto"
+                        containerStyle={{ flex: 1, minHeight: 0 }}
+                        image={image}
+                        onLongPress={() => handleImageLongPress(image)}
+                        onPress={handleOpenImage}
+                        selected={multiSelect.selectedImageIds.includes(image.id)}
+                        isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
+                        space={space}
+                      />
+                    </View>
+                  );
+                }}
               />
-            ))}
-          </View>
-        ) : (
-          <View {...swipeSelection.panHandlers} style={styles.grid}>
-            {images.map((image) => (
-              <ThumbnailTile
-                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
-                image={image}
-                key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
-                onLongPress={() => handleImageLongPress(image)}
-                onPress={handleOpenImage}
-                selected={multiSelect.selectedImageIds.includes(image.id)}
-                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
-                space={space}
-              />
-            ))}
-            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
-              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-            ))}
-          </View>
-        )}
+            </View>
+          ))}
+        </View>
       </PageStateBlock>
       <AppDialog
         message="只会清除最近查看时间，不会删除图片、视频、原图、缩略图、分组、标签或备注。"
@@ -285,14 +285,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontWeight: '700',
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
-  },
-  detailList: {
-    gap: rhythm.listCardGap,
-  },
+
   gridHeader: {
     zIndex: 10,
     elevation: 10,
@@ -305,16 +298,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
   },
-  viewModeButton: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
+
   selectAllButton: {
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1.5],
@@ -328,10 +312,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 13,
   },
-  viewModeButtonActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
-  },
+
   disabled: {
     opacity: 0.44,
   },

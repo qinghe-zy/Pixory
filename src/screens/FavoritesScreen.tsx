@@ -377,6 +377,7 @@ export function FavoritesScreen({
       backgroundColor="#FFFFFF"
       decorativeTitle="Favorites"
       footer={footer}
+      footerNaked={true}
       onBack={onBack}
       title="收藏"
     >

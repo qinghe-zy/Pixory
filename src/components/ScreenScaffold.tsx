@@ -27,6 +27,7 @@ interface ScreenScaffoldProps {
   rightAction?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  footerNaked?: boolean;
   scrollable?: boolean;
   loading?: boolean;
   errorMessage?: string | null;
@@ -51,6 +52,7 @@ export function ScreenScaffold({
   rightAction,
   children,
   footer,
+  footerNaked,
   scrollable = false,
   loading = false,
   errorMessage,
@@ -72,6 +74,7 @@ export function ScreenScaffold({
       backgroundColor={backgroundColor}
       contentStyle={contentContainerStyle}
       footer={footer}
+      footerNaked={footerNaked}
       onScroll={onScroll}
       scrollViewRef={scrollViewRef}
       scrollable={scrollable}

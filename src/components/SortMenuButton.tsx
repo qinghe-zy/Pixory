@@ -72,7 +72,7 @@ export function SortMenuButton({
             <Path d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0-3.75-3.75M17.25 21 21 17.25" strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
           <Text numberOfLines={1} style={[styles.text, compact && { fontSize: 11 }, sortMenuVisible && styles.textActive]}>
-            {compact ? getImageSortLabel(orderBy).replace('最近', '').replace('最新', '最新') : getImageSortLabel(orderBy)}
+            {getImageSortLabel(orderBy)}
           </Text>
           <Svg width={compact ? 10 : 12} height={compact ? 10 : 12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" color="#9CA3AF">
             <Path d="m19.5 8.25-7.5 7.5-7.5-7.5" strokeLinecap="round" strokeLinejoin="round" />

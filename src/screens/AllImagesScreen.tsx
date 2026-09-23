@@ -467,6 +467,7 @@ export function AllImagesScreen({
     <ScreenScaffold
       backgroundColor="#FFFFFF"
       footer={footer}
+      footerNaked={true}
       showHeader={false}
       scrollable={false}
       fullScreen={true}
