@@ -83,6 +83,7 @@ export function AllImagesScreen({
 }: AllImagesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<AllImagesFilterState>(EMPTY_FILTERS);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [forceSelectionMode, setForceSelectionMode] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
   const scrollViewRef = useRef<any>(null);
@@ -366,34 +367,88 @@ export function AllImagesScreen({
     </Pressable>
   );
 
-  const headingNode = (
-    <Animated.View style={[{ paddingTop: statusBarHeight, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }, heroStyle]}>
+    const headingNode = (
+    <Animated.View style={[{ paddingTop: statusBarHeight + 4, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 12, backgroundColor: '#FAFAFA' }, heroStyle]}>
+      {/* Row 1: Title and Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title }}>
-          {ip ? `全部素材 · ${ip.name}` : '全部素材'}
-        </Text>
-        {rightAction}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+          <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title, fontSize: 24, fontWeight: '700' }}>
+            {ip ? `全部素材 · ${ip.name}` : '全部素材'}
+          </Text>
+          <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.tertiary, fontSize: 13, fontWeight: '500' }}>
+            {images.length} 张素材
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable style={styles.searchIconButton}>
+            <Ionicons name="search" size={18} color={colors.text.title} />
+          </Pressable>
+          <Pressable style={styles.importPillButton} onPress={onImportImages}>
+            <Ionicons name="add" size={16} color="#FFFFFF" />
+            <Text style={styles.importPillText}>导入</Text>
+          </Pressable>
+        </View>
       </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-        <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.tertiary }}>
-          {hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张
-        </Text>
+
+      {/* Row 2: Quick Filter Chips */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingRight: 16 }} style={{ flex: 1, marginRight: 8 }}>
+          <Pressable onPress={() => setActiveFilters(EMPTY_FILTERS)} style={[styles.filterChip, !hasActiveFilters && styles.filterChipActive]}>
+            <Text style={[styles.filterChipText, !hasActiveFilters && styles.filterChipTextActive]}>全部</Text>
+          </Pressable>
+          
+          <Pressable onPress={() => setActiveFilters(prev => ({...prev, favorite: !prev.favorite}))} style={[styles.filterChip, activeFilters.favorite && styles.filterChipActive]}>
+            <Ionicons name="star-outline" size={12} color={activeFilters.favorite ? '#FFFFFF' : colors.text.secondary} style={{ marginRight: 4 }} />
+            <Text style={[styles.filterChipText, activeFilters.favorite && styles.filterChipTextActive]}>收藏</Text>
+          </Pressable>
+
+          {groups.map(group => (
+             <Pressable key={group.id} onPress={() => toggleGroupFilter(group.id)} style={[styles.filterChip, activeFilters.groupIds.includes(group.id) && styles.filterChipActive]}>
+               <Text style={[styles.filterChipText, activeFilters.groupIds.includes(group.id) && styles.filterChipTextActive]}>{group.name}</Text>
+             </Pressable>
+          ))}
+        </ScrollView>
+
+        <View style={{ paddingLeft: 4, backgroundColor: '#FAFAFA' }}>
+          <Pressable style={styles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+            <Ionicons name="options-outline" size={14} color={colors.text.secondary} />
+            <Text style={styles.advancedFilterText}>筛选</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Row 3: Sort & Density Controls */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+        <SortMenuButton
+          onChange={setSortOrder}
+          orderBy={sortOrder}
+        />
+        
         <View style={styles.galleryActions}>
-          {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
-            <Pressable
-              disabled={selectableAssets.length === 0}
-              onPress={multiSelect.toggleSelectAll}
-              style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-            >
-              <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+          <View style={styles.densityToggle}>
+            <Pressable onPress={() => setViewMode('grid')} style={[styles.densityIconButton, viewMode === 'grid' && styles.densityIconButtonActive]}>
+               <Ionicons name="grid-outline" size={18} color={viewMode === 'grid' ? colors.text.title : colors.text.tertiary} />
             </Pressable>
-          ) : null}
-          <SortMenuButton
-            hasActiveFilters={hasActiveFilters}
-            onChange={setSortOrder}
-            onFilterPress={() => setIsFilterDrawerOpen(true)}
-            orderBy={sortOrder}
-          />
+            <Pressable onPress={() => setViewMode('justified')} style={[styles.densityIconButton, viewMode === 'justified' && styles.densityIconButtonActive]}>
+               <Ionicons name="menu-outline" size={20} color={viewMode === 'justified' ? colors.text.title : colors.text.tertiary} />
+            </Pressable>
+          </View>
+          
+          {multiSelect.isSelectionMode || forceSelectionMode ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Pressable onPress={() => { multiSelect.clearSelection(); setForceSelectionMode(false); }} style={styles.selectionModeTextButton}>
+                <Text style={styles.selectionModeText}>完成</Text>
+              </Pressable>
+              <Pressable disabled={selectableAssets.length === 0} onPress={multiSelect.toggleSelectAll} style={styles.selectionModeTextButton}>
+                <Text style={styles.selectionModeText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable onPress={() => setForceSelectionMode(true)} style={styles.selectionModeTextButton}>
+              <Text style={styles.selectionModeText}>选择</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Animated.View>
@@ -522,7 +577,7 @@ export function AllImagesScreen({
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
-                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
+                isSelectionMode={multiSelect.isSelectionMode || forceSelectionMode}
                 space={space}
               />
           ) : (
@@ -534,7 +589,7 @@ export function AllImagesScreen({
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
-                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
+                isSelectionMode={multiSelect.isSelectionMode || forceSelectionMode}
                 space={space}
               />
           )}
@@ -634,6 +689,99 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.tertiary,
     marginLeft: 8,
+  },
+  searchIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F5F5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.text.title,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  importPillText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F5F5F5',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterChipActive: {
+    backgroundColor: colors.text.title,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text.secondary,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  advancedFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  advancedFilterText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text.secondary,
+  },
+  densityToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginRight: 16,
+  },
+  densityIconButton: {
+    padding: 4,
+  },
+  densityIconButtonActive: {
+  },
+  selectionModeTextButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  selectionModeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.title,
   },
   host: {
     flex: 1,
