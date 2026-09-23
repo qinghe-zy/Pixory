@@ -402,6 +402,7 @@ export function AllImagesScreen({
   return (
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
+      backgroundColor="#FFFFFF"
       backgroundVariant="gallery"
       footer={footer}
       showHeader={false}
@@ -434,6 +435,15 @@ export function AllImagesScreen({
       </Animated.View>
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>视图</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
+            <FilterOptionChip label="行流排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
+            <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
+          </View>
+        </View>
+
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
           <View style={styles.filterOptionGrid}>
