@@ -304,6 +304,7 @@ export function FavoritesScreen({
       >
 
         <VirtualizedAssetCollection
+          contentContainerStyle={{ paddingHorizontal: 16 }}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
             <GalleryNormalHeader

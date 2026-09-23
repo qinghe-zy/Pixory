@@ -447,6 +447,7 @@ export function TagResultScreen({
         onRetry={reloadAll}
       >
         <VirtualizedAssetCollection
+          contentContainerStyle={{ paddingHorizontal: 16 }}
           onScroll={handleScroll}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
