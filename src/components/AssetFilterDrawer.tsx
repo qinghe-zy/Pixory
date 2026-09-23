@@ -25,7 +25,7 @@ export function AssetFilterDrawer({ onClose, visible, children, scrollable = tru
         <Animated.View entering={SlideInRight.duration(300)} exiting={SlideOutRight.duration(250)} style={styles.drawer}>
           <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderTopLeftRadius: radius.xl }]}>
             <BlurView intensity={75} style={StyleSheet.absoluteFill} tint="light" />
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255, 255, 255, 0.45)' }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255, 255, 255, 0.85)' }]} />
           </View>
           <View style={[styles.header, { paddingTop: insets.top + spacing[8] }]}>
             <Text style={styles.title}>筛选库</Text>

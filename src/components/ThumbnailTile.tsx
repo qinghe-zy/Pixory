@@ -84,7 +84,7 @@ export function ThumbnailTile({
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="imagebutton"
       accessibilityState={{ selected }}
-      delayLongPress={500}
+      delayLongPress={700}
       onLayout={onLayout}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     width: 18,
   },
   selectionBadgeInactive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderColor: colors.border.default,
   },
 });

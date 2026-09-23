@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
+import { AssetDetailRow } from '../components/AssetDetailRow';
 import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { IpDetailDrawer } from '../components/IpDetailDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -22,7 +23,7 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { formatDateTime, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
-import { computeJustifiedLayout } from '../utils/justifiedLayout';
+import { computeJustifiedLayout, JUSTIFIED_GAP } from '../utils/justifiedLayout';
 import { useAssetListPreferences } from '../services/assetListPreferences';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { Dimensions } from 'react-native';
@@ -144,20 +145,17 @@ export function IpDetailScreen({
   const groupCoverBlurRadius = personalCoverBlurRadius;
   const { viewMode } = useAssetListPreferences(space);
   
-  const displayImages = useMemo(() => {
-    if (viewMode === 'grid') return recentImages.slice(0, 9);
-    if (viewMode === 'detail') return recentImages.slice(0, 3);
+  const { displayImages, justifiedRows } = useMemo(() => {
+    if (viewMode === 'grid') return { displayImages: recentImages.slice(0, 9), justifiedRows: [] };
+    if (viewMode === 'detail') return { displayImages: recentImages.slice(0, 3), justifiedRows: [] };
     
-    // Justified: compute layout for all 15, slice to 3 rows, find how many items that is
+    // Justified: compute layout for all 15, slice to 3 rows
     const windowWidth = Dimensions.get('window').width;
     const contentWidth = windowWidth - layout.pagePaddingHorizontal * 2;
     const layoutInfo = computeJustifiedLayout(recentImages, { containerWidth: contentWidth });
     const maxRows = Math.min(layoutInfo.length, 3);
-    let itemLimit = 0;
-    for (let i = 0; i < maxRows; i++) {
-      itemLimit += layoutInfo[i].cells.length;
-    }
-    return recentImages.slice(0, itemLimit);
+    const rows = layoutInfo.slice(0, maxRows);
+    return { displayImages: [], justifiedRows: rows };
   }, [recentImages, viewMode]);
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
@@ -383,20 +381,50 @@ export function IpDetailScreen({
               loading={false}
               onEmptyAction={onImportImages}
             >
-              <View style={styles.recentGrid}>
-                {recentImages.map((image) => (
-                  <ThumbnailTile
-                    aspectRatio={componentTokens.thumbnail.squareAspectRatio}
-                    image={image}
-                    key={image.id}
-                    onLongPress={() => handleImageLongPress(image)}
-                    onPress={handleOpenRecentImage}
-                    space={space}
-                  />
-                ))}
-                {Array.from({ length: (3 - (recentImages.length % 3)) % 3 }).map((_, i) => (
-                  <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-                ))}
+              <View style={viewMode === 'detail' ? styles.recentList : styles.recentGrid}>
+                {viewMode === 'justified' ? (
+                  justifiedRows.map((row, rowIndex) => (
+                    <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', gap: JUSTIFIED_GAP, marginBottom: rowIndex < justifiedRows.length - 1 ? JUSTIFIED_GAP : 0 }}>
+                      {row.cells.map((cell) => (
+                        <View key={cell.item.id} style={{ width: cell.renderedWidth, height: row.height }}>
+                          <ThumbnailTile
+                            aspectRatio="auto"
+                            image={cell.item as ImageListItem}
+                            onLongPress={() => handleImageLongPress(cell.item as ImageListItem)}
+                            onPress={handleOpenRecentImage}
+                            space={space}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  ))
+                ) : viewMode === 'detail' ? (
+                  displayImages.map((image) => (
+                    <AssetDetailRow
+                      image={image}
+                      key={image.id}
+                      onLongPress={() => handleImageLongPress(image)}
+                      onPress={handleOpenRecentImage}
+                      space={space}
+                    />
+                  ))
+                ) : (
+                  <>
+                    {displayImages.map((image) => (
+                      <ThumbnailTile
+                        aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                        image={image}
+                        key={image.id}
+                        onLongPress={() => handleImageLongPress(image)}
+                        onPress={handleOpenRecentImage}
+                        space={space}
+                      />
+                    ))}
+                    {Array.from({ length: (3 - (displayImages.length % 3)) % 3 }).map((_, i) => (
+                      <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
+                    ))}
+                  </>
+                )}
               </View>
               {recentImages.length > 0 ? (
                 <View style={styles.recentViewAllDivider}>
@@ -978,6 +1006,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: rhythm.compactGridGap,
+  },
+  recentList: {
+    flexDirection: 'column',
+    gap: rhythm.listCardGap,
   },
   recentViewAllDivider: {
     alignItems: 'center',

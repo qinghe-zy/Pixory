@@ -80,7 +80,7 @@ export function AssetDetailRow({
       accessibilityLabel={`${isVideo ? '打开视频' : '打开图片'}：${image.originalFilename}${selected ? '，已选中' : ''}`}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      delayLongPress={500}
+      delayLongPress={700}
       onLayout={onLayout}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}
@@ -180,6 +180,7 @@ const styles = StyleSheet.create({
   },
   selectionCircle: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderColor: colors.border.default,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
