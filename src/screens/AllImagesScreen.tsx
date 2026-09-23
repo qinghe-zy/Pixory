@@ -368,6 +368,11 @@ export function AllImagesScreen({
 
   const headingNode = (
     <Animated.View style={[{ paddingTop: statusBarHeight, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }, heroStyle]}>
+      <View style={{ backgroundColor: 'red', padding: 8, marginBottom: 8, borderRadius: 4 }}>
+        <Text style={{ color: 'white', fontWeight: 'bold' }}>
+          HOT UPDATE ACTIVE | viewMode: {viewMode}
+        </Text>
+      </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title }}>
           {ip ? `全部素材 · ${ip.name}` : '全部素材'}

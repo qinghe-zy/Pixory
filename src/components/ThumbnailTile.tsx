@@ -59,6 +59,13 @@ export function ThumbnailTile({
           <Text style={styles.videoBadgeText}>{formatDuration(image.durationMs)}</Text>
         </View>
       ) : null}
+      {aspectRatio === 'auto' ? (
+        <View style={{ position: 'absolute', top: 4, left: 4, backgroundColor: 'rgba(255,0,0,0.7)', padding: 4, borderRadius: 4, zIndex: 99 }}>
+          <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+            AUTO: {image.width}x{image.height}
+          </Text>
+        </View>
+      ) : null}
       {image.isFavorite ? (
         <View style={styles.favoriteBadge}>
           <Ionicons color={colors.semantic.favorite} name="star" size={12} />
