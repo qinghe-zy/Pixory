@@ -22,6 +22,10 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { formatDateTime, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
+import { calculateJustifiedLayout } from '../utils/justifiedLayout';
+import { useAssetListPreferences } from '../services/assetListPreferences';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
+import { Dimensions } from 'react-native';
 
 interface IpDetailScreenProps {
   ipId: number;
@@ -92,7 +96,7 @@ export function IpDetailScreen({
       const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findDetailById(db, ipId),
         groupRepository.findOverviewPreviewByIpId(db, ipId, 4),
-        imageRepository.findRecentByIpId(db, ipId, 9, { mediaType: 'all' }),
+        imageRepository.findRecentByIpId(db, ipId, 15, { mediaType: 'all' }),
         importBatchRepository.findByIpId(db, ipId, 3),
         imageRepository.countNeedsOrganizing(db, ipId),
         imageRepository.getOrganizationProgress(db, ipId),
@@ -138,6 +142,23 @@ export function IpDetailScreen({
   const activeCoverBlurRadius = resolvePersonalCoverBlurRadius(ip?.coverBlurRadius);
   const personalCoverBlurRadius = space === 'personal' && (ip?.coverBlurEnabled ?? true) ? activeCoverBlurRadius : undefined;
   const groupCoverBlurRadius = personalCoverBlurRadius;
+  const { viewMode } = useAssetListPreferences(space);
+  
+  const displayImages = useMemo(() => {
+    if (viewMode === 'grid') return recentImages.slice(0, 9);
+    if (viewMode === 'detail') return recentImages.slice(0, 3);
+    
+    // Justified: compute layout for all 15, slice to 3 rows, find how many items that is
+    const windowWidth = Dimensions.get('window').width;
+    const contentWidth = windowWidth - layout.pagePaddingHorizontal * 2;
+    const layoutInfo = calculateJustifiedLayout(recentImages, contentWidth, 150);
+    const maxRows = Math.min(layoutInfo.length, 3);
+    let itemLimit = 0;
+    for (let i = 0; i < maxRows; i++) {
+      itemLimit += layoutInfo[i].items.length;
+    }
+    return recentImages.slice(0, itemLimit);
+  }, [recentImages, viewMode]);
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
     if (key === 'import') {

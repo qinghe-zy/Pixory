@@ -732,7 +732,7 @@ export function BatchManageImagesScreen({
           <Text style={styles.drawerSectionTitle}>视图排版</Text>
           <View style={styles.filterOptionGrid}>
             <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => { setViewMode('grid'); setIsFilterDrawerOpen(false); }} />
-            <FilterOptionChip label="行流排版" selected={viewMode === 'justified'} onPress={() => { setViewMode('justified'); setIsFilterDrawerOpen(false); }} />
+            <FilterOptionChip label="自适应排版" selected={viewMode === 'justified'} onPress={() => { setViewMode('justified'); setIsFilterDrawerOpen(false); }} />
             <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => { setViewMode('detail'); setIsFilterDrawerOpen(false); }} />
           </View>
         </View>

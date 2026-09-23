@@ -46,6 +46,7 @@ interface VirtualizedAssetCollectionProps {
   renderAsset: (image: ImageListItem, index: number, fillCell: boolean) => ReactNode;
   viewMode: AssetListViewMode;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  scrollEnabled?: boolean;
 }
 
 export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollection({

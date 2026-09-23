@@ -368,11 +368,6 @@ export function AllImagesScreen({
 
   const headingNode = (
     <Animated.View style={[{ paddingTop: statusBarHeight, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }, heroStyle]}>
-      <View style={{ backgroundColor: 'red', padding: 8, marginBottom: 8, borderRadius: 4 }}>
-        <Text style={{ color: 'white', fontWeight: 'bold' }}>
-          HOT UPDATE ACTIVE | viewMode: {viewMode}
-        </Text>
-      </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title }}>
           {ip ? `全部素材 · ${ip.name}` : '全部素材'}
@@ -443,7 +438,7 @@ export function AllImagesScreen({
           <Text style={styles.drawerSectionTitle}>视图</Text>
           <View style={styles.filterOptionGrid}>
             <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
-            <FilterOptionChip label="行流排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
+            <FilterOptionChip label="自适应排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
             <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
           </View>
         </View>

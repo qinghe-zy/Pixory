@@ -385,7 +385,7 @@ export function TagResultScreen({
           <Text style={styles.drawerSectionTitle}>视图</Text>
           <View style={styles.filterOptionGrid}>
             <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
-            <FilterOptionChip label="行流排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
+            <FilterOptionChip label="自适应排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
             <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
           </View>
         </View>

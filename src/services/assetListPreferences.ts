@@ -4,7 +4,7 @@ import { runWithDatabaseSpace, settingsRepository, type ImageSortOrder, type Pix
 import type { AssetListViewMode } from '../database/repositories/settingsRepository';
 
 export function useAssetListPreferences(space: PixorySpace = 'normal', fallbackSortOrder: ImageSortOrder = 'createdAtDesc') {
-  const [viewMode, setViewModeState] = useState<AssetListViewMode>('grid');
+  const [viewMode, setViewModeState] = useState<AssetListViewMode>('justified');
   const [sortOrder, setSortOrderState] = useState<ImageSortOrder>(fallbackSortOrder);
 
   useEffect(() => {
