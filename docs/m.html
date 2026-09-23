@@ -297,7 +297,7 @@
       <span class="text-[#D4A840]/40 text-[7px] flex-shrink-0">✦</span>
       <a class="text-[10px] min-[390px]:text-[11px] tracking-[0.1em] font-bold text-[#172B28]/80 hover:text-[#234E46] transition-colors updates-btn-trigger cursor-pointer whitespace-nowrap">动态</a>
       <span class="text-[#D4A840]/40 text-[7px] flex-shrink-0">✦</span>
-      <a class="text-[10px] min-[390px]:text-[11px] tracking-[0.1em] font-bold text-[#172B28]/80 hover:text-[#234E46] transition-colors whitespace-nowrap" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a class="text-[10px] min-[390px]:text-[11px] tracking-[0.1em] font-bold text-[#172B28]/80 hover:text-[#234E46] transition-colors whitespace-nowrap" href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noopener noreferrer">GitHub</a>
     </nav>
     
     <!-- 右侧下载按钮 -->
@@ -646,7 +646,7 @@ if (rightContainer) {
         playMatrixExit();
       }
     });
-  }, { threshold: 0.1, rootMargin: "0px 0px 0px 0px" });
+  }, { threshold: 0.1, rootMargin: "0px 0px -20px 0px" });
   matrixObserver.observe(rightContainer);
 }
 
@@ -1276,7 +1276,7 @@ document.querySelectorAll('.matrix-card').forEach(card => {
         });
       }, {
         threshold: 0.05,
-        rootMargin: "0px 0px 0px 0px"
+        rootMargin: "0px 0px -20px 0px"
       });
 
       revealItems.forEach(el => observer.observe(el));
