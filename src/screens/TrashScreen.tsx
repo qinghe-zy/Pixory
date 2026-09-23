@@ -240,7 +240,8 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
 
   return (
     <>
-      <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
+      <ScreenScaffold
+        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
         <GalleryCompactHeader
           title={titleSlot ? '' : "回收站"}
           count={trashCount}

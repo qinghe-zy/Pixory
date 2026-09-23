@@ -319,6 +319,69 @@ export function FavoritesScreen({
                   </Text>
                 </Pressable>
               }
+              middleContent={
+        <View style={styles.filterBarWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
+            <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
+            <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
+            <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
+            <FilterMenuButton active={activeFilters.tagIds.length > 0} label={`标签${activeFilters.tagIds.length > 0 ? ` ${activeFilters.tagIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'tag' ? null : 'tag'))} />
+            {hasActiveFilters ? (
+              <Pressable onPress={() => setActiveFilters(EMPTY_FAVORITE_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
+                <Text style={styles.clearFilterText}>清空</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
+          <Text numberOfLines={1} style={styles.filterStatus}>
+            {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${filterLabel}` : '未设置筛选'}
+          </Text>
+          {activeFilterDropdown ? (
+            <FilterDrawer
+              mode={getFavoriteFilterMode(activeFilterDropdown)}
+              onClear={() => clearFilterGroup(activeFilterDropdown)}
+              title={getFavoriteFilterTitle(activeFilterDropdown)}
+            >
+              {activeFilterDropdown === 'ip' ? (
+                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                  {ips.map((ip) => (
+                    <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+              {activeFilterDropdown === 'size' ? (
+                <View style={styles.drawerSections}>
+                  <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
+                  <View style={styles.filterOptionGrid}>
+                    <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+                    <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+                    <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+                    <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+                  </View>
+                  <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+                  <View style={styles.filterOptionGrid}>
+                    <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+                    <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+                  </View>
+                </View>
+              ) : null}
+              {activeFilterDropdown === 'group' ? (
+                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                  {groups.map((group) => (
+                    <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+              {activeFilterDropdown === 'tag' ? (
+                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                  {tags.map((tag) => (
+                    <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+            </FilterDrawer>
+          ) : null}
+        </View>
+              }
               bottomContent={
                 <>
                   <View style={styles.favoriteModeTabs}>
@@ -485,69 +548,6 @@ export function FavoritesScreen({
         }
       />
 
-      {favoriteMode === 'images' ? (
-        <View style={styles.filterBarWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-            <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
-            <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
-            <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
-            <FilterMenuButton active={activeFilters.tagIds.length > 0} label={`标签${activeFilters.tagIds.length > 0 ? ` ${activeFilters.tagIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'tag' ? null : 'tag'))} />
-            {hasActiveFilters ? (
-              <Pressable onPress={() => setActiveFilters(EMPTY_FAVORITE_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
-                <Text style={styles.clearFilterText}>清空</Text>
-              </Pressable>
-            ) : null}
-          </ScrollView>
-          <Text numberOfLines={1} style={styles.filterStatus}>
-            {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${filterLabel}` : '未设置筛选'}
-          </Text>
-          {activeFilterDropdown ? (
-            <FilterDrawer
-              mode={getFavoriteFilterMode(activeFilterDropdown)}
-              onClear={() => clearFilterGroup(activeFilterDropdown)}
-              title={getFavoriteFilterTitle(activeFilterDropdown)}
-            >
-              {activeFilterDropdown === 'ip' ? (
-                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                  {ips.map((ip) => (
-                    <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
-                  ))}
-                </ScrollView>
-              ) : null}
-              {activeFilterDropdown === 'size' ? (
-                <View style={styles.drawerSections}>
-                  <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
-                  <View style={styles.filterOptionGrid}>
-                    <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
-                    <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
-                    <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
-                    <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
-                  </View>
-                  <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
-                  <View style={styles.filterOptionGrid}>
-                    <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
-                    <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
-                  </View>
-                </View>
-              ) : null}
-              {activeFilterDropdown === 'group' ? (
-                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                  {groups.map((group) => (
-                    <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
-                  ))}
-                </ScrollView>
-              ) : null}
-              {activeFilterDropdown === 'tag' ? (
-                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                  {tags.map((tag) => (
-                    <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
-                  ))}
-                </ScrollView>
-              ) : null}
-            </FilterDrawer>
-          ) : null}
-        </View>
-      ) : null}
 
       {favoriteMode === 'ai' ? aiFavoritesContent : imageFavoritesContent}
     </ScreenScaffold>
