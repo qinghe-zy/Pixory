@@ -372,16 +372,16 @@ export function AllImagesScreen({
     <Animated.View style={[{ paddingTop: statusBarHeight + 12, paddingBottom: 10, paddingHorizontal: layout.pagePaddingHorizontal, backgroundColor: '#FAFAFA' }, heroStyle]}>
       {/* Row 1: Title and Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 24, fontWeight: 'bold', letterSpacing: -0.5, color: '#111827' }}>
-            {ip ? `全部素材 · ${ip.name}` : '全部素材'}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flex: 1, marginRight: 16 }}>
+          <Text numberOfLines={1} style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 24, fontWeight: 'bold', letterSpacing: -0.5, color: '#111827', flexShrink: 1 }}>
+            {ip ? (ip.name.length > 5 ? ip.name : `全部素材.${ip.name}`) : '全部素材'}
           </Text>
-          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF' }}>
+          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF', flexShrink: 0 }}>
             {images.length} 张素材
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <Pressable style={styles.importPillButton} onPress={onImportImages}>
             <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
               <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
@@ -482,11 +482,11 @@ export function AllImagesScreen({
         {/* iOS Top Status Bar Background */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FFFFFF' }} />
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, backgroundColor: '#FAFAFA', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2 }}>
-              {ip ? `${ip.name}` : '全部素材'}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1, marginRight: 10 }}>
+            <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2, flexShrink: 1 }}>
+              {ip ? (ip.name.length > 5 ? ip.name : `全部素材.${ip.name}`) : '全部素材'}
             </Text>
-            <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
+            <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, flexShrink: 0 }}>
               <Text style={{ fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontWeight: '500', color: '#4B5563', lineHeight: 12 }}>
                 {images.length}
               </Text>
