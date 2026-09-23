@@ -473,6 +473,7 @@ export function AllImagesScreen({
       fullScreen={true}
       contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FAFAFA', zIndex: 20 }} />
       {/* Compact Sticky Header */}
       <Animated.View style={[
         { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 48 },

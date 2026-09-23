@@ -174,12 +174,12 @@ export function GroupImagesScreen({
   const scrollY = useSharedValue(0);
   const scrollOffsetRef = useRef(0);
   const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollY.value, [40, 60], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [40, 60], [5, 0], Extrapolation.CLAMP);
     return { opacity, transform: [{ translateY }] };
   });
   const heroStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 20], [1, 0], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollY.value, [40, 60], [1, 0], Extrapolation.CLAMP);
     return { opacity };
   });
   const handleScrollJS = (y: number) => {
@@ -345,6 +345,7 @@ export function GroupImagesScreen({
       fullScreen={true}
       contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FAFAFA', zIndex: 20 }} />
       <GalleryCompactHeader
         title={group ? group.name : '分组图片'}
         count={images.length}
