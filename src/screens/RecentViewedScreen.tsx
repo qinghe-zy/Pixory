@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View, Dimensions, type ScrollView } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Dimensions, ScrollView } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
+import { GalleryCompactHeader, galleryHeaderStyles } from '../components/GalleryHeaders';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -126,43 +127,55 @@ export function RecentViewedScreen({
   ) : undefined;
 
   return (
-    <ScreenScaffold
-      backgroundVariant="gallery"
-      decorativeTitle="Recent"
-      footer={footer}
-      footerNaked={true}
-      onBack={onBack}
-      onScroll={swipeSelection.onScroll}
-      scrollViewRef={scrollViewRef}
-      scrollable
-      title="最近查看"
-    >
-      <View style={styles.summaryRow}>
-        <View style={styles.summary}>
-          <Text numberOfLines={1} style={styles.subtitle}>
-            最近打开
-          </Text>
-          <Text numberOfLines={1} style={styles.countText}>
-            {images.length} 个
-          </Text>
-        </View>
-        <Pressable
-          disabled={images.length === 0 || isClearingRecentViewed}
-          onPress={() => setClearConfirmVisible(true)}
-          style={({ pressed }) => [
-            styles.clearRecentButton,
-            (images.length === 0 || isClearingRecentViewed) ? styles.disabled : null,
-            pressed && images.length > 0 && !isClearingRecentViewed ? styles.pressed : null,
-          ]}
-        >
-          <Text style={styles.clearRecentText}>清除记录</Text>
-        </Pressable>
-      </View>
+    <View style={styles.host}>
+      <ScreenScaffold
+        backgroundVariant="gallery"
+        decorativeTitle="Recent"
+        footer={footer}
+        footerNaked={true}
+        showHeader={false}
+        scrollable={false}
+        fullScreen={true}
+      >
+        <GalleryCompactHeader
+          title="最近查看"
+          count={images.length}
+          space={space}
+          onBack={onBack}
+          staticMode={true}
+          rightActions={
+            <>
+              {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                <Pressable disabled={selectableAssets.length === 0} onPress={multiSelect.toggleSelectAll} style={galleryHeaderStyles.selectionModeTextButton}>
+                  <Text style={galleryHeaderStyles.selectionModeText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+                </Pressable>
+              ) : null}
+              <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
+              <Pressable
+                disabled={images.length === 0 || isClearingRecentViewed}
+                onPress={() => setClearConfirmVisible(true)}
+                style={({ pressed }) => [
+                  galleryHeaderStyles.secondaryPillButton,
+                  (images.length === 0 || isClearingRecentViewed) ? styles.disabled : null,
+                  pressed && images.length > 0 && !isClearingRecentViewed ? styles.pressed : null,
+                ]}
+              >
+                <Text style={galleryHeaderStyles.secondaryPillText}>清除记录</Text>
+              </Pressable>
+            </>
+          }
+        />
 
-      <PageStateBlock
-        loadingComponent={<GallerySkeleton />}
-        emptyActionLabel={undefined}
-        emptyDescription="打开过图片详情后，这里会展示最近查看过的图片。"
+        <ScrollView
+          ref={scrollViewRef}
+          onScroll={swipeSelection.onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }}
+        >
+          <PageStateBlock
+            loadingComponent={<GallerySkeleton />}
+            emptyActionLabel={undefined}
+            emptyDescription="打开过图片详情后，这里会展示最近查看过的图片。"
         emptyIconName="time-outline"
         emptyTitle="还没有最近查看"
         errorMessage={errorMessage}
@@ -172,20 +185,7 @@ export function RecentViewedScreen({
         loadingTitle="正在读取最近查看"
         onRetry={reload}
       >
-        <View style={styles.gridHeader}>
-          <Text style={styles.gridTitle}>图片</Text>
-          <Pressable
-            disabled={selectableAssets.length === 0}
-            onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-          >
-            <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-          </Pressable>
-          <SortMenuButton
-            onChange={setSortOrder}
-            orderBy={sortOrder}
-          />
-        </View>
+
         <View {...swipeSelection.panHandlers}>
           {justifiedRows.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', gap: JUSTIFIED_GAP, marginBottom: rowIndex < justifiedRows.length - 1 ? JUSTIFIED_GAP : 0 }}>
@@ -215,26 +215,32 @@ export function RecentViewedScreen({
           ))}
         </View>
       </PageStateBlock>
-      <AppDialog
-        message="只会清除最近查看时间，不会删除图片、视频、原图、缩略图、分组、标签或备注。"
-        onClose={() => {
-          if (!isClearingRecentViewed) {
-            setClearConfirmVisible(false);
-          }
-        }}
-        onPrimary={() => {
-          void handleConfirmClearRecentViewed();
-        }}
-        primaryDisabled={isClearingRecentViewed}
-        primaryLabel={isClearingRecentViewed ? '清除中…' : '确认清除'}
-        title="清除最近查看记录"
-        visible={clearConfirmVisible}
-      />
-    </ScreenScaffold>
+        <AppDialog
+          message="只会清除最近查看时间，不会删除图片、视频、原图、缩略图、分组、标签或备注。"
+          onClose={() => {
+            if (!isClearingRecentViewed) {
+              setClearConfirmVisible(false);
+            }
+          }}
+          onPrimary={() => {
+            void handleConfirmClearRecentViewed();
+          }}
+          primaryDisabled={isClearingRecentViewed}
+          primaryLabel={isClearingRecentViewed ? '清除中…' : '确认清除'}
+          title="清除最近查看记录"
+          visible={clearConfirmVisible}
+        />
+        </ScrollView>
+      </ScreenScaffold>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+    backgroundColor: '#FAFAFA', // gallery background color
+  },
   summaryRow: {
     alignItems: 'center',
     flexDirection: 'row',

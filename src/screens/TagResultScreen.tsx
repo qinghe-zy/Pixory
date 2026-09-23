@@ -13,6 +13,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { GallerySkeleton } from '../components/GallerySkeleton';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
@@ -183,6 +184,7 @@ export function TagResultScreen({
     const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const scrollY = useSharedValue(0);
+  const scrollOffsetRef = useRef(0);
   const compactHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
     const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
@@ -366,31 +368,28 @@ export function TagResultScreen({
       fullScreen={true}
       contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
+      <GalleryCompactHeader
+        title={tag ? `#${tag.name}` : '标签结果'}
+        count={images.length}
+        space={space}
+        onBack={onBack}
+        animatedStyle={compactHeaderStyle}
+        rightActions={
+          <>
+            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+              <Pressable disabled={selectableAssets.length === 0} onPress={multiSelect.toggleSelectAll} style={galleryHeaderStyles.selectionModeTextButton}>
+                <Text style={galleryHeaderStyles.selectionModeText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              </Pressable>
+            ) : null}
+            <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
+            <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+              <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+            </Pressable>
+          </>
+        }
+      />
 
-      <Animated.View style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 32 },
-        compactHeaderStyle
-      ]} pointerEvents="box-none">
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <BlurView intensity={space === 'personal' ? 60 : 30} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
-        </View>
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: layout.pagePaddingHorizontal }}>
-          <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
-            {tag ? `#${tag.name}` : '标签结果'}
-          </Text>
-          {compactRightAction}
-        </View>
-      </Animated.View>
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
-        <View style={styles.drawerSections}>
-          <Text style={styles.drawerSectionTitle}>视图</Text>
-          <View style={styles.filterOptionGrid}>
-            <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
-            <FilterOptionChip label="自适应排版" selected={viewMode === 'justified'} onPress={() => setViewMode('justified')} />
-            <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
-          </View>
-        </View>
-
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
           <View style={styles.filterOptionGrid}>
@@ -447,46 +446,59 @@ export function TagResultScreen({
         loadingTitle="正在读取标签结果"
         onRetry={reloadAll}
       >
-        
         <VirtualizedAssetCollection
-          contentContainerStyle={{ paddingHorizontal: layout.pagePaddingHorizontal }}
+          onScroll={handleScroll}
+          scrollOffsetRef={scrollOffsetRef}
           headerComponent={
-            <Animated.View style={[{ paddingTop: statusBarHeight, paddingHorizontal: layout.pagePaddingHorizontal, paddingBottom: 8 }, heroStyle]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ ...typography.textStyles.pageTitle, color: colors.text.title }}>
-                  {tag ? `#${tag.name}` : '标签结果'}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.tertiary }}>
-                  {hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张
-                </Text>
-                <View style={styles.galleryActions}>
-                  {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
-                    <Pressable
-                      disabled={selectableAssets.length === 0}
-                      onPress={multiSelect.toggleSelectAll}
-                      style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-                    >
-                      <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-                    </Pressable>
-                  ) : null}
-                  <SortMenuButton
-                    hasActiveFilters={hasActiveFilters}
-                    onChange={setSortOrder}
-                    onFilterPress={() => setIsFilterDrawerOpen(true)}
-                    orderBy={sortOrder}
-                  />
-                </View>
-              </View>
-            </Animated.View>
+            <GalleryNormalHeader
+              title={tag ? `#${tag.name}` : '标签结果'}
+              count={images.length}
+              animatedStyle={heroStyle}
+              topRightActions={
+                <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+                  <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+                  <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
+                    {hasActiveFilters ? '已筛选' : '筛选'}
+                  </Text>
+                </Pressable>
+              }
+              bottomContent={
+                <>
+                  <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={galleryHeaderStyles.densityToggle}>
+                      <Pressable onPress={() => setViewMode('grid')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'grid' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <GridIcon color={viewMode === 'grid' ? '#111827' : '#9CA3AF'} />
+                      </Pressable>
+                      <Pressable onPress={() => setViewMode('justified')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'justified' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <JustifiedIcon color={viewMode === 'justified' ? '#111827' : '#9CA3AF'} />
+                      </Pressable>
+                      <Pressable onPress={() => setViewMode('detail')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'detail' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <Ionicons color={viewMode === 'detail' ? '#111827' : '#9CA3AF'} name="list-outline" size={14} />
+                      </Pressable>
+                    </View>
+                    
+                    {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Pressable onPress={() => { multiSelect.clearSelection(); }} style={galleryHeaderStyles.selectionModeTextButton}>
+                          <Text style={galleryHeaderStyles.selectionModeText}>完成</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable onPress={() => multiSelect.enterSelection(images[0]?.id ?? 0)} style={galleryHeaderStyles.selectionModeTextButton}>
+                        <Text style={galleryHeaderStyles.selectionModeText}>选择</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </>
+              }
+            />
           }
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}
           onEndReached={media.loadMore}
           onItemMeasured={swipeSelection.registerMeasuredItemLayout}
-          onScroll={handleScroll}
           panHandlers={swipeSelection.panHandlers}
           renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow

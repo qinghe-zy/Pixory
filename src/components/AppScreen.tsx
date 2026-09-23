@@ -9,6 +9,7 @@ import {
   type NativeSyntheticEvent,
   type ScrollView as ScrollViewType,
   type ViewStyle,
+  type StyleProp,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';

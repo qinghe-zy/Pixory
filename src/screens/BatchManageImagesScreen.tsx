@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View, Platform, StatusBar } from 'react-native';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -12,9 +14,10 @@ import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { SortMenuButton } from '../components/SortMenuButton';
+import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { GallerySkeleton } from '../components/GallerySkeleton';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy } from '../constants/copy';
@@ -148,6 +151,20 @@ export function BatchManageImagesScreen({
     reload();
     media.reload();
   };
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+  const scrollY = useSharedValue(0);
+  const scrollOffsetRef = useRef(0);
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ translateY }] };
+  });
+  const heroStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+
   const groups = data?.groups ?? [];
   const importTemplates = data?.importTemplates ?? [];
   const tags = data?.tags ?? [];
@@ -170,6 +187,13 @@ export function BatchManageImagesScreen({
     scrollViewRef,
     selectableMediaTypes: ['image', 'video'],
   });
+
+  const handleScroll = (event: any) => {
+    const y = event.nativeEvent.contentOffset.y;
+    scrollY.value = y;
+    scrollOffsetRef.current = y;
+    swipeSelection.onScroll(event);
+  };
 
   const swipeFilterDrawerPanResponder = useRef(
     PanResponder.create({
@@ -709,7 +733,26 @@ export function BatchManageImagesScreen({
   return (
     <>
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
-    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false}>
+    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false} fullScreen={true} contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}>
+      
+      <GalleryCompactHeader
+        title={`已选择 ${selectedCount} 张`}
+        count={images.length}
+        space={space}
+        onBack={onBack}
+        animatedStyle={compactHeaderStyle}
+        rightActions={
+          <>
+            <Pressable onPress={handleSelectAllToggle} style={galleryHeaderStyles.selectionModeTextButton}>
+              <Text style={galleryHeaderStyles.selectionModeText}>{allSelected ? '取消全选' : '全选'}</Text>
+            </Pressable>
+            <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
+            <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+              <FilterIcon color={activeRuleKeys.length > 0 ? '#111827' : '#4B5563'} />
+            </Pressable>
+          </>
+        }
+      />
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
         <View style={styles.drawerSections}>
@@ -770,22 +813,44 @@ export function BatchManageImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reloadAll}
       >
-        <View style={styles.galleryHeading}>
-          <Text style={styles.galleryTitle}>已选择 {selectedCount} 张</Text>
-          <View style={styles.galleryActions}>
-            <Pressable onPress={handleSelectAllToggle} style={({ pressed }) => [styles.selectAllButton, pressed && styles.pressed]}>
-              <Text style={styles.selectAllText}>{allSelected ? '取消全选' : '全选'}</Text>
-            </Pressable>
-            <SortMenuButton
-              hasActiveFilters={activeRuleKeys.length > 0}
-              onChange={setSortOrder}
-              onFilterPress={() => setIsFilterDrawerOpen(true)}
-              orderBy={sortOrder}
-            />
-          </View>
-        </View>
         <VirtualizedAssetCollection
+          scrollOffsetRef={scrollOffsetRef}
           headerComponent={<View>
+            <GalleryNormalHeader
+              title={`已选择 ${selectedCount} 张`}
+              count={images.length}
+              animatedStyle={heroStyle}
+              topRightActions={
+                <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+                  <FilterIcon color={activeRuleKeys.length > 0 ? '#111827' : '#4B5563'} />
+                  <Text style={[galleryHeaderStyles.advancedFilterText, activeRuleKeys.length > 0 && { color: '#111827', fontWeight: '600' }]}>
+                    {activeRuleKeys.length > 0 ? '已筛选' : '筛选'}
+                  </Text>
+                </Pressable>
+              }
+              bottomContent={
+                <>
+                  <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={galleryHeaderStyles.densityToggle}>
+                      <Pressable onPress={() => setViewMode('grid')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'grid' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <GridIcon color={viewMode === 'grid' ? '#111827' : '#9CA3AF'} />
+                      </Pressable>
+                      <Pressable onPress={() => setViewMode('justified')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'justified' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <JustifiedIcon color={viewMode === 'justified' ? '#111827' : '#9CA3AF'} />
+                      </Pressable>
+                      <Pressable onPress={() => setViewMode('detail')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'detail' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <Ionicons color={viewMode === 'detail' ? '#111827' : '#9CA3AF'} name="list-outline" size={14} />
+                      </Pressable>
+                    </View>
+                    
+                    <Pressable onPress={handleSelectAllToggle} style={galleryHeaderStyles.selectionModeTextButton}>
+                      <Text style={galleryHeaderStyles.selectionModeText}>{allSelected ? '取消全选' : '全选'}</Text>
+                    </Pressable>
+                  </View>
+                </>
+              }
+            />
         {activeRule ? (
           <View style={styles.activeRulePanel}>
             <Text numberOfLines={2} style={styles.activeRuleText}>{activeRule.label} · {activeRule.description}</Text>
@@ -895,7 +960,7 @@ export function BatchManageImagesScreen({
           listRef={scrollViewRef}
           onEndReached={media.loadMore}
           onItemMeasured={swipeSelection.registerMeasuredItemLayout}
-          onScroll={swipeSelection.onScroll}
+          onScroll={handleScroll}
           panHandlers={swipeSelection.panHandlers}
           renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow

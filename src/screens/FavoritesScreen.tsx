@@ -1,6 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, runOnJS } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -8,6 +10,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { GallerySkeleton } from '../components/GallerySkeleton';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { listFavoriteAssistantMessagePage, type AiMessageFavoriteListItem } from '../ai/aiChatService';
@@ -135,6 +138,27 @@ export function FavoritesScreen({
     () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableAssets, multiSelect.selectedImageIds]
   );
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+  const scrollY = useSharedValue(0);
+  const scrollOffsetRef = useRef(0);
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ translateY }] };
+  });
+  const heroStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+
+  const handleScroll = (event: any) => {
+    const y = event.nativeEvent.contentOffset.y;
+    scrollY.value = y;
+    scrollOffsetRef.current = y;
+    swipeSelection.onScroll(event);
+  };
+
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (activeFilters.ipIds.length > 0) labels.push(`IP ${activeFilters.ipIds.length}`);
@@ -278,30 +302,68 @@ export function FavoritesScreen({
         loadingTitle="正在读取收藏图片"
         onRetry={reloadAll}
       >
-        <View style={styles.gridHeader}>
-          <Text style={styles.gridTitle}>图片</Text>
-          <Pressable
-            disabled={selectableAssets.length === 0}
-            onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-          >
-            <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-          </Pressable>
-          <SortMenuButton
-            filterIcon={viewMode === 'detail' ? 'list-outline' : viewMode === 'justified' ? 'albums-outline' : 'grid-outline'}
-            hasActiveFilters={viewMode !== 'grid'}
-            onChange={setSortOrder}
-            onFilterPress={() => setViewMode(viewMode === 'grid' ? 'justified' : viewMode === 'justified' ? 'detail' : 'grid')}
-            orderBy={sortOrder}
-          />
-        </View>
+
         <VirtualizedAssetCollection
+          scrollOffsetRef={scrollOffsetRef}
+          headerComponent={
+            <GalleryNormalHeader
+              title="收藏"
+              count={images.length}
+              animatedStyle={heroStyle}
+              topRightActions={
+                <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setActiveFilterDropdown('size')}>
+                  <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+                  <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
+                    {hasActiveFilters ? '已筛选' : '筛选'}
+                  </Text>
+                </Pressable>
+              }
+              bottomContent={
+                <>
+                  <View style={styles.favoriteModeTabs}>
+                    <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
+                      <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null]}>图片</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
+                      <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null]}>AI 消息</Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                    <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={galleryHeaderStyles.densityToggle}>
+                        <Pressable onPress={() => setViewMode('grid')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'grid' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                           <GridIcon color={viewMode === 'grid' ? '#111827' : '#9CA3AF'} />
+                        </Pressable>
+                        <Pressable onPress={() => setViewMode('justified')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'justified' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                           <JustifiedIcon color={viewMode === 'justified' ? '#111827' : '#9CA3AF'} />
+                        </Pressable>
+                        <Pressable onPress={() => setViewMode('detail')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'detail' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                           <Ionicons color={viewMode === 'detail' ? '#111827' : '#9CA3AF'} name="list-outline" size={14} />
+                        </Pressable>
+                      </View>
+                      
+                      {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                        <Pressable onPress={() => { multiSelect.clearSelection(); }} style={galleryHeaderStyles.selectionModeTextButton}>
+                          <Text style={galleryHeaderStyles.selectionModeText}>完成</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable onPress={() => multiSelect.enterSelection(images[0]?.id ?? 0)} style={galleryHeaderStyles.selectionModeTextButton}>
+                          <Text style={galleryHeaderStyles.selectionModeText}>选择</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                </>
+              }
+            />
+          }
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}
           onEndReached={media.loadMore}
           onItemMeasured={swipeSelection.registerMeasuredItemLayout}
-          onScroll={swipeSelection.onScroll}
+          onScroll={handleScroll}
           panHandlers={swipeSelection.panHandlers}
           renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
               <AssetDetailRow
@@ -346,6 +408,24 @@ export function FavoritesScreen({
         contentContainerStyle={styles.aiFavoriteList}
         data={aiMessages}
         keyExtractor={(favorite) => favorite.id}
+        onScroll={handleScroll}
+        ListHeaderComponent={
+          <GalleryNormalHeader
+            title="收藏"
+            count={aiMessages.length}
+            animatedStyle={heroStyle}
+            bottomContent={
+              <View style={styles.favoriteModeTabs}>
+                <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
+                  <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null]}>图片</Text>
+                </Pressable>
+                <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
+                  <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null]}>AI 消息</Text>
+                </Pressable>
+              </View>
+            }
+          />
+        }
         ListFooterComponent={aiFavoritesLoadingMore ? <Text style={styles.aiFavoriteMeta}>正在加载更多…</Text> : null}
         onEndReached={loadMoreAiFavorites}
         onEndReachedThreshold={0.5}
@@ -375,28 +455,35 @@ export function FavoritesScreen({
   return (
     <ScreenScaffold
       backgroundColor="#FFFFFF"
-      decorativeTitle="Favorites"
       footer={footer}
       footerNaked={true}
-      onBack={onBack}
-      title="收藏"
+      showHeader={false}
+      fullScreen={true}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
-      <View style={styles.summary}>
-        <Text numberOfLines={1} style={styles.subtitle}>
-          {favoriteMode === 'ai' ? 'AI 消息收藏' : hasActiveFilters ? '筛选结果' : '全部收藏'}
-        </Text>
-        <Text numberOfLines={1} style={styles.countText}>
-          {favoriteMode === 'ai' ? `${aiMessages.length} 条` : `${images.length} 张`}
-        </Text>
-      </View>
-      <View style={styles.favoriteModeTabs}>
-        <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
-          <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null]}>图片</Text>
-        </Pressable>
-        <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
-          <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null]}>AI 消息</Text>
-        </Pressable>
-      </View>
+      <GalleryCompactHeader
+        title="收藏"
+        count={favoriteMode === 'ai' ? aiMessages.length : images.length}
+        space={space}
+        onBack={onBack}
+        animatedStyle={compactHeaderStyle}
+        rightActions={
+          favoriteMode === 'images' ? (
+            <>
+              {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                <Pressable disabled={selectableAssets.length === 0} onPress={multiSelect.toggleSelectAll} style={galleryHeaderStyles.selectionModeTextButton}>
+                  <Text style={galleryHeaderStyles.selectionModeText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+                </Pressable>
+              ) : null}
+              <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
+              <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setActiveFilterDropdown('size')}>
+                <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+              </Pressable>
+            </>
+          ) : null
+        }
+      />
+
       {favoriteMode === 'images' ? (
         <View style={styles.filterBarWrap}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>

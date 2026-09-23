@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import Animated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -175,17 +177,57 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
     })();
   }
 
+  const scrollY = useSharedValue(0);
+  const scrollOffsetRef = useRef(0);
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    return {
+      opacity: interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: interpolate(scrollY.value, [10, 30], [-5, 0], Extrapolation.CLAMP) }],
+    };
+  });
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = event.nativeEvent.contentOffset.y;
+    scrollY.value = y;
+    scrollOffsetRef.current = y;
+  }, [scrollY]);
+
   const rightAction = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <Pressable onPress={() => setViewMode(viewMode === 'grid' ? 'justified' : viewMode === 'justified' ? 'detail' : 'grid')} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed, { width: 36, height: 36 }]}>
-        <Ionicons color={colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : viewMode === 'justified' ? 'albums-outline' : 'grid-outline'} size={18} />
+    <>
+      <Pressable onPress={() => setViewMode(viewMode === 'grid' ? 'justified' : viewMode === 'justified' ? 'detail' : 'grid')} style={galleryHeaderStyles.densityToggle}>
+        <View style={[galleryHeaderStyles.densityIconButton, viewMode === 'grid' && galleryHeaderStyles.densityIconButtonActive]}><GridIcon color={viewMode === 'grid' ? '#111827' : '#9CA3AF'} /></View>
+        <View style={[galleryHeaderStyles.densityIconButton, viewMode === 'justified' && galleryHeaderStyles.densityIconButtonActive]}><JustifiedIcon color={viewMode === 'justified' ? '#111827' : '#9CA3AF'} /></View>
+        <View style={[galleryHeaderStyles.densityIconButton, viewMode === 'detail' && galleryHeaderStyles.densityIconButtonActive]}>
+           <Ionicons color={viewMode === 'detail' ? '#111827' : '#9CA3AF'} name="list-outline" size={14} />
+        </View>
       </Pressable>
       {trashCount > 0 && (
-      <Pressable onPress={() => setIsClearDialogVisible(true)} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
-        <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
-      </Pressable>
+        <Pressable onPress={() => setIsClearDialogVisible(true)} style={galleryHeaderStyles.dangerPillButton}>
+          <Text style={galleryHeaderStyles.dangerPillText}>清空</Text>
+        </Pressable>
       )}
-    </View>
+    </>
+  );
+
+  const headerComponent = (
+    <GalleryNormalHeader
+      title="回收站"
+      count={trashCount}
+      topRightActions={rightAction}
+      middleContent={
+        <Pressable onPress={() => setIsFilterSheetVisible(true)} style={galleryHeaderStyles.advancedFilterButton}>
+          <FilterIcon />
+          <Text style={galleryHeaderStyles.advancedFilterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
+        </Pressable>
+      }
+      bottomContent={
+        storageMode ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B7280' }}>占用空间：{formatFileSize(trashBytes)}</Text>
+          </View>
+        ) : <View />
+      }
+    />
   );
   const footer = multiSelect.isSelectionMode ? (
     <View style={styles.footerPanel}>
@@ -198,20 +240,18 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
 
   return (
     <>
-    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} rightAction={rightAction} title={titleSlot ? '' : "回收站"} titleSlot={titleSlot}>
-      <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
-        <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
-        <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
-      </Pressable>
-      {storageMode ? (
-        <View style={styles.storageNotice}>
-          <Text style={styles.storageNoticeTitle}>{formatFileSize(trashBytes)} · {trashCount} 项</Text>
-        </View>
-      ) : null}
-
-      <PageStateBlock
-        emptyActionLabel={undefined}
-        emptyDescription="当前没有处于软删除状态的图片或视频。"
+      <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
+        <GalleryCompactHeader
+          title={titleSlot ? '' : "回收站"}
+          count={trashCount}
+          space={space}
+          onBack={onBack}
+          animatedStyle={compactHeaderStyle}
+          rightActions={rightAction}
+        />
+        <PageStateBlock
+          emptyActionLabel={undefined}
+          emptyDescription="当前没有处于软删除状态的图片或视频。"
         emptyIconName="trash-outline"
         emptyTitle="回收站是空的"
         errorMessage={combinedError}
@@ -222,6 +262,9 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         onRetry={reloadAll}
       >
         <VirtualizedAssetCollection
+          headerComponent={headerComponent}
+          onScroll={handleScroll}
+          scrollOffsetRef={scrollOffsetRef}
           images={visibleImages}
           isLoadingMore={media.isLoadingMore}
           listRef={listRef}
