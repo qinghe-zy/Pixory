@@ -35,15 +35,17 @@ export function JustifiedIcon({ color = "#9CA3AF" }: { color?: string }) {
 
 interface CompactHeaderProps {
   title: string;
-  count: number;
+  count?: number;
   space: PixorySpace;
   onBack?: () => void;
   rightActions?: ReactNode;
   animatedStyle?: any;
+  animatedProps?: any;
   staticMode?: boolean; // If true, don't use absolute positioning (for 1-line layouts without hero)
+  leftActions?: ReactNode;
 }
 
-export function GalleryCompactHeader({ title, count, space, onBack, rightActions, animatedStyle, staticMode }: CompactHeaderProps) {
+export function GalleryCompactHeader({ title, count, space, onBack, leftActions, rightActions, animatedStyle, animatedProps, staticMode }: CompactHeaderProps) {
   const { top: statusBarHeight } = useSafeAreaInsets();
   
   const content = (
@@ -56,14 +58,19 @@ export function GalleryCompactHeader({ title, count, space, onBack, rightActions
               <Ionicons name="chevron-back" size={22} color="#111827" />
             </Pressable>
           )}
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2 }} numberOfLines={1}>
-            {title}
-          </Text>
-          <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
-            <Text style={{ fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontWeight: '500', color: '#4B5563', lineHeight: 12 }}>
-              {count}
+          {leftActions}
+          {!!title && (
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2 }} numberOfLines={1}>
+              {title}
             </Text>
-          </View>
+          )}
+          {count !== undefined && (
+            <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
+              <Text style={{ fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontWeight: '500', color: '#4B5563', lineHeight: 12 }}>
+                {count}
+              </Text>
+            </View>
+          )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {rightActions}
@@ -84,7 +91,7 @@ export function GalleryCompactHeader({ title, count, space, onBack, rightActions
     <Animated.View style={[
       { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 48 },
       animatedStyle
-    ]} pointerEvents="box-none">
+    ]} animatedProps={animatedProps} pointerEvents={animatedProps ? undefined : "box-none"}>
       <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
       {content}
     </Animated.View>
@@ -93,29 +100,35 @@ export function GalleryCompactHeader({ title, count, space, onBack, rightActions
 
 interface NormalHeaderProps {
   title: string;
-  count: number;
+  count?: number;
   animatedStyle?: any;
+  topLeftActions?: ReactNode;
   topRightActions?: ReactNode;
   middleContent?: ReactNode; // e.g. filter chips
   bottomContent?: ReactNode; // e.g. sort, density, select
 }
 
-export function GalleryNormalHeader({ title, count, animatedStyle, topRightActions, middleContent, bottomContent }: NormalHeaderProps) {
+export function GalleryNormalHeader({ title, count, animatedStyle, topLeftActions, topRightActions, middleContent, bottomContent }: NormalHeaderProps) {
   const { top: statusBarHeight } = useSafeAreaInsets();
   
   return (
     <Animated.View style={[{ paddingTop: statusBarHeight + 12, paddingBottom: 10, paddingHorizontal: layout.pagePaddingHorizontal, backgroundColor: '#FAFAFA' }, animatedStyle]}>
       {/* Row 1: Title and Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 24, fontWeight: 'bold', letterSpacing: -0.5, color: '#111827' }}>
-            {title}
-          </Text>
-          <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF' }}>
-            {count} 张素材
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexShrink: 1, paddingRight: 8 }}>
+          {!!title && (
+            <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 24, fontWeight: 'bold', letterSpacing: -0.5, color: '#111827', flexShrink: 1 }} numberOfLines={1}>
+              {title}
+            </Text>
+          )}
+          {topLeftActions}
+          {count !== undefined && (
+            <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF', flexShrink: 0 }}>
+              {count} 张素材
+            </Text>
+          )}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {topRightActions}
         </View>
       </View>

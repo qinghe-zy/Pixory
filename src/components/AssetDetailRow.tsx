@@ -14,6 +14,7 @@ interface AssetDetailRowProps {
   selected?: boolean;
   isSelectionMode?: boolean;
   onLayout?: (event: LayoutChangeEvent) => void;
+  hideFavoriteBadge?: boolean;
 }
 
 export function AssetDetailRow({
@@ -24,6 +25,7 @@ export function AssetDetailRow({
   selected = false,
   isSelectionMode = false,
   onLayout,
+  hideFavoriteBadge = false,
 }: AssetDetailRowProps) {
   const isVideo = image.mediaType === 'video';
   const metaParts = [
@@ -55,7 +57,7 @@ export function AssetDetailRow({
       <View style={styles.content}>
         <View style={styles.titleRow}>
           <Text numberOfLines={1} style={styles.dateTitle}>{formatDateTime(image.createdAt)}</Text>
-          {image.isFavorite ? <Ionicons color={colors.semantic.favorite} name="star" size={14} /> : null}
+          {!hideFavoriteBadge && image.isFavorite ? <Ionicons color={colors.semantic.favorite} name="star" size={14} /> : null}
         </View>
         <Text numberOfLines={1} style={styles.meta}>
           <Text style={styles.filenameText}>{image.originalFilename}</Text>

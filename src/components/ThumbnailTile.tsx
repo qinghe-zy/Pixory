@@ -18,6 +18,7 @@ interface ThumbnailTileProps {
   onLayout?: (event: LayoutChangeEvent) => void;
   index?: number;
   containerStyle?: StyleProp<ViewStyle>;
+  hideFavoriteBadge?: boolean;
 }
 
 export function ThumbnailTile({
@@ -31,6 +32,7 @@ export function ThumbnailTile({
   onLayout,
   index,
   containerStyle,
+  hideFavoriteBadge = false,
 }: ThumbnailTileProps) {
   const isVideo = image.mediaType === 'video';
   const accessibilityLabel = isVideo

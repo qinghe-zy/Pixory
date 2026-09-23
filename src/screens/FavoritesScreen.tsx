@@ -1,7 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, runOnJS } from 'react-native-reanimated';
+import { Image } from 'expo-image';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useAnimatedProps, useSharedValue, runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
@@ -145,7 +146,8 @@ export function FavoritesScreen({
   const compactHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
     const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
-    return { opacity, transform: [{ translateY }] };
+    const display = opacity > 0 ? 'flex' : 'none';
+    return { opacity, transform: [{ translateY }], display };
   });
   const heroStyle = useAnimatedStyle(() => {
     const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
@@ -298,29 +300,23 @@ export function FavoritesScreen({
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
             <GalleryNormalHeader
-              title="收藏"
-              count={images.length}
+              title=""
+              count={undefined}
               animatedStyle={heroStyle}
-              topRightActions={
-                <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setActiveFilterDropdown('size')}>
-                  <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
-                  <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
-                    {hasActiveFilters ? '已筛选' : '筛选'}
-                  </Text>
-                </Pressable>
-              }
               middleContent={undefined}
               bottomContent={undefined}
+              topLeftActions={
+                <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
+                  <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                    <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                    <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
+                  </Pressable>
+                </View>
+              }
               topRightActions={
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={[styles.favoriteModeTabs, { padding: 2, minHeight: 28 }]}>
-                    <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed, { minHeight: 24, paddingHorizontal: 8 }]}>
-                      <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null, { fontSize: 11 }]}>图片</Text>
-                    </Pressable>
-                    <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed, { minHeight: 24, paddingHorizontal: 8 }]}>
-                      <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null, { fontSize: 11 }]}>AI</Text>
-                    </Pressable>
-                  </View>
 
                   <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
 
@@ -361,6 +357,7 @@ export function FavoritesScreen({
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
+                hideFavoriteBadge={true}
               />
           ) : (
               <ThumbnailTile
@@ -373,6 +370,7 @@ export function FavoritesScreen({
                 selected={multiSelect.selectedImageIds.includes(image.id)}
                 isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
+                hideFavoriteBadge={true}
               />
           )}
           viewMode={viewMode}
@@ -399,17 +397,21 @@ export function FavoritesScreen({
         onScroll={handleScroll}
         ListHeaderComponent={
           <GalleryNormalHeader
-            title="收藏"
-            count={aiMessages.length}
+            title=""
+            count={undefined}
             animatedStyle={heroStyle}
-            bottomContent={
-              <View style={styles.favoriteModeTabs}>
-                <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
-                  <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null]}>图片</Text>
+            topLeftActions={
+              <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
+                <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                  <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
                 </Pressable>
-                <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
-                  <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null]}>AI 消息</Text>
+                <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                  <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
                 </Pressable>
+              </View>
+            }
+            topRightActions={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               </View>
             }
           />
@@ -426,8 +428,17 @@ export function FavoritesScreen({
             style={({ pressed }) => [styles.aiFavoriteRow, pressed && styles.pressed]}
           >
             <View style={styles.aiFavoriteHeader}>
-              <Text numberOfLines={1} style={styles.aiFavoriteThread}>{favorite.threadTitle}</Text>
-              <Text style={styles.aiFavoriteRole}>AI</Text>
+              {favorite.roleAvatarUri ? (
+                <Image source={{ uri: favorite.roleAvatarUri }} style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#F3F4F6' }} contentFit="cover" />
+              ) : (
+                <Ionicons name="chatbubble-ellipses-outline" size={14} color="#9CA3AF" />
+              )}
+              <Text numberOfLines={1} style={styles.aiFavoriteThread}>
+                {favorite.roleName ? `${favorite.roleName} - ` : ''}{favorite.threadTitle || 'AI 对话'}
+              </Text>
+              <View style={styles.aiFavoriteRoleBadge}>
+                <Text style={styles.aiFavoriteRole}>AI</Text>
+              </View>
             </View>
             <Text numberOfLines={3} style={styles.aiFavoriteSnippet}>{favorite.snippet || favorite.content}</Text>
             <Text numberOfLines={1} style={styles.aiFavoriteMeta}>
@@ -450,11 +461,21 @@ export function FavoritesScreen({
       contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
       <GalleryCompactHeader
-        title="收藏"
-        count={favoriteMode === 'ai' ? aiMessages.length : images.length}
+        title=""
+        count={undefined}
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
+        leftActions={
+          <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
+            <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+              <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
+            </Pressable>
+            <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+              <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
+            </Pressable>
+          </View>
+        }
         rightActions={
           favoriteMode === 'images' ? (
             <>
@@ -594,7 +615,6 @@ const styles = StyleSheet.create({
     marginTop: spacing[1],
   },
   favoriteModeTabs: {
-    alignSelf: 'stretch',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
@@ -606,7 +626,6 @@ const styles = StyleSheet.create({
   favoriteModeTab: {
     alignItems: 'center',
     borderRadius: radius.pill,
-    flex: 1,
     justifyContent: 'center',
     minHeight: 34,
   },
@@ -622,40 +641,56 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
   },
   aiFavoriteList: {
-    gap: rhythm.listCardGap,
+    gap: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 64,
   },
   aiFavoriteRow: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    padding: spacing[3],
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
   },
   aiFavoriteHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: 6,
+    marginBottom: 8,
   },
   aiFavoriteThread: {
-    ...typography.textStyles.caption,
-    color: colors.text.title,
+    fontSize: 13,
+    color: '#6B7280',
     flex: 1,
-    fontWeight: '700',
+    fontWeight: '500',
+  },
+  aiFavoriteRoleBadge: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   aiFavoriteRole: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
-    fontWeight: '800',
+    fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    color: '#4B5563',
+    fontWeight: '600',
   },
   aiFavoriteSnippet: {
-    ...typography.textStyles.body,
-    color: colors.text.primary,
-    lineHeight: 21,
+    fontSize: 15,
+    color: '#1F2937',
+    lineHeight: 22,
+    fontWeight: '400',
+    marginBottom: 6,
   },
   aiFavoriteMeta: {
-    ...typography.textStyles.micro,
-    color: colors.text.tertiary,
+    fontSize: 11,
+    color: '#9CA3AF',
   },
   drawerSections: {
     gap: spacing[2],
@@ -765,6 +800,7 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
 
 
 

@@ -148,6 +148,7 @@ export interface AiMessageFavoriteListItem extends AiMessageFavoriteRecord {
   boundIpId: number | null;
   boundKnowledgeBaseId: string | null;
   includeIpDocuments: boolean;
+  roleSnapshotJson: string;
   messageContent: string;
   messageCreatedAt: string;
   messageUpdatedAt: string;
@@ -3596,6 +3597,7 @@ export const aiThreadRepository = {
       boundIpId: number | null;
       boundKnowledgeBaseId: string | null;
       includeIpDocuments: number;
+      roleSnapshotJson: string;
       messageContent: string;
       messageCreatedAt: string;
       messageUpdatedAt: string;
@@ -3608,6 +3610,7 @@ export const aiThreadRepository = {
          ai_threads.boundIpId,
          ai_threads.boundKnowledgeBaseId,
          ai_threads.includeIpDocuments,
+         ai_threads.roleSnapshotJson,
          CASE
            WHEN ai_message_versions.id IS NOT NULL THEN ai_message_versions.content
            WHEN ai_message_favorites.messageVersionIndex IS NULL THEN ai_messages.content
@@ -5709,3 +5712,6 @@ export const aiThreadRepository = {
 };
 
 export default aiThreadRepository;
+
+
+

@@ -642,6 +642,8 @@ export interface AiMessageFavoriteListItem {
   threadId: string;
   messageId: string;
   threadTitle: string;
+  roleName: string | null;
+  roleAvatarUri: string | null;
   contextType: AiContextType;
   boundIpId: number | null;
   boundKnowledgeBaseId: string | null;
@@ -950,12 +952,17 @@ function createFavoriteSnippet(content: string): string {
   return content.replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
-function mapFavoriteListItem(row: AiMessageFavoriteRepositoryListItem): AiMessageFavoriteListItem {
+function mapFavoriteListItem(row: AiMessageFavoriteRepositoryListItem & { roleSnapshotJson: string }): AiMessageFavoriteListItem {
+  const avatarConfig = parseThreadAvatarConfig(row.roleSnapshotJson);
+  const roleName = parseThreadRoleName(row.roleSnapshotJson);
+  
   return {
     id: row.id,
     threadId: row.threadId,
     messageId: row.messageId,
     threadTitle: row.threadTitle,
+    roleName: roleName,
+    roleAvatarUri: avatarConfig.avatarEnabled && avatarConfig.avatarUri ? avatarConfig.avatarUri : null,
     contextType: row.contextType,
     boundIpId: row.boundIpId,
     boundKnowledgeBaseId: row.boundKnowledgeBaseId,

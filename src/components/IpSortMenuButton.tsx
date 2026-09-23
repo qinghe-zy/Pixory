@@ -6,7 +6,6 @@ import { BlurView } from 'expo-blur';
 import type { IpSortOrder } from '../database';
 import { colors, radius, shadows, spacing, typography, componentTokens } from '../design/tokens';
 import { LiquidGlassBezel } from './LiquidGlassBezel';
-import { MagneticLiquidContainer } from './MagneticLiquidContainer';
 
 export const IP_SORT_OPTIONS: Array<{ value: IpSortOrder; label: string }> = [
   { value: 'default', label: '默认排序' },
@@ -69,14 +68,9 @@ export function IpSortMenuButton({
 
   return (
     <View style={styles.wrap} ref={buttonRef}>
-      <MagneticLiquidContainer 
-        magneticStrength={0.4} 
-        stretchFactor={0.03} 
-        damping={12}
-        style={styles.wrapper}
-      >
+      <View style={styles.wrapper}>
         {inner}
-      </MagneticLiquidContainer>
+      </View>
 
       <Modal
         visible={sortMenuVisible}
