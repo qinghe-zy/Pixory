@@ -120,9 +120,18 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
     (itemId: number | string) => {
       const image = itemById.get(itemId as number);
       if (!image) return null;
-      return renderAsset(image, indexById.get(itemId as number) ?? 0, true);
+      return (
+        <MeasuredAssetCell
+          imageId={image.id}
+          onMeasured={onItemMeasured}
+          scrollOffsetRef={scrollOffsetRef}
+          style={[styles.justifiedCellInner, image.id === globalViewState.lastViewedImageId ? styles.lastViewedHighlight : null]}
+        >
+          {renderAsset(image, indexById.get(itemId as number) ?? 0, true)}
+        </MeasuredAssetCell>
+      );
     },
-    [itemById, indexById, renderAsset],
+    [itemById, indexById, renderAsset, onItemMeasured, scrollOffsetRef],
   );
 
   // ── Justified rendering path ───────────────────────────────────────────────
@@ -303,6 +312,11 @@ const styles = StyleSheet.create({
   // `top` offsets + getItemLayout `length` — no extra margin needed here.
   justifiedRowWrap: {
     marginHorizontal: -layout.pagePaddingHorizontal,
+  },
+  justifiedCellInner: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   detailCell: {
     width: '100%',
