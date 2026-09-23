@@ -1,4 +1,4 @@
-import { useEffect, useRef, memo, useMemo, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, memo, useMemo, useCallback, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -69,16 +69,30 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
   const numColumns = isGrid ? 3 : 1;
 
   // ── Justified layout pre-computation ──────────────────────────────────────
-  // Runs O(N) in JS before any render.  Memoised so it only re-runs when the
-  // image list or container width changes (not on every scroll frame).
-  const justifiedRows = useMemo<JustifiedRow[]>(() => {
-    if (!isJustified) return [];
+  // Single useMemo: one O(N) pass builds the row layout, the id→item lookup,
+  // and the id→index lookup together. Only re-runs when images reference
+  // changes, not on unrelated re-renders (isLoadingMore, callbacks, etc.).
+  const { justifiedRows, itemById, indexById } = useMemo(() => {
+    if (!isJustified) {
+      return {
+        justifiedRows: [] as JustifiedRow[],
+        itemById: new Map<number, ImageListItem>(),
+        indexById: new Map<number, number>(),
+      };
+    }
     const containerWidth = Dimensions.get('window').width; // full-bleed
-    return computeJustifiedLayout(images, {
+    const rows = computeJustifiedLayout(images, {
       containerWidth,
       gap: JUSTIFIED_GAP,
       targetHeight: JUSTIFIED_TARGET_HEIGHT,
     });
+    const byId = new Map<number, ImageListItem>();
+    const byIndex = new Map<number, number>();
+    for (let i = 0; i < images.length; i++) {
+      byId.set(images[i].id, images[i]);
+      byIndex.set(images[i].id, i);
+    }
+    return { justifiedRows: rows, itemById: byId, indexById: byIndex };
   }, [isJustified, images]);
 
   // ── Initial scroll restoration ─────────────────────────────────────────────
@@ -100,12 +114,19 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
     }
   }
 
+  // renderCell is stable across re-renders as long as itemById/indexById/renderAsset
+  // haven't changed — lets JustifiedRowView's memo actually bail out.
+  const justifiedRenderCell = useCallback(
+    (itemId: number | string) => {
+      const image = itemById.get(itemId as number);
+      if (!image) return null;
+      return renderAsset(image, indexById.get(itemId as number) ?? 0, true);
+    },
+    [itemById, indexById, renderAsset],
+  );
+
   // ── Justified rendering path ───────────────────────────────────────────────
   if (isJustified) {
-    // Build O(1) lookups once — avoids images.indexOf(image) inside renderItem.
-    const itemById = new Map(images.map((img) => [img.id, img]));
-    const indexById = new Map(images.map((img, i) => [img.id, i]));
-
     return (
       <Animated.FlatList<JustifiedRow>
         {...panHandlers}
@@ -156,17 +177,11 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
         ref={listRef}
         removeClippedSubviews
         renderItem={({ item: row }) => (
-          // Full-bleed: negative horizontal margin cancels the page padding
-          // applied by AppScreen so images reach the screen edges.
           <View style={styles.justifiedRowWrap}>
             <JustifiedRowView
               gap={JUSTIFIED_GAP}
               row={row}
-              renderCell={(itemId, cellWidth, cellHeight) => {
-                const image = itemById.get(itemId as number);
-                if (!image) return null;
-                return renderAsset(image, indexById.get(itemId as number) ?? 0, true);
-              }}
+              renderCell={justifiedRenderCell}
             />
           </View>
         )}
@@ -178,6 +193,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
       />
     );
   }
+
 
   // ── Grid / Detail rendering path (unchanged) ───────────────────────────────
   return (
