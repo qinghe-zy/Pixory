@@ -53,8 +53,6 @@ export function VideoDetailScreen({
   const onRefreshedRef = useRef(onRefreshed);
   onRefreshedRef.current = onRefreshed;
 
-  useEffect(() => () => onRefreshedRef.current(), []);
-
   useEffect(() => {
     setActiveVideoId(videoId);
   }, [videoId]);

@@ -68,8 +68,6 @@ export function ImageDetailScreen({
   const onRefreshedRef = useRef(onRefreshed);
   onRefreshedRef.current = onRefreshed;
 
-  useEffect(() => () => onRefreshedRef.current(), []);
-
   useEffect(() => {
     let isMounted = true;
 
