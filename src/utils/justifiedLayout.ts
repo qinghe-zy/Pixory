@@ -181,19 +181,9 @@ export function computeJustifiedLayout(
  * Falls back to 1 (square) when dimensions are missing or zero.
  */
 export function clampRatio(width: number, height: number): number {
-  if (!width || !height || width <= 0 || height <= 0) {
+  if (!width || !height) {
     return 1;
   }
   const raw = width / height;
   return Math.min(RATIO_MAX, Math.max(RATIO_MIN, raw));
-}
-
-/**
- * Compute the total scroll height of the entire justified list.
- * Useful for rendering a placeholder that matches the virtual content size.
- */
-export function getJustifiedTotalHeight(rows: JustifiedRow[], gap: number = JUSTIFIED_GAP): number {
-  if (rows.length === 0) return 0;
-  const last = rows[rows.length - 1];
-  return last.top + last.height;
 }

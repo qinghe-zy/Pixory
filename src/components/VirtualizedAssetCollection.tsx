@@ -102,8 +102,9 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
 
   // ── Justified rendering path ───────────────────────────────────────────────
   if (isJustified) {
-    // Build an id→item lookup so renderAsset can be called per cell.
+    // Build O(1) lookups once — avoids images.indexOf(image) inside renderItem.
     const itemById = new Map(images.map((img) => [img.id, img]));
+    const indexById = new Map(images.map((img, i) => [img.id, i]));
 
     return (
       <Animated.FlatList<JustifiedRow>
@@ -164,9 +165,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
               renderCell={(itemId, cellWidth, cellHeight) => {
                 const image = itemById.get(itemId as number);
                 if (!image) return null;
-                // Pass a synthetic ImageListItem-shaped call through renderAsset.
-                // fillCell = true signals callers to stretch to the given size.
-                return renderAsset(image, images.indexOf(image), true);
+                return renderAsset(image, indexById.get(itemId as number) ?? 0, true);
               }}
             />
           </View>
@@ -284,11 +283,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[6],
   },
   // Each justified row cancels the AppScreen horizontal padding so images
-  // bleed to the screen edges.  The gap between rows is handled by the
-  // algorithm's `top` offsets; we rely on `gap` in JustifiedRowView cells.
+  // bleed to the screen edges. Row spacing is fully owned by the algorithm's
+  // `top` offsets + getItemLayout `length` — no extra margin needed here.
   justifiedRowWrap: {
     marginHorizontal: -layout.pagePaddingHorizontal,
-    marginBottom: JUSTIFIED_GAP,
   },
   detailCell: {
     width: '100%',
