@@ -1,7 +1,6 @@
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   TouchableWithoutFeedback,
@@ -9,9 +8,9 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type ScrollView as ScrollViewType,
-  type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
