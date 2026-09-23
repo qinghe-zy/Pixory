@@ -349,8 +349,8 @@ export function BatchImageOrganizePanel({
     <View style={styles.dockContainer}>
       {/* Selection counter badge - left side */}
       <View style={styles.dockBadge}>
-        <Text style={styles.dockBadgeText}>
-          已选 <Text style={styles.dockBadgeTextBold}>{selectedCount}</Text>/{totalCount}
+        <Text style={styles.dockBadgeText} numberOfLines={1}>
+          <Text style={styles.dockBadgeTextBold}>{selectedCount}</Text>/{totalCount}
         </Text>
       </View>
 
@@ -365,7 +365,7 @@ export function BatchImageOrganizePanel({
           <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </Svg>
-          <Text style={styles.dockButtonText}>加入分组</Text>
+          <Text style={styles.dockButtonText} numberOfLines={1}>加入分组</Text>
         </Pressable>
 
         {/* 添加标签 - tag icon from stitch design */}
@@ -377,7 +377,7 @@ export function BatchImageOrganizePanel({
           <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </Svg>
-          <Text style={styles.dockButtonText}>添加标签</Text>
+          <Text style={styles.dockButtonText} numberOfLines={1}>添加标签</Text>
         </Pressable>
 
         {/* 收藏 - star icon from stitch design */}
@@ -389,7 +389,7 @@ export function BatchImageOrganizePanel({
           <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.6">
             <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
           </Svg>
-          <Text style={styles.dockButtonText}>{allFavorite ? '取消收藏' : '收藏'}</Text>
+          <Text style={styles.dockButtonText} numberOfLines={1}>{allFavorite ? '取消收藏' : '收藏'}</Text>
         </Pressable>
 
         {/* 更多 - black pill from stitch design */}
@@ -740,12 +740,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 9999,
-    flexShrink: 0,
+    flexShrink: 1,
   },
   dockBadgeText: {
     fontSize: 11,
     color: '#374151',
     fontWeight: '600',
+    flexShrink: 1,
   },
   dockBadgeTextBold: {
     color: '#000000',
@@ -760,20 +761,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
     flexGrow: 1,
+    flexShrink: 1,
     justifyContent: 'space-between',
   },
   dockButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 8,
     borderRadius: 9999,
+    flexShrink: 1,
   },
   dockButtonText: {
     fontSize: 11,
     fontWeight: '500',
     color: '#374151',
+    flexShrink: 1,
   },
   dockMoreButton: {
     flexDirection: 'row',
