@@ -1,6 +1,7 @@
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -285,7 +286,19 @@ export function ImportImagesScreen({
       const destinationUri = `${cacheDirectory}import-video-preview-${Date.now()}-${index}.jpg`;
       try {
         const result = await createNativeVideoThumbnail(video.uri, destinationUri);
-        return [key, result.uri || destinationUri] as const;
+        // Keep Expo's canonical file URI instead of the native `file:/...` serialization.
+        // Android's image loaders are stricter about that distinction for cache files.
+        const candidateUri = destinationUri;
+        const info = await FileSystem.getInfoAsync(candidateUri);
+        if (info.exists) {
+          return [key, candidateUri] as const;
+        }
+        const nativeUri = result.uri?.trim();
+        if (!nativeUri) {
+          return null;
+        }
+        const nativeInfo = await FileSystem.getInfoAsync(nativeUri);
+        return nativeInfo.exists ? [key, nativeUri] as const : null;
       } catch {
         return null;
       }
@@ -434,7 +447,7 @@ export function ImportImagesScreen({
         : await pickVideosForImport(imageImportSourceMode);
       if (!result.canceled) {
         setPickedVideos((current) => mergePickedVideos(current, result.pickedAssets));
-        void prepareVideoPreviews(result.pickedAssets);
+        await prepareVideoPreviews(result.pickedAssets);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
@@ -956,7 +969,7 @@ export function ImportImagesScreen({
             <View style={styles.sourceFooter}>
               <View style={styles.sourceCountCopy}>
                 <View style={styles.sourceCountDot} />
-                <Text style={styles.sourceCountText}>{pickedAssets.length > 0 ? `已选 ${pickedAssets.length} 张 (JPG, PNG)` : '未选择图片'}</Text>
+                <Text style={styles.sourceCountText}>{isPicking ? '正在加载图片…' : pickedAssets.length > 0 ? `已选 ${pickedAssets.length} 张 (JPG, PNG)` : '未选择图片'}</Text>
               </View>
               <Pressable disabled={isPicking || isSubmitting} onPress={handlePickImages} style={styles.sourceActionButton}>
                 <MaterialIcons color="#1a1c1c" name={imageMediaPickerSource === 'album' ? 'add-photo-alternate' : 'folder-open'} size={15} />
@@ -1004,7 +1017,7 @@ export function ImportImagesScreen({
           <View style={styles.sourceFooter}>
             <View style={styles.sourceCountCopy}>
               <View style={styles.sourceCountDot} />
-              <Text style={styles.sourceCountText}>{pickedVideos.length > 0 ? `已选 ${pickedVideos.length} 条 (MOV, MP4)` : '未选择视频'}</Text>
+              <Text style={styles.sourceCountText}>{isPickingVideos ? '正在加载视频…' : pickedVideos.length > 0 ? `已选 ${pickedVideos.length} 条 (MOV, MP4)` : '未选择视频'}</Text>
             </View>
             <Pressable disabled={isPickingVideos || isSubmitting} onPress={handlePickVideos} style={styles.sourceActionButton}>
               <MaterialIcons color="#1a1c1c" name={videoMediaPickerSource === 'album' ? 'video-library' : 'folder-open'} size={15} />
@@ -1026,21 +1039,20 @@ export function ImportImagesScreen({
               </View>
               <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.videoPreviewScroll}>
                 <View style={videoPreviewMode === 'grid' ? styles.videoPreviewGrid : styles.videoPreviewList}>
-                  {pickedVideos.slice(0, 5).map((video, index) => videoPreviewMode === 'grid' ? (
+                  {pickedVideos.map((video, index) => videoPreviewMode === 'grid' ? (
                     <View key={`${getPickedVideoKey(video)}-${index}`} style={styles.videoGridCard}>
-                      <View style={styles.videoPreviewThumb}>
-                        {videoPreviewUris[getPickedVideoKey(video)] ? <Image resizeMode="cover" source={{ uri: videoPreviewUris[getPickedVideoKey(video)] }} style={styles.videoPreviewImage} /> : <MaterialIcons color="#ffffff" name="movie" size={18} />}
+                      <View style={styles.videoGridCardThumb}>
+                        {videoPreviewUris[getPickedVideoKey(video)] ? <ExpoImage contentFit="cover" source={{ uri: videoPreviewUris[getPickedVideoKey(video)] }} style={styles.videoGridCardImage} /> : <MaterialIcons color="#ffffff" name="movie" size={24} />}
                         <View style={styles.videoPreviewPlayBadge}><Ionicons color="#ffffff" name="play" size={10} /></View>
                       </View>
                       <Pressable accessibilityLabel={`移除视频：${video.fileName}`} onPress={() => removePickedVideo(index)} style={styles.videoGridRemoveButton}>
                         <Ionicons color="#ffffff" name="close" size={12} />
                       </Pressable>
-                      <Text numberOfLines={1} style={styles.videoGridName}>{video.fileName}</Text>
                     </View>
                   ) : (
                     <View key={`${getPickedVideoKey(video)}-${index}`} style={styles.videoPreviewRow}>
                       <View style={styles.videoPreviewThumb}>
-                        {videoPreviewUris[getPickedVideoKey(video)] ? <Image resizeMode="cover" source={{ uri: videoPreviewUris[getPickedVideoKey(video)] }} style={styles.videoPreviewImage} /> : <MaterialIcons color="#ffffff" name="movie" size={18} />}
+                        {videoPreviewUris[getPickedVideoKey(video)] ? <ExpoImage contentFit="cover" source={{ uri: videoPreviewUris[getPickedVideoKey(video)] }} style={styles.videoPreviewImage} /> : <MaterialIcons color="#ffffff" name="movie" size={18} />}
                         <View style={styles.videoPreviewPlayBadge}><Ionicons color="#ffffff" name="play" size={10} /></View>
                       </View>
                       <Text numberOfLines={1} style={styles.videoPreviewName}>{videoImportNamingMode === 'generated' ? '[将自动编号] 导入后生成' : video.fileName}</Text>
@@ -2084,19 +2096,19 @@ const styles = StyleSheet.create({
   previewRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    gap: 4,
   },
   previewScroll: {
     maxHeight: 176,
   },
   previewCard: {
-    aspectRatio: 1,
+    aspectRatio: 1.5,
     backgroundColor: colors.background.empty,
     borderColor: colors.border.default,
-    borderRadius: radius.md,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    width: '23.3%',
+    width: '32.2%',
   },
   previewImage: {
     height: '100%',
@@ -2151,7 +2163,7 @@ const styles = StyleSheet.create({
   videoPreviewGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 4,
   },
   videoPreviewRow: {
     alignItems: 'center',
@@ -2223,15 +2235,24 @@ const styles = StyleSheet.create({
     color: '#1a1c1c',
   },
   videoGridCard: {
+    aspectRatio: 1.5,
     backgroundColor: '#eeeeee',
     borderRadius: 5,
-    minHeight: 76,
     overflow: 'hidden',
     position: 'relative',
-    width: '31.8%',
+    width: '32.2%',
   },
   videoGridCardThumb: {
-    height: 54,
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    height: '100%',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  videoGridCardImage: {
+    height: '100%',
+    width: '100%',
   },
   videoGridRemoveButton: {
     alignItems: 'center',
@@ -2243,13 +2264,6 @@ const styles = StyleSheet.create({
     right: 4,
     top: 4,
     width: 20,
-  },
-  videoGridName: {
-    color: '#1a1c1c',
-    fontFamily: typography.family.base,
-    fontSize: 10,
-    paddingHorizontal: 5,
-    paddingVertical: 4,
   },
   currentIpBadge: {
     backgroundColor: '#eeeeee',
