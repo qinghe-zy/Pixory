@@ -26,8 +26,8 @@ export const JUSTIFIED_TARGET_HEIGHT = 150;
  * Aspect-ratio clamp range.
  * Prevents pathologically thin or wide images from distorting their neighbours.
  */
-const RATIO_MIN = 0.4; // max portrait (~2.5 : 1 portrait)
-const RATIO_MAX = 4.0; // max landscape (4 : 1 landscape)
+const RATIO_MIN = 0.56; // max portrait (16:9 portrait, approx 0.56)
+const RATIO_MAX = 2.5; // max landscape (2.5 : 1 panorama)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,10 +102,15 @@ export function computeJustifiedLayout(
 
   // Maximum allowed height for a row (1.5x multiplier)
   const MAX_HEIGHT = targetHeight * 1.5;
+  // 【防极宽图】最短边保护：防止全景图导致行高变成极窄的缝隙（如 60px），强行保底到 100px 并通过 cover 左右裁切
+  const MIN_ROW_HEIGHT = Math.max(100, targetHeight * 0.6);
 
   const commitRow = (rowHeight: number, isLastRow = false) => {
-    // 【防过大】：强行限制最大行高 (如果是最后一行则不限制，保持 targetHeight)
-    const finalHeight = isLastRow ? rowHeight : Math.min(rowHeight, MAX_HEIGHT);
+    // 【防过大/防过矮】：强行限制最大和最小行高
+    let finalHeight = rowHeight;
+    if (!isLastRow) {
+      finalHeight = Math.max(MIN_ROW_HEIGHT, Math.min(rowHeight, MAX_HEIGHT));
+    }
 
     const availableWidth = containerWidth - Math.max(0, rowItems.length - 1) * gap;
 
@@ -113,9 +118,7 @@ export function computeJustifiedLayout(
       const ratio = clampRatio(item.width, item.height);
       
       // 【防过大-辅助宽度分配】：
-      // 如果是最后一行，按真实比例渲染，不拉伸。
-      // 如果是常规行，宽度依然按比例强行瓜分可用宽度，无视 finalHeight 是否被压扁。
-      // 配合 UI 层的 resizeMode="cover" 可以完美解决裁切问题并保持右侧对齐。
+      // 宽度依然按比例强行瓜分可用宽度，无视 finalHeight 是否被压扁或拔高。
       const renderedWidth = isLastRow
         ? Math.round(finalHeight * ratio)
         : Math.round((ratio / ratioSum) * availableWidth);
@@ -156,9 +159,13 @@ export function computeJustifiedLayout(
     }
 
     // 【防面条】单行最多图片数量保护
-    // 强制限制每行最多只能放 4 张图，解决由于全是竖图导致挤在一起变成细面的问题
     const MAX_ITEMS_PER_ROW = 4;
-    if (rowItems.length >= MAX_ITEMS_PER_ROW) {
+    // 【智能防面条】宽度物理下限保护：如果加了这图，平均宽度会小于 80px，则强行断行（专门保护折叠屏或大屏的物理体验）
+    const MIN_CELL_WIDTH = 80;
+    const nextAvailableWidth = containerWidth - rowItems.length * gap;
+    const predictedAvgWidth = nextAvailableWidth / (rowItems.length + 1);
+
+    if (rowItems.length >= MAX_ITEMS_PER_ROW || (rowItems.length > 0 && predictedAvgWidth < MIN_CELL_WIDTH)) {
       const currentAvailableWidth = containerWidth - (rowItems.length - 1) * gap;
       const currentHeight = currentAvailableWidth / ratioSum;
       commitRow(currentHeight, false);
@@ -169,7 +176,6 @@ export function computeJustifiedLayout(
 
     // 提前计算：如果强行把这张图加进当前行，行高会变成多少？
     const nextRatioSum = ratioSum + ratio;
-    const nextAvailableWidth = containerWidth - rowItems.length * gap;
     const heightWithNew = nextAvailableWidth / nextRatioSum;
 
     // 【防过小】智能比价：如果加入新图导致行高比目标高度小，对比加和不加哪个误差更小
