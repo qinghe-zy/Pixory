@@ -26,6 +26,8 @@ const filesToUpdate = [
   'docs/update-version.json',
   'README.md',
   'docs/index.html',
+  'docs/m.html',
+  'docs/announcement.json',
   'docs/updates.html',
   'docs/sitemap.xml',
   'docs/manual.html',
@@ -51,11 +53,11 @@ for (const file of filesToUpdate) {
       content = content.replace(/最后更新：\d{4}-\d{2}-\d{2}/g, '最后更新：' + formattedDate);
     }
     
-    // Specially handle versionCode in app.json and build.gradle
-    if (file === 'app.json' || file === 'android/app/build.gradle') {
-        content = content.replace(new RegExp('versionCode ' + oldVersionCode, 'g'), 'versionCode ' + newVersionCode);
-        content = content.replace(new RegExp('\"versionCode\": ' + oldVersionCode, 'g'), '\"versionCode\": ' + newVersionCode);
-    }
+    // Specially handle versionCode forms
+    content = content.replace(new RegExp('versionCode ' + oldVersionCode, 'g'), 'versionCode ' + newVersionCode);
+    content = content.replace(new RegExp('\"versionCode\":\\s*' + oldVersionCode, 'g'), '\"versionCode\": ' + newVersionCode);
+    content = content.replace(new RegExp('\"latestVersionCode\":\\s*' + oldVersionCode, 'g'), '\"latestVersionCode\": ' + newVersionCode);
+    content = content.replace(new RegExp('_VERSION_CODE = ' + oldVersionCode, 'g'), '_VERSION_CODE = ' + newVersionCode);
     
     fs.writeFileSync(file, content, 'utf8');
     console.log('Updated ' + file);

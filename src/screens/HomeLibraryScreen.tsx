@@ -653,7 +653,8 @@ function HomeBrandHeader({ isActive }: { isActive: boolean }) {
 const styles = StyleSheet.create({
   brandHeaderContainer: {
     justifyContent: 'center',
-    paddingVertical: spacing[1],
+    marginTop: -8,
+    marginBottom: -4,
   },
   brandGreetingRow: {
     flexDirection: 'row',

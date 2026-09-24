@@ -35,11 +35,13 @@ export const VIDEO_IMPORT_NAMING_MODE_KEY = 'videoImportNamingMode';
 export const IMAGE_MEDIA_PICKER_SOURCE_KEY = 'imageMediaPickerSource';
 export const VIDEO_MEDIA_PICKER_SOURCE_KEY = 'videoMediaPickerSource';
 export const MOVE_IMPORT_WARNING_DISMISSED_KEY = 'moveImportWarningDismissed';
+export const VIDEO_PREVIEW_MODE_KEY = 'videoPreviewMode';
 
 export type AssetListViewMode = 'grid' | 'detail' | 'justified';
 export type ImageImportSourceMode = 'copy' | 'move';
 export type MediaPickerSource = 'album' | 'files';
 export type VideoImportNamingMode = 'generated' | 'preserveOriginal';
+export type VideoPreviewMode = 'list' | 'grid';
 export type MemoryMaintenanceMode = 'auto' | 'follow_chat' | 'deepseek_flash' | 'custom';
 
 export interface MemoryMaintenanceSettingsRecord {
@@ -415,6 +417,15 @@ export const settingsRepository = {
 
   async setVideoImportNamingMode(db: SQLiteDatabase, mode: VideoImportNamingMode): Promise<void> {
     await this.setValue(db, VIDEO_IMPORT_NAMING_MODE_KEY, mode);
+  },
+
+  async getVideoPreviewMode(db: SQLiteDatabase): Promise<VideoPreviewMode> {
+    const value = await this.getValue(db, VIDEO_PREVIEW_MODE_KEY);
+    return value === 'list' ? 'list' : 'grid';
+  },
+
+  async setVideoPreviewMode(db: SQLiteDatabase, mode: VideoPreviewMode): Promise<void> {
+    await this.setValue(db, VIDEO_PREVIEW_MODE_KEY, mode);
   },
 };
 

@@ -33,7 +33,7 @@ import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDra
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
 import { assertPersonalTaskActive, trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
-import type { ImageImportSourceMode, MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
+import type { ImageImportSourceMode, MediaPickerSource, VideoImportNamingMode, VideoPreviewMode } from '../database/repositories/settingsRepository';
 
 interface ImportImagesScreenProps {
   space?: PixorySpace;
@@ -57,6 +57,7 @@ interface ImportImagesScreenData {
   recentTags: TagUsageItem[];
   videoImportNamingMode: VideoImportNamingMode;
   videoMediaPickerSource: MediaPickerSource;
+  videoPreviewMode: VideoPreviewMode;
 }
 
 export function ImportImagesScreen({
@@ -91,6 +92,7 @@ export function ImportImagesScreen({
         videoImportNamingMode,
         imageMediaPickerSource,
         videoMediaPickerSource,
+        videoPreviewMode,
         moveImportWarningDismissed,
       ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findById(db, targetIpId),
@@ -103,6 +105,7 @@ export function ImportImagesScreen({
         settingsRepository.getVideoImportNamingMode(db),
         settingsRepository.getImageMediaPickerSource(db),
         settingsRepository.getVideoMediaPickerSource(db),
+        settingsRepository.getVideoPreviewMode(db),
         settingsRepository.getMoveImportWarningDismissed(db),
       ]));
 
@@ -117,6 +120,7 @@ export function ImportImagesScreen({
         videoImportNamingMode,
         imageMediaPickerSource,
         videoMediaPickerSource,
+        videoPreviewMode,
         moveImportWarningDismissed,
       };
     },
@@ -133,6 +137,7 @@ export function ImportImagesScreen({
         videoImportNamingMode: 'preserveOriginal',
         imageMediaPickerSource: 'album',
         videoMediaPickerSource: 'album',
+        videoPreviewMode: 'grid',
         moveImportWarningDismissed: false,
       },
       formatError: (error) => {
@@ -346,6 +351,7 @@ export function ImportImagesScreen({
     setImageMediaPickerSource(screenData?.imageMediaPickerSource ?? 'album');
     setVideoMediaPickerSource(screenData?.videoMediaPickerSource ?? 'album');
     setVideoImportNamingMode(screenData?.videoImportNamingMode ?? 'preserveOriginal');
+    setVideoPreviewMode(screenData?.videoPreviewMode ?? 'grid');
     setMoveImportWarningDismissed(screenData?.moveImportWarningDismissed ?? false);
   }, [
     screenData?.imageImportSourceMode,
@@ -387,6 +393,11 @@ export function ImportImagesScreen({
   function updateVideoImportNamingMode(nextMode: VideoImportNamingMode) {
     setVideoImportNamingMode(nextMode);
     void runWithDatabaseSpace(space, (db) => settingsRepository.setVideoImportNamingMode(db, nextMode));
+  }
+
+  function updateVideoPreviewMode(nextMode: VideoPreviewMode) {
+    setVideoPreviewMode(nextMode);
+    void runWithDatabaseSpace(space, (db) => settingsRepository.setVideoPreviewMode(db, nextMode));
   }
 
   useEffect(() => {
@@ -1029,10 +1040,10 @@ export function ImportImagesScreen({
               <View style={styles.videoPreviewToolbar}>
                 <Text style={styles.videoPreviewToolbarLabel}>预览</Text>
                 <View style={styles.videoPreviewModeToggle}>
-                  <Pressable onPress={() => setVideoPreviewMode('list')} style={[styles.videoPreviewModeButton, videoPreviewMode === 'list' && styles.videoPreviewModeButtonSelected]}>
+                  <Pressable onPress={() => updateVideoPreviewMode('list')} style={[styles.videoPreviewModeButton, videoPreviewMode === 'list' && styles.videoPreviewModeButtonSelected]}>
                     <MaterialIcons color={videoPreviewMode === 'list' ? '#ffffff' : '#1a1c1c'} name="view-list" size={16} />
                   </Pressable>
-                  <Pressable onPress={() => setVideoPreviewMode('grid')} style={[styles.videoPreviewModeButton, videoPreviewMode === 'grid' && styles.videoPreviewModeButtonSelected]}>
+                  <Pressable onPress={() => updateVideoPreviewMode('grid')} style={[styles.videoPreviewModeButton, videoPreviewMode === 'grid' && styles.videoPreviewModeButtonSelected]}>
                     <MaterialIcons color={videoPreviewMode === 'grid' ? '#ffffff' : '#1a1c1c'} name="grid-view" size={16} />
                   </Pressable>
                 </View>
