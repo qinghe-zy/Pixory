@@ -2438,12 +2438,11 @@ export default function App() {
 
 function FloatingFooterProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
-  const floatingFooterHeight = spacing[2] + Math.max(58, componentTokens.bottomTab.height - 10) + insets.bottom + layout.stickyFooterBottomOffset;
+  const floatingFooterHeight = 50 + Math.max(insets.bottom, 4);
   return <FloatingFooterContext.Provider value={floatingFooterHeight}>{children}</FloatingFooterContext.Provider>;
 }
 
 function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTab: RootTabKey; onSelectTab: (tab: RootTabKey) => void; scrollOffset?: SharedValue<number> }) {
-  const insets = useSafeAreaInsets();
   return (
     <View
       pointerEvents="box-none"
@@ -2452,8 +2451,6 @@ function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTa
         bottom: 0,
         left: 0,
         right: 0,
-        paddingHorizontal: layout.pagePaddingHorizontal,
-        paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
       }}
     >
       <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} />

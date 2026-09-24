@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { aiLightColors } from './ai/aiLightTheme';
-import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
 
@@ -22,16 +22,13 @@ const TAB_ITEMS: Array<{
   { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 
-function getActiveTintColor(tab: RootTabKey) {
-  return tab === 'ai' ? aiLightColors.primaryActive : colors.primary.default;
-}
-
 export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 4) }]}>
       {TAB_ITEMS.map((item) => {
         const isActive = item.key === activeTab;
-        const activeTintColor = getActiveTintColor(item.key);
 
         return (
           <Pressable
@@ -40,14 +37,24 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
             accessibilityState={{ selected: isActive }}
             key={item.key}
             onPress={() => onSelectTab(item.key)}
-            style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.item,
+              { backgroundColor: isActive ? '#000' : '#fff' },
+              pressed && styles.pressed
+            ]}
           >
             <Ionicons
-              color={isActive ? activeTintColor : colors.text.secondary}
+              color={isActive ? '#fff' : colors.text.secondary}
               name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
               size={componentTokens.bottomTab.iconSize}
             />
-            <Text style={[styles.label, isActive ? styles.activeLabel : null, isActive ? { color: activeTintColor } : null]}>{item.label}</Text>
+            <Text style={[
+              styles.label, 
+              isActive ? styles.activeLabel : null, 
+              { color: isActive ? '#fff' : colors.text.secondary }
+            ]}>
+              {item.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -57,23 +64,20 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    ...shadows.floating,
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.xxl,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#fff',
+    borderTopColor: colors.border.default,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    minHeight: Math.max(58, componentTokens.bottomTab.height - 10),
-    marginHorizontal: spacing[1],
     paddingHorizontal: spacing[2],
-    paddingTop: spacing[1],
+    paddingTop: 4,
   },
   item: {
     alignItems: 'center',
     borderRadius: radius.lg,
     flex: 1,
-    gap: spacing[1],
+    gap: 2,
     justifyContent: 'center',
+    paddingVertical: 4,
     minHeight: 46,
   },
   label: {
