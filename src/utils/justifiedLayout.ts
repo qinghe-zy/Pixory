@@ -155,6 +155,18 @@ export function computeJustifiedLayout(
       continue;
     }
 
+    // 【防面条】单行最多图片数量保护
+    // 强制限制每行最多只能放 4 张图，解决由于全是竖图导致挤在一起变成细面的问题
+    const MAX_ITEMS_PER_ROW = 4;
+    if (rowItems.length >= MAX_ITEMS_PER_ROW) {
+      const currentAvailableWidth = containerWidth - (rowItems.length - 1) * gap;
+      const currentHeight = currentAvailableWidth / ratioSum;
+      commitRow(currentHeight, false);
+      rowItems = [item];
+      ratioSum = ratio;
+      continue;
+    }
+
     // 提前计算：如果强行把这张图加进当前行，行高会变成多少？
     const nextRatioSum = ratioSum + ratio;
     const nextAvailableWidth = containerWidth - rowItems.length * gap;
@@ -168,8 +180,12 @@ export function computeJustifiedLayout(
       const errorWithNew = Math.abs(heightWithNew - targetHeight);
       const errorWithoutNew = Math.abs(heightWithoutNew - targetHeight);
 
-      if (errorWithoutNew <= errorWithNew) {
-        // 不加这张图更贴近目标高度！立刻结算当前行（让它略高一点），把新图留给下一行
+      // 引入偏好系数 (0.8)，使得算法在误差相近时，更倾向于把新图“挤”进来，而不是让上一行变得过大
+      // 这可以完美解决不同页面（因 Padding 导致 containerWidth 差几像素）排版从 2张 突变到 1张 的不一致问题
+      const PACK_BIAS = 0.8;
+
+      if (errorWithoutNew <= errorWithNew * PACK_BIAS) {
+        // 只有当“不加新图”的误差显著更小时，才换行
         commitRow(heightWithoutNew, false);
         rowItems = [item];
         ratioSum = ratio;
@@ -179,6 +195,7 @@ export function computeJustifiedLayout(
 
     // 否则，将其加入当前行
     rowItems.push(item);
+
     ratioSum += ratio;
 
     // 保底结算：一旦当前行高 <= 目标高度，说明已经填够了，可以直接结算
