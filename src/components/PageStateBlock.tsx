@@ -18,6 +18,7 @@ interface PageStateBlockProps {
   emptyActionLabel?: string;
   onEmptyAction?: () => void;
   emptyIconName?: keyof typeof Ionicons.glyphMap;
+  emptyVariant?: 'card' | 'inline';
   children: ReactNode;
   retryLabel?: string;
   onRetry?: () => void;
@@ -37,6 +38,7 @@ export function PageStateBlock({
   emptyActionLabel,
   onEmptyAction,
   emptyIconName,
+  emptyVariant = 'inline',
   children,
   retryLabel = commonButtonCopy.retry,
   onRetry,
@@ -76,6 +78,7 @@ export function PageStateBlock({
           iconName={emptyIconName}
           onAction={onEmptyAction}
           title={emptyTitle}
+          variant={emptyVariant}
         />
       </View>
     );
@@ -112,3 +115,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+

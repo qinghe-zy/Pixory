@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, FlatList, Pressable, SectionList, StyleSheet, Text, View, Modal, Dimensions } from 'react-native';
+import { useEffect, useState, useMemo } from 'react';
+import { ActivityIndicator, Pressable, SectionList, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -12,23 +12,22 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
-import { BlurView } from 'expo-blur';
-import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GlobalGroupListItem, type IpListItem, type PixorySpace } from '../database';
-import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { typography } from '../design/tokens';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
-import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
-import { OptionSelectRow } from '../components/OptionSelectRow';
+import { OrganizeSegmentedControl, protoColors, type OrganizeMode } from '../components/OrganizeShared';
 
 interface GlobalGroupsScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
-  titleSlot?: ReactNode;
+  mode?: OrganizeMode;
+  onSelectMode?: (mode: OrganizeMode) => void;
   onCreateFirstIp?: () => void;
+  onCreateGroup?: (ipId: number) => void;
   onOpenCoverPicker: (ipId: number, groupId: number) => void;
   onEditGroup: (ipId: number, groupId: number) => void;
   onOpenGroup: (ipId: number, groupId: number) => void;
@@ -43,8 +42,10 @@ export function GlobalGroupsScreen({
   space = 'normal',
   refreshToken,
   footer,
-  titleSlot,
+  mode,
+  onSelectMode,
   onCreateFirstIp,
+  onCreateGroup,
   onOpenCoverPicker,
   onEditGroup,
   onOpenGroup,
@@ -56,10 +57,7 @@ export function GlobalGroupsScreen({
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
-  const [isIpDrawerOpen, setIsIpDrawerOpen] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
-  const filterBtnRef = useRef<View>(null);
+
   const {
     items: groups,
     isLoading,
@@ -89,10 +87,9 @@ export function GlobalGroupsScreen({
       },
     }
   );
+
   const {
     items: ipScopes,
-    isLoadingMore: isLoadingMoreScopes,
-    loadMore: loadMoreScopes,
   } = usePagedScreenLoad<IpListItem, null>(
     (offset) => runWithDatabaseSpace(space, async (db) => {
       const page = await ipRepository.findLibraryItemsPage(db, { limit: IP_SCOPE_PAGE_SIZE, offset });
@@ -112,11 +109,35 @@ export function GlobalGroupsScreen({
     setSelectedIpId(null);
   }, [space]);
 
-  const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? groups[0]?.ipName ?? '当前 IP';
-  const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
-    ...option,
-    data: groups.filter((group) => group.type === option.value),
-  })).filter((section) => section.data.length > 0);
+  const groupedSections = useMemo(() => {
+    const predefinedValues = new Set(GROUP_TYPE_OPTIONS.map(o => o.value as string));
+    
+    const sections: Array<{
+      value: string;
+      label: string;
+      description?: string;
+      data: GlobalGroupListItem[];
+    }> = GROUP_TYPE_OPTIONS.map((option) => ({
+      value: option.value,
+      label: option.label,
+      description: option.description,
+      data: groups.filter((group) => group.type === option.value),
+    })).filter((section) => section.data.length > 0);
+
+    const customGroups = groups.filter(g => !predefinedValues.has(g.type));
+    const customTypes = Array.from(new Set(customGroups.map(g => g.type)));
+    
+    for (const ct of customTypes) {
+      sections.push({
+        value: ct,
+        label: getGroupTypeLabel(ct),
+        description: undefined,
+        data: customGroups.filter(g => g.type === ct),
+      });
+    }
+
+    return sections;
+  }, [groups]);
 
   function getGroupCoverBlurRadius(group: GlobalGroupListItem): number | undefined {
     return space === 'personal' && (group.ipCoverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(group.ipCoverBlurRadius) : undefined;
@@ -143,48 +164,70 @@ export function GlobalGroupsScreen({
     })();
   }
 
-  const handleFilterPress = () => {
-    if (ipScopes.length <= 8) {
-      if (isDropdownOpen) {
-        setIsDropdownOpen(false);
-        return;
-      }
-      filterBtnRef.current?.measure((x, y, w, h, px, py) => {
-        const windowWidth = Dimensions.get('window').width;
-        setDropdownPos({ top: py + h + 6, right: windowWidth - px - w });
-        setIsDropdownOpen(true);
-      });
-    } else {
-      setIsIpDrawerOpen(true);
-    }
-  };
+  const rightAction = (
+    <View style={styles.headerActions}>
+      {selectedIpId !== null && (
+        <Pressable
+          onPress={() => onCreateGroup?.(selectedIpId)}
+          style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
+        >
+          <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
+          <Text style={styles.newBtnText}>新建</Text>
+        </Pressable>
+      )}
+    </View>
+  );
 
-  const headerRightAction = (
-    <View ref={filterBtnRef}>
-      <Pressable onPress={handleFilterPress} style={({ pressed }) => [styles.headerFilterBtn, pressed && styles.pressed]}>
-        <BlurView intensity={50} style={styles.headerFilterBlur} tint="light">
-          <LiquidGlassBezel radius={16} />
-          <View style={styles.headerFilterInner}>
-            <Text numberOfLines={1} style={styles.headerFilterText}>{selectedIpName}</Text>
-            <Ionicons color={colors.text.secondary} name={ipScopes.length <= 8 ? "chevron-down" : "chevron-back"} size={14} />
+  const listHeader = (
+    <View style={styles.topSection}>
+      {mode && onSelectMode && (
+        <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} />
+      )}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRail} style={{ marginHorizontal: -16 }}>
+        <Pressable
+          onPress={() => setSelectedIpId(null)}
+          style={[styles.ipPill, selectedIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
+        >
+          <Text style={[styles.ipPillText, selectedIpId === null ? styles.ipPillTextActive : styles.ipPillTextInactive]}>全部 IP</Text>
+          <View style={selectedIpId === null ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
+            <Text style={[styles.ipPillBadgeText, selectedIpId === null ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>
+              {ipScopes.reduce((acc, ip) => acc + ip.groupCount, 0)}
+            </Text>
           </View>
-        </BlurView>
-      </Pressable>
+        </Pressable>
+        {ipScopes.map((ip) => {
+          const isSelected = selectedIpId === ip.id;
+          return (
+            <Pressable
+              key={ip.id}
+              onPress={() => setSelectedIpId(ip.id)}
+              style={[styles.ipPill, isSelected ? styles.ipPillActive : styles.ipPillInactive]}
+            >
+              {!isSelected && <View style={styles.ipPillDot} />}
+              <Text style={[styles.ipPillText, isSelected ? styles.ipPillTextActive : styles.ipPillTextInactive]}>{ip.name}</Text>
+              <View style={isSelected ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
+                <Text style={[styles.ipPillBadgeText, isSelected ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>{ip.groupCount}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+        {onCreateFirstIp && (
+          <Pressable onPress={onCreateFirstIp} style={[styles.ipPill, styles.ipPillCreate]}>
+            <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
+            <Text style={[styles.ipPillText, styles.ipPillTextCreate]}>新建 IP</Text>
+          </Pressable>
+        )}
+      </ScrollView>
     </View>
   );
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} rightAction={headerRightAction} title="分组" titleSlot={titleSlot}>
+    <ScreenScaffold showHeader={false} backgroundColor={protoColors.surface} contentContainerStyle={{ paddingHorizontal: 16 }} decorativeTitle={undefined} footer={footer} title="">
       <PageStateBlock
         loadingComponent={<ListSkeleton />}
-        emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
-        emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"
-        emptyContainerStyle={styles.emptyGuideOffset}
-        emptyIconName="folder-open-outline"
-        emptyTitle={commonEmptyStateCopy.noGroupsTitle}
         errorMessage={errorMessage}
-        isEmpty={!isLoading && groups.length === 0}
+        isEmpty={false} emptyTitle="" emptyDescription=""
         loading={isLoading}
         loadingDescription="本地分组数据读取完成后，这里会展示全部分组。"
         loadingTitle="正在读取分组"
@@ -194,11 +237,49 @@ export function GlobalGroupsScreen({
         <SectionList
           contentContainerStyle={styles.list}
           keyExtractor={(group) => String(group.id)}
-          ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            !isLoading && groups.length === 0 ? (
+              <View style={styles.emptyInline}>
+                <MaterialIcons name="folder-open" size={32} color={protoColors.outlineVariant} />
+                <Text style={styles.emptyInlineTitle}>还没有分组</Text>
+                <Text style={styles.emptyInlineDesc}>分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。</Text>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={isLoadingMore ? <ActivityIndicator color={protoColors.primary} style={styles.loadingMore} /> : null}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          renderItem={({ item: group }) => <View style={styles.groupCardWrapper}><Pressable onLongPress={() => setActionGroup(group)} onPress={() => onOpenGroup(group.ipId, group.id)} style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}><View style={styles.groupCardInner}><View style={styles.coverWrap}>{group.coverThumbnailFileUri ? <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} /> : <View style={styles.coverEmpty}><Ionicons color={colors.primary.default} name="images-outline" size={22} /></View>}</View><GroupCardCopy group={group} /></View></Pressable></View>}
-          renderSectionHeader={({ section }) => <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{section.label}</Text><Text style={styles.sectionCount}>{section.data.length}</Text></View>}
+          renderItem={({ item: group }) => (
+            <View style={styles.groupCardWrapper}>
+              <Pressable
+                onLongPress={() => setActionGroup(group)}
+                onPress={() => onOpenGroup(group.ipId, group.id)}
+                style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressedCard]}
+              >
+                <View style={styles.groupCardInner}>
+                  <View style={styles.coverWrap}>
+                    <View style={[StyleSheet.absoluteFill, styles.coverLayer2]} />
+                    <View style={[StyleSheet.absoluteFill, styles.coverLayer1]} />
+                    <View style={styles.coverImageContainer}>
+                      {group.coverThumbnailFileUri ? (
+                        <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                      ) : (
+                        <View style={styles.coverEmpty}><MaterialIcons color={protoColors.outlineVariant} name="image" size={22} /></View>
+                      )}
+                    </View>
+                  </View>
+                  <GroupCardCopy group={group} onOpenGroup={onOpenGroup} setActionGroup={setActionGroup} />
+                </View>
+              </Pressable>
+            </View>
+          )}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>ARCHIVE GROUPS ({section.data.length})</Text>
+              <Text style={styles.sectionType}>{section.label}</Text>
+            </View>
+          )}
           sections={groupedSections}
           showsVerticalScrollIndicator={false}
           style={styles.listViewport}
@@ -230,7 +311,6 @@ export function GlobalGroupsScreen({
       message="删除分组不会删除图片，图片会保留在所属 IP 中。"
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
-      headerBadge="IP 分组"
       visible={Boolean(actionGroup)}
     />
     <GroupRenameDialog
@@ -240,71 +320,6 @@ export function GlobalGroupsScreen({
       space={space}
       visible={Boolean(renameGroup)}
     />
-      <Modal
-        visible={isDropdownOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsDropdownOpen(false)}
-      >
-        <Pressable accessibilityLabel="关闭选择" onPress={() => setIsDropdownOpen(false)} style={StyleSheet.absoluteFill} />
-        <View style={[styles.menu, { top: dropdownPos.top, right: dropdownPos.right }]}>
-          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: radius.lg }]}>
-            <BlurView intensity={65} style={StyleSheet.absoluteFill} tint="light" />
-          </View>
-          <LiquidGlassBezel radius={radius.lg} />
-          <View style={styles.menuContent}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setSelectedIpId(null);
-                setIsDropdownOpen(false);
-              }}
-              style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
-            >
-              <View style={[StyleSheet.absoluteFill, styles.menuRowBg, selectedIpId === null ? styles.menuRowActiveBg : null]} />
-              <Text numberOfLines={1} style={[styles.menuText, selectedIpId === null ? styles.menuTextActive : null]}>全部 IP</Text>
-              <Ionicons color={selectedIpId === null ? colors.primary.active : colors.text.tertiary} name={selectedIpId === null ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
-            </Pressable>
-            {ipScopes.map((ip) => {
-              const selected = selectedIpId === ip.id;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  key={ip.id}
-                  onPress={() => {
-                    setSelectedIpId(ip.id);
-                    setIsDropdownOpen(false);
-                  }}
-                  style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
-                >
-                  <View style={[StyleSheet.absoluteFill, styles.menuRowBg, selected ? styles.menuRowActiveBg : null]} />
-                  <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{ip.name}</Text>
-                  <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </Modal>
-      <AssetFilterDrawer onClose={() => setIsIpDrawerOpen(false)} scrollable={false} visible={isIpDrawerOpen}>
-      <OptionSelectRow
-        label="全部 IP"
-        onPress={() => {
-          setSelectedIpId(null);
-          setIsIpDrawerOpen(false);
-        }}
-        selected={selectedIpId === null}
-      />
-      <FlatList
-        data={ipScopes}
-        keyExtractor={(ip) => String(ip.id)}
-        ListFooterComponent={isLoadingMoreScopes ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
-        onEndReached={loadMoreScopes}
-        onEndReachedThreshold={0.5}
-        renderItem={({ item: ip }) => <OptionSelectRow label={ip.name} onPress={() => { setSelectedIpId(ip.id); setIsIpDrawerOpen(false); }} selected={selectedIpId === ip.id} />}
-        style={styles.scopeList}
-      />
-    </AssetFilterDrawer>
     <AppDialog
       danger
       message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内图片会保留并移动到未分组。` : ''}
@@ -318,21 +333,32 @@ export function GlobalGroupsScreen({
   );
 }
 
-function GroupCardCopy({ group }: { group: GlobalGroupListItem }) {
+function GroupCardCopy({ group, onOpenGroup, setActionGroup }: { group: GlobalGroupListItem, onOpenGroup: (ipId: number, groupId: number) => void, setActionGroup: (group: GlobalGroupListItem) => void }) {
   return (
     <View style={styles.groupBody}>
-      <View style={styles.groupHeader}>
-        <Text numberOfLines={1} style={styles.groupName}>
-          {group.name}
+      <View>
+        <View style={styles.groupHeader}>
+          <Text numberOfLines={1} style={styles.groupName}>
+            {group.name}
+          </Text>
+        </View>
+        <Text numberOfLines={1} style={styles.groupIpName}>
+          {group.ipName}
         </Text>
-        <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
       </View>
-      <Text numberOfLines={1} style={styles.metaText}>
-        {group.ipName}
-      </Text>
-      <Text style={styles.metaText}>
-        {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
-      </Text>
+      <View style={styles.groupFooter}>
+        <Text style={styles.groupFooterMeta}>
+          {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
+        </Text>
+        <View style={styles.groupActions}>
+          <Pressable onPress={() => setActionGroup(group)} style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}>
+            <MaterialIcons name="more-horiz" size={14} color={protoColors.secondary} />
+          </Pressable>
+          <Pressable onPress={() => onOpenGroup(group.ipId, group.id)} style={({ pressed }) => [styles.groupActionBtnPrimary, pressed && styles.pressed]}>
+            <MaterialIcons name="arrow-forward" size={13} color={protoColors.onPrimary} />
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -341,90 +367,207 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
+  pressedCard: {
+    transform: [{ scale: 0.995 }],
+  },
+  topSection: {
+    paddingBottom: 8,
+    paddingTop: 4,
+    gap: 10,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  newBtn: {
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: protoColors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  newBtnText: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.66,
+    color: protoColors.onPrimary,
+    fontWeight: '600',
+  },
+  ipRail: {
+    gap: 6,
+    paddingVertical: 2,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  ipPill: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ipPillActive: {
+    backgroundColor: protoColors.primary,
+  },
+  ipPillInactive: {
+    backgroundColor: protoColors.surfaceContainerLowest,
+    borderColor: 'rgba(196,199,199,0.3)', // outline-variant/30
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  ipPillCreate: {
+    backgroundColor: protoColors.primary,
+    borderColor: protoColors.primary,
+  },
+  ipPillTextCreate: {
+    color: protoColors.onPrimary,
+  },
+  ipPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: protoColors.primary,
+  },
+  ipPillText: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.66,
+    fontWeight: '600',
+  },
+  ipPillTextActive: {
+    color: protoColors.onPrimary,
+  },
+  ipPillTextInactive: {
+    color: protoColors.onSurface,
+  },
+  ipPillBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  ipPillBadgeInactive: {
+    backgroundColor: protoColors.surfaceContainerLow,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },  ipPillBadgeText: {
+    fontFamily: typography.family.mono,
+    fontSize: 9,
+    lineHeight: 10,
+    fontWeight: '500',
+    letterSpacing: 0.72, // 0.08em
+  },
+  ipPillBadgeTextActive: {
+    color: protoColors.onPrimary,
+  },
+  ipPillBadgeTextInactive: {
+    color: protoColors.secondary,
+  },
   list: {
-    gap: rhythm.entryCardGap,
-    paddingTop: spacing[2],
-    paddingBottom: spacing[6],
+    gap: 10,
+    paddingBottom: 24,
   },
   listViewport: {
     flex: 1,
   },
   loadingMore: {
-    marginVertical: spacing[4],
+    marginVertical: 16,
   },
-  scopeList: {
-    flex: 1,
-  },
-  emptyGuideOffset: {
-    paddingTop: spacing[8],
-  },
-  headerFilterBtn: {
-    ...shadows.sm,
-    shadowColor: '#3A2E1D',
-    shadowOpacity: 0.1,
-    borderRadius: 16,
-    height: 32,
-    maxWidth: 140,
-    minWidth: 80,
-  },
-  headerFilterBlur: {
-    borderRadius: 16,
-    flex: 1,
-    overflow: 'hidden',
-  },
-  headerFilterInner: {
-    flexDirection: 'row',
+  emptyInline: {
     alignItems: 'center',
-    paddingHorizontal: 12,
-    gap: 4,
-    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
   },
-  headerFilterText: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-    fontSize: 13,
-    flexShrink: 1,
+  emptyInlineTitle: {
+    fontFamily: typography.family.base,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: protoColors.onSurface,
   },
-  sectionBlock: {
-    gap: rhythm.listCardGap,
+  emptyInlineDesc: {
+    fontFamily: typography.family.base,
+    fontSize: 12,
+    lineHeight: 16,
+    color: protoColors.outline,
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[1],
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   sectionTitle: {
-    ...typography.textStyles.sectionTitle,
+    fontFamily: typography.family.mono,
+    fontSize: 10,
+    lineHeight: 12,
+    textTransform: 'uppercase',
+    color: protoColors.outline,
+    letterSpacing: 0.8, // 0.08em
+    fontWeight: '500',
   },
-  sectionCount: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
+  sectionType: {
+    fontFamily: typography.family.mono,
+    fontSize: 10,
+    lineHeight: 12,
+    color: protoColors.secondary,
+    letterSpacing: 0.8, // 0.08em
+    fontWeight: '500',
   },
   groupCardWrapper: {
-    paddingBottom: rhythm.microGap,
+    // paddingBottom wrapper removed, gap covers it
   },
   groupCardFloating: {
-    backgroundColor: colors.background.elevated,
-    borderColor: colors.border.default,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    ...shadows.sm,
+    backgroundColor: protoColors.surfaceContainerLowest,
+    borderColor: 'rgba(0,0,0,0.04)', // border-black/[0.04]
+    borderRadius: 12,
+    borderWidth: 1,
   },
   groupCardInner: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     flexDirection: 'row',
-    gap: rhythm.listCardGap,
-    minHeight: 80,
-    padding: spacing[3],
+    gap: 12,
+    padding: 12,
   },
   coverWrap: {
-    backgroundColor: colors.background.empty,
-    borderRadius: radius.md,
+    width: 80,
+    height: 80,
     flexShrink: 0,
-    height: 74,
+    position: 'relative',
+  },
+  coverLayer2: {
+    backgroundColor: protoColors.surfaceContainerHigh,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)', // border-black/[0.03]
+    transform: [{ translateX: 4 }, { translateY: -4 }],
+  },
+  coverLayer1: {
+    backgroundColor: protoColors.surfaceContainer,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+    transform: [{ translateX: 2 }, { translateY: -2 }],
+  },
+  coverImageContainer: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: protoColors.surfaceContainer,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
     overflow: 'hidden',
-    width: 92,
   },
   coverEmpty: {
     alignItems: 'center',
@@ -437,69 +580,98 @@ const styles = StyleSheet.create({
   },
   groupBody: {
     flex: 1,
-    gap: spacing[2],
+    justifyContent: 'space-between',
+    paddingVertical: 2,
     minWidth: 0,
   },
   groupHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
     justifyContent: 'space-between',
+    marginBottom: 2,
   },
   groupName: {
-    ...typography.textStyles.bodyStrong,
-    flex: 1,
-  },
-  groupType: {
-    ...typography.textStyles.micro,
-    backgroundColor: colors.background.tag,
-    borderRadius: radius.pill,
-    color: colors.primary.active,
-    overflow: 'hidden',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
-  metaText: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
-  },
-  menu: {
-    ...shadows.floating,
-    borderRadius: radius.lg,
-    minWidth: 156,
-    position: 'absolute',
-    zIndex: 999,
-    elevation: 99,
-    overflow: 'hidden',
-  },
-  menuContent: {
-    padding: spacing[2],
-    gap: spacing[1],
-  },
-  menuRow: {
-    alignItems: 'center',
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    gap: spacing[2],
-    minHeight: 34,
-    paddingHorizontal: spacing[2],
-    overflow: 'hidden',
-  },
-  menuRowBg: {
-    backgroundColor: 'transparent',
-  },
-  menuRowActiveBg: {
-    backgroundColor: 'rgba(86, 107, 72, 0.28)',
-  },
-  menuText: {
-    ...typography.textStyles.micro,
-    color: colors.text.title,
-    flex: 1,
+    fontFamily: typography.family.base,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '600',
-    minWidth: 0,
-    zIndex: 1,
+    color: protoColors.primary,
+    letterSpacing: -0.075, // -0.005em
+    flex: 1,
+    paddingRight: 8,
   },
-  menuTextActive: {
-    color: colors.primary.dark,
+  groupTypeBadge: {
+    fontFamily: typography.family.mono,
+    fontSize: 9,
+    lineHeight: 10,
+    fontWeight: '500',
+    letterSpacing: 0.72, // 0.08em
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: protoColors.surfaceContainerLow,
+    color: protoColors.secondary,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(196,199,199,0.3)', // outline-variant/30
+    overflow: 'hidden',
+  },
+  groupIpName: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    letterSpacing: 0.66, // 0.06em
+    color: protoColors.secondary,
+  },
+  groupFooter: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  groupFooterMeta: {
+    fontFamily: typography.family.mono,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '500',
+    letterSpacing: 0.8, // 0.08em
+    color: protoColors.outline,
+  },
+  groupActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  groupActionBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: protoColors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupActionBtnPrimary: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: protoColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

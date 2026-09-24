@@ -1393,6 +1393,7 @@ export default function App() {
             <OrganizeScreen
               space={activeSpace}
               onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
+              onCreateGroup={(ipId) => pushRoute({ name: 'create-group', ipId, space: activeSpace })}
               onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: activeSpace })}
               onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
               onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: activeSpace })}
@@ -1482,14 +1483,10 @@ export default function App() {
     content = (
       <CreateIpScreen
         space={currentRoute.space}
-        onCancel={() => resetHome()}
+        onCancel={() => popRoute()}
         onCreated={(ipId) => {
           setLibraryRefreshToken((current) => current + 1);
-          if (currentRoute.space === 'personal') {
-            replaceCurrentRoute({ name: 'ip-detail', ipId, space: currentRoute.space });
-            return;
-          }
-          resetHome('recent');
+          replaceCurrentRoute({ name: 'ip-detail', ipId, space: currentRoute.space });
         }}
       />
     );
@@ -1943,6 +1940,7 @@ export default function App() {
       <GlobalGroupsScreen
         space={currentRoute.space}
         onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: currentRoute.space })}
+          onCreateGroup={(ipId) => pushRoute({ name: 'create-group', ipId, space: currentRoute.space })}
         onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: currentRoute.space })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: currentRoute.space })}
         onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: currentRoute.space })}
@@ -2634,6 +2632,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
 
 
 

@@ -9,6 +9,7 @@ import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
+import { EmptyState } from '../components/EmptyState';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { GallerySkeleton } from '../components/GallerySkeleton';
@@ -288,7 +289,7 @@ export function FavoritesScreen({
         emptyIconName="star-outline"
         emptyTitle="还没有收藏图片"
         errorMessage={combinedError}
-        isEmpty={!combinedLoading && images.length === 0}
+        isEmpty={false}
         loading={combinedLoading}
         loadingDescription="本地收藏索引读取完成后，这里会展示收藏图片。"
         loadingTitle="正在读取收藏图片"
@@ -296,6 +297,13 @@ export function FavoritesScreen({
       >
 
         <VirtualizedAssetCollection
+          emptyComponent={
+            !combinedLoading && images.length === 0 ? (
+              <View style={{ marginTop: 100 }}>
+                <EmptyState title="还没有收藏图片" description="给图片加星标后，这里会展示当前所有收藏图片。" iconName="star-outline" variant="inline" />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{}}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
@@ -322,8 +330,8 @@ export function FavoritesScreen({
 
                   {favoriteMode === 'images' && (
                     multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
-                      <Pressable onPress={() => { multiSelect.clearSelection(); }} style={galleryHeaderStyles.selectionModeTextButton}>
-                        <Text style={galleryHeaderStyles.selectionModeText}>完成</Text>
+                      <Pressable disabled={selectableAssets.length === 0} onPress={multiSelect.toggleSelectAll} style={galleryHeaderStyles.selectionModeTextButton}>
+                        <Text style={galleryHeaderStyles.selectionModeText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
                       </Pressable>
                     ) : (
                       <Pressable onPress={() => multiSelect.enterSelection(images[0]?.id ?? 0)} style={galleryHeaderStyles.selectionModeTextButton}>
@@ -384,7 +392,7 @@ export function FavoritesScreen({
       emptyIconName="star-outline"
       emptyTitle="还没有收藏 AI 消息"
       errorMessage={aiFavoriteErrorMessage}
-      isEmpty={!aiFavoritesLoading && aiMessages.length === 0}
+      isEmpty={false}
       loading={aiFavoritesLoading}
       loadingDescription="正在读取本地 AI 消息收藏。"
       loadingTitle="正在读取收藏"
@@ -800,6 +808,11 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
+
+
+
+
 
 
 

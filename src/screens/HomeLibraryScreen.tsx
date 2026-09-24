@@ -486,6 +486,7 @@ export function HomeLibraryScreen({
               errorMessage={errorMessage}
               errorTitle={commonErrorCopy.listUnavailableTitle}
               isEmpty={isSearchOrFilterEmpty}
+              emptyVariant="card"
               loading={false}
               onEmptyAction={onCreateIp}
               onRetry={reload}
@@ -864,5 +865,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
 });
+
 
 

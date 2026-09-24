@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
 import { BlurView } from 'expo-blur';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
@@ -363,6 +364,12 @@ export function GroupImagesScreen({
             <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setIsFilterDrawerOpen(true)}>
               <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
             </Pressable>
+            <Pressable onPress={onImportImages} style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#111827', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
+                <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+              <Text style={{ fontSize: 11, fontWeight: '500', color: '#FFFFFF', letterSpacing: 0.5 }}>导入</Text>
+            </Pressable>
           </>
         }
       />
@@ -424,12 +431,20 @@ export function GroupImagesScreen({
               count={images.length}
               animatedStyle={heroStyle}
               topRightActions={
-                <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
-                  <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
-                  <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
-                    {hasActiveFilters ? '已筛选' : '筛选'}
-                  </Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+                    <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+                    <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
+                      {hasActiveFilters ? '已筛选' : '筛选'}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={onImportImages} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', height: 32, paddingHorizontal: 12, borderRadius: 16, gap: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
+                    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
+                      <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
+                    </Svg>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF', letterSpacing: 0.5 }}>导入</Text>
+                  </Pressable>
+                </View>
               }
               bottomContent={
                 <>
@@ -780,6 +795,7 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
 
 
 

@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+
+const actionSheetPatternImage = require('../../docs/black.png');
 
 export interface AppActionSheetItem {
   key: string;
@@ -19,75 +21,63 @@ interface AppActionSheetProps {
   visible: boolean;
   title: string;
   message?: string;
-  headerBadge?: string;
   items: AppActionSheetItem[];
   onClose: () => void;
   closeOnSelect?: boolean;
   cancelLabel?: string;
 }
 
-export function AppActionSheet({ visible, title, message, headerBadge, items, onClose, closeOnSelect = true, cancelLabel = '取消' }: AppActionSheetProps) {
+export function AppActionSheet({ visible, title, message, items, onClose, closeOnSelect = true, cancelLabel = '取消' }: AppActionSheetProps) {
   const insets = useSafeAreaInsets();
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="关闭操作面板" onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing[3]) + spacing[3] }]}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[3] }]}>
+          <Image resizeMode="stretch" source={actionSheetPatternImage} style={styles.patternImage} />
           <View style={styles.handle} />
           <View style={styles.copy}>
-            <View style={styles.titleRow}>
-              <Text numberOfLines={2} style={styles.title}>{title}</Text>
-              {headerBadge ? (
-                <View style={styles.badgeWrap}>
-                  <Text style={styles.badgeText}>{headerBadge}</Text>
-                </View>
-              ) : null}
-            </View>
+            <Text numberOfLines={2} style={styles.title}>{title}</Text>
             {message ? <Text numberOfLines={3} style={styles.message}>{message}</Text> : null}
           </View>
           <View style={styles.list}>
-            {items.map((item, index) => (
-              <View key={item.key}>
-                {item.danger && index > 0 && !items[index - 1].danger && (
-                  <View style={styles.divider} />
-                )}
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={item.disabled}
-                  onPress={() => {
-                    if (closeOnSelect) {
-                      onClose();
-                    }
-                    item.onPress();
-                  }}
-                  style={({ pressed }) => [
-                    styles.row,
-                    item.danger ? styles.dangerRow : null,
-                    item.disabled ? styles.disabled : null,
-                    pressed && !item.disabled ? styles.pressed : null,
-                  ]}
-                >
-                  {item.icon ? (
-                    <View style={styles.iconWrap}>
-                      <Ionicons
-                        color={item.danger ? colors.semantic.danger : colors.text.title}
-                        name={item.icon}
-                        size={18}
-                      />
-                    </View>
-                  ) : null}
-                  <View style={styles.rowCopy}>
-                    <Text numberOfLines={1} style={[styles.rowLabel, item.danger ? styles.dangerText : null]}>{item.label}</Text>
-                    {item.meta ? <Text numberOfLines={1} style={styles.rowMeta}>{item.meta}</Text> : null}
+            {items.map((item) => (
+              <Pressable
+                accessibilityRole="button"
+                disabled={item.disabled}
+                key={item.key}
+                onPress={() => {
+                  if (closeOnSelect) {
+                    onClose();
+                  }
+                  item.onPress();
+                }}
+                style={({ pressed }) => [
+                  styles.row,
+                  item.disabled ? styles.disabled : null,
+                  pressed && !item.disabled ? styles.pressed : null,
+                ]}
+              >
+                {item.icon ? (
+                  <View style={[styles.iconWrap, item.danger ? styles.dangerIconWrap : null]}>
+                    <Ionicons
+                      color={item.danger ? colors.semantic.danger : colors.primary.default}
+                      name={item.icon}
+                      size={18}
+                    />
                   </View>
-                  <Ionicons
-                    color={!closeOnSelect && item.selected ? colors.text.title : colors.border.strong}
-                    name={closeOnSelect ? 'chevron-forward' : item.selected ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={15}
-                  />
-                </Pressable>
-              </View>
+                ) : null}
+                <View style={styles.rowCopy}>
+                  <Text numberOfLines={1} style={[styles.rowLabel, item.danger ? styles.dangerText : null]}>{item.label}</Text>
+                  {item.meta ? <Text numberOfLines={1} style={styles.rowMeta}>{item.meta}</Text> : null}
+                </View>
+                <Ionicons
+                  color={!closeOnSelect && item.selected ? colors.primary.default : colors.text.tertiary}
+                  name={closeOnSelect ? 'chevron-forward' : item.selected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={15}
+                />
+              </Pressable>
             ))}
           </View>
           <Pressable onPress={onClose} style={({ pressed }) => [styles.cancel, pressed && styles.pressed]}>
@@ -101,17 +91,23 @@ export function AppActionSheet({ visible, title, message, headerBadge, items, on
 
 const styles = StyleSheet.create({
   overlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(22, 30, 40, 0.32)',
     flex: 1,
     justifyContent: 'flex-end',
   },
   sheet: {
     ...shadows.floating,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.page,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
+    gap: rhythm.listCardGap,
+    overflow: 'hidden',
     paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingTop: spacing[3],
+    paddingTop: spacing[2],
+  },
+  patternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.24,
   },
   handle: {
     alignSelf: 'center',
@@ -119,67 +115,43 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     height: 4,
     width: 38,
-    marginBottom: spacing[2],
   },
   copy: {
     gap: rhythm.microGap,
-    paddingBottom: spacing[3],
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingTop: spacing[1],
   },
   title: {
-    ...typography.textStyles.title3,
+    ...typography.textStyles.navTitle,
     color: colors.text.title,
-    fontWeight: '600',
-  },
-  badgeWrap: {
-    backgroundColor: colors.background.page,
-    paddingHorizontal: spacing[2],
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-  },
-  badgeText: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
   },
   message: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
   },
   list: {
-    gap: spacing[2],
-  },
-  divider: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border.subtle,
-    borderStyle: 'dashed',
-    marginVertical: spacing[2],
-    marginHorizontal: spacing[1],
+    gap: rhythm.microGap,
   },
   row: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.listCardGap,
     minHeight: 54,
     paddingHorizontal: spacing[3],
   },
-  dangerRow: {
-    backgroundColor: colors.semantic.dangerBackground,
-    borderColor: colors.semantic.dangerBackground,
-  },
   iconWrap: {
     alignItems: 'center',
+    backgroundColor: colors.primary.weak,
     borderRadius: radius.sm,
     height: 34,
     justifyContent: 'center',
     width: 34,
+  },
+  dangerIconWrap: {
+    backgroundColor: colors.semantic.dangerBackground,
   },
   rowCopy: {
     flex: 1,
@@ -199,16 +171,13 @@ const styles = StyleSheet.create({
   },
   cancel: {
     alignItems: 'center',
-    backgroundColor: colors.background.page,
-    borderRadius: radius.md,
-    minHeight: 48,
+    minHeight: 42,
     justifyContent: 'center',
-    marginTop: spacing[3],
   },
   cancelText: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-    fontWeight: '500',
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '600',
   },
   disabled: {
     opacity: 0.42,

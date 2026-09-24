@@ -11,15 +11,17 @@ import { SearchBar } from '../components/SearchBar';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { runWithDatabaseSpace, tagRepository, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
+import { OrganizeSegmentedControl, protoColors, type OrganizeMode } from '../components/OrganizeShared';
 
 interface TagsOverviewScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
-  titleSlot?: ReactNode;
+  mode?: OrganizeMode;
+  onSelectMode?: (mode: OrganizeMode) => void;
   onOpenTag: (tagId: number) => void;
 }
 
@@ -30,7 +32,7 @@ interface TagOverviewMeta {
   recentTags: TagUsageItem[];
 }
 
-export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, titleSlot, onOpenTag }: TagsOverviewScreenProps) {
+export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mode, onSelectMode, onOpenTag }: TagsOverviewScreenProps) {
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
@@ -43,6 +45,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [isBatchDeleteDialogVisible, setIsBatchDeleteDialogVisible] = useState(false);
+
   const {
     items: tags,
     hasMore,
@@ -85,6 +88,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
       },
     }
   );
+
   const visibleTags = tags;
   const shouldShowPopular = !debouncedSearchText.trim() && popularTags.length > 0;
   const shouldShowRecent = !debouncedSearchText.trim() && recentTags.length > 0;
@@ -242,16 +246,29 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
         onPress={isSelectionMode ? clearSelectionMode : () => enterSelectionMode()}
         style={({ pressed }) => [styles.headerAction, isSelectionMode ? styles.headerActionActive : null, pressed && styles.pressed]}
       >
-        <Ionicons color={isSelectionMode ? colors.primary.active : colors.text.title} name={isSelectionMode ? 'close' : 'checkmark-circle-outline'} size={20} />
+        <Ionicons color={isSelectionMode ? protoColors.primary : protoColors.onSurface} name={isSelectionMode ? 'close' : 'checkmark-circle-outline'} size={18} />
       </Pressable>
-      <Pressable accessibilityLabel="新增标签" onPress={() => setIsCreateDialogVisible(true)} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
-        <Ionicons color={colors.primary.default} name="add" size={20} />
+      <Pressable
+        accessibilityLabel="新增标签"
+        onPress={() => setIsCreateDialogVisible(true)}
+        style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
+      >
+        <Ionicons color={protoColors.onPrimary} name="add" size={14} />
+        <Text style={styles.newBtnText}>新建</Text>
       </Pressable>
     </View>
   );
 
   const listHeader = (
     <View style={styles.listHeader}>
+      {mode && onSelectMode && (
+        <View style={styles.topSection}>
+          <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} />
+        </View>
+      )}
+      <View style={styles.searchBlock}>
+        <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
+      </View>
       {shouldShowRecent ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>最近使用</Text>
@@ -296,10 +313,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="tags" decorativeTitle="Tags" footer={footer} rightAction={rightAction} title="标签" titleSlot={titleSlot}>
-      <View style={styles.searchBlock}>
-        <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
-      </View>
+    <ScreenScaffold showHeader={false} backgroundColor={protoColors.surface} contentContainerStyle={{ paddingHorizontal: 16 }} decorativeTitle={undefined} footer={footer} title="">
       {isSelectionMode ? (
         <View style={styles.selectionPanel}>
           <View style={styles.selectionCopy}>
@@ -336,23 +350,32 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
         loadingComponent={<TagSkeleton />}
         emptyActionLabel={undefined}
         emptyDescription="给图片添加标签后，这里会展示标签名称、使用次数和结果入口。"
-        emptyContainerStyle={styles.emptyGuideOffset}
         emptyIconName="pricetags-outline"
-        emptyTitle="还没有标签"
+        emptyTitle=""
         errorMessage={errorMessage}
-        isEmpty={!isLoading && visibleTags.length === 0}
+        isEmpty={false}
         loading={isLoading}
-        loadingDescription="本地标签数据读取完成后，这里会展示全部标签。"
+        loadingDescription="读取标签列表..."
         loadingTitle="正在读取标签"
+        onEmptyAction={undefined}
         onRetry={reload}
       >
-          <FlatList
-            columnWrapperStyle={styles.tagRow}
-            contentContainerStyle={styles.tagList}
-            data={visibleTags}
-            keyExtractor={(item) => String(item.id)}
-            ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
-            ListHeaderComponent={listHeader}
+        <FlatList
+          contentContainerStyle={styles.tagList}
+          data={visibleTags}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={(tag) => String(tag.id)}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            !isLoading && visibleTags.length === 0 ? (
+              <View style={styles.emptyInline}>
+                <Ionicons name="pricetags-outline" size={32} color={protoColors.outlineVariant} />
+                <Text style={styles.emptyInlineTitle}>还没有标签</Text>
+                <Text style={styles.emptyInlineDesc}>给图片添加标签后，这里会展示标签名称、使用次数和结果入口。</Text>
+              </View>
+            ) : null
+          }
             numColumns={2}
             onEndReached={loadMore}
             onEndReachedThreshold={0.5}
@@ -431,26 +454,55 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, tit
 }
 
 const styles = StyleSheet.create({
+  topSection: {
+    paddingTop: spacing[1],
+    paddingBottom: spacing[3],
+  },
   headerActions: {
     flexDirection: 'row',
-    gap: spacing[2],
+    alignItems: 'center',
+    gap: 6,
+  },
+  newBtn: {
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: protoColors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  newBtnText: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.66,
+    color: protoColors.onPrimary,
+    fontWeight: '600',
   },
   headerAction: {
     alignItems: 'center',
     backgroundColor: colors.background.elevated,
-    borderColor: colors.border.default,
-    borderRadius: 16,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    height: 32,
+    height: 28,
     justifyContent: 'center',
-    width: 32,
+    width: 28,
+    ...shadows.sm,
   },
   headerActionActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: protoColors.surfaceContainerHigh,
+    borderColor: protoColors.outlineVariant,
   },
   searchBlock: {
-    marginBottom: 0,
+    marginBottom: spacing[4],
   },
   selectionPanel: {
     backgroundColor: colors.background.surface,
@@ -477,7 +529,7 @@ const styles = StyleSheet.create({
   },
   selectionButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
+    backgroundColor: protoColors.surfaceContainerHigh,
     borderRadius: radius.pill,
     justifyContent: 'center',
     minHeight: 34,
@@ -501,11 +553,26 @@ const styles = StyleSheet.create({
     color: colors.semantic.danger,
     fontWeight: '700',
   },
-  emptyGuideOffset: {
-    paddingTop: spacing[8],
+  emptyInline: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
   },
-  content: {
-    gap: rhythm.screenSectionGap,
+  emptyInlineTitle: {
+    fontFamily: typography.family.base,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: protoColors.onSurface,
+  },
+  emptyInlineDesc: {
+    fontFamily: typography.family.base,
+    fontSize: 12,
+    lineHeight: 16,
+    color: protoColors.outline,
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   section: {
     gap: rhythm.listCardGap,
@@ -517,52 +584,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
   },
-  resultPanel: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[3],
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-  },
-  resultLabel: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-    width: 48,
-  },
-  resultCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  resultTitle: {
-    ...typography.textStyles.bodyStrong,
-  },
-  resultMeta: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  resultAction: {
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary.weak,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-  },
-  resultActionText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-    fontWeight: '600',
-  },
-  popularGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: rhythm.compactGridGap,
-    rowGap: rhythm.compactGridGap,
-  },
   renamePanel: {
     alignItems: 'center',
     backgroundColor: colors.background.input,
@@ -572,16 +593,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     padding: spacing[2],
+    marginBottom: spacing[4],
   },
-  createPanel: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[2],
-    padding: spacing[2],
+  resultLabel: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    width: 48,
   },
   renameInput: {
     ...typography.textStyles.body,
@@ -589,6 +606,17 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 36,
     minWidth: 0,
+  },
+  resultAction: {
+    borderRadius: radius.pill,
+    backgroundColor: protoColors.surfaceContainerHigh,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  resultActionText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '600',
   },
   dialogInput: {
     ...typography.textStyles.body,
@@ -599,6 +627,12 @@ const styles = StyleSheet.create({
     color: colors.text.title,
     minHeight: 44,
     paddingHorizontal: spacing[3],
+  },
+  popularGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: rhythm.compactGridGap,
+    rowGap: rhythm.compactGridGap,
   },
   popularTag: {
     alignItems: 'center',
@@ -614,8 +648,8 @@ const styles = StyleSheet.create({
     width: '48.4%',
   },
   selectedTag: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: protoColors.surfaceContainerHigh,
+    borderColor: protoColors.outlineVariant,
   },
   popularName: {
     ...typography.textStyles.bodyStrong,
@@ -658,8 +692,8 @@ const styles = StyleSheet.create({
   },
   recentTagPill: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: protoColors.surfaceContainerHigh,
+    borderColor: protoColors.outlineVariant,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -668,8 +702,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
   },
   selectedPill: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: protoColors.surfaceContainerHigh,
+    borderColor: protoColors.outlineVariant,
   },
   tagName: {
     ...typography.textStyles.caption,
@@ -691,3 +725,12 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
 });
+
+
+
+
+
+
+
+
+
