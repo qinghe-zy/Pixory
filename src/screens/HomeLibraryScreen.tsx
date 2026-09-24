@@ -398,7 +398,7 @@ export function HomeLibraryScreen({
         ListHeaderComponent={
           <View style={styles.topArea}>
             <View style={[styles.headerTitleRow, { paddingHorizontal: 10 }]}>
-              <HomeBrandHeader space={space} />
+              <HomeBrandHeader space={space} refreshKey={refreshKey} />
               {rightSlot}
             </View>
             <View style={{ paddingHorizontal: 10 }}>
@@ -620,7 +620,7 @@ export function HomeLibraryScreen({
   );
 }
 
-function HomeBrandHeader({ space }: { space: PixorySpace }) {
+function HomeBrandHeader({ space, refreshKey }: { space: PixorySpace; refreshKey?: number }) {
   const [appUsedText, setAppUsedText] = useState('... GB');
   const [totalDiskText, setTotalDiskText] = useState('... GB');
 
@@ -653,7 +653,7 @@ function HomeBrandHeader({ space }: { space: PixorySpace }) {
     return () => {
       mounted = false;
     };
-  }, [space]);
+  }, [space, refreshKey]);
 
   return (
     <View style={styles.brandHeaderContainer}>
