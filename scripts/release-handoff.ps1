@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $version = $Version.Trim().TrimStart('v')
-if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "版本号格式无效：$Version" }
+if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw "版本号格式无效：$Version" }
 ${branch} = (& git -C $repoRoot branch --show-current).Trim()
 if ($branch -notin @('local-work', 'main')) {
   throw "自动远程交接只允许在 local-work 或 main 执行，当前分支为 $branch。"
