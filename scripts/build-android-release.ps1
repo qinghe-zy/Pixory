@@ -1,4 +1,6 @@
 param(
+  [string]$NewVersion = "",
+
   [string]$Version = ""
 )
 
@@ -18,6 +20,18 @@ if ($currentBranch -notin @('local-work', 'main')) {
   throw "打包只允许在 local-work 或 main 执行，当前分支为 $currentBranch。请回到版本开发分支。"
 }
 
+
+if ($NewVersion) {
+  if (-not $Version) {
+    $Version = (Get-Content -Raw -LiteralPath $packageJsonPath | ConvertFrom-Json).version
+  }
+  Write-Host "Auto-updating version from $Version to $NewVersion..."
+  node scripts/update-versions.js $Version $NewVersion
+  if ($LASTEXITCODE -ne 0) {
+    throw "Version update script failed with exit code $LASTEXITCODE."
+  }
+  $Version = $NewVersion
+}
 if (-not $Version) {
   $Version = (Get-Content -Raw -LiteralPath $packageJsonPath | ConvertFrom-Json).version
 }
@@ -91,3 +105,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Built and published physical-device release APK: $outputApk"
+
