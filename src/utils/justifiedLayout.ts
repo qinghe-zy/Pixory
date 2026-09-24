@@ -3,14 +3,12 @@
  *
  * Justified (equal-height row) layout engine.
  *
- * Reproduces the Google Photos / Flickr "justified grid" using a single-pass
- * greedy algorithm (O(N)).  Every image in a row shares the same height; widths
- * are solved analytically so the row fills the container exactly.
+ * Reproduces the Google Photos / Flickr "justified grid" using a single-pass algorithm (O(N)).
  *
- * Key formula for a row of k images with aspect ratios r₁…rk and gap G:
- *
- *   H_actual = (W − (k−1)·G) / Σrᵢ
- *   Wᵢ       = H_actual · rᵢ
+ * Enhanced with dual-layer layout protections:
+ * 1. Smart Breaking (防过小): Compares error deltas to prevent images from being squished too small.
+ * 2. Max Height Capping (防过大): Caps row height and uses proportional width allocation 
+ *    with `cover` cropping to prevent rows of portrait images from becoming overwhelmingly tall.
  *
  * This module is pure TypeScript with zero React / React-Native imports so it
  * can be exercised in plain Jest without a native environment.
@@ -23,13 +21,6 @@ export const JUSTIFIED_GAP = 2;
 
 /** Default target row height (px). */
 export const JUSTIFIED_TARGET_HEIGHT = 150;
-
-/**
- * Greedy tolerance multiplier.
- * A row is committed when computedHeight ≤ targetHeight × TOLERANCE.
- * 1.15 → the row breaks as soon as height would drop ≤ 15 % below target.
- */
-const TOLERANCE = 1.15;
 
 /**
  * Aspect-ratio clamp range.
@@ -109,30 +100,46 @@ export function computeJustifiedLayout(
   let ratioSum = 0;
   let currentTop = 0;
 
-  const commitRow = (rowHeight: number) => {
+  // Maximum allowed height for a row (1.5x multiplier)
+  const MAX_HEIGHT = targetHeight * 1.5;
+
+  const commitRow = (rowHeight: number, isLastRow = false) => {
+    // 【防过大】：强行限制最大行高 (如果是最后一行则不限制，保持 targetHeight)
+    const finalHeight = isLastRow ? rowHeight : Math.min(rowHeight, MAX_HEIGHT);
+
+    const availableWidth = containerWidth - Math.max(0, rowItems.length - 1) * gap;
+
     const cells = rowItems.map((item) => {
       const ratio = clampRatio(item.width, item.height);
+      
+      // 【防过大-辅助宽度分配】：
+      // 如果是最后一行，按真实比例渲染，不拉伸。
+      // 如果是常规行，宽度依然按比例强行瓜分可用宽度，无视 finalHeight 是否被压扁。
+      // 配合 UI 层的 resizeMode="cover" 可以完美解决裁切问题并保持右侧对齐。
+      const renderedWidth = isLastRow
+        ? Math.round(finalHeight * ratio)
+        : Math.round((ratio / ratioSum) * availableWidth);
+
       return {
         item,
-        renderedWidth: Math.round(rowHeight * ratio),
+        renderedWidth,
       };
     });
 
-    // Pixel-snapping: redistribute rounding error to the last cell so the row
-    // width equals containerWidth exactly.
-    const usedWidth =
-      cells.reduce((sum, c) => sum + c.renderedWidth, 0) +
-      (cells.length - 1) * gap;
-    const diff = containerWidth - usedWidth;
-    if (diff !== 0 && cells.length > 0) {
-      cells[cells.length - 1].renderedWidth += diff;
+    // Pixel-snapping: 把 Math.round 导致的几个像素误差补给最后一个元素，保证像素级贴合右边缘
+    if (!isLastRow && cells.length > 0) {
+      const usedWidth = cells.reduce((sum, c) => sum + c.renderedWidth, 0);
+      const diff = availableWidth - usedWidth;
+      if (diff !== 0) {
+        cells[cells.length - 1].renderedWidth += diff;
+      }
     }
 
-    const h = Math.round(rowHeight);
+    const h = Math.round(finalHeight);
     rows.push({ cells, height: h, top: currentTop });
     currentTop += h + gap;
 
-    // Reset accumulators.
+    // Reset accumulators
     rowItems = [];
     ratioSum = 0;
   };
@@ -140,35 +147,52 @@ export function computeJustifiedLayout(
   for (const item of items) {
     const ratio = clampRatio(item.width, item.height);
 
-    // Single-image shortcut: if one image alone would exceed the container
-    // width at target height, give it its own row at target height.
+    // Single-image shortcut: 如果单张图本身就已经非常宽，直接让它单独成行
     if (rowItems.length === 0 && ratio >= containerWidth / targetHeight) {
       rowItems = [item];
       ratioSum = ratio;
-      commitRow(targetHeight);
+      commitRow(targetHeight, false);
       continue;
     }
 
+    // 提前计算：如果强行把这张图加进当前行，行高会变成多少？
+    const nextRatioSum = ratioSum + ratio;
+    const nextAvailableWidth = containerWidth - rowItems.length * gap;
+    const heightWithNew = nextAvailableWidth / nextRatioSum;
+
+    // 【防过小】智能比价：如果加入新图导致行高比目标高度小，对比加和不加哪个误差更小
+    if (heightWithNew < targetHeight && rowItems.length > 0) {
+      const currentAvailableWidth = containerWidth - (rowItems.length - 1) * gap;
+      const heightWithoutNew = currentAvailableWidth / ratioSum;
+
+      const errorWithNew = Math.abs(heightWithNew - targetHeight);
+      const errorWithoutNew = Math.abs(heightWithoutNew - targetHeight);
+
+      if (errorWithoutNew <= errorWithNew) {
+        // 不加这张图更贴近目标高度！立刻结算当前行（让它略高一点），把新图留给下一行
+        commitRow(heightWithoutNew, false);
+        rowItems = [item];
+        ratioSum = ratio;
+        continue;
+      }
+    }
+
+    // 否则，将其加入当前行
     rowItems.push(item);
     ratioSum += ratio;
 
-    const availableWidth = containerWidth - (rowItems.length - 1) * gap;
-    const computedHeight = availableWidth / ratioSum;
-
-    if (computedHeight <= targetHeight * TOLERANCE) {
-      commitRow(computedHeight);
+    // 保底结算：一旦当前行高 <= 目标高度，说明已经填够了，可以直接结算
+    const currentAvailableWidth = containerWidth - (rowItems.length - 1) * gap;
+    const currentHeight = currentAvailableWidth / ratioSum;
+    
+    if (currentHeight <= targetHeight) {
+      commitRow(currentHeight, false);
     }
   }
 
-  // Flush the last incomplete row.
-  // Do NOT stretch it to fill the container — render it left-aligned at
-  // targetHeight to avoid one or two images being grotesquely enlarged.
+  // 尾行处理：不拉伸填满屏幕，而是固定在 targetHeight 左对齐展示
   if (rowItems.length > 0) {
-    const cells = rowItems.map((item) => ({
-      item,
-      renderedWidth: Math.round(targetHeight * clampRatio(item.width, item.height)),
-    }));
-    rows.push({ cells, height: targetHeight, top: currentTop });
+    commitRow(targetHeight, true);
   }
 
   return rows;
