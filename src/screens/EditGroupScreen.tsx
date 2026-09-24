@@ -405,7 +405,9 @@ export function EditGroupScreen({
                         </Text>
                         <Text style={styles.radioOptionDesc}>{option.description}</Text>
                       </View>
-                      <View style={styles.radioCircle} />
+                      <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
+                        {isSelected && <Ionicons name="checkmark" size={14} color={atelierColors.onPrimary} />}
+                      </View>
                     </Pressable>
                   );
                 })}
