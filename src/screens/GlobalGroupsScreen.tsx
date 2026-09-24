@@ -230,6 +230,7 @@ export function GlobalGroupsScreen({
       message="删除分组不会删除图片，图片会保留在所属 IP 中。"
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
+      headerBadge="IP 分组"
       visible={Boolean(actionGroup)}
     />
     <GroupRenameDialog
