@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 
 function Normalize-Version([string]$Value) {
   $normalized = $Value.Trim().TrimStart('v')
-  if ($normalized -notmatch '^\d+\.\d+\.\d+$') {
+  if ($normalized -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
     throw "版本号格式无效：$Value"
   }
   return $normalized
@@ -620,3 +620,4 @@ switch ($Action) {
     Migrate-LegacyDocuments
   }
 }
+

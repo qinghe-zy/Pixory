@@ -330,12 +330,12 @@
         <img src="assets/app-icon.png" alt="Pixory" class="w-14 h-14 sm:w-16 sm:h-16 rounded-[14px] sm:rounded-[16px] shadow-[0_8px_24px_rgba(23,43,40,0.15)] flex-shrink-0">
         <div>
           <h2 class="font-display text-[24px] sm:text-[28px] text-[#172B28] leading-tight tracking-[-0.02em]">下载 Pixory</h2>
-          <p class="font-serif text-[11px] sm:text-[13px] text-[#39665F] mt-1 tracking-[0.06em]" id="dl-version-subtitle">当前版本：<span id="dl-ver-num">2.8.6</span> · 最新 Android</p>
+          <p class="font-serif text-[11px] sm:text-[13px] text-[#39665F] mt-1 tracking-[0.06em]" id="dl-version-subtitle">当前版本：<span id="dl-ver-num">2.8.7.0</span> · 最新 Android</p>
         </div>
       </div>
       <!-- Changed to single column for mobile -->
       <div class="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:mb-8">
-        <a id="dl-direct-btn" href="https://mist01.com/downloads/Pixory-v2.8.6.apk"
+        <a id="dl-direct-btn" href="https://mist01.com/downloads/Pixory-v2.8.7.0.apk"
            class="group block p-4 sm:p-5 rounded-[16px] bg-white shadow-[0_4px_20px_rgba(23,43,40,0.1)] hover:shadow-[0_8px_32px_rgba(23,43,40,0.15)] transition-all duration-400 border border-[#39665F]/8 hover:-translate-y-0.5">
           <div class="flex items-center justify-between mb-1">
             <div class="flex items-center space-x-2.5">
@@ -1404,7 +1404,7 @@ document.querySelectorAll('.matrix-card').forEach(card => {
     fetch('https://mist01.com/update-version.json?v=' + Date.now())
       .then(r => r.json())
       .then(data => {
-        const ver = data.latestVersion || data.version || '2.8.6';
+        const ver = data.latestVersion || data.version || '2.8.7.0';
         if (dlVerNum) dlVerNum.textContent = ver;
         if (dlDirectBtn) {
           dlDirectBtn.href = 'https://mist01.com/downloads/Pixory-v' + ver + '.apk';

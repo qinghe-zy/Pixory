@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.8.6",
+    "version": "2.8.7.0",
     "orientation": "portrait",
     "icon": "./icons/02_\u53f3\u4e0a_\u84dd\u53d1\u5973\u5b69.png",
     "userInterfaceStyle": "light",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 286,
+      "versionCode": 2870,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -29,7 +29,7 @@
     "web": {
       "favicon": "./assets/pixory-favicon.png"
     },
-    "runtimeVersion": "2.8.6",
+    "runtimeVersion": "2.8.7.0",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
@@ -92,4 +92,3 @@
     "owner": "qinghe.zy"
   }
 }
-

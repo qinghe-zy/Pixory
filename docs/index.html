@@ -320,11 +320,11 @@ color: #FAF8F5 !important;
 <img src="assets/app-icon.png" alt="Pixory" class="w-16 h-16 rounded-[16px] shadow-[0_8px_24px_rgba(23,43,40,0.15)] flex-shrink-0">
 <div>
 <h2 class="font-display text-[28px] text-[#172B28] leading-tight tracking-[-0.02em]">下载 Pixory</h2>
-<p class="font-serif text-[13px] text-[#39665F] mt-1 tracking-[0.06em]" id="dl-version-subtitle">当前版本：<span id="dl-ver-num">2.8.6</span> · 最新 Android 稳定包</p>
+<p class="font-serif text-[13px] text-[#39665F] mt-1 tracking-[0.06em]" id="dl-version-subtitle">当前版本：<span id="dl-ver-num">2.8.7.0</span> · 最新 Android 稳定包</p>
 </div>
 </div>
 <div class="grid grid-cols-2 gap-4 mb-8">
-<a id="dl-direct-btn" href="https://mist01.com/downloads/Pixory-v2.8.6.apk"
+<a id="dl-direct-btn" href="https://mist01.com/downloads/Pixory-v2.8.7.0.apk"
 class="group block p-5 rounded-[16px] bg-white shadow-[0_4px_20px_rgba(23,43,40,0.1)] hover:shadow-[0_8px_32px_rgba(23,43,40,0.15)] transition-all duration-400 border border-[#39665F]/8 hover:-translate-y-0.5">
 <div class="flex items-center space-x-2.5 mb-2">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#39665F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1388,7 +1388,7 @@ if (e.key === 'Escape' && !dlOverlay.classList.contains('pointer-events-none')) 
 fetch('https://mist01.com/update-version.json?v=' + Date.now())
 .then(r => r.json())
 .then(data => {
-const ver = data.latestVersion || data.version || '2.8.6';
+const ver = data.latestVersion || data.version || '2.8.7.0';
 if (dlVerNum) dlVerNum.textContent = ver;
 if (dlDirectBtn) {
 dlDirectBtn.href = 'https://mist01.com/downloads/Pixory-v' + ver + '.apk';
