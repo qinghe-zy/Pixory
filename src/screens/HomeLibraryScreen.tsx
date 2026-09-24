@@ -373,7 +373,7 @@ export function HomeLibraryScreen({
   return (
     <>
     <ScreenScaffold
-      backgroundColor="#FFFFFF"
+      backgroundColor="#f9f9f9"
       footer={footer}
       showHeader={false}
       fullScreen={true}
@@ -392,33 +392,37 @@ export function HomeLibraryScreen({
         keyExtractor={(item: any) => item.id}
         ListHeaderComponent={
           <View style={styles.topArea}>
-            <View style={styles.headerTitleRow}>
+            <View style={[styles.headerTitleRow, { paddingHorizontal: 10 }]}>
               <HomeBrandHeader />
               {rightSlot}
             </View>
-            <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
-              <Ionicons name="search" size={17} color="#444748" />
-              <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
-            </Pressable>
-            {isNeedsPanelVisible && (
-              <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
-                <View style={styles.needsIcon}>
-                  <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
-                </View>
-                <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 张</Text>
-                <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
-                <Pressable 
-                  hitSlop={15} 
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setDismissedThreshold(needsOrganizingCount);
-                    void persistDismissThreshold(needsOrganizingCount);
-                  }}
-                  style={styles.needsCloseButton}
-                >
-                  <Ionicons color={colors.text.tertiary} name="close" size={18} />
-                </Pressable>
+            <View style={{ paddingHorizontal: 10 }}>
+              <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
+                <Ionicons name="search" size={17} color="#444748" />
+                <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
               </Pressable>
+            </View>
+            {isNeedsPanelVisible && (
+              <View style={{ paddingHorizontal: 10 }}>
+                <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
+                  <View style={styles.needsIcon}>
+                    <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
+                  </View>
+                  <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 张</Text>
+                  <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
+                  <Pressable 
+                    hitSlop={15} 
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setDismissedThreshold(needsOrganizingCount);
+                      void persistDismissThreshold(needsOrganizingCount);
+                    }}
+                    style={styles.needsCloseButton}
+                  >
+                    <Ionicons color={colors.text.tertiary} name="close" size={18} />
+                  </Pressable>
+                </Pressable>
+              </View>
             )}
             <View style={styles.filterRow}>
               <FlatList
@@ -484,18 +488,13 @@ export function HomeLibraryScreen({
 
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0 }} pointerEvents="box-none">
         {/* Status bar is always covered by a solid background to prevent overlap */}
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: colors.background.page, zIndex: 1 }} />
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9', zIndex: 1 }} />
         
         {/* Sticky header background animates its opacity */}
-        <Animated.View style={{ position: 'absolute', top: insets.top, left: 0, right: 0, height: 52, opacity: headerBgOpacity, zIndex: 1 }} pointerEvents="none">
-          <BlurView intensity={85} tint="light" style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
-        </Animated.View>
+        <Animated.View style={{ position: 'absolute', top: insets.top, left: 0, right: 0, height: 52, backgroundColor: '#f9f9f9', opacity: headerBgOpacity, zIndex: 1 }} pointerEvents="none" />
         
         <View style={{ paddingTop: insets.top, height: insets.top + 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 }} pointerEvents="box-none">
            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} pointerEvents="box-none">
-             <Animated.View style={{ opacity: stage1Opacity, transform: [{ translateY: stage1Translate }] }}>
-                <Text style={{ fontFamily: typography.family.brand, fontSize: 20, color: '#000000', fontWeight: '500', letterSpacing: -0.2 }}>Pixory</Text>
-             </Animated.View>
              <Animated.View style={{ opacity: stage2Opacity, transform: [{ translateY: stage2Translate }] }}>
                 <Pressable onPress={onOpenGlobalSearch} style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: '#f3f3f4', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Ionicons name="search" size={15} color="#5e5e5e" />
@@ -512,7 +511,7 @@ export function HomeLibraryScreen({
                       onPress={() => setActiveFilter(item.key)}
                       style={[
                         { height: 24, paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-                        activeFilter === item.key && { backgroundColor: '#ffffff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 }
+                        activeFilter === item.key && { backgroundColor: '#ffffff' }
                       ]}
                     >
                       <Text style={{ fontSize: 11, fontWeight: '600', color: activeFilter === item.key ? '#000000' : '#5e5e5e' }}>{item.label}</Text>
@@ -521,7 +520,7 @@ export function HomeLibraryScreen({
                 </View>
              </Animated.View>
              <Animated.View style={{ opacity: stage1Opacity, transform: [{ translateY: stage1Translate }] }}>
-                <Pressable onPress={onCreateIp} style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', gap: 4, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 }}>
+                <Pressable onPress={onCreateIp} style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Ionicons name="add" size={14} color="#ffffff" />
                   <Text style={{ fontSize: 11, fontWeight: '600', color: '#ffffff' }}>新建</Text>
                 </Pressable>
