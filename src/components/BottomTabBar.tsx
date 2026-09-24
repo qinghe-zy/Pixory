@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { aiLightColors } from './ai/aiLightTheme';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
 
@@ -51,7 +51,7 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
             <Ionicons
               color={isActive ? activeTintColor : colors.text.secondary}
               name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
-              size={componentTokens.bottomTab.iconSize}
+              size={22}
             />
             <Text style={[
               styles.label, 
@@ -69,21 +69,20 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#fff',
     flexDirection: 'row',
-    paddingHorizontal: spacing[2],
-    paddingTop: 4,
+    paddingTop: 6,
   },
   item: {
     alignItems: 'center',
     flex: 1,
     gap: 2,
     justifyContent: 'center',
-    paddingVertical: 4,
-    minHeight: 46,
+    paddingBottom: 4,
   },
   label: {
     ...typography.textStyles.navTab,
+    fontSize: 10,
     color: colors.text.secondary,
   },
   activeLabel: {

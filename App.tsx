@@ -2438,7 +2438,7 @@ export default function App() {
 
 function FloatingFooterProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
-  const floatingFooterHeight = 50 + Math.max(insets.bottom, 4);
+  const floatingFooterHeight = 46 + Math.max(insets.bottom, 4);
   return <FloatingFooterContext.Provider value={floatingFooterHeight}>{children}</FloatingFooterContext.Provider>;
 }
 
