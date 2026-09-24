@@ -619,10 +619,33 @@ export function HomeLibraryScreen({
 }
 
 function HomeBrandHeader() {
+  const [storageText, setStorageText] = useState('... GB / ... GB');
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchStorage() {
+      try {
+        const free = await FileSystem.getFreeDiskStorageAsync();
+        const total = await FileSystem.getTotalDiskCapacityAsync();
+        if (mounted) {
+          const used = total - free;
+          const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
+          setStorageText(`${formatGB(used)} GB / ${formatGB(total)} GB`);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch disk storage:', error);
+      }
+    }
+    void fetchStorage();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <View style={styles.brandHeaderContainer}>
       <Text style={styles.brandGreetingText}>Pixory</Text>
-      <Text style={styles.brandSubtitleText}>45.8 GB / 64 GB</Text>
+      <Text style={styles.brandSubtitleText}>{storageText}</Text>
     </View>
   );
 }
@@ -632,8 +655,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   brandGreetingText: {
-    fontStyle: 'italic',
-    fontWeight: '400',
+    fontFamily: typography.family.serifItalic,
     fontSize: 22,
     color: '#000000',
     lineHeight: 26,
