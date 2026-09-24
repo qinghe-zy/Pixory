@@ -32,6 +32,7 @@ const filesToUpdate = [
   'docs/sitemap.xml',
   'docs/manual.html',
   'docs/pixory-product-bid-handbook.md',
+  'docs/feature-matrix.md',
   'src/content/handbookMarkdown.ts',
   'android/app/src/main/res/values/strings.xml',
   'tests/website-flow-policy.test.cjs',
@@ -48,10 +49,7 @@ for (const file of filesToUpdate) {
     // Replace standard version string globally
     content = content.replace(new RegExp(oldVersion.replace(/\./g, '\\\\.'), 'g'), newVersion);
     
-    // Replace Handbook date globally
-    if (file.includes('handbook')) {
-      content = content.replace(/最后更新：\d{4}-\d{2}-\d{2}/g, '最后更新：' + formattedDate);
-    }
+
     
     // Specially handle versionCode forms
     content = content.replace(new RegExp('versionCode ' + oldVersionCode, 'g'), 'versionCode ' + newVersionCode);
@@ -66,3 +64,4 @@ for (const file of filesToUpdate) {
   }
 }
 console.log(`Successfully bumped from ${oldVersion} to ${newVersion} (Code ${oldVersionCode} -> ${newVersionCode})`);
+
