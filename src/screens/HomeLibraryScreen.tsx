@@ -26,6 +26,8 @@ import { useIpListPreferences } from '../services/ipListPreferences';
 import { useToast } from '../components/AppToast';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
+import { getStorageUsageSummary } from '../services/storageUsageService';
+import { getCachedStorageUsageSummary } from '../services/storageUsageSnapshotCache';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部 IP' },
@@ -396,7 +398,7 @@ export function HomeLibraryScreen({
         ListHeaderComponent={
           <View style={styles.topArea}>
             <View style={[styles.headerTitleRow, { paddingHorizontal: 10 }]}>
-              <HomeBrandHeader />
+              <HomeBrandHeader space={space} />
               {rightSlot}
             </View>
             <View style={{ paddingHorizontal: 10 }}>
@@ -618,19 +620,30 @@ export function HomeLibraryScreen({
   );
 }
 
-function HomeBrandHeader() {
-  const [storageText, setStorageText] = useState('... GB / ... GB');
+function HomeBrandHeader({ space }: { space: PixorySpace }) {
+  const [appUsedText, setAppUsedText] = useState('... GB');
+  const [totalDiskText, setTotalDiskText] = useState('... GB');
 
   useEffect(() => {
     let mounted = true;
     async function fetchStorage() {
       try {
-        const free = await FileSystem.getFreeDiskStorageAsync();
         const total = await FileSystem.getTotalDiskCapacityAsync();
         if (mounted) {
-          const used = total - free;
           const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
-          setStorageText(`${formatGB(used)} GB / ${formatGB(total)} GB`);
+          setTotalDiskText(`${formatGB(total)} GB`);
+        }
+        
+        const cached = getCachedStorageUsageSummary(space);
+        if (cached && mounted) {
+          const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
+          setAppUsedText(`${formatGB(cached.totalBytes)} GB`);
+        } else {
+          const summary = await getStorageUsageSummary(space);
+          if (mounted) {
+            const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
+            setAppUsedText(`${formatGB(summary.totalBytes)} GB`);
+          }
         }
       } catch (error) {
         console.warn('Failed to fetch disk storage:', error);
@@ -640,12 +653,12 @@ function HomeBrandHeader() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [space]);
 
   return (
     <View style={styles.brandHeaderContainer}>
       <Text style={styles.brandGreetingText}>Pixory</Text>
-      <Text style={styles.brandSubtitleText}>{storageText}</Text>
+      <Text style={styles.brandSubtitleText}>{appUsedText} / {totalDiskText}</Text>
     </View>
   );
 }
@@ -653,6 +666,7 @@ function HomeBrandHeader() {
 const styles = StyleSheet.create({
   brandHeaderContainer: {
     justifyContent: 'center',
+    gap: 3,
   },
   brandGreetingText: {
     fontFamily: typography.family.serifItalic,
@@ -837,4 +851,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
 });
+
 
