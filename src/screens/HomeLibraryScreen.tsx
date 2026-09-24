@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing[8],
   },
   grid: {
-    paddingBottom: spacing[6] + floatingFooterHeight,
+    paddingBottom: floatingFooterHeight + 4,
   },
   gridRow: {
     flexDirection: 'row',
