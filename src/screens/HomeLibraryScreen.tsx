@@ -4,6 +4,9 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
+import { Animated } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiAnchoredContextMenu } from '../components/ai/AiAnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
@@ -29,6 +32,8 @@ const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
 ];
 
 const IP_LIBRARY_PAGE_SIZE = 20;
+
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
 interface HomeLibraryScreenProps {
   refreshKey: number;
@@ -63,6 +68,37 @@ export function HomeLibraryScreen({
   onEditIp,
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const headerBgOpacity = scrollY.interpolate({
+    inputRange: [20, 40],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const stage1Opacity = scrollY.interpolate({
+    inputRange: [40, 60],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const stage1Translate = scrollY.interpolate({
+    inputRange: [40, 60],
+    outputRange: [10, 0],
+    extrapolate: 'clamp',
+  });
+
+  const stage2Opacity = scrollY.interpolate({
+    inputRange: [80, 100],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const stage2Translate = scrollY.interpolate({
+    inputRange: [80, 100],
+    outputRange: [10, 0],
+    extrapolate: 'clamp',
+  });
+
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
   const { sortOrder: activeSortOrder, setSortOrder: setActiveSortOrder } = useIpListPreferences(space, 'default');
   const [actionMenuState, setActionMenuState] = useState<{ ip: IpListItem; anchorX: number; anchorY: number } | null>(null);
@@ -121,6 +157,18 @@ export function HomeLibraryScreen({
   }, [space, refreshKey]);
 
   const isNeedsPanelVisible = dismissedThreshold >= 0 && needsOrganizingCount > 0 && needsOrganizingCount > dismissedThreshold;
+
+  const filterThreshold = isNeedsPanelVisible ? 180 : 120;
+  const stage3Opacity = scrollY.interpolate({
+    inputRange: [filterThreshold, filterThreshold + 20],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const stage3Translate = scrollY.interpolate({
+    inputRange: [filterThreshold, filterThreshold + 20],
+    outputRange: [10, 0],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -327,103 +375,159 @@ export function HomeLibraryScreen({
     <ScreenScaffold
       backgroundColor="#FFFFFF"
       footer={footer}
-      rightAction={rightSlot}
-      titleSlot={<HomeBrandHeader />}
-      titleVariant="brand"
-      contentContainerStyle={{ paddingHorizontal: 6 }}
+      showHeader={false}
+      fullScreen={true}
+      contentContainerStyle={{ paddingHorizontal: 0, gap: 0 }}
     >
-      <View style={styles.topArea}>
-        <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
-          <Ionicons name="search" size={17} color="#444748" />
-          <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
-        </Pressable>
-        {isNeedsPanelVisible && (
-          <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
-            <View style={styles.needsIcon}>
-              <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
-            </View>
-            <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 张</Text>
-            <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
-            <Pressable 
-              hitSlop={15} 
-              onPress={(e) => {
-                e.stopPropagation();
-                setDismissedThreshold(needsOrganizingCount);
-                void persistDismissThreshold(needsOrganizingCount);
-              }}
-              style={styles.needsCloseButton}
-            >
-              <Ionicons color={colors.text.tertiary} name="close" size={18} />
-            </Pressable>
-          </Pressable>
+      <AnimatedFlatList
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
         )}
-        <View style={styles.filterRow}>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterPillsRow}
-            data={FILTER_OPTIONS}
-            keyExtractor={item => item.key}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => setActiveFilter(item.key)}
-                style={activeFilter === item.key ? styles.filterPillActive : styles.filterPill}
-              >
-                <Text style={activeFilter === item.key ? styles.filterPillTextActive : styles.filterPillText}>
-                  {item.label}
-                </Text>
-                {item.key === 'all' && (
-                  <Text style={[
-                    styles.filterPillCount,
-                    activeFilter === item.key ? { color: 'rgba(255,255,255,0.8)' } : undefined
-                  ]}>
-                    {items.length}
-                  </Text>
-                )}
+        scrollEventThrottle={16}
+        onLayout={handleListLayout}
+        contentContainerStyle={[styles.grid, items.length === 0 && styles.emptyGrid, { paddingTop: insets.top, paddingHorizontal: 6 }]}
+        data={layoutItems}
+        initialNumToRender={3}
+        keyExtractor={(item: any) => item.id}
+        ListHeaderComponent={
+          <View style={styles.topArea}>
+            <View style={styles.headerTitleRow}>
+              <HomeBrandHeader />
+              {rightSlot}
+            </View>
+            <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
+              <Ionicons name="search" size={17} color="#444748" />
+              <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
+            </Pressable>
+            {isNeedsPanelVisible && (
+              <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
+                <View style={styles.needsIcon}>
+                  <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
+                </View>
+                <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 张</Text>
+                <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
+                <Pressable 
+                  hitSlop={15} 
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setDismissedThreshold(needsOrganizingCount);
+                    void persistDismissThreshold(needsOrganizingCount);
+                  }}
+                  style={styles.needsCloseButton}
+                >
+                  <Ionicons color={colors.text.tertiary} name="close" size={18} />
+                </Pressable>
               </Pressable>
             )}
-          />
-          <View style={styles.filterSpacer} />
-          <IpSortMenuButton orderBy={activeSortOrder} onChange={setActiveSortOrder} />
-        </View>
-      </View>
+            <View style={styles.filterRow}>
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterPillsRow}
+                data={FILTER_OPTIONS}
+                keyExtractor={item => item.key}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => setActiveFilter(item.key)}
+                    style={activeFilter === item.key ? styles.filterPillActive : styles.filterPill}
+                  >
+                    <Text style={activeFilter === item.key ? styles.filterPillTextActive : styles.filterPillText}>
+                      {item.label}
+                    </Text>
+                    {item.key === 'all' && (
+                      <Text style={[
+                        styles.filterPillCount,
+                        activeFilter === item.key ? { color: 'rgba(255,255,255,0.8)' } : undefined
+                      ]}>
+                        {items.length}
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+              />
+              <View style={styles.filterSpacer} />
+              <IpSortMenuButton orderBy={activeSortOrder} onChange={setActiveSortOrder} />
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <IPCardSkeleton />
+          ) : (
+            <PageStateBlock
+              emptyActionLabel={isLibraryCompletelyEmpty ? commonButtonCopy.createFirstIp : commonButtonCopy.createIp}
+              emptyDescription={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsDescription : '当前筛选下没有 IP。'}
+              emptyContainerStyle={styles.emptyGuideOffset}
+              emptyIconName="archive-outline"
+              emptyTitle={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsTitle : '空空如也'}
+              errorMessage={errorMessage}
+              errorTitle={commonErrorCopy.listUnavailableTitle}
+              isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
+              loading={false}
+              onEmptyAction={onCreateIp}
+              onRetry={reload}
+            >
+              <View />
+            </PageStateBlock>
+          )
+        }
+        ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+        maxToRenderPerBatch={4}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        renderItem={renderIpCard as any}
+        showsVerticalScrollIndicator={false}
+        style={styles.list}
+        windowSize={5}
+      />
 
-      <View onLayout={handleListLayout} style={styles.emptyWrap}>
-        <FlatList
-          contentContainerStyle={[styles.grid, items.length === 0 && styles.emptyGrid]}
-          data={layoutItems}
-          initialNumToRender={3}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={
-            isLoading ? (
-              <IPCardSkeleton />
-            ) : (
-              <PageStateBlock
-                emptyActionLabel={isLibraryCompletelyEmpty ? commonButtonCopy.createFirstIp : commonButtonCopy.createIp}
-                emptyDescription={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsDescription : '当前筛选下没有 IP。'}
-                emptyContainerStyle={styles.emptyGuideOffset}
-                emptyIconName="archive-outline"
-                emptyTitle={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsTitle : '空空如也'}
-                errorMessage={errorMessage}
-                errorTitle={commonErrorCopy.listUnavailableTitle}
-                isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
-                loading={false}
-                onEmptyAction={onCreateIp}
-                onRetry={reload}
-              >
-                <View />
-              </PageStateBlock>
-            )
-          }
-          ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
-          maxToRenderPerBatch={4}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
-          renderItem={renderIpCard}
-          showsVerticalScrollIndicator={false}
-          style={styles.list}
-          windowSize={5}
-        />
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0 }} pointerEvents="box-none">
+        {/* Status bar is always covered by a solid background to prevent overlap */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: colors.background.page, zIndex: 1 }} />
+        
+        {/* Sticky header background animates its opacity */}
+        <Animated.View style={{ position: 'absolute', top: insets.top, left: 0, right: 0, height: 52, opacity: headerBgOpacity, zIndex: 1 }} pointerEvents="none">
+          <BlurView intensity={85} tint="light" style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
+        </Animated.View>
+        
+        <View style={{ paddingTop: insets.top, height: insets.top + 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 }} pointerEvents="box-none">
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} pointerEvents="box-none">
+             <Animated.View style={{ opacity: stage1Opacity, transform: [{ translateY: stage1Translate }] }}>
+                <Text style={{ fontFamily: typography.family.brand, fontSize: 20, color: '#000000', fontWeight: '500', letterSpacing: -0.2 }}>Pixory</Text>
+             </Animated.View>
+             <Animated.View style={{ opacity: stage2Opacity, transform: [{ translateY: stage2Translate }] }}>
+                <Pressable onPress={onOpenGlobalSearch} style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: '#f3f3f4', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="search" size={15} color="#5e5e5e" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#646464', display: listWidth < 350 ? 'none' : 'flex' }}>快速检索...</Text>
+                </Pressable>
+             </Animated.View>
+           </View>
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} pointerEvents="box-none">
+             <Animated.View style={{ opacity: stage3Opacity, transform: [{ translateY: stage3Translate }] }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f3f4', borderRadius: 14, padding: 2 }}>
+                  {FILTER_OPTIONS.map(item => (
+                    <Pressable
+                      key={item.key}
+                      onPress={() => setActiveFilter(item.key)}
+                      style={[
+                        { height: 24, paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+                        activeFilter === item.key && { backgroundColor: '#ffffff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 }
+                      ]}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: activeFilter === item.key ? '#000000' : '#5e5e5e' }}>{item.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+             </Animated.View>
+             <Animated.View style={{ opacity: stage1Opacity, transform: [{ translateY: stage1Translate }] }}>
+                <Pressable onPress={onCreateIp} style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: '#000000', flexDirection: 'row', alignItems: 'center', gap: 4, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 }}>
+                  <Ionicons name="add" size={14} color="#ffffff" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#ffffff' }}>新建</Text>
+                </Pressable>
+             </Animated.View>
+           </View>
+        </View>
       </View>
     </ScreenScaffold>
     <AppDialog
@@ -560,6 +664,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
+  headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
   topArea: {
     gap: 12,
     paddingHorizontal: 0,
