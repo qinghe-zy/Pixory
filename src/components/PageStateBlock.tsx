@@ -62,7 +62,7 @@ export function PageStateBlock({
       <ContentCard style={styles.feedbackCard}>
         <Text style={styles.feedbackTitle}>{errorTitle}</Text>
         <Text style={styles.feedbackText}>{errorMessage}</Text>
-        {onRetry ? <PrimaryButton label={retryLabel} onPress={onRetry} variant="outline" /> : null}
+        {onRetry ? <PrimaryButton label={retryLabel} onPress={onRetry} variant="outline" tone="dark" /> : null}
       </ContentCard>
     );
   }

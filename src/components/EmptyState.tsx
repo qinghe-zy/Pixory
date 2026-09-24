@@ -26,7 +26,7 @@ export function EmptyState({
       </View>
       <Text style={typography.textStyles.emptyTitle}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
-      {actionLabel && onAction ? <PrimaryButton label={actionLabel} onPress={onAction} /> : null}
+      {actionLabel && onAction ? <PrimaryButton label={actionLabel} onPress={onAction} tone="dark" /> : null}
     </View>
   );
 }

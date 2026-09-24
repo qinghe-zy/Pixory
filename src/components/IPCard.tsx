@@ -171,7 +171,7 @@ export function IPCard({
                 <Text style={styles.gridTimeText}>{formatUpdatedLabel(ip.updatedAt)}</Text>
               </View>
               <Pressable hitSlop={8} style={styles.gridForwardBtn} onPress={() => onPress(ip.id)}>
-                <MaterialIcons name="arrow-forward" size={14} color="#1a1c1c" />
+                <MaterialIcons name="arrow-forward" size={14} color="#ffffff" />
               </Pressable>
             </View>
           </View>
@@ -235,7 +235,7 @@ export function IPCard({
                   <Text style={styles.btnSmallText}>导入</Text>
                 </Pressable>
                 <Pressable style={styles.btnSmallDark} onPress={() => onPress(ip.id)}>
-                  <Text style={styles.btnSmallText}>进入画廊</Text>
+                  <Text style={styles.btnSmallTextWhite}>进入画廊</Text>
                 </Pressable>
               </View>
             </View>
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   btnSmallDark: {
     height: 28,
     paddingHorizontal: 10,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: '#1a1c1c',
     borderRadius: 4,
     flexDirection: 'row',
     alignItems: 'center',
@@ -463,6 +463,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#1a1c1c',
+  },
+  btnSmallTextWhite: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   gridCard: {
     flexDirection: 'column',
@@ -536,7 +541,7 @@ const styles = StyleSheet.create({
   gridForwardBtn: {
     width: 24,
     height: 24,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1a1c1c',
     borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',

@@ -13,6 +13,7 @@ import { AppDialog } from '../components/AppDialog';
 import { IPCard } from '../components/IPCard';
 import { IPCardSkeleton } from '../components/IPCardSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
+import { HomeEmptyState } from '../components/HomeEmptyState';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { FloatingFooterContext } from '../components/AppScreen';
 import { useContext } from 'react';
@@ -118,6 +119,7 @@ export function HomeLibraryScreen({
   const NEEDS_PANEL_DISMISS_FILE = `${FileSystem.documentDirectory ?? ''}pixory/preferences/needsPanelDismiss.json`;
   const [dismissedThreshold, setDismissedThreshold] = useState<number>(-1);
   const [needsOrganizingCount, setNeedsOrganizingCount] = useState(0);
+  const [totalIpCount, setTotalIpCount] = useState(0);
 
   useEffect(() => {
     void (async () => {
@@ -150,8 +152,10 @@ export function HomeLibraryScreen({
     void runWithDatabaseSpace(space, async (db) => {
       try {
         const count = await imageRepository.countNeedsOrganizing(db);
+        const totalIps = await ipRepository.count(db);
         if (isMounted) {
           setNeedsOrganizingCount(count);
+          setTotalIpCount(totalIps);
         }
       } catch (error) {
       }
@@ -449,7 +453,7 @@ export function HomeLibraryScreen({
                         styles.filterPillCount,
                         activeFilter === item.key ? { color: 'rgba(255,255,255,0.8)' } : undefined
                       ]}>
-                        {items.length}
+                        {totalIpCount}
                       </Text>
                     )}
                   </Pressable>
@@ -463,16 +467,25 @@ export function HomeLibraryScreen({
         ListEmptyComponent={
           isLoading ? (
             <IPCardSkeleton />
+          ) : isLibraryCompletelyEmpty ? (
+            <HomeEmptyState onCreate={onCreateIp} />
+          ) : isSearchOrFilterEmpty && activeFilter === 'favorite' ? (
+            <HomeEmptyState 
+              title="暂无收藏" 
+              description="点击 IP 卡片右上角将其添加到收藏。"
+              actionLabel="返回全部"
+              onCreate={() => setActiveFilter('all')} 
+            />
           ) : (
             <PageStateBlock
-              emptyActionLabel={isLibraryCompletelyEmpty ? commonButtonCopy.createFirstIp : commonButtonCopy.createIp}
-              emptyDescription={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsDescription : '当前筛选下没有 IP。'}
+              emptyActionLabel={commonButtonCopy.createIp}
+              emptyDescription={'当前筛选下没有 IP。'}
               emptyContainerStyle={styles.emptyGuideOffset}
               emptyIconName="archive-outline"
-              emptyTitle={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsTitle : '空空如也'}
+              emptyTitle={'空空如也'}
               errorMessage={errorMessage}
               errorTitle={commonErrorCopy.listUnavailableTitle}
-              isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
+              isEmpty={isSearchOrFilterEmpty}
               loading={false}
               onEmptyAction={onCreateIp}
               onRetry={reload}
