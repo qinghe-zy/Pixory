@@ -148,59 +148,14 @@ export function ImportBatchReviewScreen({
 
   return (
     <>
-      <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batch" onBack={onBack} scrollable title="本次导入">
+      <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Batch" onBack={onBack} scrollable title="本次导入">
         <View style={styles.heroPanel}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
-              <Ionicons color={colors.primary.active} name="file-tray-stacked-outline" size={21} />
+              <Ionicons color="#1a1c1c" name="file-tray-stacked-outline" size={21} />
             </View>
             <View style={styles.heroCopy}>
-              <Text style={styles.heroTitle}>本次导入 {stats.totalCount} 个素材</Text>
-              <Text numberOfLines={1} style={styles.heroMeta}>
-                {summary ? `${summary.ipName} · ${formatDateTime(summary.createdAt)}` : '导入结果整理台'}
-              </Text>
-            </View>
-            <Text style={styles.percentText}>{organizationPercent}%</Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${organizationPercent}%` }]} />
-          </View>
-          <View style={styles.metricGrid}>
-            <Metric label="已整理" value={stats.organizedCount} />
-            <Metric label="未分组" value={stats.ungroupedCount} />
-            <Metric label="无标签" value={stats.untaggedCount} />
-            <Metric label="无备注" value={stats.noNoteCount} />
-            <Metric label="疑似重复" value={stats.suspectedDuplicateCount} />
-            <Metric label="视频" value={stats.videoCount} />
-          </View>
-        </View>
-
-        {batchItems.length > 0 ? (
-          <View style={styles.itemDetailsPanel}>
-            <Text style={styles.sectionTitle}>资源包明细</Text>
-            <Text style={styles.itemDetailsMeta}>
-              成功 {batchItems.filter((item) => item.status === 'success').length} · 失败 {batchItems.filter((item) => item.status === 'failed').length} · 跳过 {batchItems.filter((item) => item.status === 'skipped').length}
-            </Text>
-            {batchItems
-              .filter((item) => item.status !== 'success')
-              .slice(0, 8)
-              .map((item) => (
-                <View key={item.id} style={styles.itemDetailRow}>
-                  <Text numberOfLines={1} style={styles.itemDetailName}>{item.originalFilename}</Text>
-                  <Text numberOfLines={2} style={styles.itemDetailReason}>{item.status} · {item.reason ?? item.sourcePath}</Text>
-                </View>
-              ))}
-          </View>
-        ) : null}
-
-        <View style={styles.actions}>
-          <PrimaryButton disabled={filteredImageAssetIds.length === 0} label="进入批量整理" onPress={() => onBatchOrganize(filteredImageAssetIds)} />
-          <View style={styles.secondaryActions}>
-            <View style={styles.secondaryAction}>
-              <PrimaryButton label="连续整理" onPress={() => onQuickOrganize(importBatchId)} variant="ghost" />
-            </View>
-            <View style={styles.secondaryAction}>
-              <PrimaryButton label="再导入一批" onPress={onImportAgain} variant="ghost" />
+              <Text style={styles.heroTitle}>本次导入 {stats.totalCount} 张</Text>
             </View>
           </View>
         </View>
@@ -216,31 +171,6 @@ export function ImportBatchReviewScreen({
           loadingTitle="读取本次导入"
           onRetry={reload}
         >
-          {suggestions.length > 0 ? (
-            <View style={styles.suggestionBlock}>
-              {suggestions.map((suggestion) => (
-                <Pressable
-                  key={suggestion.key}
-                  onPress={() => {
-                    if (suggestion.key === 'duplicate' && importBatchId != null) {
-                      onOpenDuplicateReview(importBatchId);
-                      return;
-                    }
-                    setActivePile(suggestion.pile);
-                    setActivePrefix(null);
-                  }}
-                  style={({ pressed }) => [styles.suggestionCard, pressed && styles.pressed]}
-                >
-                  <View style={styles.suggestionCopy}>
-                    <Text style={styles.suggestionTitle}>{suggestion.title}</Text>
-                    <Text style={styles.suggestionMeta}>{suggestion.meta}</Text>
-                  </View>
-                  <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
           <View style={styles.filterBlock}>
             <Text style={styles.sectionTitle}>自动分堆</Text>
             <View style={styles.pileOverview}>
@@ -268,63 +198,36 @@ export function ImportBatchReviewScreen({
                   );
                 })}
             </View>
-            <View style={styles.pileWrap}>
-              {piles.map((pile) => (
-                <PileChip
-                  active={activePile === pile.key}
-                  count={pile.count}
-                  key={pile.key}
-                  label={pile.label}
-                  onPress={() => {
-                    setActivePile(pile.key);
-                    setActivePrefix(null);
-                  }}
-                />
-              ))}
-            </View>
-            {prefixPiles.length > 0 ? (
-              <View style={styles.prefixPanel}>
-                <Text style={styles.prefixTitle}>文件名前缀低优先级辅助</Text>
-                <View style={styles.prefixWrap}>
-                  {prefixPiles.map((pile) => (
-                    <Pressable
-                      key={pile.prefix}
-                      onPress={() => setActivePrefix((current) => current === pile.prefix ? null : pile.prefix)}
-                      style={({ pressed }) => [styles.prefixChip, activePrefix === pile.prefix ? styles.prefixChipActive : null, pressed && styles.pressed]}
-                    >
-                      <Text numberOfLines={1} style={[styles.prefixChipText, activePrefix === pile.prefix ? styles.prefixChipTextActive : null]}>
-                        {pile.prefix} · {pile.count}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.gridHeader}>
-            <Text style={styles.sectionTitle}>{activePrefix ?? getPileLabel(activePile)} {filteredImages.length} 个</Text>
-            <Pressable
-              disabled={filteredImageAssetIds.length === 0}
-              onPress={() => onBatchOrganize(filteredImageAssetIds)}
-              style={({ pressed }) => [styles.textButton, filteredImageAssetIds.length === 0 ? styles.disabledTextButton : null, pressed && styles.pressed]}
-            >
-              <Text style={styles.textButtonLabel}>整理这堆</Text>
-            </Pressable>
-          </View>
-          <View style={styles.grid}>
-            {filteredImages.map((image) => (
-              <ThumbnailTile image={image} key={image.id} onPress={handleImagePress} space={space} />
-            ))}
           </View>
         </PageStateBlock>
+
+        <View style={styles.actions}>
+          <Pressable 
+            disabled={filteredImageAssetIds.length === 0} 
+            onPress={() => onBatchOrganize(filteredImageAssetIds)}
+            style={[styles.blackButton, filteredImageAssetIds.length === 0 && styles.buttonDisabled]}
+          >
+            <Text style={styles.blackButtonText}>进入批量整理</Text>
+          </Pressable>
+          <View style={styles.secondaryActions}>
+            <View style={styles.secondaryAction}>
+              <Pressable onPress={() => onQuickOrganize(importBatchId)} style={styles.whiteButton}>
+                <Text style={styles.whiteButtonText}>连续整理</Text>
+              </Pressable>
+            </View>
+            <View style={styles.secondaryAction}>
+              <Pressable onPress={onImportAgain} style={styles.whiteButton}>
+                <Text style={styles.whiteButtonText}>再导入一批</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </ScreenScaffold>
       <AppActionSheet
         items={actionSheetItems}
-        message={actionPile ? `${actionPile.label} · ${actionPile.imageIds.length} 张图片。更多动作需要你确认后才会写入。` : undefined}
         onClose={() => setActionPile(null)}
-        title="分堆操作"
-        visible={Boolean(actionPile)}
+        title={actionPile?.label ?? ''}
+        visible={actionPile != null}
       />
     </>
   );
@@ -350,51 +253,37 @@ function PilePreviewRow({
   space: PixorySpace;
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.pilePreviewRow, active ? styles.pilePreviewRowActive : null, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.pilePreviewRow, active && styles.pilePreviewRowActive, pressed && styles.pressed]}>
       <View style={styles.pilePreviewCopy}>
-        <Text style={[styles.pilePreviewTitle, active ? styles.pilePreviewTitleActive : null]}>{label}</Text>
-        <Text style={styles.pilePreviewMeta}>{count} 张</Text>
+        <Text style={[styles.pilePreviewTitle, active && styles.pilePreviewTitleActive]}>{label}</Text>
+        <Text style={[styles.pilePreviewMeta, active && styles.pilePreviewMetaActive]}>{count} 张</Text>
       </View>
       <View style={styles.pilePreviewImages}>
         {images.map((image) => (
           <View key={image.id} style={styles.pilePreviewThumb}>
             {image.thumbnailFileUri ? (
-              <SecureImage contentFit="cover" space={space} style={styles.pilePreviewImage} uri={image.thumbnailFileUri} />
+              <SecureImage contentFit="cover" space={space} style={styles.pilePreviewImage} uri={image.thumbnailFileUri as string} />
             ) : (
               <View style={styles.pilePreviewFallback}>
-                <Ionicons color={colors.text.tertiary} name="image-outline" size={13} />
+                <Ionicons color="#666" name="image-outline" size={13} />
               </View>
             )}
           </View>
         ))}
       </View>
-      <Pressable onPress={onOrganize} style={({ pressed }) => [styles.organizeButton, pressed && styles.pressed]}>
-        <Text style={styles.organizeButtonText}>管理这堆</Text>
+      <Pressable onPress={onOrganize} style={({ pressed }) => [styles.organizeButton, active && styles.organizeButtonActive, pressed && styles.pressed]}>
+        <Text style={[styles.organizeButtonText, active && styles.organizeButtonTextActive]}>管理这堆</Text>
       </Pressable>
       <Pressable hitSlop={8} onPress={onMore} style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}>
-        <Ionicons color={colors.text.secondary} name="ellipsis-horizontal" size={17} />
+        <Ionicons color={active ? "#ffffff" : "#666666"} name="ellipsis-horizontal" size={17} />
       </Pressable>
     </Pressable>
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
-    </View>
-  );
-}
 
-function PileChip({ active, count, label, onPress }: { active: boolean; count: number; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.pileChip, active ? styles.pileChipActive : null, pressed && styles.pressed]}>
-      <Text style={[styles.pileLabel, active ? styles.pileLabelActive : null]}>{label}</Text>
-      <Text style={[styles.pileCount, active ? styles.pileLabelActive : null]}>{count}</Text>
-    </Pressable>
-  );
-}
+
+
 
 function buildBatchStats(images: ImageListItem[], summary: ImportBatchSummary | null) {
   const imageAssets = images.filter((image) => image.mediaType !== 'video');
@@ -550,191 +439,99 @@ function buildSuggestionCards(stats: ReturnType<typeof buildBatchStats>, importB
 
 const styles = StyleSheet.create({
   heroPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.listCardGap,
-    padding: spacing[3],
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
   },
   heroTop: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: rhythm.listCardGap,
+    gap: 12,
   },
   heroIcon: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.md,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 6,
     height: 42,
     justifyContent: 'center',
     width: 42,
   },
   heroCopy: {
     flex: 1,
-    gap: rhythm.microGap,
+    gap: 2,
     minWidth: 0,
   },
   heroTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  heroMeta: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  percentText: {
-    ...typography.textStyles.statNumber,
-    color: colors.primary.active,
-  },
-  progressTrack: {
-    backgroundColor: colors.background.input,
-    borderRadius: radius.pill,
-    height: 7,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    backgroundColor: colors.primary.default,
-    borderRadius: radius.pill,
-    height: '100%',
-  },
-  metricGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  itemDetailsPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
-  },
-  itemDetailsMeta: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-  },
-  itemDetailRow: {
-    borderTopColor: colors.border.subtle,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    paddingTop: spacing[2],
-  },
-  itemDetailName: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  itemDetailReason: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  metric: {
-    gap: rhythm.microGap,
-    width: '19%',
-  },
-  metricValue: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-    textAlign: 'center',
-  },
-  metricLabel: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-    textAlign: 'center',
+    fontFamily: 'JetBrainsMono_700Bold',
+    fontSize: 16,
+    color: '#1a1c1c',
   },
   actions: {
-    gap: rhythm.cardContentGap,
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 40,
   },
   secondaryActions: {
     flexDirection: 'row',
-    gap: rhythm.cardContentGap,
+    gap: 12,
   },
   secondaryAction: {
     flex: 1,
   },
-  suggestionBlock: {
-    gap: rhythm.cardContentGap,
-    marginBottom: rhythm.listCardGap,
-  },
-  suggestionCard: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
-  },
-  suggestionCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  suggestionTitle: {
-    ...typography.textStyles.caption,
-    color: colors.text.title,
-    fontWeight: '700',
-  },
-  suggestionMeta: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-  },
   filterBlock: {
-    gap: rhythm.cardContentGap,
-    marginBottom: rhythm.listCardGap,
+    gap: 12,
+    marginBottom: 16,
   },
   pileOverview: {
-    gap: rhythm.cardContentGap,
+    gap: 10,
   },
   pilePreviewRow: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
     flexDirection: 'row',
-    gap: rhythm.cardContentGap,
+    gap: 10,
     minHeight: 58,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   pilePreviewRowActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.hover,
+    backgroundColor: '#1a1c1c',
   },
   pilePreviewCopy: {
-    gap: rhythm.microGap,
+    gap: 2,
     width: 72,
   },
   pilePreviewTitle: {
-    ...typography.textStyles.caption,
-    color: colors.text.title,
+    fontSize: 14,
+    color: '#1a1c1c',
     fontWeight: '700',
   },
   pilePreviewTitleActive: {
-    color: colors.primary.active,
+    color: '#ffffff',
   },
   pilePreviewMeta: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
+    fontSize: 12,
+    color: '#666666',
+  },
+  pilePreviewMetaActive: {
+    color: '#a0a0a0',
   },
   pilePreviewImages: {
     flex: 1,
     flexDirection: 'row',
-    gap: rhythm.microGap,
+    gap: 4,
     justifyContent: 'flex-end',
     minWidth: 0,
   },
   pilePreviewThumb: {
     aspectRatio: 1,
-    backgroundColor: colors.background.empty,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: 34,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 4,
     overflow: 'hidden',
     width: '21%',
+    maxWidth: 34,
   },
   pilePreviewImage: {
     height: '100%',
@@ -746,15 +543,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   organizeButton: {
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
+    backgroundColor: '#f5f5f5',
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  organizeButtonActive: {
+    backgroundColor: '#333333',
   },
   organizeButtonText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
+    fontSize: 12,
+    color: '#1a1c1c',
     fontWeight: '700',
+  },
+  organizeButtonTextActive: {
+    color: '#ffffff',
   },
   moreButton: {
     alignItems: 'center',
@@ -763,98 +566,39 @@ const styles = StyleSheet.create({
     width: 28,
   },
   sectionTitle: {
-    ...typography.textStyles.sectionTitle,
-    color: colors.text.title,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1a1c1c',
+    marginLeft: 4,
   },
-  pileWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
-  },
-  pileChip: {
+  blackButton: {
     alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-    minHeight: 32,
-    paddingHorizontal: spacing[3],
-  },
-  pileChipActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.hover,
-  },
-  pileLabel: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
-    fontWeight: '500',
-  },
-  pileCount: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-  },
-  pileLabelActive: {
-    color: colors.primary.active,
-  },
-  prefixPanel: {
-    gap: rhythm.cardContentGap,
-    paddingTop: spacing[1],
-  },
-  prefixTitle: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-  },
-  prefixWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
-  },
-  prefixChip: {
-    backgroundColor: colors.background.tag,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#1a1c1c',
+    borderRadius: 6,
+    height: 44,
     justifyContent: 'center',
-    maxWidth: '48%',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
   },
-  prefixChipActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.hover,
+  buttonDisabled: {
+    opacity: 0.5,
   },
-  prefixChipText: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
+  blackButtonText: {
+    color: '#ffffff',
+    fontFamily: 'JetBrainsMono_500Medium',
+    fontSize: 14,
   },
-  prefixChipTextActive: {
-    color: colors.primary.active,
-    fontWeight: '600',
-  },
-  gridHeader: {
+  whiteButton: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: rhythm.cardContentGap,
+    backgroundColor: '#ffffff',
+    borderColor: '#e6e6e6',
+    borderWidth: 1,
+    borderRadius: 6,
+    height: 44,
+    justifyContent: 'center',
   },
-  textButton: {
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
-  disabledTextButton: {
-    opacity: 0.38,
-  },
-  textButtonLabel: {
-    ...typography.textStyles.caption,
-    color: colors.primary.default,
-    fontWeight: '600',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+  whiteButtonText: {
+    color: '#1a1c1c',
+    fontFamily: 'JetBrainsMono_500Medium',
+    fontSize: 14,
   },
   pressed: {
     opacity: 0.82,
