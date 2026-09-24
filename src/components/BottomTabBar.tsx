@@ -69,16 +69,13 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: '#fff',
-    borderTopColor: colors.border.default,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
     flexDirection: 'row',
     paddingHorizontal: spacing[2],
     paddingTop: 4,
   },
   item: {
     alignItems: 'center',
-    borderRadius: radius.lg,
     flex: 1,
     gap: 2,
     justifyContent: 'center',
