@@ -69,7 +69,7 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     flexDirection: 'row',
     paddingTop: 6,
   },

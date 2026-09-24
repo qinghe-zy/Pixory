@@ -389,7 +389,7 @@ export function HomeLibraryScreen({
         )}
         scrollEventThrottle={16}
         onLayout={handleListLayout}
-        contentContainerStyle={[styles.grid, items.length === 0 && styles.emptyGrid, { paddingTop: insets.top, paddingHorizontal: 6 }]}
+        contentContainerStyle={[styles.grid, items.length === 0 && styles.emptyGrid, { paddingTop: insets.top, paddingHorizontal: 6, paddingBottom: floatingFooterHeight + 4 }]}
         data={layoutItems}
         initialNumToRender={3}
         keyExtractor={(item: any) => item.id}
@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing[8],
   },
   grid: {
-    paddingBottom: floatingFooterHeight + 4,
+    /* dynamic paddingBottom applied inline */
   },
   gridRow: {
     flexDirection: 'row',
