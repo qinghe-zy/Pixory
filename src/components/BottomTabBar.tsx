@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { aiLightColors } from './ai/aiLightTheme';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
@@ -22,6 +23,10 @@ const TAB_ITEMS: Array<{
   { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 
+function getActiveTintColor(tab: RootTabKey) {
+  return tab === 'ai' ? aiLightColors.primaryActive : colors.primary.default;
+}
+
 export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   
@@ -29,6 +34,7 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 4) }]}>
       {TAB_ITEMS.map((item) => {
         const isActive = item.key === activeTab;
+        const activeTintColor = getActiveTintColor(item.key);
 
         return (
           <Pressable
@@ -39,19 +45,18 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
             onPress={() => onSelectTab(item.key)}
             style={({ pressed }) => [
               styles.item,
-              { backgroundColor: isActive ? '#000' : '#fff' },
               pressed && styles.pressed
             ]}
           >
             <Ionicons
-              color={isActive ? '#fff' : colors.text.secondary}
+              color={isActive ? activeTintColor : colors.text.secondary}
               name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
               size={componentTokens.bottomTab.iconSize}
             />
             <Text style={[
               styles.label, 
               isActive ? styles.activeLabel : null, 
-              { color: isActive ? '#fff' : colors.text.secondary }
+              isActive ? { color: activeTintColor } : null
             ]}>
               {item.label}
             </Text>
