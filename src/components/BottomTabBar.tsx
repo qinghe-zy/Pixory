@@ -49,14 +49,14 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
             ]}
           >
             <Ionicons
-              color={isActive ? activeTintColor : colors.text.secondary}
+              color={isActive ? '#000000' : colors.text.secondary}
               name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
               size={22}
             />
             <Text style={[
               styles.label, 
               isActive ? styles.activeLabel : null, 
-              isActive ? { color: activeTintColor } : null
+              isActive ? { color: '#000000' } : null
             ]}>
               {item.label}
             </Text>

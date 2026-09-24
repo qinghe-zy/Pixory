@@ -14,6 +14,8 @@ import { IPCard } from '../components/IPCard';
 import { IPCardSkeleton } from '../components/IPCardSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { FloatingFooterContext } from '../components/AppScreen';
+import { useContext } from 'react';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
@@ -69,6 +71,7 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
+  const floatingFooterHeight = useContext(FloatingFooterContext);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const headerBgOpacity = scrollY.interpolate({
@@ -377,7 +380,7 @@ export function HomeLibraryScreen({
       footer={footer}
       showHeader={false}
       fullScreen={true}
-      contentContainerStyle={{ paddingHorizontal: 0, gap: 0 }}
+      contentContainerStyle={{ paddingHorizontal: 0, gap: 0, paddingBottom: 0 }}
     >
       <AnimatedFlatList
         onScroll={Animated.event(
@@ -780,7 +783,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing[8],
   },
   grid: {
-    paddingBottom: spacing[6],
+    paddingBottom: spacing[6] + floatingFooterHeight,
   },
   gridRow: {
     flexDirection: 'row',
