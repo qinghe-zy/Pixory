@@ -5,6 +5,7 @@ import { aiLightColors } from './ai/aiLightTheme';
 
 type ButtonVariant = 'solid' | 'ghost' | 'outline';
 type ButtonTone = 'default' | 'ai' | 'danger' | 'dark';
+type ButtonShape = 'default' | 'rectangular';
 
 interface PrimaryButtonProps {
   label: string;
@@ -15,6 +16,7 @@ interface PrimaryButtonProps {
   compact?: boolean;
   tone?: ButtonTone;
   fullWidth?: boolean;
+  shape?: ButtonShape;
 }
 
 export function PrimaryButton({
@@ -26,6 +28,7 @@ export function PrimaryButton({
   compact = false,
   tone = 'default',
   fullWidth = true,
+  shape = 'default',
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading;
   const indicatorColor =
@@ -45,12 +48,14 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        shape === 'rectangular' && styles.rectangular,
         compact && styles.compact,
         variant === 'solid' ? styles.solid : variant === 'outline' ? styles.outline : styles.ghost,
         variant === 'solid' && tone === 'ai' ? styles.aiSolid : null,
         variant === 'solid' && tone === 'danger' ? styles.dangerSolid : null,
         variant === 'solid' && tone === 'dark' ? styles.darkSolid : null,
         variant === 'outline' && tone === 'ai' ? styles.aiOutline : null,
+        variant === 'outline' && tone === 'dark' ? styles.darkOutline : null,
         isDisabled && styles.disabled,
         fullWidth && styles.fullWidth,
         pressed && !isDisabled && styles.pressed,
@@ -66,6 +71,7 @@ export function PrimaryButton({
             variant === 'solid' ? styles.solidLabel : variant === 'outline' ? styles.outlineLabel : styles.ghostLabel,
             variant !== 'solid' && tone === 'ai' ? styles.aiLabel : null,
             variant !== 'solid' && tone === 'danger' ? styles.dangerLabel : null,
+            variant === 'outline' && tone === 'dark' ? styles.darkOutlineLabel : null,
           ]}
         >
           {label}
@@ -82,6 +88,9 @@ const styles = StyleSheet.create({
     height: componentTokens.primaryButton.height,
     justifyContent: 'center',
     paddingHorizontal: componentTokens.primaryButton.horizontalPadding,
+  },
+  rectangular: {
+    borderRadius: 4,
   },
   fullWidth: {
     width: '100%',
@@ -105,6 +114,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.input,
     borderColor: colors.border.default,
     borderWidth: 1,
+  },
+  darkOutline: {
+    backgroundColor: '#ffffff',
+    borderColor: '#000000',
   },
   aiOutline: {
     backgroundColor: aiLightColors.surface,
@@ -133,6 +146,9 @@ const styles = StyleSheet.create({
   },
   outlineLabel: {
     color: colors.primary.default,
+  },
+  darkOutlineLabel: {
+    color: '#000000',
   },
   ghostLabel: {
     color: colors.primary.default,

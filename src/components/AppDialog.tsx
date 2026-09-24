@@ -1,13 +1,10 @@
 import type { ReactNode } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { pageBackgroundImages, type PageBackgroundVariant } from '../design/backgrounds';
+import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { aiLightColors } from './ai/aiLightTheme';
 import { PrimaryButton } from './PrimaryButton';
-
-const dialogPatternImage = require('../../docs/black.png');
 
 interface AppDialogProps {
   visible: boolean;
@@ -27,6 +24,7 @@ interface AppDialogProps {
   backgroundVariant?: PageBackgroundVariant;
   accent?: 'default' | 'ai';
   dismissible?: boolean;
+  appearance?: 'default' | 'opaqueMonochrome';
 }
 
 export function AppDialog({
@@ -44,11 +42,11 @@ export function AppDialog({
   primaryDisabled = false,
   actionLayout = 'horizontal',
   compactActions = false,
-  backgroundVariant,
   accent = 'default',
   dismissible = true,
+  appearance = 'default',
 }: AppDialogProps) {
-  const themedBackground = accent === 'ai' || !backgroundVariant ? undefined : pageBackgroundImages[backgroundVariant];
+  const isOpaqueMonochrome = appearance === 'opaqueMonochrome';
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);
   const primaryTone = accent === 'ai' ? (danger ? 'danger' : 'ai') : (danger ? 'danger' : 'default');
   const secondaryTone = accent === 'ai' ? 'ai' : 'default';
@@ -57,16 +55,7 @@ export function AppDialog({
     <Modal animationType="fade" onRequestClose={dismissible ? onClose : undefined} transparent visible={visible}>
       <View style={styles.overlay}>
         {dismissible ? <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} /> : null}
-        <View style={[styles.panel, themedBackground ? styles.themedPanel : null, accent === 'ai' ? styles.aiPanel : null]}>
-          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: radius.xl }]}>
-            <BlurView intensity={85} style={StyleSheet.absoluteFill} tint="light" />
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255, 255, 255, 0.55)' }]} />
-          </View>
-          {accent === 'ai' ? null : themedBackground ? (
-            <Image resizeMode="cover" source={themedBackground.source} style={[styles.patternImage, styles.themedPatternImage]} />
-          ) : (
-            <Image resizeMode="stretch" source={dialogPatternImage} style={styles.patternImage} />
-          )}
+        <View style={[styles.panel, accent === 'ai' ? styles.aiPanel : null, isOpaqueMonochrome ? styles.opaqueMonochromePanel : null]}>
           <View style={styles.copy}>
             <Text style={[styles.title, accent === 'ai' ? styles.aiTitle : danger ? styles.dangerTitle : null]}>{title}</Text>
             {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
@@ -77,29 +66,29 @@ export function AppDialog({
               <>
                 {secondaryLabel ? (
                   <View style={styles.secondaryActionItem}>
-                    <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="outline" />
+                    <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" />
                   </View>
                 ) : null}
                 <View style={styles.secondaryActionItem}>
-                  <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} tone={primaryTone} />
+                    <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : primaryTone} />
                 </View>
               </>
             ) : (
               <>
-                <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} tone={primaryTone} />
+                <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : primaryTone} />
                 {splitSecondaryActions ? (
                   <View style={styles.secondaryActionRow}>
                     <View style={styles.secondaryActionItem}>
-                      <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} tone={secondaryTone} variant="outline" />
+                      <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" />
                     </View>
                     <View style={styles.secondaryActionItem}>
-                      {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="outline" /> : null}
+                      {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
                     </View>
                   </View>
                 ) : (
                   <>
-                    {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} tone={secondaryTone} variant="outline" /> : null}
-                    {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="ghost" /> : null}
+                    {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
+                    {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="ghost" /> : null}
                   </>
                 )}
               </>
@@ -121,6 +110,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     ...shadows.floating,
+    backgroundColor: '#f9f9f9',
     borderColor: colors.border.default,
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
@@ -129,20 +119,16 @@ const styles = StyleSheet.create({
     padding: spacing[5],
     width: '100%',
   },
-  themedPanel: {
-    backgroundColor: colors.background.page,
-  },
   aiPanel: {
     backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
   },
-  patternImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.24,
-  },
-  themedPatternImage: {
-    opacity: 0.28,
+  opaqueMonochromePanel: {
+    backgroundColor: '#f9f9f9',
+    borderColor: '#1a1c1c',
+    borderRadius: 8,
+    shadowOpacity: 0,
   },
   copy: {
     gap: rhythm.cardContentGap,

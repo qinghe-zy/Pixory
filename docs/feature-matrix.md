@@ -171,7 +171,7 @@
 | --- | --- | --- |
 | 图片导入 | 多选图片、读取 metadata、复制原图、缩略图、创建记录；预检 1000 文件/256 MB 单图片/32 GB 总量/未知大小预留/512 MB 存储余量，实际字节变化时提交前复查；混合批次与视频共享同一实际写入账本 | `ImportImagesScreen`, `imageImportService`, `mediaImportPreflight` |
 | 视频导入 | 多选视频、读取时长/尺寸、复制原视频、生成视频缩略图；预检 20 GB 单视频与批次/存储预算，复制、hash、封面和数据库写入均保留取消检查及显式回滚；混合批次与图片共享同一实际写入账本 | `videoImportService`, `mediaImportPreflight`, native media module |
-| 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签 | `ImportImagesScreen`, `ImportResultScreen` |
+| 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签；导入页支持在同一流程中搜索并切换目标 IP，顶部归属卡片、分组列表和最终写入目标会随选择同步更新 | `ImportImagesScreen`, `ImportResultScreen`, `ipRepository` |
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review；最近 30 批的 success/failed/skipped 由一条分组查询聚合，不读取每批明细；批次默认按来源顺序展示，支持来源正/逆序 | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `BatchManageImagesScreen`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
 | 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且保持 `copyToCacheDirectory: true`；只有选择器返回、显式标记 owned 且仍位于 Expo cache 的 URI 会在移除/取消/成功离页时清理，相册原件不进入该路径；相册移动在全部成功素材完成 Pixory 本地持久化后，合并图片/视频 assetId 发起一次 Android 系统删除确认，取消、assetId 缺失或删除失败时保留导入结果并明确提示 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaSourceDeletionService`, `imageImportService`, `videoImportService` |

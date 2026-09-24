@@ -9,15 +9,16 @@ interface LightFormSectionProps {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   headerRight?: ReactNode;
+  compact?: boolean;
 }
 
-export function LightFormSection({ title, hint, children, style, headerRight }: LightFormSectionProps) {
+export function LightFormSection({ title, hint, children, style, headerRight, compact = false }: LightFormSectionProps) {
   const rows = Children.toArray(children).filter(Boolean);
 
   return (
-    <View style={[styles.section, style]}>
+    <View style={[styles.section, compact && styles.compactSection, style]}>
       {title || hint || headerRight ? (
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, compact && styles.compactHeaderRow]}>
           <View style={styles.headerCopy}>
             {title ? <Text style={styles.title}>{title}</Text> : null}
             {hint ? <Text style={styles.hint}>{hint}</Text> : null}
@@ -25,7 +26,7 @@ export function LightFormSection({ title, hint, children, style, headerRight }: 
           {headerRight}
         </View>
       ) : null}
-      <View style={styles.rows}>
+      <View style={[styles.rows, compact && styles.compactRows]}>
         {rows.map((row, index) => (
           <View key={index}>
             {index > 0 ? <View style={styles.divider} /> : null}
@@ -69,6 +70,17 @@ const styles = StyleSheet.create({
   },
   rows: {
     paddingHorizontal: spacing[4],
+  },
+  compactSection: {
+    borderRadius: 8,
+  },
+  compactHeaderRow: {
+    paddingHorizontal: spacing[3],
+    paddingTop: spacing[2],
+    paddingBottom: spacing[1],
+  },
+  compactRows: {
+    paddingHorizontal: spacing[2],
   },
   divider: {
     backgroundColor: colors.border.divider,
