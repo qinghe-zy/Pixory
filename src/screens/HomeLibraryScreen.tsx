@@ -72,29 +72,29 @@ export function HomeLibraryScreen({
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const headerBgOpacity = scrollY.interpolate({
-    inputRange: [20, 40],
+    inputRange: [0, 20],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
   const stage1Opacity = scrollY.interpolate({
-    inputRange: [40, 60],
+    inputRange: [10, 30],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
   const stage1Translate = scrollY.interpolate({
-    inputRange: [40, 60],
+    inputRange: [10, 30],
     outputRange: [10, 0],
     extrapolate: 'clamp',
   });
 
   const stage2Opacity = scrollY.interpolate({
-    inputRange: [80, 100],
+    inputRange: [20, 40],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
   const stage2Translate = scrollY.interpolate({
-    inputRange: [80, 100],
+    inputRange: [20, 40],
     outputRange: [10, 0],
     extrapolate: 'clamp',
   });
@@ -158,7 +158,7 @@ export function HomeLibraryScreen({
 
   const isNeedsPanelVisible = dismissedThreshold >= 0 && needsOrganizingCount > 0 && needsOrganizingCount > dismissedThreshold;
 
-  const filterThreshold = isNeedsPanelVisible ? 180 : 120;
+  const filterThreshold = isNeedsPanelVisible ? 120 : 60;
   const stage3Opacity = scrollY.interpolate({
     inputRange: [filterThreshold, filterThreshold + 20],
     outputRange: [0, 1],
