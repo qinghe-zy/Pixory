@@ -1,16 +1,90 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  ScrollView,
+  Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ScreenScaffold } from '../components/ScreenScaffold';
 import { GROUP_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from '../constants/limits';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
-import { premiumColors, radius, spacing, typography } from '../design/tokens';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
+
+// ==========================================
+// Atelier Curatorial Design System Tokens
+// (Hardcoded here as strictly requested by UI spec for pixel-perfect alignment)
+// ==========================================
+const atelierColors = {
+  surface: '#f9f9f9',
+  surfaceContainerLowest: '#ffffff',
+  surfaceContainerLow: '#f3f3f4',
+  surfaceVariant: '#e2e2e2',
+  onSurface: '#1a1c1c',
+  onSurfaceVariant: '#444748',
+  outline: '#747878',
+  outlineVariant: '#c4c7c7',
+  primary: '#000000',
+  onPrimary: '#ffffff',
+  primaryContainer: '#1c1b1b',
+};
+
+const atelierTypography = {
+  titleSm: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    lineHeight: 20,
+    letterSpacing: -0.075, // -0.005em
+  },
+  bodyMd: {
+    fontSize: 13,
+    fontWeight: '400' as const,
+    lineHeight: 18,
+    letterSpacing: 0.065, // 0.005em
+  },
+  labelSm: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    lineHeight: 16,
+    letterSpacing: 0.24, // 0.02em
+  },
+  captionMono: {
+    fontSize: 10,
+    fontWeight: '500' as const,
+    lineHeight: 12,
+    letterSpacing: 0.8, // 0.08em
+  },
+  captionBold: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    lineHeight: 14,
+    letterSpacing: 0.66, // 0.06em
+  },
+};
+
+const atelierSpacing = {
+  margin: 16, // 1rem
+  spaceXl: 32, // 2rem
+  spaceLg: 20, // 1.25rem
+  spaceMd: 12, // 0.75rem
+  spaceSm: 8,  // 0.5rem
+  spaceXs: 4,  // 0.25rem
+};
+
+const atelierRadius = {
+  DEFAULT: 4, // 0.25rem
+  lg: 4,      // 0.25rem (mapping)
+  xl: 8,      // 0.5rem
+  full: 9999, // 0.75rem / full
+};
 
 interface CreateGroupScreenProps {
   ipId: number;
@@ -20,369 +94,539 @@ interface CreateGroupScreenProps {
   onCreated: () => void;
 }
 
-export function CreateGroupScreen({ ipId, space = 'normal', ipName, onBack, onCreated }: CreateGroupScreenProps) {
+export function CreateGroupScreen({
+  ipId,
+  space = 'normal',
+  ipName,
+  onBack,
+  onCreated,
+}: CreateGroupScreenProps) {
   const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [type, setType] = useState<GroupTypeValue | null>(null);
   const [customType, setCustomType] = useState('');
   const [description, setDescription] = useState('');
-  const [showAllTypes, setShowAllTypes] = useState(false);
-  const {
-    data: resolvedIpName,
-  } = useScreenLoad(
+
+  const { data: resolvedIpName } = useScreenLoad(
     async () => {
       if (ipName) {
         return ipName;
       }
-
       const record = await runWithDatabaseSpace(space, (db) => ipRepository.findById(db, ipId));
       return record?.name ?? `IP #${ipId}`;
     },
     [ipId, ipName, space],
     { initialData: ipName ?? `IP #${ipId}` }
   );
+
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const trimmedName = useMemo(() => name.trim(), [name]);
 
   function handleCreate() {
     const selectedType = type === 'custom' && customType.trim() ? customType.trim() : type;
 
-    void runSubmit(async () => {
-      await runWithDatabaseSpace(space, (db) => groupRepository.create(db, {
-        ipId,
-        name: trimmedName,
-        type: selectedType as GroupTypeValue,
-        description,
-      }));
-      onCreated();
-    }, {
-      formatError: (error) => {
-        const message = error instanceof Error ? error.message : '未知错误';
-        return `创建失败：${message}`;
+    void runSubmit(
+      async () => {
+        await runWithDatabaseSpace(space, (db) =>
+          groupRepository.create(db, {
+            ipId,
+            name: trimmedName,
+            type: selectedType as GroupTypeValue,
+            description,
+          })
+        );
+        onCreated();
       },
-      validate: () => {
-        if (!trimmedName) {
-          return '请输入分组名称。';
-        }
-
-        if (!type) {
-          return '请选择分组类型。';
-        }
-
-        if (type === 'custom' && !customType.trim()) {
-          return '请输入自定义类型。';
-        }
-
-        return null;
-      },
-    });
+      {
+        formatError: (error) => {
+          const message = error instanceof Error ? error.message : '未知错误';
+          return `创建失败：${message}`;
+        },
+        validate: () => {
+          if (!trimmedName) {
+            return '请输入分组名称。';
+          }
+          if (!type) {
+            return '请选择分组类型。';
+          }
+          if (type === 'custom' && !customType.trim()) {
+            return '请输入自定义类型名称。';
+          }
+          return null;
+        },
+      }
+    );
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      <ScreenScaffold
-        backgroundVariant="archive"
-        contentContainerStyle={styles.container}
-        errorMessage={submitError}
-        scrollable
-        showHeader={false}
+    <View style={styles.root}>
+      {/* Header */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 80 : 100}
+        tint="light"
+        style={[styles.header, { paddingTop: insets.top }]}
       >
-        {/* 所属 IP */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>所属 IP</Text>
-          <View style={styles.readonlyInput}>
-            <Text style={styles.readonlyText}>{resolvedIpName ?? `IP #${ipId}`}</Text>
+        <View style={styles.headerInner}>
+          <Pressable
+            accessibilityLabel="取消并关闭"
+            accessibilityRole="button"
+            onPress={onBack}
+            style={({ pressed }) => [
+              styles.headerButton,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Ionicons name="close" size={20} color={atelierColors.onSurface} />
+          </Pressable>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              创建分组
+            </Text>
           </View>
+          <View style={styles.headerRightSpacer} pointerEvents="none" />
         </View>
+      </BlurView>
 
-        {/* 分组名称 */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>分组名称</Text>
-          <TextInput
-            autoCapitalize="none"
-            editable={!isSubmitting}
-            enablesReturnKeyAutomatically
-            maxLength={GROUP_NAME_MAX_LENGTH}
-            onChangeText={(value) => {
-              setName(value);
-              if (submitError) clearSubmitError();
-            }}
-            placeholder="例如：2026 夏季、夜景场景、海报KV"
-            placeholderTextColor="rgba(0,0,0,0.3)"
-            style={styles.input}
-            value={name}
-          />
-        </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 56, paddingBottom: insets.bottom + atelierSpacing.margin },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formContainer}>
+          {/* Field 1: 所属 IP */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>所属 IP</Text>
+            <View style={[styles.fieldContent, styles.readonlyFieldContent]}>
+              <Text style={styles.readonlyFieldText}>{resolvedIpName ?? `IP #${ipId}`}</Text>
+            </View>
+          </View>
 
-        {/* 分组类型 */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>分组类型</Text>
-          <View style={styles.optionList}>
-            {GROUP_TYPE_OPTIONS.slice(0, showAllTypes ? undefined : 3).map((option) => {
-              const selected = type === option.value;
-              return (
-                <Pressable
-                  key={option.value}
-                  accessibilityRole="button"
-                  disabled={isSubmitting}
-                  onPress={() => setType(option.value)}
-                  style={({ pressed }) => [
-                    styles.optionRow,
-                    selected && styles.optionRowSelected,
-                    pressed && !isSubmitting && styles.optionRowPressed,
-                    isSubmitting && styles.optionRowDisabled,
-                  ]}
-                >
-                  <View style={styles.optionContent}>
-                    <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
-                      {option.label}
-                    </Text>
-                    <Text style={styles.optionMeta}>{option.description}</Text>
-                  </View>
-                  <View style={[styles.checkCircle, selected && styles.checkCircleSelected]}>
-                    {selected ? <Ionicons color="#FFF" name="checkmark" size={12} /> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-            {!showAllTypes && GROUP_TYPE_OPTIONS.length > 3 && (
-              <Pressable onPress={() => setShowAllTypes(true)} style={styles.expandButton}>
-                <Text style={styles.expandButtonText}>显示更多类型</Text>
-                <Ionicons name="chevron-down" size={14} color="rgba(92, 84, 77, 0.7)" />
-              </Pressable>
-            )}
-            {type === 'custom' && (
+          {/* Field 2: 分组名称 */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>分组名称</Text>
+            <View style={styles.fieldContent}>
               <TextInput
                 autoCapitalize="none"
                 editable={!isSubmitting}
                 enablesReturnKeyAutomatically
-                maxLength={20}
+                maxLength={GROUP_NAME_MAX_LENGTH}
                 onChangeText={(value) => {
-                  setCustomType(value);
+                  setName(value);
                   if (submitError) clearSubmitError();
                 }}
-                placeholder="请输入自定义类型，例如：立绘、周边"
-                placeholderTextColor="rgba(0,0,0,0.3)"
-                style={[styles.input, { marginTop: spacing[2] }]}
-                value={customType}
+                placeholder="例如：2026 夏季、夜景场景、海报KV"
+                placeholderTextColor={atelierColors.outline}
+                style={styles.textInput}
+                value={name}
               />
-            )}
+            </View>
+          </View>
+
+          {/* Field 3: 分组类型 */}
+          <View style={styles.fieldGroup}>
+            <View style={styles.typeLabelRow}>
+              <Text style={styles.fieldLabel}>分组类型</Text>
+              <Text style={styles.typeLabelHint}>单选</Text>
+            </View>
+
+            <View style={styles.radioList}>
+              {GROUP_TYPE_OPTIONS.map((option) => {
+                const isSelected = type === option.value;
+                const isCustom = option.value === 'custom';
+
+                if (isCustom) {
+                  return (
+                    <View
+                      key={option.value}
+                      style={[
+                        styles.customOptionContainer,
+                        isSelected && styles.customOptionContainerSelected,
+                      ]}
+                    >
+                      <Pressable
+                        disabled={isSubmitting}
+                        onPress={() => setType(option.value)}
+                        style={({ pressed }) => [
+                          styles.radioOptionInner,
+                          pressed && !isSubmitting && styles.activePress,
+                        ]}
+                      >
+                        <View style={styles.radioOptionTextGroup}>
+                          <Text style={styles.radioOptionTitle}>{option.label}</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.radioCircle,
+                            isSelected && styles.radioCircleSelected,
+                            isSelected && styles.shadowSm,
+                          ]}
+                        >
+                          {isSelected && (
+                            <Ionicons name="checkmark" size={14} color={atelierColors.onPrimary} />
+                          )}
+                        </View>
+                      </Pressable>
+
+                      {isSelected && (
+                        <View style={styles.customInputSection}>
+                          <View style={styles.customInputHeader}>
+                            <Text style={styles.fieldLabel}>自定义类型名称</Text>
+                          </View>
+                          <View style={styles.customInputField}>
+                            <TextInput
+                              autoCapitalize="none"
+                              editable={!isSubmitting}
+                              enablesReturnKeyAutomatically
+                              maxLength={12}
+                              onChangeText={(value) => {
+                                setCustomType(value);
+                                if (submitError) clearSubmitError();
+                              }}
+                              placeholder=""
+                              placeholderTextColor={atelierColors.outline}
+                              style={styles.customTextInput}
+                              value={customType}
+                            />
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                }
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    disabled={isSubmitting}
+                    onPress={() => setType(option.value)}
+                    style={({ pressed }) => [
+                      styles.radioOption,
+                      isSelected ? styles.shadowMd : styles.shadowSm,
+                      pressed && !isSubmitting && styles.activePress,
+                    ]}
+                  >
+                    <View style={styles.radioOptionTextGroup}>
+                      <Text
+                        style={[
+                          styles.radioOptionTitle,
+                          isSelected && styles.radioOptionTitleSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text style={styles.radioOptionDesc}>{option.description}</Text>
+                    </View>
+                    <View style={styles.radioCircle} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Field 4: 分组描述 */}
+          <View style={styles.fieldGroup}>
+            <View style={styles.typeLabelRow}>
+              <Text style={styles.fieldLabel}>分组描述 (可选)</Text>
+            </View>
+            <View style={[styles.fieldContent, styles.textareaContent]}>
+              <TextInput
+                editable={!isSubmitting}
+                maxLength={DESCRIPTION_MAX_LENGTH}
+                multiline
+                onChangeText={(value) => {
+                  setDescription(value);
+                  if (submitError) clearSubmitError();
+                }}
+                placeholder="例如：活动主视觉、角色立绘、社媒图。"
+                placeholderTextColor={atelierColors.outline}
+                style={[styles.textInput, styles.textarea]}
+                textAlignVertical="top"
+                value={description}
+              />
+            </View>
+          </View>
+
+          {/* Submit Button */}
+          <View style={styles.submitContainer}>
+            {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+            <Pressable
+              disabled={isSubmitting}
+              onPress={handleCreate}
+              style={({ pressed }) => [
+                styles.submitButton,
+                pressed && !isSubmitting && styles.activePress,
+                isSubmitting && { opacity: 0.9 },
+              ]}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color={atelierColors.onPrimary} />
+              ) : (
+                <Text style={styles.submitButtonText}>创建分组</Text>
+              )}
+            </Pressable>
           </View>
         </View>
-
-        {/* 分组描述 */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>分组描述 (可选)</Text>
-          <TextInput
-            editable={!isSubmitting}
-            maxLength={DESCRIPTION_MAX_LENGTH}
-            multiline
-            onChangeText={(value) => {
-              setDescription(value);
-              if (submitError) clearSubmitError();
-            }}
-            placeholder="例如：活动主视觉、角色立绘、社媒图。"
-            placeholderTextColor="rgba(0,0,0,0.3)"
-            style={[styles.input, styles.textarea]}
-            textAlignVertical="top"
-            value={description}
-          />
-        </View>
-      </ScreenScaffold>
-
-      <View pointerEvents="box-none" style={[styles.floatingWrap, { bottom: insets.bottom + spacing[4] }]}>
-        <BlurView intensity={30} style={styles.glassPill} tint="light">
-          <Pressable
-            disabled={isSubmitting || !trimmedName || !type}
-            onPress={handleCreate}
-            style={({ pressed }) => [
-              styles.pillButton,
-              pressed && styles.pillButtonPressed,
-              (isSubmitting || !trimmedName || !type) && styles.pillButtonDisabled,
-            ]}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color={premiumColors.buttonText} />
-            ) : (
-              <Text style={styles.pillButtonText}>创建分组</Text>
-            )}
-          </Pressable>
-        </BlurView>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: spacing[5],
-    paddingBottom: 140,
-    paddingTop: spacing[2],
+  root: {
+    flex: 1,
+    backgroundColor: atelierColors.surface,
   },
-  inputGroup: {
-    gap: spacing[2],
-  },
-  label: {
-    ...typography.textStyles.bodyStrong,
-    color: '#5C544D',
-    marginLeft: spacing[1],
-  },
-  input: {
-    ...typography.textStyles.body,
-    backgroundColor: premiumColors.inputBg,
-    borderColor: premiumColors.inputBorder,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    color: '#2C2A29',
-    minHeight: 56,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-  },
-  textarea: {
-    minHeight: 120,
-    paddingTop: spacing[4],
-  },
-  readonlyInput: {
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    borderColor: 'rgba(255,255,255,0.6)',
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 56,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    justifyContent: 'center',
-  },
-  readonlyText: {
-    ...typography.textStyles.body,
-    color: '#5C544D',
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
-  },
-  typeItem: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    borderColor: 'rgba(255,255,255,0.6)',
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    height: 48,
-    justifyContent: 'center',
-    paddingHorizontal: spacing[4],
-  },
-  typeItemSelected: {
-    backgroundColor: premiumColors.buttonBg,
-    borderColor: premiumColors.buttonBg,
-  },
-  typeItemText: {
-    ...typography.textStyles.body,
-    color: '#5C544D',
-  },
-  typeItemTextSelected: {
-    color: premiumColors.buttonText,
-    fontWeight: 'bold',
-  },
-  expandButton: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[1],
-    justifyContent: 'center',
-    paddingVertical: spacing[3],
-  },
-  expandButtonText: {
-    ...typography.textStyles.caption,
-    color: 'rgba(92, 84, 77, 0.7)',
-  },
-  floatingWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    left: 0,
+  header: {
     position: 'absolute',
+    top: 0,
+    left: 0,
     right: 0,
-    zIndex: 10,
-  },
-  glassPill: {
-    borderRadius: 100,
-    elevation: 6,
-    overflow: 'hidden',
+    zIndex: 50,
+    backgroundColor: 'rgba(249, 249, 249, 0.8)', // surface/80
+    borderBottomWidth: 0,
+    // Note: The HTML uses a very faint 0.04 shadow
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  pillButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(107, 96, 86, 0.85)', // Transparent premiumColors.buttonBg (#6B6056)
-    justifyContent: 'center',
-    minWidth: 200,
-    paddingHorizontal: 48,
-    paddingVertical: 18,
-  },
-  pillButtonPressed: {
-    backgroundColor: 'rgba(107, 96, 86, 0.95)',
-  },
-  pillButtonDisabled: {
-    backgroundColor: 'rgba(107, 96, 86, 0.4)',
-  },
-  pillButtonText: {
-    ...typography.textStyles.bodyStrong,
-    color: premiumColors.buttonText,
-    letterSpacing: 0.5,
-  },
-  optionList: {
-    gap: spacing[2],
-  },
-  optionRow: {
-    alignItems: 'center',
-    backgroundColor: premiumColors.inputBg,
-    borderColor: premiumColors.inputBorder,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+  headerInner: {
+    height: 56, // h-14
+    paddingHorizontal: atelierSpacing.margin,
     flexDirection: 'row',
-    gap: spacing[3],
-    minHeight: 64,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  optionRowSelected: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderColor: '#C7BCAE',
+  headerButton: {
+    minWidth: 44,
+    minHeight: 44,
+    marginLeft: -atelierSpacing.spaceXs, // -ml-space-xs
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
-  optionRowPressed: {
-    opacity: 0.85,
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: atelierSpacing.spaceXs,
+  },
+  headerTitle: {
+    ...atelierTypography.titleSm,
+    color: atelierColors.onSurface,
+  },
+  headerRightSpacer: {
+    minWidth: 44,
+    minHeight: 44,
+  },
+  scrollContent: {
+    // We handle the safe area inset at the callsite
+  },
+  formContainer: {
+    paddingHorizontal: atelierSpacing.margin,
+    paddingTop: atelierSpacing.spaceMd,
+    paddingBottom: atelierSpacing.spaceXl,
+    gap: atelierSpacing.spaceLg,
+  },
+  fieldGroup: {
+    gap: atelierSpacing.spaceXs,
+  },
+  fieldLabel: {
+    ...atelierTypography.labelSm,
+    color: atelierColors.onSurfaceVariant,
+  },
+  fieldContent: {
+    backgroundColor: atelierColors.surfaceContainerLowest,
+    borderRadius: atelierRadius.xl,
+    overflow: 'hidden',
+    // shadow-sm
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  readonlyFieldContent: {
+    height: 44, // h-11
+    paddingHorizontal: atelierSpacing.margin,
+    justifyContent: 'center',
+  },
+  readonlyFieldText: {
+    ...atelierTypography.titleSm,
+    color: atelierColors.onSurface,
+  },
+  textInput: {
+    ...atelierTypography.bodyMd,
+    color: atelierColors.onSurface,
+    height: 48, // h-12
+    paddingHorizontal: atelierSpacing.margin,
+  },
+  typeLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  typeLabelHint: {
+    ...atelierTypography.captionMono,
+    color: atelierColors.outline,
+  },
+  radioList: {
+    gap: 8, // space-y-2
+  },
+  radioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14, // p-3.5
+    backgroundColor: atelierColors.surfaceContainerLowest,
+    borderRadius: atelierRadius.xl,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  shadowSm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  shadowMd: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  activePress: {
     transform: [{ scale: 0.99 }],
   },
-  optionRowDisabled: {
-    opacity: 0.6,
-  },
-  optionContent: {
+  radioOptionTextGroup: {
     flex: 1,
-    gap: 2,
+    paddingRight: 8,
+    gap: 2, // space-y-0.5
   },
-  optionLabel: {
-    ...typography.textStyles.bodyStrong,
-    color: premiumColors.inputText,
+  radioOptionTitle: {
+    ...atelierTypography.titleSm,
+    color: atelierColors.onSurface,
   },
-  optionLabelSelected: {
-    color: premiumColors.buttonBg,
+  radioOptionTitleSelected: {
+    color: atelierColors.primary,
   },
-  optionMeta: {
-    ...typography.textStyles.caption,
-    color: 'rgba(92, 84, 77, 0.7)',
+  radioOptionDesc: {
+    ...atelierTypography.captionBold,
+    color: atelierColors.onSurfaceVariant,
+    fontWeight: '400', // Override bold to match HTML design "font-normal" on caption-bold class
   },
-  checkCircle: {
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: atelierRadius.full,
+    borderWidth: 1,
+    borderColor: atelierColors.outlineVariant,
+    backgroundColor: 'transparent',
     alignItems: 'center',
-    borderColor: 'rgba(0,0,0,0.15)',
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 22,
     justifyContent: 'center',
-    width: 22,
   },
-  checkCircleSelected: {
-    backgroundColor: premiumColors.buttonBg,
-    borderColor: premiumColors.buttonBg,
+  radioCircleSelected: {
+    backgroundColor: atelierColors.primary,
+    borderColor: atelierColors.primary,
+    borderWidth: 0,
+  },
+  customOptionContainer: {
+    backgroundColor: atelierColors.surfaceContainerLowest,
+    borderRadius: atelierRadius.xl,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+    // Default shadow-sm
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  customOptionContainerSelected: {
+    borderColor: atelierColors.primary,
+    // Add ring-1 ring-primary/5
+    // React Native doesn't support outer ring natively, we emulate with border/shadow
+    shadowColor: atelierColors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  radioOptionInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  customInputSection: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(226, 226, 226, 0.6)', // border-surface-variant/60
+    backgroundColor: 'rgba(243, 243, 244, 0.4)', // bg-surface-container-low/40
+    gap: 10,
+  },
+  customInputHeader: {
+    paddingTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customInputField: {
+    backgroundColor: atelierColors.surfaceContainerLowest,
+    borderRadius: atelierRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 199, 199, 0.6)', // border-outline-variant/60
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  customTextInput: {
+    ...atelierTypography.bodyMd,
+    color: atelierColors.onSurface,
+    padding: 0, // Reset default padding
+    minHeight: 20,
+  },
+  textareaContent: {
+    padding: atelierSpacing.margin,
+  },
+  textarea: {
+    height: undefined,
+    minHeight: 70, // visually similar to rows="3"
+    paddingHorizontal: 0, // we use parent padding
+    lineHeight: 24, // leading-relaxed
+  },
+  submitContainer: {
+    paddingTop: atelierSpacing.spaceSm,
+    gap: 8,
+  },
+  errorText: {
+    ...atelierTypography.bodyMd,
+    color: '#ba1a1a', // error
+    textAlign: 'center',
+  },
+  submitButton: {
+    width: '100%',
+    height: 48,
+    backgroundColor: atelierColors.primary,
+    borderRadius: atelierRadius.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // shadow-md
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  submitButtonText: {
+    ...atelierTypography.titleSm,
+    color: atelierColors.onPrimary,
   },
 });
