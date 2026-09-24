@@ -2,37 +2,30 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, Platform, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
-import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
 
-import { AiAnchoredContextMenu, type AiAnchoredContextMenuAction } from '../components/ai/AiAnchoredContextMenu';
+import { AiAnchoredContextMenu } from '../components/ai/AiAnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
-import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
 import { IPCardSkeleton } from '../components/IPCardSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
-import { RhythmBars } from '../components/RhythmBars';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
-import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
-import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace, type IpSortOrder } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
 import { IpSortMenuButton } from '../components/IpSortMenuButton';
-import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
-import { BlurView } from 'expo-blur';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useIpListPreferences } from '../services/ipListPreferences';
 import { useToast } from '../components/AppToast';
-import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
-import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
-  { key: 'all', label: '全部' },
-  { key: 'recent', label: '最近更新' },
+  { key: 'all', label: '全部 IP' },
   { key: 'favorite', label: '收藏' },
+  { key: 'recent', label: '最近更新' },
 ];
 
 const IP_LIBRARY_PAGE_SIZE = 20;
@@ -47,7 +40,14 @@ interface HomeLibraryScreenProps {
   onOpenGlobalSearch: () => void;
   onOpenIp: (ipId: number) => void;
   onOpenNeedsOrganizing: () => void;
+  onImportIp?: (ipId: number) => void;
+  onEditIp?: (ipId: number) => void;
 }
+
+type LayoutItem = 
+  | { type: 'hero'; item: IpListItem; id: string }
+  | { type: 'standard'; item: IpListItem; id: string }
+  | { type: 'grid_row'; items: IpListItem[]; id: string };
 
 export function HomeLibraryScreen({
   refreshKey,
@@ -59,6 +59,8 @@ export function HomeLibraryScreen({
   onOpenGlobalSearch,
   onOpenIp,
   onOpenNeedsOrganizing,
+  onImportIp,
+  onEditIp,
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
@@ -72,14 +74,10 @@ export function HomeLibraryScreen({
   const [showSweep, setShowSweep] = useState(true);
   const [listWidth, setListWidth] = useState(0);
 
-  // Persistent dismiss: store the threshold count when user taps X.
-  // Banner only shows again if actual count exceeds that threshold.
   const NEEDS_PANEL_DISMISS_FILE = `${FileSystem.documentDirectory ?? ''}pixory/preferences/needsPanelDismiss.json`;
-  const [dismissedThreshold, setDismissedThreshold] = useState<number>(-1); // -1 = not yet loaded
+  const [dismissedThreshold, setDismissedThreshold] = useState<number>(-1);
   const [needsOrganizingCount, setNeedsOrganizingCount] = useState(0);
-  const prevRefreshKey = useRef(refreshKey);
 
-  // Load persisted dismiss threshold once on mount
   useEffect(() => {
     void (async () => {
       try {
@@ -95,7 +93,6 @@ export function HomeLibraryScreen({
         setDismissedThreshold(0);
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function persistDismissThreshold(count: number) {
@@ -104,13 +101,10 @@ export function HomeLibraryScreen({
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => undefined);
       await FileSystem.writeAsStringAsync(NEEDS_PANEL_DISMISS_FILE, JSON.stringify({ threshold: count }));
     } catch {
-      // ignore
     }
   }
 
-  // Re-fetch count whenever refreshKey changes (even if component stays mounted in tab)
   useEffect(() => {
-    prevRefreshKey.current = refreshKey;
     let isMounted = true;
     void runWithDatabaseSpace(space, async (db) => {
       try {
@@ -119,7 +113,6 @@ export function HomeLibraryScreen({
           setNeedsOrganizingCount(count);
         }
       } catch (error) {
-        console.warn('Failed to fetch needsOrganizingCount', error);
       }
     });
     return () => {
@@ -127,11 +120,7 @@ export function HomeLibraryScreen({
     };
   }, [space, refreshKey]);
 
-  // Whether to show the needs-organizing banner
-  const isNeedsPanelVisible =
-    dismissedThreshold >= 0 && // loaded
-    needsOrganizingCount > 0 &&
-    needsOrganizingCount > dismissedThreshold;
+  const isNeedsPanelVisible = dismissedThreshold >= 0 && needsOrganizingCount > 0 && needsOrganizingCount > dismissedThreshold;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -139,11 +128,6 @@ export function HomeLibraryScreen({
     }, 750);
     return () => clearTimeout(timer);
   }, []);
-
-  const isDaytime = useMemo(() => {
-    const hour = new Date().getHours();
-    return hour >= 5 && hour < 18;
-  }, [refreshKey]);
 
   const {
     items,
@@ -167,13 +151,8 @@ export function HomeLibraryScreen({
       requestKey: JSON.stringify([space, activeFilter, activeSortOrder, refreshKey]),
       getItemKey: (item) => item.id,
       initialMeta: undefined,
-      formatError: (error) => {
-        const message = error instanceof Error ? error.message : '未知错误';
-        return `读取 IP 资产失败：${message}`;
-      },
-      onLoadMoreError: (error) => {
-        showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败');
-      },
+      formatError: (error) => `读取 IP 资产失败：${error instanceof Error ? error.message : '未知错误'}`,
+      onLoadMoreError: (error) => showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败'),
       deferUntilInteractions: true,
     }
   );
@@ -184,31 +163,20 @@ export function HomeLibraryScreen({
 
   const rightSlot = useMemo(
     () => (
-        <View style={styles.addActionWrapper}>
-          <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
-            <Pressable
-              accessibilityLabel="新建 IP"
-              hitSlop={10}
-              onPress={onCreateIp}
-              style={({ pressed }) => [styles.addAction, pressed && styles.pressed]}
-            >
-              <BlurView intensity={50} style={styles.addActionBlur} tint="light">
-                <LiquidGlassBezel radius={componentTokens.iconButton.radius} />
-                <Ionicons color={colors.primary.default} name="add" size={componentTokens.iconButton.iconSize} />
-              </BlurView>
-            </Pressable>
-          </MagneticLiquidContainer>
-        </View>
+      <Pressable
+        accessibilityLabel="新建或导入"
+        onPress={onCreateIp}
+        style={({ pressed }) => [styles.newIpButton, pressed && { opacity: 0.95, transform: [{ scale: 0.95 }] }]}
+      >
+        <Ionicons name="add" size={18} color="#ffffff" />
+        <Text style={styles.newIpButtonText}>新建IP</Text>
+      </Pressable>
     ),
     [onCreateIp]
   );
 
   const isLibraryCompletelyEmpty = !isLoading && !errorMessage && items.length === 0 && activeFilter === 'all';
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
-
-  const handleLongPressIp = useCallback((ip: IpListItem, pageX: number, pageY: number) => {
-    setActionMenuState({ ip, anchorX: pageX, anchorY: pageY });
-  }, []);
 
   const handleTogglePin = useCallback(async (ip: IpListItem) => {
     try {
@@ -219,30 +187,76 @@ export function HomeLibraryScreen({
     }
   }, [space, reload, showToast]);
 
-  const renderIpCard = useCallback(
-    ({ item, index }: ListRenderItemInfo<IpListItem>) => (
-      <IPCard
-        imagePriority={index === 0 ? 'high' : 'normal'}
-        useGyroEffect={index === 0}
-        ip={item}
-        onLongPress={handleLongPressIp}
-        onPress={onOpenIp}
-        space={space}
-      />
-    ),
-    [handleLongPressIp, onOpenIp, space]
-  );
+  const layoutItems = useMemo(() => {
+    const result: LayoutItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (i === 0) {
+        result.push({ type: 'hero', item: items[i], id: `hero-${items[i].id}` });
+      } else if (i === 1 || i === 2) {
+        result.push({ type: 'standard', item: items[i], id: `std-${items[i].id}` });
+      } else {
+        const row = [items[i]];
+        if (i + 1 < items.length) {
+          row.push(items[i + 1]);
+        }
+        result.push({ type: 'grid_row', items: row, id: `row-${items[i].id}` });
+        i++; // Skip the next item as it's included in this row
+      }
+    }
+    return result;
+  }, [items]);
 
-  const getIpCardLayout = useCallback(
-    (_data: ArrayLike<IpListItem> | null | undefined, index: number) => {
-      const length = listWidth / componentTokens.ipCard.aspectRatio;
-      return {
-        index,
-        length,
-        offset: index * (length + rhythm.entryCardGap),
-      };
+  const renderIpCard = useCallback(
+    ({ item, index }: ListRenderItemInfo<LayoutItem>) => {
+      if (item.type === 'hero' || item.type === 'standard') {
+        return (
+          <IPCard
+            index={index}
+            imagePriority={item.type === 'hero' ? 'high' : 'normal'}
+            layoutVariant={item.type}
+            ip={item.item}
+            onOptionsPress={(ip, pageX, pageY) => setActionMenuState({ ip, anchorX: pageX, anchorY: pageY })}
+            onPress={onOpenIp}
+            onImportPress={onImportIp}
+            onEditPress={onEditIp}
+            space={space}
+          />
+        );
+      } else if (item.type === 'grid_row') {
+        return (
+          <View style={styles.gridRow}>
+            <View style={styles.gridCol}>
+              <IPCard
+                index={index}
+                layoutVariant="grid"
+                ip={item.items[0]}
+                onOptionsPress={(ip, pageX, pageY) => setActionMenuState({ ip, anchorX: pageX, anchorY: pageY })}
+                onPress={onOpenIp}
+                onImportPress={onImportIp}
+                onEditPress={onEditIp}
+                space={space}
+              />
+            </View>
+            <View style={styles.gridCol}>
+              {item.items[1] ? (
+                <IPCard
+                  index={index}
+                  layoutVariant="grid"
+                  ip={item.items[1]}
+                  onOptionsPress={(ip, pageX, pageY) => setActionMenuState({ ip, anchorX: pageX, anchorY: pageY })}
+                  onPress={onOpenIp}
+                  onImportPress={onImportIp}
+                  onEditPress={onEditIp}
+                  space={space}
+                />
+              ) : null}
+            </View>
+          </View>
+        );
+      }
+      return null;
     },
-    [listWidth]
+    [onOpenIp, onImportIp, onEditIp, space]
   );
 
   const handleListLayout = useCallback((event: LayoutChangeEvent) => {
@@ -251,18 +265,13 @@ export function HomeLibraryScreen({
   }, []);
 
   function confirmMoveIpToTrash() {
-    if (!trashIp) {
-      return;
-    }
-
+    if (!trashIp) return;
     const ip = trashIp;
     setTrashIp(null);
     void (async () => {
       try {
         const result = await softDeleteIpToTrash(ip.id, space);
-        if (result.ipDeletedCount === 0) {
-          throw new Error('没有找到这个 IP。');
-        }
+        if (result.ipDeletedCount === 0) throw new Error('没有找到这个 IP。');
         showToast(`已移入回收站，包含 ${result.imageDeletedCount} 张图片`);
         setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
       } catch (error) {
@@ -272,18 +281,13 @@ export function HomeLibraryScreen({
   }
 
   function confirmPermanentDeleteIp() {
-    if (!permanentDeleteIp) {
-      return;
-    }
-
+    if (!permanentDeleteIp) return;
     const ip = permanentDeleteIp;
     setPermanentDeleteIp(null);
     void (async () => {
       try {
         const result = await permanentlyDeleteIp(ip.id, space);
-        if (result.ipDeletedCount === 0) {
-          throw new Error('没有找到这个 IP。');
-        }
+        if (result.ipDeletedCount === 0) throw new Error('没有找到这个 IP。');
         showToast(`已永久删除 ${result.imageDeletedCount} 张图片，文件失败 ${result.fileFailures.length} 个`);
         setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
       } catch (error) {
@@ -298,10 +302,7 @@ export function HomeLibraryScreen({
   }
 
   async function confirmMoveSpace(ip = spaceMoveIp, password = personalPassword) {
-    if (!ip || isMovingSpace) {
-      return;
-    }
-
+    if (!ip || isMovingSpace) return;
     setIsMovingSpace(true);
     try {
       const result = await moveIpBetweenSpaces({
@@ -324,38 +325,20 @@ export function HomeLibraryScreen({
   return (
     <>
     <ScreenScaffold
-      backgroundVariant="home"
+      backgroundColor="#FFFFFF"
       footer={footer}
       rightAction={rightSlot}
-      titleSlot={<HomeBrandHeader isActive={isActive} />}
+      titleSlot={<HomeBrandHeader />}
       titleVariant="brand"
+      contentContainerStyle={{ paddingHorizontal: 6 }}
     >
       <View style={styles.topArea}>
-        <View style={styles.searchWithDecor}>
-          <MagneticLiquidContainer magneticStrength={0.4} stretchFactor={0.03} damping={12}>
-            <View style={styles.rhythmDecorRow}>
-              <RhythmBars
-                active={isActive}
-                barGap={5}
-                barWidth={3}
-                maxBarHeight={24}
-                minBarHeight={7}
-                speedMultiplier={isDaytime ? 1.5 : 1}
-              />
-              <RhythmBars
-                active={isActive}
-                barGap={5}
-                barWidth={3}
-                maxBarHeight={24}
-                minBarHeight={7}
-                speedMultiplier={isDaytime ? 1.5 : 1}
-              />
-            </View>
-          </MagneticLiquidContainer>
-          <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
-        </View>
-        {isNeedsPanelVisible ? (
-          <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
+        <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
+          <Ionicons name="search" size={17} color="#444748" />
+          <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
+        </Pressable>
+        {isNeedsPanelVisible && (
+          <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
             <View style={styles.needsIcon}>
               <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
             </View>
@@ -365,7 +348,6 @@ export function HomeLibraryScreen({
               hitSlop={15} 
               onPress={(e) => {
                 e.stopPropagation();
-                // Persist threshold so banner won't reappear unless count grows
                 setDismissedThreshold(needsOrganizingCount);
                 void persistDismissThreshold(needsOrganizingCount);
               }}
@@ -374,16 +356,33 @@ export function HomeLibraryScreen({
               <Ionicons color={colors.text.tertiary} name="close" size={18} />
             </Pressable>
           </Pressable>
-        ) : null}
+        )}
         <View style={styles.filterRow}>
-          {FILTER_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.key}
-              active={activeFilter === option.key}
-              label={option.label}
-              onPress={() => setActiveFilter(option.key)}
-            />
-          ))}
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterPillsRow}
+            data={FILTER_OPTIONS}
+            keyExtractor={item => item.key}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => setActiveFilter(item.key)}
+                style={activeFilter === item.key ? styles.filterPillActive : styles.filterPill}
+              >
+                <Text style={activeFilter === item.key ? styles.filterPillTextActive : styles.filterPillText}>
+                  {item.label}
+                </Text>
+                {item.key === 'all' && (
+                  <Text style={[
+                    styles.filterPillCount,
+                    activeFilter === item.key ? { color: 'rgba(255,255,255,0.8)' } : undefined
+                  ]}>
+                    {items.length}
+                  </Text>
+                )}
+              </Pressable>
+            )}
+          />
           <View style={styles.filterSpacer} />
           <IpSortMenuButton orderBy={activeSortOrder} onChange={setActiveSortOrder} />
         </View>
@@ -392,42 +391,19 @@ export function HomeLibraryScreen({
       <View onLayout={handleListLayout} style={styles.emptyWrap}>
         <FlatList
           contentContainerStyle={[styles.grid, items.length === 0 && styles.emptyGrid]}
-          data={items}
-          getItemLayout={listWidth > 0 ? getIpCardLayout : undefined}
+          data={layoutItems}
           initialNumToRender={3}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item) => item.id}
           ListEmptyComponent={
             isLoading ? (
               <IPCardSkeleton />
             ) : (
               <PageStateBlock
-                emptyActionLabel={
-                  isLibraryCompletelyEmpty
-                    ? commonButtonCopy.createFirstIp
-                    : commonButtonCopy.createIp
-                }
-                emptyDescription={
-                  isLibraryCompletelyEmpty
-                    ? commonEmptyStateCopy.noIpsDescription
-                    : activeFilter === 'favorite'
-                      ? '你还没有收藏的 IP，可以先创建一个并标记收藏。'
-                      : '切换到其他筛选条件，或创建新的 IP。'
-                }
+                emptyActionLabel={isLibraryCompletelyEmpty ? commonButtonCopy.createFirstIp : commonButtonCopy.createIp}
+                emptyDescription={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsDescription : '当前筛选下没有 IP。'}
                 emptyContainerStyle={styles.emptyGuideOffset}
-                emptyIconName={
-                  activeFilter === 'favorite'
-                    ? 'star-outline'
-                    : isLibraryCompletelyEmpty
-                      ? 'archive-outline'
-                      : 'search-outline'
-                }
-                emptyTitle={
-                  isLibraryCompletelyEmpty
-                    ? commonEmptyStateCopy.noIpsTitle
-                    : activeFilter === 'favorite'
-                      ? commonEmptyStateCopy.noFavoritesTitle
-                      : '当前筛选下没有 IP'
-                }
+                emptyIconName="archive-outline"
+                emptyTitle={isLibraryCompletelyEmpty ? commonEmptyStateCopy.noIpsTitle : '空空如也'}
                 errorMessage={errorMessage}
                 errorTitle={commonErrorCopy.listUnavailableTitle}
                 isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
@@ -536,116 +512,11 @@ export function HomeLibraryScreen({
   );
 }
 
-function HomeBrandHeader({ isActive }: { isActive: boolean }) {
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour >= 5 && hour < 9) return '早上好';
-    if (hour >= 9 && hour < 12) return '上午好';
-    if (hour >= 12 && hour < 14) return '中午好';
-    if (hour >= 14 && hour < 18) return '下午好';
-    if (hour >= 18 && hour < 23) return '晚上好';
-    return '夜深了';
-  }, []);
-  
-  const timeT = useSharedValue(0);
-  const rot1 = useSharedValue(0);
-  const rot2 = useSharedValue(0);
-  const rot3 = useSharedValue(0);
-
-  useEffect(() => {
-    if (!isActive) {
-      cancelAnimation(timeT);
-      cancelAnimation(rot1);
-      cancelAnimation(rot2);
-      cancelAnimation(rot3);
-      timeT.value = 0;
-      rot1.value = 0;
-      rot2.value = 0;
-      rot3.value = 0;
-      return;
-    }
-    timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
-    rot1.value = withRepeat(withTiming(Math.PI * 2, { duration: 10000, easing: Easing.linear }), -1, false);
-    rot2.value = withRepeat(withTiming(-Math.PI * 2, { duration: 14000, easing: Easing.linear }), -1, false);
-    rot3.value = withRepeat(withTiming(Math.PI * 2, { duration: 18000, easing: Easing.linear }), -1, false);
-    return () => {
-      cancelAnimation(timeT);
-      cancelAnimation(rot1);
-      cancelAnimation(rot2);
-      cancelAnimation(rot3);
-    };
-  }, [isActive, timeT, rot1, rot2, rot3]);
-
-  const textStyle = useAnimatedStyle(() => {
-    const color = interpolateColor(
-      timeT.value,
-      [0, Math.PI / 4, (Math.PI * 2) / 3, Math.PI, (Math.PI * 5) / 4, (Math.PI * 4) / 3, Math.PI * 2],
-      [
-        colors.support.sky300,
-        colors.support.mint300,
-        colors.support.sky300,
-        colors.support.lilac300,
-        colors.support.mint300,
-        colors.support.sky300,
-        colors.support.sky300,
-      ]
-    );
-    return { color };
-  });
-
-  const star1Style = useAnimatedStyle(() => {
-    const a = rot1.value;
-    const x = 9 * Math.cos(a);
-    const y = 9 * Math.sin(a) * 0.5; // cos(60deg)
-    const scale = 1.0 + 0.3 * Math.sin(a);
-    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
-  });
-
-  const star2Style = useAnimatedStyle(() => {
-    const a = rot2.value;
-    const x = 12 * Math.cos(a) * 0.5; // cos(60deg)
-    const y = 12 * Math.sin(a);
-    const scale = 1.0 + 0.3 * Math.sin(a);
-    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
-  });
-
-  const star3Style = useAnimatedStyle(() => {
-    const a = rot3.value;
-    const x = 15 * Math.cos(a);
-    const y = 15 * Math.sin(a) * 0.342; // cos(70deg)
-    const scale = 1.0 + 0.3 * Math.sin(a);
-    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
-  });
-
+function HomeBrandHeader() {
   return (
     <View style={styles.brandHeaderContainer}>
-      <View style={styles.brandGreetingRow}>
-        <MagneticLiquidContainer magneticStrength={0.7} stretchFactor={0.07} damping={10}>
-          <Animated.Text style={[styles.brandGreetingText, textStyle, { padding: 10, margin: -10 }]}>
-            {greeting}
-          </Animated.Text>
-        </MagneticLiquidContainer>
-        <MagneticLiquidContainer magneticStrength={0.8} stretchFactor={0.1} damping={12}>
-          <View style={styles.binaryStarsContainer}>
-            {/* 极淡的虚线轨道 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX)，并将直径+1补偿线宽导致的半像素偏移 */}
-            <View style={[styles.faintOrbit, { width: 19, height: 19, borderRadius: 9.5, transform: [{ rotateX: '60deg' }] }]} />
-            <View style={[styles.faintOrbit, { width: 25, height: 25, borderRadius: 12.5, transform: [{ rotateY: '60deg' }] }]} />
-            <View style={[styles.faintOrbit, { width: 31, height: 31, borderRadius: 15.5, transform: [{ rotateZ: '45deg' }, { rotateX: '70deg' }] }]} />
-            
-            {/* 星星实体 */}
-            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }, star1Style]} />
-            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }, star2Style]} />
-            <View style={{ position: 'absolute', transform: [{ rotateZ: '45deg' }] }}>
-              <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }, star3Style]} />
-            </View>
-          </View>
-        </MagneticLiquidContainer>
-      </View>
-      <MagneticLiquidContainer magneticStrength={0.6} stretchFactor={0.05} damping={10}>
-        <Animated.Text style={[styles.brandSubtitleText, textStyle, { padding: 10, margin: -10 }]}>
-          PIXORY · PRIVATE ARCHIVE
-        </Animated.Text>
-      </MagneticLiquidContainer>
+      <Text style={styles.brandGreetingText}>Pixory</Text>
+      <Text style={styles.brandSubtitleText}>45.8 GB / 64 GB</Text>
     </View>
   );
 }
@@ -653,95 +524,117 @@ function HomeBrandHeader({ isActive }: { isActive: boolean }) {
 const styles = StyleSheet.create({
   brandHeaderContainer: {
     justifyContent: 'center',
-    marginTop: -8,
-    marginBottom: -4,
-  },
-  brandGreetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-  },
-  binaryStarsContainer: {
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 12, // 稍微拉开一点和文字的间距
-  },
-  faintOrbit: {
-    position: 'absolute',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.strong,
-    borderStyle: 'dashed',
-    opacity: 0.3,
-  },
-  orbitWrapper: {
-    position: 'absolute',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-  },
-  binaryStar: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    opacity: 0.9,
   },
   brandGreetingText: {
-    fontWeight: 'bold',
-    fontSize: 28,
-    includeFontPadding: false,
-    letterSpacing: 2,
+    fontStyle: 'italic',
+    fontWeight: '400',
+    fontSize: 22,
+    color: '#000000',
+    lineHeight: 26,
+    letterSpacing: -0.5,
   },
   brandSubtitleText: {
-    fontFamily: 'JetBrainsMono_700Bold',
-    fontSize: 9,
-    color: colors.text.secondary,
-    letterSpacing: 1.5,
-    marginTop: 2,
-    marginLeft: 0, // 对齐主标题文字的左边缘
+    fontFamily: typography.family.mono,
+    fontSize: 10,
+    color: '#747878',
+    letterSpacing: 0.8,
   },
-  pressed: {
-    opacity: 0.8,
-  },
-  addActionWrapper: {
-    elevation: 1, // 强制 Android 创建 RenderNode 从而使 BlurView 正常工作
-    shadowColor: 'transparent', // 彻底消除阴影导致的毛玻璃发黑现象
-    borderRadius: componentTokens.iconButton.radius,
-  },
-  addAction: {
-    ...shadows.sm,
-    shadowColor: '#3A2E1D',
-    shadowOpacity: 0.05,
-    borderRadius: componentTokens.iconButton.radius,
-    height: componentTokens.iconButton.size,
-    width: componentTokens.iconButton.size,
-  },
-  addActionBlur: {
-    width: componentTokens.iconButton.size,
-    height: componentTokens.iconButton.size,
-    borderRadius: componentTokens.iconButton.radius,
-    justifyContent: 'center',
+  newIpButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    height: 36,
+    paddingHorizontal: 12,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  newIpButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   topArea: {
-    gap: spacing[3],
+    gap: 12,
+    paddingHorizontal: 0,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  searchWithDecor: {
-    gap: 2, // tiny breathing room between bars and search bar
-  },
-  rhythmDecorRow: {
-    alignSelf: 'flex-start',
+  searchContainer: {
     flexDirection: 'row',
-    gap: 5,
-    height: 24,
-    marginLeft: 16,
+    alignItems: 'center',
+    height: 36,
+    backgroundColor: '#f3f3f4',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  searchInputPlaceholder: {
+    flex: 1,
+    fontSize: 13,
+    color: '#747878',
   },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: componentTokens.filterChip.gap,
+    paddingTop: 4,
+  },
+  filterPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterPill: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  filterPillActive: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#000000',
+  },
+  filterPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  filterPillTextActive: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  filterPillCount: {
+    fontSize: 10,
+    fontFamily: typography.family.mono,
+    color: '#747878',
+    opacity: 0.8,
   },
   filterSpacer: {
     flex: 1,
@@ -777,14 +670,22 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     flex: 1,
-    paddingTop: spacing[3],
+    paddingTop: 12,
   },
   emptyGuideOffset: {
     paddingTop: spacing[8],
   },
   grid: {
-    gap: rhythm.entryCardGap,
     paddingBottom: spacing[6],
+  },
+  gridRow: {
+    flexDirection: 'row',
+    
+    paddingBottom: 16,
+    gap: 12,
+  },
+  gridCol: {
+    flex: 1,
   },
   emptyGrid: {
     flexGrow: 1,
@@ -798,11 +699,13 @@ const styles = StyleSheet.create({
   passwordInput: {
     ...typography.textStyles.body,
     backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.default,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    color: colors.text.title,
-    minHeight: 44,
+    color: colors.text.body,
+    height: 48,
+    marginTop: spacing[2],
     paddingHorizontal: spacing[3],
   },
 });
+

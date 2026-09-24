@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useState, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View, Modal, Dimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -47,30 +47,20 @@ export function IpSortMenuButton({
       accessibilityLabel="选择排序"
       onPress={handleOpen}
       style={({ pressed }) => [
-        styles.base,
+        styles.triggerBase,
         pressed && styles.pressed,
       ]}
     >
-      <BlurView intensity={50} style={styles.blur} tint="light">
-        <LiquidGlassBezel active={sortMenuVisible} radius={componentTokens.filterChip.radius} />
-        {sortMenuVisible ? (
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.activeTint]} />
-        ) : null}
-        <View style={styles.inner}>
-          <Text numberOfLines={1} style={[styles.text, sortMenuVisible ? styles.activeText : styles.inactiveText]}>
-            {getIpSortLabel(orderBy)}
-          </Text>
-          <Ionicons color={sortMenuVisible ? colors.primary.dark : colors.text.title} name="chevron-down" size={13} />
-        </View>
-      </BlurView>
+      <Text numberOfLines={1} style={styles.triggerText}>
+        {getIpSortLabel(orderBy)}
+      </Text>
+      <MaterialIcons color="#444748" name="expand-more" size={14} />
     </Pressable>
   );
 
   return (
     <View style={styles.wrap} ref={buttonRef}>
-      <View style={styles.wrapper}>
-        {inner}
-      </View>
+      {inner}
 
       <Modal
         visible={sortMenuVisible}
@@ -95,7 +85,7 @@ export function IpSortMenuButton({
                     onChange(option.value);
                     setSortMenuVisible(false);
                   }}
-                  style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
+                  style={({ pressed }) => [styles.menuRow, pressed && styles.pressedMenuRow]}
                 >
                   <View style={[StyleSheet.absoluteFill, styles.menuRowBg, selected ? styles.menuRowActiveBg : null]} />
                   <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{option.label}</Text>
@@ -115,45 +105,23 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 20,
   },
-  wrapper: {
-    ...shadows.sm,
-    shadowColor: '#3A2E1D',
-    shadowOpacity: 0.05,
-    borderRadius: componentTokens.filterChip.radius,
-  },
-  base: {
-    borderRadius: componentTokens.filterChip.radius,
-    height: componentTokens.filterChip.height,
-  },
-  blur: {
-    borderRadius: componentTokens.filterChip.radius,
-    overflow: 'hidden',
-    height: '100%',
-  },
-  activeTint: {
-    backgroundColor: 'rgba(86, 107, 72, 0.28)',
-    borderRadius: componentTokens.filterChip.radius,
-  },
-  inner: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  triggerBase: {
+    height: 28,
+    paddingHorizontal: 6,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 4,
     flexDirection: 'row',
-    gap: spacing[1],
-    paddingHorizontal: componentTokens.filterChip.horizontalPadding,
-    height: '100%',
+    alignItems: 'center',
+    gap: 2,
   },
-  text: {
-    ...typography.textStyles.caption,
-    fontWeight: '600',
-    lineHeight: 18,
-    maxWidth: 180,
-    zIndex: 1,
+  triggerText: {
+    fontFamily: typography.family.mono,
+    fontSize: 11,
+    color: '#444748',
   },
-  activeText: {
-    color: colors.primary.dark,
-  },
-  inactiveText: {
-    color: colors.text.title,
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.95 }],
   },
   menu: {
     ...shadows.floating,
@@ -194,7 +162,7 @@ const styles = StyleSheet.create({
   menuTextActive: {
     color: colors.primary.dark,
   },
-  pressed: {
+  pressedMenuRow: {
     opacity: 0.78,
   },
 });

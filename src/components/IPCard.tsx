@@ -1,284 +1,558 @@
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { ImageProps } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem, PixorySpace } from '../database';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
-import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
-import { formatFileSize, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
+import { getIpInitials, formatFileSize, formatUpdatedLabel } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
-import { MagneticCardContainer, GyroSpecularHighlight } from './MagneticCardContainer';
+import { typography } from '../design/tokens';
 
 interface IPCardProps {
+  index?: number;
   ip: IpListItem;
   imagePriority?: ImageProps['priority'];
   space?: PixorySpace;
-  onLongPress?: (ip: IpListItem, pageX: number, pageY: number) => void;
+  onOptionsPress?: (ip: IpListItem, pageX: number, pageY: number) => void;
   onPress: (ipId: number) => void;
+  onImportPress?: (ipId: number) => void;
+  onEditPress?: (ipId: number) => void;
+  layoutVariant?: 'hero' | 'standard' | 'grid';
   useGyroEffect?: boolean;
 }
 
-export function IPCard({ ip, imagePriority = 'normal', space = 'normal', onLongPress, onPress, useGyroEffect = false }: IPCardProps) {
-  const content = <CardCaption ip={ip} />;
+export function IPCard({
+  index = 0,
+  ip,
+  imagePriority = 'normal',
+  space = 'normal',
+  onOptionsPress,
+  onPress,
+  onImportPress,
+  onEditPress,
+  layoutVariant,
+  useGyroEffect = false,
+}: IPCardProps) {
   const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
+  const variant = layoutVariant ?? (useGyroEffect ? 'hero' : 'standard');
 
-  const innerCard = (
-    <Pressable
-      accessibilityLabel={`打开 ${ip.name}`}
-      accessibilityRole="button"
-      delayLongPress={500}
-      onLongPress={onLongPress ? (event) => onLongPress(ip, event.nativeEvent.pageX, event.nativeEvent.pageY) : undefined}
-      onPress={() => onPress(ip.id)}
-      style={({ pressed }) => [styles.card, pressed && !useGyroEffect && styles.cardPressed]}
-    >
-      {ip.coverThumbnailFileUri ? (
-        <View style={styles.cover}>
-          <View style={styles.imageInset}>
-            <SecureImage
-              blurRadius={coverBlurRadius}
-              contentFit="cover"
-              priority={imagePriority}
-              recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
-              space={space}
-              style={[StyleSheet.absoluteFill, styles.coverImage]}
-              transition={imagePriority === 'high' ? 0 : componentTokens.ipCard.imageTransitionMs}
-              uri={ip.coverThumbnailFileUri}
-            />
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    const delay = Math.min(index * 100, 500); 
+    
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 450,
+        delay,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, [index, fadeAnim, translateYAnim]);
+
+  const renderContent = () => {
+    if (variant === 'hero') {
+      return (
+        <View style={styles.heroWrapper}>
+          <View style={styles.heroCard}>
+            <Pressable style={styles.heroImageContainer} onPress={() => onPress(ip.id)}>
+              {ip.coverThumbnailFileUri ? (
+                <SecureImage
+                  blurRadius={coverBlurRadius}
+                  contentFit="cover"
+                  priority={imagePriority}
+                  recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
+                  space={space}
+                  style={StyleSheet.absoluteFill}
+                  uri={ip.coverThumbnailFileUri}
+                />
+              ) : (
+                <View style={styles.fallbackCover}>
+                  <Text style={styles.initialsText}>{getIpInitials(ip.name)}</Text>
+                </View>
+              )}
+              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']} style={styles.heroGradient}>
+                <View style={styles.heroTitleRow}>
+                    <Text style={styles.heroTitleMain} numberOfLines={1}>{ip.name}</Text>
+                    <Pressable
+                      hitSlop={12}
+                      onPress={(e) => onOptionsPress?.(ip, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                      style={styles.moreBtn}
+                    >
+                      <MaterialIcons name="more-horiz" size={18} color="#ffffff" />
+                    </Pressable>
+                  </View>
+                <View style={styles.heroMetaRow}>
+                  <View style={styles.heroMetaItem}>
+                    <MaterialIcons name="photo-library" size={13} color="#fff" />
+                    <Text style={styles.heroMetaText}>{ip.imageCount} 张图片</Text>
+                  </View>
+                  {ip.videoCount > 0 && (
+                    <View style={styles.heroMetaItem}>
+                      <MaterialIcons name="movie" size={13} color="#fff" />
+                      <Text style={styles.heroMetaText}>{ip.videoCount} 个视频</Text>
+                    </View>
+                  )}
+                  <View style={styles.heroMetaItem}>
+                    <MaterialIcons name="storage" size={13} color="#e2e2e2" />
+                    <Text style={[styles.heroMetaText, { color: '#e2e2e2' }]}>{formatFileSize(ip.totalBytes)}</Text>
+                  </View>
+                  <Text style={styles.heroMetaTime}>刚更新</Text>
+                </View>
+              </LinearGradient>
+            </Pressable>
+            <View style={styles.heroFooter}>
+              <Pressable style={styles.btnSecondaryRounded} onPress={() => onImportPress?.(ip.id)}>
+                <MaterialIcons name="add-photo-alternate" size={16} color="#1a1c1c" />
+                <Text style={styles.btnSecondaryText}>导入</Text>
+              </Pressable>
+              <Pressable style={styles.btnSecondaryRounded} onPress={() => onEditPress?.(ip.id)}>
+                <MaterialIcons name="edit" size={16} color="#1a1c1c" />
+                <Text style={styles.btnSecondaryText}>编辑</Text>
+              </Pressable>
+              <Pressable style={styles.btnPrimaryRounded} onPress={() => onPress(ip.id)}>
+                <Text style={styles.btnPrimaryText}>进入画廊</Text>
+                <MaterialIcons name="arrow-forward" size={16} color="#fff" />
+              </Pressable>
+            </View>
           </View>
-          <AcrylicGlass />
-          {content}
         </View>
-      ) : (
-        <View style={[styles.cover, styles.fallbackCover]}>
-          <View style={styles.imageInset}>
-            <Text numberOfLines={1} style={styles.initialsText}>
-              {getIpInitials(ip.name)}
-            </Text>
-            <View style={styles.fallbackMark} />
+      );
+    }
+    
+    if (variant === 'grid') {
+      return (
+        <View style={styles.gridCard}>
+          <Pressable style={styles.gridImageContainer} onPress={() => onPress(ip.id)}>
+            {ip.coverThumbnailFileUri ? (
+              <SecureImage
+                blurRadius={coverBlurRadius}
+                contentFit="cover"
+                priority={imagePriority}
+                recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
+                space={space}
+                style={StyleSheet.absoluteFill}
+                uri={ip.coverThumbnailFileUri}
+              />
+            ) : (
+              <View style={styles.fallbackCover}>
+                <Text style={[styles.initialsText, { fontSize: 24 }]}>{getIpInitials(ip.name)}</Text>
+              </View>
+            )}
+            
+          </Pressable>
+          <View style={styles.gridBody}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 4 }}>
+                  <Text style={styles.gridTitle} numberOfLines={1}>{ip.name}</Text>
+                  <Text style={styles.gridSubMeta} numberOfLines={1}>{ip.imageCount} 图 · {formatFileSize(ip.totalBytes)}</Text>
+                </View>
+                <Pressable
+                  hitSlop={12}
+                  onPress={(e) => onOptionsPress?.(ip, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                  style={styles.moreBtn}
+                >
+                  <MaterialIcons name="more-horiz" size={18} color="#747878" />
+                </Pressable>
+              </View>
+            <View style={styles.gridFooterRow}>
+              <View style={styles.gridTimeBadge}>
+                <MaterialIcons name="schedule" size={12} color="#747878" />
+                <Text style={styles.gridTimeText}>{formatUpdatedLabel(ip.updatedAt)}</Text>
+              </View>
+              <Pressable hitSlop={8} style={styles.gridForwardBtn} onPress={() => onPress(ip.id)}>
+                <MaterialIcons name="arrow-forward" size={14} color="#1a1c1c" />
+              </Pressable>
+            </View>
           </View>
-          <AcrylicGlass />
-          {content}
         </View>
-      )}
-      {useGyroEffect && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <GyroSpecularHighlight intensity={0.7} />
+      );
+    }
+
+    return (
+      <View style={styles.stdWrapper}>
+        <View style={styles.stdCard}>
+          <Pressable style={styles.stdImageContainer} onPress={() => onPress(ip.id)}>
+            {ip.coverThumbnailFileUri ? (
+              <SecureImage
+                blurRadius={coverBlurRadius}
+                contentFit="cover"
+                priority={imagePriority}
+                recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
+                space={space}
+                style={StyleSheet.absoluteFill}
+                uri={ip.coverThumbnailFileUri}
+              />
+            ) : (
+              <View style={styles.fallbackCover}>
+                <Text style={styles.initialsText}>{getIpInitials(ip.name)}</Text>
+              </View>
+            )}
+            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.stdImageGradient}>
+              <Text style={styles.stdImageTime}>{formatUpdatedLabel(ip.updatedAt)}</Text>
+            </LinearGradient>
+          </Pressable>
+          <View style={styles.stdBody}>
+            <View style={styles.stdHeaderRow}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.stdTitleMain} numberOfLines={1}>{ip.name}</Text>
+              </View>
+              <Pressable
+                hitSlop={12}
+                onPress={(e) => onOptionsPress?.(ip, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                style={styles.moreBtn}
+              >
+                <MaterialIcons name="more-horiz" size={18} color="#747878" />
+              </Pressable>
+            </View>
+            <View style={styles.stdFooterRow}>
+              <View style={styles.stdMetaItems}>
+                <View style={styles.stdMetaItem}>
+                  <MaterialIcons name="photo-library" size={13} color="#5e5e5e" />
+                  <Text style={styles.stdMetaText}>{ip.imageCount}</Text>
+                </View>
+                {ip.videoCount > 0 && (
+                  <View style={styles.stdMetaItem}>
+                    <MaterialIcons name="movie" size={13} color="#5e5e5e" />
+                    <Text style={styles.stdMetaText}>{ip.videoCount}</Text>
+                  </View>
+                )}
+                <Text style={styles.stdMetaText}>{formatFileSize(ip.totalBytes)}</Text>
+              </View>
+              <View style={styles.stdActions}>
+                <Pressable style={styles.btnSmall} onPress={() => onImportPress?.(ip.id)}>
+                  <MaterialIcons name="add-photo-alternate" size={14} color="#1a1c1c" />
+                  <Text style={styles.btnSmallText}>导入</Text>
+                </Pressable>
+                <Pressable style={styles.btnSmallDark} onPress={() => onPress(ip.id)}>
+                  <Text style={styles.btnSmallText}>进入画廊</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
         </View>
-      )}
-    </Pressable>
-  );
-
-  return (
-    <View style={styles.shadowContainer}>
-      {useGyroEffect ? (
-        <MagneticCardContainer maxRotation={12} rotationFactor={0.08} gyroSensitivity={4}>
-          {innerCard}
-        </MagneticCardContainer>
-      ) : (
-        innerCard
-      )}
-    </View>
-  );
-}
-
-function AcrylicGlass() {
-  return (
-    <>
-      <View pointerEvents="none" style={styles.acrylicFrosting} />
-      <View pointerEvents="none" style={styles.glassGlareContainer}>
-        <LinearGradient
-          colors={['rgba(255, 255, 255, 0.25)', 'transparent', 'rgba(255, 255, 255, 0.05)']}
-          end={{ x: 1, y: 1 }}
-          start={{ x: 0, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
       </View>
-      <View pointerEvents="none" style={styles.outerRim} />
-      <View pointerEvents="none" style={styles.innerRim} />
-      <View pointerEvents="none" style={styles.cornerHighlightTL} />
-    </>
-  );
-}
-
-function CardCaption({ ip }: { ip: IpListItem }) {
-  const mediaParts: string[] = [];
-  if (ip.imageCount > 0) {
-    mediaParts.push(`${ip.imageCount} 张图片`);
-  }
-  if (ip.videoCount > 0) {
-    mediaParts.push(`${ip.videoCount} 个视频`);
-  }
-  if (ip.totalBytes > 0) {
-    mediaParts.push(formatFileSize(ip.totalBytes));
-  }
-  mediaParts.push(formatUpdatedLabel(ip.updatedAt));
+    );
+  };
 
   return (
-    <View style={styles.captionBlock}>
-      <View style={styles.captionText}>
-        <Text numberOfLines={1} style={styles.title}>
-          {ip.name}
-        </Text>
-        <Text numberOfLines={1} style={styles.metaText}>{mediaParts.join(' · ')}</Text>
-      </View>
-      {ip.isFavorite ? (
-        <View style={styles.favoriteBadge}>
-          <Ionicons color={colors.semantic.favorite} name="star" size={14} />
-        </View>
-      ) : null}
-    </View>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: translateYAnim }], flex: variant === 'grid' ? 1 : undefined }}>
+      {renderContent()}
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  shadowContainer: {
-    ...shadows.hero,
-    shadowColor: '#2C2318', 
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-    width: '100%',
+  heroWrapper: {
+    
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  card: {
-    shadowColor: '#1A130C',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 6 },
-    aspectRatio: componentTokens.ipCard.aspectRatio,
-    backgroundColor: colors.background.empty,
-    borderRadius: componentTokens.ipCard.radius,
+  heroCard: {
+    width: '100%',
+    borderRadius: 4,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
     overflow: 'hidden',
+  },
+  heroImageContainer: {
     width: '100%',
-    elevation: 8,
+    aspectRatio: 16 / 9,
+    backgroundColor: '#f1f3f4',
+    overflow: 'hidden',
   },
-  cardPressed: {
-    opacity: 0.88,
-  },
-  cover: {
-    flex: 1,
+  heroGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 40,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
     justifyContent: 'flex-end',
-    padding: componentTokens.ipCard.contentPadding,
-    position: 'relative',
   },
-  imageInset: {
-    ...StyleSheet.absoluteFillObject,
-    margin: 2.5,
-    borderRadius: componentTokens.ipCard.radius - 2.5,
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  heroTitleMain: {
+    fontSize: 32,
+    color: '#ffffff',
+    lineHeight: 36,
+    fontFamily: typography.family.display,
+      letterSpacing: -0.5,
+      fontWeight: '400',
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 6,
+  },
+  heroMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  heroMetaText: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontFamily: typography.family.mono,
+  },
+  heroMetaTime: {
+    fontSize: 10,
+    color: '#e2e2e2',
+    fontFamily: typography.family.mono,
+    marginLeft: 'auto',
+  },
+  heroFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: '#ffffff',
+    gap: 8,
+  },
+  btnSecondaryRounded: {
+    height: 36,
+    paddingHorizontal: 12,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  btnPrimaryRounded: {
+    flex: 1,
+    height: 36,
+    backgroundColor: '#1a1c1c',
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  btnSecondaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  btnPrimaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  stdWrapper: {
+    
+    paddingBottom: 16,
+  },
+  stdCard: {
+    flexDirection: 'column',
+    backgroundColor: '#ffffff',
+    borderRadius: 4,
     overflow: 'hidden',
-    backgroundColor: colors.background.empty,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  coverImage: {
-    borderRadius: componentTokens.ipCard.radius - 2.5,
+  stdImageContainer: {
+    width: '100%',
+    aspectRatio: 21 / 9,
+    backgroundColor: '#f1f3f4',
+    overflow: 'hidden',
+  },
+  stdImageGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 40,
+    padding: 8,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+  },
+  stdImageTime: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontFamily: typography.family.mono,
+  },
+  stdBody: {
+    padding: 12,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  stdHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  stdTitleMain: {
+    fontSize: 20,
+    color: '#1a1c1c',
+    lineHeight: 26,
+    fontFamily: typography.family.display,
+      letterSpacing: -0.2,
+      fontWeight: '500',
+  },
+  moreBtn: {
+    padding: 4,
+  },
+  stdFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  stdMetaItems: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  stdMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stdMetaText: {
+    fontSize: 10,
+    color: '#5e5e5e',
+    fontFamily: typography.family.mono,
+  },
+  stdActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  btnSmall: {
+    height: 28,
+    paddingHorizontal: 10,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  btnSmallDark: {
+    height: 28,
+    paddingHorizontal: 10,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  btnSmallText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  gridCard: {
+    flexDirection: 'column',
+    backgroundColor: '#ffffff',
+    borderRadius: 4,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+    flex: 1,
+  },
+  gridImageContainer: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: '#f1f3f4',
+    overflow: 'hidden',
+  },
+  gridTopBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  gridTopBadgeText: {
+    fontSize: 9,
+    fontFamily: typography.family.mono,
+    color: '#ffffff',
+  },
+  gridBody: {
+    padding: 10,
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  gridTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1c1c',
+    marginBottom: 2,
+  },
+  gridSubMeta: {
+    fontSize: 10,
+    color: '#5e5e5e',
+    fontFamily: typography.family.mono,
+  },
+  gridFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  gridTimeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  gridTimeText: {
+    fontSize: 10,
+    fontFamily: typography.family.mono,
+    color: '#747878',
+  },
+  gridForwardBtn: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fallbackCover: {
-    backgroundColor: colors.background.empty,
-  },
-  fallbackMark: {
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
-    height: 92,
-    position: 'absolute',
-    right: -30,
-    top: -26,
-    width: 92,
+    flex: 1,
+    backgroundColor: '#f1f3f4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   initialsText: {
-    color: colors.primary.active,
-    fontFamily: typography.family.brand,
-    fontSize: 44,
-    fontWeight: '500',
-    left: spacing[5],
-    lineHeight: 50,
-    opacity: 0.22,
-    position: 'absolute',
-    top: spacing[5],
-  },
-  acrylicFrosting: {
-    ...StyleSheet.absoluteFillObject,
-    // Removed white frosting to restore crystal transparency
-  },
-  glassGlareContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  outerRim: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: componentTokens.ipCard.radius,
-    borderTopWidth: 2,
-    borderLeftWidth: 1.5,
-    borderBottomWidth: 1,
-    borderRightWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.8)',
-    borderLeftColor: 'rgba(255, 255, 255, 0.4)',
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-    borderRightColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  innerRim: {
-    ...StyleSheet.absoluteFillObject,
-    margin: 1.5,
-    borderRadius: componentTokens.ipCard.radius - 1.5,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderBottomWidth: 1,
-    borderRightWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-    borderLeftColor: 'rgba(255, 255, 255, 0.1)',
-    borderBottomColor: 'rgba(255, 255, 255, 0.02)',
-    borderRightColor: 'rgba(255, 255, 255, 0.01)',
-  },
-  cornerHighlightTL: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 20,
-    height: 20,
-    borderTopLeftRadius: componentTokens.ipCard.radius,
-    borderTopWidth: 2.5,
-    borderLeftWidth: 2.5,
-    borderTopColor: 'rgba(255, 255, 255, 1)',
-    borderLeftColor: 'rgba(255, 255, 255, 0.8)',
-  },
-  captionBlock: {
-    alignItems: 'flex-end',
-    alignSelf: 'flex-end',
-    flexDirection: 'row',
-    gap: spacing[3],
-    justifyContent: 'flex-end',
-    width: componentTokens.ipCard.captionWidth,
-  },
-  captionText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  favoriteBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 30,
-    justifyContent: 'center',
-    width: 30,
-  },
-  title: {
-    ...typography.textStyles.cardTitle,
-    color: colors.text.inverse,
-    fontSize: 17,
-    fontWeight: '600',
-    lineHeight: 22,
-    textAlign: 'right',
-    textShadowColor: 'rgba(23, 33, 43, 0.92)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 12,
-  },
-  metaText: {
-    ...typography.textStyles.caption,
-    color: 'rgba(255, 255, 255, 0.94)',
-    fontWeight: '500',
-    lineHeight: 17,
-    textAlign: 'right',
-    textShadowColor: 'rgba(23, 33, 43, 0.92)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 12,
+    fontSize: 32,
+    color: '#c4c7c7',
+    fontWeight: 'bold',
   },
 });
+
+
+

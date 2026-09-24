@@ -1380,6 +1380,8 @@ export default function App() {
                 pushRoute({ name: 'global-search', space: activeSpace });
               }}
               onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', space: activeSpace })}
+                onImportIp={(ipId) => pushRoute({ name: 'import-images', ipId, space: activeSpace })}
+                onEditIp={(ipId) => pushRoute({ name: 'edit-ip', ipId, space: activeSpace })}
               onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
               refreshKey={libraryRefreshToken}
               space={activeSpace}
@@ -2635,5 +2637,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
 
 
