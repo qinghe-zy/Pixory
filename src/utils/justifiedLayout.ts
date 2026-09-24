@@ -26,8 +26,8 @@ export const JUSTIFIED_TARGET_HEIGHT = 150;
  * Aspect-ratio clamp range.
  * Prevents pathologically thin or wide images from distorting their neighbours.
  */
-const RATIO_MIN = 0.56; // max portrait (16:9 portrait, approx 0.56)
-const RATIO_MAX = 2.5; // max landscape (2.5 : 1 panorama)
+const RATIO_MIN = 0.75; // max portrait (3:4 portrait, extremely tight)
+const RATIO_MAX = 1.78; // max landscape (16:9 video ratio)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

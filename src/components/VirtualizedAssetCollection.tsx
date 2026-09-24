@@ -127,7 +127,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
           onMeasured={onItemMeasured}
           scrollOffsetRef={scrollOffsetRef}
           style={[
-            { width: cellWidth, height: cellHeight, overflow: 'hidden', borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(0,0,0,0.06)' },
+            { width: cellWidth, height: cellHeight, overflow: 'hidden' },
             image.id === globalViewState.lastViewedImageId ? styles.lastViewedHighlight : null,
           ]}
         >
