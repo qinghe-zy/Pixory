@@ -23,6 +23,7 @@ import { BackButton } from '../BackButton';
 
 interface AiLightScaffoldProps {
   bodyStyle?: StyleProp<ViewStyle>;
+  backgroundColor?: string;
   backgroundVariant?: PageBackgroundVariant;
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -43,6 +44,7 @@ interface AiLightScaffoldProps {
 
 export function AiLightScaffold({
   bodyStyle,
+  backgroundColor,
   backgroundVariant,
   children,
   contentContainerStyle,
@@ -65,7 +67,7 @@ export function AiLightScaffold({
 
   return (
     <AppScreen
-      backgroundColor={aiLightColors.canvas}
+      backgroundColor={backgroundColor ?? aiLightColors.canvas}
       backgroundVariant={backgroundVariant}
       contentStyle={contentContainerStyle}
       footer={footer}

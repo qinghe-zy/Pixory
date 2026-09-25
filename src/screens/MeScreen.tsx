@@ -338,7 +338,7 @@ export function MeScreen({
   }, [isPersonalMode, lockPulse, lockTransition]);
 
   return (
-    <ScreenScaffold backgroundVariant="profile" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
+    <ScreenScaffold backgroundColor="#f9f9f9" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
       <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
         <ContentCard style={styles.heroCard}>
         <Pressable

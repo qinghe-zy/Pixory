@@ -263,7 +263,7 @@ export function IpDetailScreen({
 
   return (
     <View style={{ flex: 1 }} {...panResponder.panHandlers}>
-    <ScreenScaffold backgroundVariant="archive" scrollable showHeader={false}>
+    <ScreenScaffold backgroundColor="#f9f9f9" scrollable showHeader={false}>
       <PageStateBlock
         emptyDescription=""
         emptyTitle=""

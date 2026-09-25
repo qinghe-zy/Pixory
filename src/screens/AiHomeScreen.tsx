@@ -139,7 +139,7 @@ export function AiHomeScreen({
 
   return (
     <AiLightScaffold
-      backgroundVariant="aiChat"
+      backgroundColor="#f9f9f9"
       bodyStyle={styles.homeBody}
       contentContainerStyle={styles.screenContent}
       errorMessage={errorMessage}
