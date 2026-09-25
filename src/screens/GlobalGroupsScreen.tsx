@@ -2,6 +2,9 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useState, useMemo } from 'react';
 import { ActivityIndicator, Pressable, SectionList, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
+
+const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
@@ -164,16 +167,24 @@ export function GlobalGroupsScreen({
     })();
   }
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = event.nativeEvent.contentOffset.y;
-    if (y > 20 && !isCollapsed) {
-      setIsCollapsed(true);
-    } else if (y <= 20 && isCollapsed) {
-      setIsCollapsed(false);
+  const [isCompactActive, setIsCompactActive] = useState(false);
+  const scrollY = useSharedValue(0);
+
+  const handleScrollJS = (y: number) => {
+    if (y > 10 && !isCompactActive) {
+      setIsCompactActive(true);
+    } else if (y <= 10 && isCompactActive) {
+      setIsCompactActive(false);
     }
   };
+
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+      runOnJS(handleScrollJS)(event.contentOffset.y);
+    },
+  });
 
   const rightAction = (
     <View style={styles.headerActions}>
@@ -183,54 +194,97 @@ export function GlobalGroupsScreen({
           style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
         >
           <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
-          {!isCollapsed && <Text style={styles.newBtnText}>新建</Text>}
+          <Text style={styles.newBtnText}>新建</Text>
         </Pressable>
       )}
     </View>
   );
 
-  const stickyHeader = (
-    <View style={[styles.topSection, isCollapsed && styles.topSectionCollapsed]}>
-      {mode && onSelectMode && (
-        <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} collapsed={isCollapsed} />
-      )}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.ipRail, isCollapsed && styles.ipRailCollapsed]} style={[{ marginHorizontal: -16 }, isCollapsed && styles.ipScrollCollapsed]}>
+  const compactRightAction = (
+    <View style={styles.headerActions}>
+      {selectedIpId !== null && (
         <Pressable
-          onPress={() => setSelectedIpId(null)}
-          style={[styles.ipPill, selectedIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
+          onPress={() => onCreateGroup?.(selectedIpId)}
+          style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
         >
-          <Text style={[styles.ipPillText, selectedIpId === null ? styles.ipPillTextActive : styles.ipPillTextInactive]}>全部 IP</Text>
-          <View style={selectedIpId === null ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
-            <Text style={[styles.ipPillBadgeText, selectedIpId === null ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>
-              {ipScopes.reduce((acc, ip) => acc + ip.groupCount, 0)}
-            </Text>
-          </View>
+          <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
         </Pressable>
-        {ipScopes.map((ip) => {
-          const isSelected = selectedIpId === ip.id;
-          return (
-            <Pressable
-              key={ip.id}
-              onPress={() => setSelectedIpId(ip.id)}
-              style={[styles.ipPill, isSelected ? styles.ipPillActive : styles.ipPillInactive]}
-            >
-              {!isSelected && <View style={styles.ipPillDot} />}
-              <Text style={[styles.ipPillText, isSelected ? styles.ipPillTextActive : styles.ipPillTextInactive]}>{ip.name}</Text>
-              <View style={isSelected ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
-                <Text style={[styles.ipPillBadgeText, isSelected ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>{ip.groupCount}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
-        {onCreateFirstIp && (
-          <Pressable onPress={onCreateFirstIp} style={[styles.ipPill, styles.ipPillCreate]}>
-            <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
-            <Text style={[styles.ipPillText, styles.ipPillTextCreate]}>新建 IP</Text>
-          </Pressable>
-        )}
-      </ScrollView>
-      {isCollapsed && rightAction}
+      )}
     </View>
+  );
+
+  const ipPills = (
+    <>
+      <Pressable
+        onPress={() => setSelectedIpId(null)}
+        style={[styles.ipPill, selectedIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
+      >
+        <Text style={[styles.ipPillText, selectedIpId === null ? styles.ipPillTextActive : styles.ipPillTextInactive]}>全部 IP</Text>
+        <View style={selectedIpId === null ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
+          <Text style={[styles.ipPillBadgeText, selectedIpId === null ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>
+            {ipScopes.reduce((acc, ip) => acc + ip.groupCount, 0)}
+          </Text>
+        </View>
+      </Pressable>
+      {ipScopes.map((ip) => {
+        const isSelected = selectedIpId === ip.id;
+        return (
+          <Pressable
+            key={ip.id}
+            onPress={() => setSelectedIpId(ip.id)}
+            style={[styles.ipPill, isSelected ? styles.ipPillActive : styles.ipPillInactive]}
+          >
+            {!isSelected && <View style={styles.ipPillDot} />}
+            <Text style={[styles.ipPillText, isSelected ? styles.ipPillTextActive : styles.ipPillTextInactive]}>{ip.name}</Text>
+            <View style={isSelected ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
+              <Text style={[styles.ipPillBadgeText, isSelected ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>{ip.groupCount}</Text>
+            </View>
+          </Pressable>
+        );
+      })}
+      {onCreateFirstIp && (
+        <Pressable onPress={onCreateFirstIp} style={[styles.ipPill, styles.ipPillCreate]}>
+          <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
+          <Text style={[styles.ipPillText, styles.ipPillTextCreate]}>新建 IP</Text>
+        </Pressable>
+      )}
+    </>
+  );
+
+  const expandedHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [0, 20], [1, 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+
+  const expandedHeader = (
+    <Animated.View style={[styles.topSection, expandedHeaderStyle]}>
+      {mode && onSelectMode && (
+        <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} collapsed={false} />
+      )}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRail} style={{ marginHorizontal: -16 }}>
+        {ipPills}
+      </ScrollView>
+    </Animated.View>
+  );
+
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [10, 30], [-10, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ translateY }] };
+  });
+
+  const compactHeader = (
+    <Animated.View style={[styles.headerContainer, compactHeaderStyle]} pointerEvents={isCompactActive ? 'auto' : 'none'}>
+      <View style={styles.topSectionCollapsed}>
+        {mode && onSelectMode && (
+          <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={compactRightAction} collapsed={true} />
+        )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRailCollapsed} style={styles.ipScrollCollapsed}>
+          {ipPills}
+        </ScrollView>
+        {compactRightAction}
+      </View>
+    </Animated.View>
   );
 
   return (
@@ -246,12 +300,13 @@ export function GlobalGroupsScreen({
         onEmptyAction={onCreateFirstIp}
         onRetry={reload}
       >
-        {stickyHeader}
-        <SectionList
+        {compactHeader}
+        <AnimatedSectionList
           contentContainerStyle={styles.list}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          keyExtractor={(group) => String(group.id)}
+          keyExtractor={(group: any) => String(group.id)}
+          ListHeaderComponent={expandedHeader}
           ListEmptyComponent={
             !isLoading && groups.length === 0 ? (
               <View style={styles.emptyInline}>
@@ -264,31 +319,34 @@ export function GlobalGroupsScreen({
           ListFooterComponent={isLoadingMore ? <ActivityIndicator color={protoColors.primary} style={styles.loadingMore} /> : null}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          renderItem={({ item: group }) => (
-            <View style={styles.groupCardWrapper}>
-              <Pressable
-                onLongPress={(e) => setActionGroupState({ group, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
-                onPress={() => onOpenGroup(group.ipId, group.id)}
-                style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressedCard]}
-              >
-                <View style={styles.groupCardInner}>
-                  <View style={styles.coverWrap}>
-                    <View style={[StyleSheet.absoluteFill, styles.coverLayer2]} />
-                    <View style={[StyleSheet.absoluteFill, styles.coverLayer1]} />
-                    <View style={styles.coverImageContainer}>
-                      {group.coverThumbnailFileUri ? (
-                        <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
-                      ) : (
-                        <View style={styles.coverEmpty}><MaterialIcons color={protoColors.outlineVariant} name="image" size={22} /></View>
-                      )}
+          renderItem={({ item }: { item: any }) => {
+            const group = item as GlobalGroupListItem;
+            return (
+              <View style={styles.groupCardWrapper}>
+                <Pressable
+                  onLongPress={(e) => setActionGroupState({ group, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
+                  onPress={() => onOpenGroup(group.ipId, group.id)}
+                  style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressedCard]}
+                >
+                  <View style={styles.groupCardInner}>
+                    <View style={styles.coverWrap}>
+                      <View style={[StyleSheet.absoluteFill, styles.coverLayer2]} />
+                      <View style={[StyleSheet.absoluteFill, styles.coverLayer1]} />
+                      <View style={styles.coverImageContainer}>
+                        {group.coverThumbnailFileUri ? (
+                          <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                        ) : (
+                          <View style={styles.coverEmpty}><MaterialIcons color={protoColors.outlineVariant} name="image" size={22} /></View>
+                        )}
+                      </View>
                     </View>
+                    <GroupCardCopy group={group} onOpenGroup={onOpenGroup} onOpenMenu={(group, anchorX, anchorY) => setActionGroupState({ group, anchorX, anchorY })} />
                   </View>
-                  <GroupCardCopy group={group} onOpenGroup={onOpenGroup} onOpenMenu={(group, anchorX, anchorY) => setActionGroupState({ group, anchorX, anchorY })} />
-                </View>
-              </Pressable>
-            </View>
-          )}
-          renderSectionHeader={({ section }) => (
+                </Pressable>
+              </View>
+            );
+          }}
+          renderSectionHeader={({ section }: { section: any }) => (
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>ARCHIVE GROUPS ({section.data.length})</Text>
               <Text style={styles.sectionType}>{section.label}</Text>
@@ -507,7 +565,6 @@ const styles = StyleSheet.create({
     color: protoColors.secondary,
   },
   list: {
-    paddingTop: 74,
     gap: 10,
     paddingBottom: 24,
   },
