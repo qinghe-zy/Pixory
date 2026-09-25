@@ -391,15 +391,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   topSection: {
-    paddingBottom: 8,
-    paddingTop: 4,
-    gap: 10,
+    paddingBottom: 4,
+    paddingTop: 2,
+    gap: 8,
   },
   topSectionCollapsed: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 8,
-    paddingTop: 4,
+    paddingBottom: 4,
+    paddingTop: 2,
     gap: 8,
   },
   headerActions: {
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
     color: protoColors.secondary,
   },
   list: {
-    paddingTop: 82,
+    paddingTop: 74,
     gap: 10,
     paddingBottom: 24,
   },
