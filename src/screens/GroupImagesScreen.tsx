@@ -97,7 +97,7 @@ export function GroupImagesScreen({
       return { ip, group, tags };
       });
     },
-    [groupId, ipId, refreshToken, space],
+    ['GroupImagesScreen', groupId, ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

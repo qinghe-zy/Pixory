@@ -51,7 +51,7 @@ export function EditIpScreen({
 
       return record;
     },
-    [ipId, space],
+    ['EditIpScreen', ipId, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

@@ -106,7 +106,7 @@ export function BatchManageImagesScreen({
       return { ip, groups, importTemplates, tags };
       });
     },
-    [groupId, importBatchId, ipId, refreshToken, scopeImageIds?.join(',') ?? '', sortOrder, space],
+    ['BatchManageImagesScreen', groupId, importBatchId, ipId, refreshToken, scopeImageIds?.join(',') ?? '', sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

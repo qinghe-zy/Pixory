@@ -110,7 +110,7 @@ export function IpDetailScreen({
 
       return { groups, ip, needsOrganizingCount, organizationProgress, recentImages, recentImportBatches };
     },
-    [ipId, refreshToken, space],
+    ['IpDetailScreen', ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

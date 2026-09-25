@@ -30,7 +30,7 @@ export function GroupCoverPickerScreen({ ipId, groupId, space = 'normal', onBack
         ]);
         return { group, images, ip };
       }),
-    [groupId, ipId, space],
+    ['GroupCoverPickerScreen', groupId, ipId, space],
     {
       initialData: { group: null, images: [], ip: null },
       formatError: (error) => {

@@ -10,6 +10,15 @@
 
 ## 更新内容
 
+### 2026-09-25 17:11:00 +08:00 · Bug修复
+
+- **更新类型**: Bug修复（代码提交）
+- **更新时间**: 2026-09-25 17:11:00 +08:00
+- **更新内容**:
+  - 修复：点击第一张 IP 卡片的编辑按钮时由于 `TypeError: Cannot read property 'trim' of undefined` 导致应用闪退的问题。
+  - 根本原因：`useScreenLoad` 缓存键冲突。多个不同数据结构的页面（如 `EditIpScreen` 和 `IpCoverPickerScreen`）碰巧使用了相同的缓存依赖 `[ipId, space]`，导致 `EditIpScreen` 错误地读取到了其他页面缓存的复杂对象数据，解构 `ip.name` 时得到 `undefined`。
+  - 修复方案：为全应用 7 个存在重名隐患的屏幕（`EditIpScreen`、`IpCoverPickerScreen`、`EditGroupScreen` 等）的 `useScreenLoad` 依赖数组增加了严格的页面名字符串前缀（Namespace 隔离），彻底根除跨页面缓存数据污染问题。
+
 ### 2026-09-25 16:57:00 +08:00 · Bug修复
 
 - **更新类型**: Bug修复（代码提交）
@@ -773,3 +782,9 @@ efreshKey，在用户下拉刷新首页或切换空间时自动更新占用数�
 - Version: 2.8.7.0
 - Target Channel: production
 - 变更摘要：根据设计稿100%重构IP详情页样式：引入16/9全画幅封面、2x2实心带投影快捷网格并匹配子标题、以及4:3两列独立近况卡片并取消页面内独立操作按钮，全方位对齐 HTML 极简设计规范。
+
+### 2026-09-25 17:01:30 +08:00 · LocalCommit
+
+- 来源提交/更新：eb5a77d19551be04b99e01350c0ec856272150eb
+- 变更摘要：本地提交变更
+- 文档规则：如与既有需求冲突，先更新 PRD/TDD/测试/发布说明的“当前有效内容”，再在“变更记录”标注替代关系并知会干系人。

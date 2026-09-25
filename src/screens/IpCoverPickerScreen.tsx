@@ -32,7 +32,7 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
         ]);
         return { ip, images };
       }),
-    [ipId, space],
+    ['IpCoverPickerScreen', ipId, space],
     {
       initialData: { ip: null, images: [] },
       formatError: (error) => {
