@@ -10,6 +10,17 @@
 
 ## 更新内容
 
+### 2026-09-25 16:57:00 +08:00 · Bug修复
+
+- **更新类型**: Bug修复（代码提交）
+- **更新时间**: 2026-09-25 16:57:00 +08:00
+- **更新内容**:
+  - 修复：首页 IP 卡片点击「编辑 IP」、IP 详情 Drawer 内各导航入口、图片详情「编辑信息」等场景，在 Modal/Drawer 关闭动画期间父组件即被路由销毁，导致白屏的时序竞争问题。
+  - 根本原因：自定义路由机制在切换页面时直接 Unmount 前一个页面，与 Modal 原生关闭动画（fade ~200ms，SlideOutRight 250ms）产生竞争。
+  - 修复方案：在 `AnchoredContextMenu`（250ms）、`AppActionSheet`（250ms）两个共用组件的 onPress 处统一延迟导航回调；在 `IpDetailScreen` 的 `IpDetailDrawer` 各导航入口延迟 300ms。覆盖全应用所有风险点，TypeScript 编译零错误。
+  - 涉及文件：`src/components/AnchoredContextMenu.tsx`、`src/components/AppActionSheet.tsx`、`src/screens/IpDetailScreen.tsx`
+
+
 ### 2026-09-25 13:03:00 +08:00 · OTA热更新 (Channel: production)
 
 - **更新类型**: OTA热更新
@@ -736,3 +747,9 @@ efreshKey，在用户下拉刷新首页或切换空间时自动更新占用数�
 - Version: 2.8.7.0
 - Target Channel: production
 - 变更摘要：将新建IP、编辑IP、选择IP封面页面的半透明高斯模糊导航栏替换为不透明的纯色导航栏，以实现更加沉浸的效果。
+
+### 2026-09-25 16:51:17 +08:00 · LocalCommit
+
+- 来源提交/更新：b1f591a2974366a9ced302867654e476f999f7e0
+- 变更摘要：本地提交变更
+- 文档规则：如与既有需求冲突，先更新 PRD/TDD/测试/发布说明的“当前有效内容”，再在“变更记录”标注替代关系并知会干系人。
