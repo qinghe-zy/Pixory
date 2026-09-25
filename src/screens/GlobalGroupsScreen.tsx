@@ -425,11 +425,8 @@ function GroupCardCopy({ group, onOpenGroup, onOpenMenu }: { group: GlobalGroupL
           {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
         </Text>
         <View style={styles.groupActions}>
-          <Pressable onPress={(e) => onOpenMenu(group, e.nativeEvent.pageX, e.nativeEvent.pageY)} style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}>
-            <MaterialIcons name="more-horiz" size={14} color={protoColors.secondary} />
-          </Pressable>
-          <Pressable onPress={() => onOpenGroup(group.ipId, group.id)} style={({ pressed }) => [styles.groupActionBtnPrimary, pressed && styles.pressed]}>
-            <MaterialIcons name="arrow-forward" size={13} color={protoColors.onPrimary} />
+          <Pressable hitSlop={12} onPress={(e) => onOpenMenu(group, e.nativeEvent.pageX, e.nativeEvent.pageY)} style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}>
+            <MaterialIcons name="more-horiz" size={16} color={protoColors.secondary} />
           </Pressable>
         </View>
       </View>
