@@ -39,7 +39,7 @@ export function OrganizeSegmentedControl({
           style={[styles.segmentBtn, collapsed && styles.segmentBtnCollapsed, mode === 'groups' && styles.segmentBtnActive]}
         >
           <MaterialIcons name="folder-copy" size={14} color={mode === 'groups' ? protoColors.primary : protoColors.secondary} />
-          {!collapsed && <Text style={[styles.segmentText, mode === 'groups' && styles.segmentTextActive]}>分组</Text>}
+          <Text style={[styles.segmentText, mode === 'groups' && styles.segmentTextActive]}>分组</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -47,7 +47,7 @@ export function OrganizeSegmentedControl({
           style={[styles.segmentBtn, collapsed && styles.segmentBtnCollapsed, mode === 'tags' && styles.segmentBtnActive]}
         >
           <MaterialIcons name="label" size={14} color={mode === 'tags' ? protoColors.primary : protoColors.secondary} />
-          {!collapsed && <Text style={[styles.segmentText, mode === 'tags' && styles.segmentTextActive]}>标签</Text>}
+          <Text style={[styles.segmentText, mode === 'tags' && styles.segmentTextActive]}>标签</Text>
         </Pressable>
       </View>
       {rightAction && !collapsed && (

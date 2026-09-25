@@ -381,6 +381,15 @@ const styles = StyleSheet.create({
   pressedCard: {
     transform: [{ scale: 0.995 }],
   },
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: -16,
+    right: -16,
+    zIndex: 10,
+    backgroundColor: protoColors.surface,
+    paddingHorizontal: 16,
+  },
   topSection: {
     paddingBottom: 8,
     paddingTop: 4,
@@ -390,7 +399,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingBottom: 8,
-    paddingTop: 0,
+    paddingTop: 4,
     gap: 8,
   },
   headerActions: {
@@ -428,6 +437,8 @@ const styles = StyleSheet.create({
   ipScrollCollapsed: {
     flex: 1,
     marginHorizontal: 0,
+    maxWidth: '50%',
+    marginLeft: 'auto',
   },
   ipPill: {
     height: 28,
@@ -496,6 +507,7 @@ const styles = StyleSheet.create({
     color: protoColors.secondary,
   },
   list: {
+    paddingTop: 82,
     gap: 10,
     paddingBottom: 24,
   },

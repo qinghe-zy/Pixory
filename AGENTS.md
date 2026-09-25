@@ -26,6 +26,7 @@ Server-side AI infrastructure, AI gateways, prompt caching, semantic caching, pr
 - Never compress, crop, overwrite, re-encode, or replace original imported assets unless the user explicitly requests a derived preview/export operation.
 - Thumbnails and previews are allowed only as separate preview files.
 - The UI must feel like a real polished mobile product, not an AI mockup.
+- Do not use scripts (e.g., Python, Node.js) to modify, patch, or edit the project's source code files. All code changes must be made directly using standard code editing tools.
 
 ## Architecture Principles
 
