@@ -308,6 +308,11 @@ export function IpDetailScreen({
                   style={styles.heroGradient}
                 />
 
+                <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.heroCoverAction, pressed && styles.pressed]}>
+                  <MaterialIcons color="#ffffff" name="image" size={14} />
+                  <Text style={styles.heroCoverActionText}>{ip.coverSource === 'custom' ? '更换封面' : '选择封面'}</Text>
+                </Pressable>
+
                 <View style={styles.heroTopBadges}>
                   {ip.isFavorite ? (
                     <View style={styles.heroFavoriteBadge}>
@@ -734,6 +739,26 @@ const styles = StyleSheet.create({
   },
   heroGradient: {
     ...StyleSheet.absoluteFillObject,
+  },
+  heroCoverAction: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 10,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  heroCoverActionText: {
+    fontFamily: 'Geist',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   heroTopBadges: {
     position: 'absolute',
