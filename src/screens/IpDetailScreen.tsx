@@ -1,4 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +23,7 @@ import { colors, componentTokens, layout, radius, rhythm, shadows, spacing, typo
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
-import { formatDateTime, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
+import { formatDateTime, formatDuration, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { computeJustifiedLayout, JUSTIFIED_GAP } from '../utils/justifiedLayout';
 import { useAssetListPreferences } from '../services/assetListPreferences';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
@@ -51,10 +52,10 @@ interface IpDetailScreenProps {
 }
 
 const QUICK_ACTIONS = [
-  { key: 'import', label: '导入素材', icon: 'cloud-upload-outline' },
-  { key: 'create-group', label: '新建分组', icon: 'folder-open-outline' },
-  { key: 'all-images', label: '全部素材', icon: 'images-outline' },
-  { key: 'batch', label: '批量管理', icon: 'albums-outline' },
+  { key: 'import', label: '导入素材', subtitle: '本地相册 / 云盘', icon: 'cloud-upload' },
+  { key: 'create-group', label: '新建分组', subtitle: '', icon: 'create-new-folder' },
+  { key: 'all-images', label: '全部素材', subtitle: '', icon: 'collections-bookmark' },
+  { key: 'batch', label: '批量管理', subtitle: '移动 / 导出 / 标签', icon: 'folder-special' },
 ] as const;
 
 export function IpDetailScreen({
@@ -276,49 +277,57 @@ export function IpDetailScreen({
       >
         {ip ? (
           <>
-            <Pressable
-              style={styles.cover}
-              onPress={ip.videoCount > 0 && ip.imageCount === 0 ? handleCoverPlayPress : undefined}
-            >
-              {ip.coverThumbnailFileUri ? (
-                <SecureImage
-                  blurRadius={personalCoverBlurRadius}
-                  contentFit="cover"
-                  space={space}
-                  style={styles.coverImage}
-                  uri={ip.coverThumbnailFileUri}
-                />
-              ) : (
-                <View style={styles.coverFallback}>
-                  <Text style={styles.coverInitials}>{getIpInitials(ip.name)}</Text>
-                </View>
-              )}
-              
-              {ip.videoCount > 0 && ip.imageCount === 0 ? (
-                <View pointerEvents="none" style={styles.coverPlayOverlay}>
-                  <Ionicons color="rgba(255, 255, 255, 0.5)" name="play" size={56} />
-                </View>
-              ) : null}
+            <View style={styles.heroCard}>
+              <Pressable
+                style={styles.heroImageContainer}
+                onPress={ip.videoCount > 0 && ip.imageCount === 0 ? handleCoverPlayPress : onOpenCoverPicker}
+              >
+                {ip.coverThumbnailFileUri ? (
+                  <SecureImage
+                    blurRadius={personalCoverBlurRadius}
+                    contentFit="cover"
+                    space={space}
+                    style={styles.coverImage}
+                    uri={ip.coverThumbnailFileUri}
+                  />
+                ) : (
+                  <View style={styles.coverFallback}>
+                    <Text style={styles.coverInitials}>{getIpInitials(ip.name)}</Text>
+                  </View>
+                )}
+                
+                {ip.videoCount > 0 && ip.imageCount === 0 ? (
+                  <View pointerEvents="none" style={styles.coverPlayOverlay}>
+                    <Ionicons color="rgba(255, 255, 255, 0.5)" name="play" size={56} />
+                  </View>
+                ) : null}
 
-              {ip.isFavorite ? (
-                <View style={styles.favoriteBadge}>
-                  <Ionicons color={colors.semantic.favorite} name="star" size={14} />
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.8)']}
+                  locations={[0, 0.5, 1]}
+                  style={styles.heroGradient}
+                />
+
+                <View style={styles.heroTopBadges}>
+                  {ip.isFavorite ? (
+                    <View style={styles.heroFavoriteBadge}>
+                      <Ionicons color="#fff" name="star" size={14} />
+                    </View>
+                  ) : <View />}
+                  <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.heroMoreButton, pressed && styles.pressed]}>
+                    <MaterialIcons color="#ffffff" name="more-vert" size={18} />
+                  </Pressable>
                 </View>
-              ) : null}
-              <View style={styles.coverCaption}>
-                <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={2} style={styles.coverTitle}>
-                  {ip.name}
-                </Text>
-              </View>
-              <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.coverAction, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.inverse} name="image-outline" size={14} />
-                <Text style={styles.coverActionText}>{ip.coverSource === 'custom' ? '更换封面' : '选择封面'}</Text>
+
+                <View style={styles.heroBottomContent}>
+                  <View style={{ flex: 1 }}>
+                    <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={2} style={styles.heroTitle}>
+                      {ip.name}
+                    </Text>
+                  </View>
+                </View>
               </Pressable>
-              
-              <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.coverHamburger, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.inverse} name="menu-outline" size={16} />
-              </Pressable>
-            </Pressable>
+            </View>
             {space === 'personal' ? (
               <>
               <SwitchSettingRow
@@ -353,25 +362,42 @@ export function IpDetailScreen({
               </>
             ) : null}
             <View style={styles.quickGrid}>
-              {QUICK_ACTIONS.map((action) => (
-                <Pressable
-                  key={action.key}
-                  onPress={() => handleQuickAction(action.key)}
-                  style={({ pressed }) => [styles.quickCard, pressed && styles.pressed]}
-                >
-                  <View style={styles.quickIcon}>
-                    <Ionicons color={colors.primary.active} name={action.icon} size={20} />
-                  </View>
-                  <Text style={styles.quickLabel}>{action.label}</Text>
-                </Pressable>
-              ))}
+              {QUICK_ACTIONS.map((action) => {
+                let subtitle: string = action.subtitle;
+                if (action.key === 'create-group') subtitle = `${ip.groupCount} 个现有分组`;
+                if (action.key === 'all-images') subtitle = `${ip.imageCount} 个项目归档`;
+                
+                return (
+                  <Pressable
+                    key={action.key}
+                    onPress={() => handleQuickAction(action.key)}
+                    style={({ pressed }) => [styles.quickCard, pressed && styles.pressed]}
+                  >
+                    <View style={styles.quickIcon}>
+                      <MaterialIcons color="#1a1c1c" name={action.icon as any} size={18} />
+                    </View>
+                    <View style={styles.quickTextContainer}>
+                      <Text numberOfLines={1} style={styles.quickLabel}>{action.label}</Text>
+                      <Text numberOfLines={1} style={styles.quickSubtitle}>{subtitle}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <SectionHeader
-              actionLabel={recentImages.length > 0 ? commonButtonCopy.allImages : undefined}
-              onActionPress={recentImages.length > 0 ? onOpenAllImages : undefined}
-              title="最近素材"
-            />
+            <View style={styles.recentSectionHeader}>
+              <View style={styles.recentSectionHeaderLeft}>
+                <Text style={styles.recentSectionTitle}>最近素材</Text>
+                <Text style={styles.recentSectionSubtitle}>RECENTLY SYNCED</Text>
+              </View>
+              {recentImages.length > 0 ? (
+                <Pressable onPress={onOpenAllImages} style={({ pressed }) => [styles.recentSectionAction, pressed && styles.pressed]}>
+                  <Text style={styles.recentSectionActionText}>全部图片</Text>
+                  <MaterialIcons color="#767676" name="chevron-right" size={14} />
+                </Pressable>
+              ) : null}
+            </View>
+
             <PageStateBlock
               emptyActionLabel={commonButtonCopy.importImages}
               emptyDescription="导入第一批素材后，这里会显示最近导入的图片和视频。"
@@ -410,30 +436,47 @@ export function IpDetailScreen({
                   ))
                 ) : (
                   <>
-                    {displayImages.map((image) => (
-                      <ThumbnailTile
-                        aspectRatio={componentTokens.thumbnail.squareAspectRatio}
-                        image={image}
-                        key={image.id}
-                        onLongPress={() => handleImageLongPress(image)}
-                        onPress={handleOpenRecentImage}
-                        space={space}
-                      />
-                    ))}
-                    {Array.from({ length: (3 - (displayImages.length % 3)) % 3 }).map((_, i) => (
-                      <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
-                    ))}
+                    {displayImages.map((image) => {
+                      const isVideo = image.mediaType === 'video';
+                      return (
+                        <Pressable 
+                          key={image.id} 
+                          onLongPress={() => handleImageLongPress(image)} 
+                          onPress={() => handleOpenRecentImage(image.id)}
+                          style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
+                        >
+                          <View style={styles.recentImageContainer}>
+                            {image.thumbnailFileUri ? (
+                              <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={image.thumbnailFileUri} />
+                            ) : (
+                              <View style={styles.coverFallback}>
+                                <MaterialIcons color="#767676" name={isVideo ? "videocam" : "image"} size={22} />
+                              </View>
+                            )}
+                            <LinearGradient
+                              colors={['transparent', 'rgba(0,0,0,0.6)']}
+                              locations={[0.3, 1]}
+                              style={styles.recentGradient}
+                            />
+                            {isVideo && (
+                              <View style={styles.recentVideoBadge}>
+                                <MaterialIcons color="#fff" name="play-arrow" size={12} />
+                                <Text style={styles.recentVideoTime}>{formatDuration(image.durationMs)}</Text>
+                              </View>
+                            )}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
                   </>
                 )}
               </View>
               {recentImages.length > 0 ? (
                 <View style={styles.recentViewAllDivider}>
-                  <View style={styles.dividerLine} />
                   <Pressable onPress={onOpenAllImages} style={({ pressed }) => [styles.viewAllPrompt, pressed && styles.pressed]}>
-                    <Text style={styles.viewAllPromptText}>查看全部素材</Text>
-                    <Ionicons color={colors.text.tertiary} name="chevron-forward" size={12} />
+                    <Text style={styles.viewAllPromptText}>查看全部 {ip.imageCount} 项素材</Text>
+                    <MaterialIcons color="#1a1c1c" name="arrow-forward" size={15} />
                   </Pressable>
-                  <View style={styles.dividerLine} />
                 </View>
               ) : null}
             </PageStateBlock>
@@ -445,7 +488,7 @@ export function IpDetailScreen({
       {ip ? (
         <>
           <SectionHeader title="基础操作" />
-          <Pressable onPress={() => { setIsDrawerVisible(false); onEdit(); }} style={({ pressed }) => [styles.drawerActionBtn, pressed && styles.pressed]}>
+          <Pressable onPress={() => { setIsDrawerVisible(false); setTimeout(() => onEdit(), 300); }} style={({ pressed }) => [styles.drawerActionBtn, pressed && styles.pressed]}>
             <View style={styles.drawerActionIcon}>
               <Ionicons color={colors.primary.active} name="create-outline" size={20} />
             </View>
@@ -461,9 +504,9 @@ export function IpDetailScreen({
             </View>
             {managementSummary ? (
               <>
-              <SectionHeader actionLabel={recentImportBatches.length > 0 ? '全部批次' : undefined} onActionPress={recentImportBatches.length > 0 ? () => { setIsDrawerVisible(false); onOpenImportBatches(); } : undefined} title="管理摘要" />
+              <SectionHeader actionLabel={recentImportBatches.length > 0 ? '全部批次' : undefined} onActionPress={recentImportBatches.length > 0 ? () => { setIsDrawerVisible(false); setTimeout(() => onOpenImportBatches(), 300); } : undefined} title="管理摘要" />
               {needsOrganizingCount > 0 ? (
-                <Pressable onPress={() => { setIsDrawerVisible(false); onOpenNeedsOrganizing(); }} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
+                <Pressable onPress={() => { setIsDrawerVisible(false); setTimeout(() => onOpenNeedsOrganizing(), 300); }} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
                   <View style={styles.needsCopy}>
                     <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
                   </View>
@@ -472,7 +515,7 @@ export function IpDetailScreen({
               ) : null}
 
               {organizationProgress ? (
-                <Pressable onPress={() => { setIsDrawerVisible(false); onOpenNeedsOrganizing(); }} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
+                <Pressable onPress={() => { setIsDrawerVisible(false); setTimeout(() => onOpenNeedsOrganizing(), 300); }} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
                   <View style={styles.progressHeader}>
                     <Text style={styles.progressTitle}>当前 IP 整理度 {organizationProgress.organizationPercent}%</Text>
                     <Text style={styles.progressMeta}>{organizationProgress.organizedCount}/{organizationProgress.totalCount}</Text>
@@ -493,7 +536,7 @@ export function IpDetailScreen({
                   {recentImportBatches.slice(0, 2).map((batch) => {
                     const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
                     return (
-                      <Pressable key={batch.id} onPress={() => { setIsDrawerVisible(false); onOpenImportBatches(); }} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
+                      <Pressable key={batch.id} onPress={() => { setIsDrawerVisible(false); setTimeout(() => onOpenImportBatches(), 300); }} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
                         <View style={styles.batchCopy}>
                           <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
                           <Text numberOfLines={1} style={styles.batchMeta}>
@@ -511,14 +554,14 @@ export function IpDetailScreen({
           </View>
 
           <View style={styles.groupSection}>
-            <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={() => { setIsDrawerVisible(false); onOpenGroups(); }} title="分组入口" />
+            <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={() => { setIsDrawerVisible(false); setTimeout(() => onOpenGroups(), 300); }} title="分组入口" />
             {groups.length > 0 ? (
               <View style={styles.groupEntryList}>
                 {groups.map((group) => (
                   <Pressable
                     key={group.id}
                     onLongPress={() => { setIsDrawerVisible(false); setActionGroup(group); }}
-                    onPress={() => { setIsDrawerVisible(false); onOpenGroup(group.id); }}
+                    onPress={() => { setIsDrawerVisible(false); setTimeout(() => onOpenGroup(group.id), 300); }}
                     style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}
                   >
                     <View style={styles.groupEntryCover}>
@@ -543,7 +586,7 @@ export function IpDetailScreen({
                 ))}
               </View>
             ) : (
-              <Pressable onPress={() => { setIsDrawerVisible(false); onCreateGroup(); }} style={({ pressed }) => [styles.emptyGroupEntry, pressed && styles.pressed]}>
+              <Pressable onPress={() => { setIsDrawerVisible(false); setTimeout(() => onCreateGroup(), 300); }} style={({ pressed }) => [styles.emptyGroupEntry, pressed && styles.pressed]}>
                 <Ionicons color={colors.primary.default} name="folder-open-outline" size={18} />
                 <Text style={styles.emptyGroupText}>还没有分组，点击新建</Text>
               </Pressable>
@@ -649,96 +692,93 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
-  cover: {
-    ...shadows.sm,
-    aspectRatio: 1.55,
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+  heroCard: {
+    width: '100%',
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
     overflow: 'hidden',
+  },
+  heroImageContainer: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#f3f3f4',
     position: 'relative',
+    overflow: 'hidden',
   },
   coverImage: {
-    height: '100%',
     width: '100%',
+    height: '100%',
   },
   coverFallback: {
-    alignItems: 'center',
-    backgroundColor: colors.background.elevated,
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#f3f3f4',
+  },
+  coverInitials: {
+    ...typography.textStyles.heroTitle,
+    color: '#1a1c1c',
   },
   coverPlayOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
   },
-  coverInitials: {
-    ...typography.textStyles.heroTitle,
-    color: colors.primary.active,
+  heroGradient: {
+    ...StyleSheet.absoluteFillObject,
   },
-  favoriteBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderRadius: radius.sm,
-    height: 28,
-    justifyContent: 'center',
+  heroTopBadges: {
     position: 'absolute',
-    right: spacing[3],
-    top: spacing[3],
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heroFavoriteBadge: {
     width: 28,
-  },
-  coverCaption: {
-    alignItems: 'flex-end',
-    bottom: spacing[4],
-    maxWidth: '74%',
-    position: 'absolute',
-    right: spacing[4],
-  },
-  coverTitle: {
-    ...typography.textStyles.cardTitle,
-    color: colors.text.inverse,
-    fontSize: 19,
-    fontWeight: '600',
-    lineHeight: 24,
-    textAlign: 'right',
-    textShadowColor: 'rgba(23, 33, 43, 0.92)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 12,
-  },
-  coverAction: {
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
-    backgroundColor: 'rgba(5, 7, 10, 0.48)',
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[1],
-    left: spacing[3],
-    minHeight: 32,
-    paddingHorizontal: spacing[3],
-    position: 'absolute',
-    top: spacing[3],
-  },
-  coverActionText: {
-    ...typography.textStyles.micro,
-    color: colors.text.inverse,
-    fontWeight: '700',
-  },
-  coverHamburger: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(5, 7, 10, 0.48)',
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
     justifyContent: 'center',
+  },
+  heroMoreButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  heroBottomContent: {
     position: 'absolute',
-    right: spacing[3],
-    top: spacing[3],
-    height: 32,
-    width: 32,
+    bottom: 12,
+    left: 14,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  heroTitle: {
+    fontFamily: 'Newsreader',
+    fontSize: 22,
+    fontWeight: '500',
+    letterSpacing: -0.22,
+    color: '#ffffff',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   blurOptions: {
     backgroundColor: colors.background.surface,
@@ -910,35 +950,48 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginTop: rhythm.screenSectionGap,
-    rowGap: rhythm.listCardGap,
+    rowGap: 10, // gap-2.5
   },
   quickCard: {
-    ...shadows.sm,
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#ffffff',
+    borderColor: 'rgba(0,0,0,0.05)',
+    borderWidth: 1,
+    borderRadius: 12,
     flexDirection: 'row',
-    gap: spacing[2],
-    minHeight: 64,
-    paddingHorizontal: spacing[3],
-    width: '48%',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    width: '48.5%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
   },
   quickIcon: {
-    ...shadows.sm,
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 34,
     justifyContent: 'center',
-    width: 34,
+    backgroundColor: '#f3f3f4',
+    borderRadius: 8,
+    width: 36,
+    height: 36,
+  },
+  quickTextContainer: {
+    flex: 1,
+    justifyContent: 'center',
   },
   quickLabel: {
-    ...typography.textStyles.bodyStrong,
-    flex: 1,
+    fontFamily: 'Geist',
+    fontSize: 13.5,
+    fontWeight: '500',
+    color: '#1a1c1c',
+    letterSpacing: -0.07,
+  },
+  quickSubtitle: {
+    fontFamily: 'Geist',
+    fontSize: 10.5,
+    color: '#767676',
+    marginTop: 2,
   },
   groupSection: {
     gap: rhythm.listCardGap,
@@ -1001,36 +1054,123 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.primary.active,
   },
+  recentSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  recentSectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  recentSectionTitle: {
+    fontFamily: 'Newsreader',
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#1a1c1c',
+    letterSpacing: -0.18,
+  },
+  recentSectionSubtitle: {
+    fontFamily: 'Geist',
+    fontSize: 10,
+    fontWeight: '500',
+    color: 'rgba(118, 118, 118, 0.8)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  recentSectionAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  recentSectionActionText: {
+    fontFamily: 'Geist',
+    fontSize: 12,
+    color: '#767676',
+  },
   recentGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: rhythm.compactGridGap,
+    rowGap: 10,
   },
   recentList: {
     flexDirection: 'column',
     gap: rhythm.listCardGap,
   },
+  recentCard: {
+    width: '48.5%',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  recentImageContainer: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: '#f3f3f4',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  recentGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  recentVideoBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  recentVideoTime: {
+    fontFamily: 'Geist',
+    fontSize: 10.5,
+    color: '#ffffff',
+  },
   recentViewAllDivider: {
     alignItems: 'center',
-    flexDirection: 'row',
-    marginBottom: spacing[2],
-    marginTop: spacing[5],
-  },
-  dividerLine: {
-    backgroundColor: colors.border.subtle,
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   viewAllPrompt: {
-    alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[1],
-    paddingHorizontal: spacing[3],
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
   },
   viewAllPromptText: {
-    ...typography.textStyles.micro,
-    color: colors.text.tertiary,
+    fontFamily: 'Geist',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1a1c1c',
+    letterSpacing: -0.065,
   },
   drawerActionBtn: {
     alignItems: 'center',

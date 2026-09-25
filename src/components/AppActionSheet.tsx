@@ -50,8 +50,12 @@ export function AppActionSheet({ visible, title, message, items, onClose, closeO
                 onPress={() => {
                   if (closeOnSelect) {
                     onClose();
+                    // Defer navigation so the Modal fade-out animation completes
+                    // before a route change can unmount this component tree.
+                    setTimeout(() => item.onPress(), 250);
+                  } else {
+                    item.onPress();
                   }
-                  item.onPress();
                 }}
                 style={({ pressed }) => [
                   styles.row,

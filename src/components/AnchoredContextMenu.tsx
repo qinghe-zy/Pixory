@@ -134,7 +134,9 @@ export function AnchoredContextMenu({
                 key={action.key}
                 onPress={() => {
                   onClose();
-                  action.onPress();
+                  // Defer navigation so the Modal fade-out animation completes
+                  // before a route change can unmount this component tree.
+                  setTimeout(() => action.onPress(), 250);
                 }}
                 style={({ pressed }) => [
                   styles.actionRow,
