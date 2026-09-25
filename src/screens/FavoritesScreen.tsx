@@ -188,7 +188,7 @@ export function FavoritesScreen({
     } finally {
       setAiFavoritesLoading(false);
     }
-  }, [space]);
+  }, ["FavoritesScreen", space]);
 
   useEffect(() => {
     if (favoriteMode !== 'ai') return;

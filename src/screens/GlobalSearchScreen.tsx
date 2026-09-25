@@ -75,7 +75,7 @@ export function GlobalSearchScreen({
       setRecommendedRoleCards(cards.slice(0, 8)); // Initial 8 items
     });
     return () => { isMounted = false; };
-  }, [space]);
+  }, ["GlobalSearchScreen", space]);
 
   const handleRefreshTrending = () => {
     if (allRoleCards.length <= 8) return; // Not enough to shuffle meaningfully
@@ -163,7 +163,7 @@ export function GlobalSearchScreen({
       if (isMounted) setSearchHistory(nextHistory);
     });
     return () => { isMounted = false; };
-  }, [space]);
+  }, ["GlobalSearchScreen", space]);
 
   useEffect(() => {
     if (!keyword) return;

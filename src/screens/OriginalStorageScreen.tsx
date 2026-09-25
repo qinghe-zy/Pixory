@@ -20,7 +20,7 @@ interface OriginalStorageScreenProps {
 export function OriginalStorageScreen({ space = 'normal', refreshToken, onBack, onOpenIp }: OriginalStorageScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<IpStorageUsageItem[]>(
     () => listIpStorageUsage(space),
-    [space, refreshToken],
+    ["OriginalStorageScreen", space, refreshToken],
     {
       formatError: (error) => error instanceof Error ? `读取素材占用失败：${error.message}` : '读取素材占用失败',
       initialData: [],

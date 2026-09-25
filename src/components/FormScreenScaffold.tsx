@@ -32,6 +32,7 @@ interface FormScreenScaffoldProps {
   footerExtra?: ReactNode;
   scrollContentStyle?: StyleProp<ViewStyle>;
   backgroundVariant?: PageBackgroundVariant;
+  backgroundColor?: string;
 }
 
 export function FormScreenScaffold({
@@ -44,6 +45,7 @@ export function FormScreenScaffold({
   footerExtra,
   scrollContentStyle,
   backgroundVariant,
+  backgroundColor,
 }: FormScreenScaffoldProps) {
   const insets = useSafeAreaInsets();
 
@@ -59,6 +61,7 @@ export function FormScreenScaffold({
   return (
     <View style={styles.flex}>
       <ScreenScaffold
+        backgroundColor={backgroundColor}
         backgroundVariant={backgroundVariant}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 140 }, scrollContentStyle]}
         footer={null}

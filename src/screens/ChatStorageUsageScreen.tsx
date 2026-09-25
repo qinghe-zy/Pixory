@@ -20,7 +20,7 @@ interface ChatStorageUsageScreenProps {
 export function ChatStorageUsageScreen({ space = 'normal', refreshToken, onBack, onOpenChat }: ChatStorageUsageScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<ChatStorageUsageItem[]>(
     () => listChatStorageUsage(space),
-    [space, refreshToken],
+    ["ChatStorageUsageScreen", space, refreshToken],
     {
       formatError: (error) => error instanceof Error ? `读取聊天记录失败：${error.message}` : '读取聊天记录失败',
       initialData: [],

@@ -28,7 +28,7 @@ export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBa
   const [isBatchDeleteVisible, setIsBatchDeleteVisible] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<BackupExportEntry[]>(
     () => listBackupExportEntries(space),
-    [space, refreshToken],
+    ["BackupExportManagerScreen", space, refreshToken],
     {
       formatError: (error) => error instanceof Error ? `读取备份导出失败：${error.message}` : '读取备份导出失败',
       initialData: [],

@@ -45,7 +45,7 @@ export function StorageUsageScreen({
   const [isCleaningTemporary, setIsCleaningTemporary] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<StorageUsageSummary>(
     () => getStorageUsageSummary(space),
-    [space, refreshToken],
+    ["StorageUsageScreen", space, refreshToken],
     {
       formatError: (error) => error instanceof Error ? `统计存储失败：${error.message}` : '统计存储失败',
       initialData: getCachedStorageUsageSummary(space),
