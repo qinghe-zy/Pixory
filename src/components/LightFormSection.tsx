@@ -40,8 +40,7 @@ export function LightFormSection({ title, hint, children, style, headerRight, co
 
 const styles = StyleSheet.create({
   section: {
-    ...shadows.hairline,
-    backgroundColor: colors.background.input,
+    backgroundColor: '#FFFFFF',
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,

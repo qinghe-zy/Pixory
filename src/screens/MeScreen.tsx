@@ -1,21 +1,51 @@
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Reanimated, { cancelAnimation, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing as REasing } from 'react-native-reanimated';
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  Easing,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import Reanimated, {
+  cancelAnimation,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withDelay,
+  Easing as REasing,
+} from "react-native-reanimated";
 
-import { ContentCard } from '../components/ContentCard';
-import { ScreenScaffold } from '../components/ScreenScaffold';
-import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
-import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
-import { useScreenLoad } from '../hooks/useScreenLoad';
-import { useToast } from '../components/AppToast';
-import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
-import { formatFileSize } from '../utils/formatters';
-import { UidService } from '../services/uidService';
-import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
-import { OrbitalSpectralRing } from '../components/OrbitalSpectralRing';
-import { MagneticLiquidContainer } from '../components/MagneticLiquidContainer';
+import { ContentCard } from "../components/ContentCard";
+import { ScreenScaffold } from "../components/ScreenScaffold";
+import {
+  imageRepository,
+  ipRepository,
+  runWithDatabaseSpace,
+  settingsRepository,
+  type PixorySpace,
+} from "../database";
+import {
+  colors,
+  radius,
+  rhythm,
+  shadows,
+  spacing,
+  typography,
+} from "../design/tokens";
+import { useScreenLoad } from "../hooks/useScreenLoad";
+import { useToast } from "../components/AppToast";
+import { copyProfileAvatarToAppStorage } from "../services/fileStorageService";
+import { formatFileSize } from "../utils/formatters";
+import { UidService } from "../services/uidService";
+import { ProfileRenameDialog } from "../components/ProfileRenameDialog";
+import { OrbitalSpectralRing } from "../components/OrbitalSpectralRing";
+import { MagneticLiquidContainer } from "../components/MagneticLiquidContainer";
 
 interface MeScreenProps {
   refreshToken: number;
@@ -35,7 +65,7 @@ interface MeScreenProps {
   onLockPersonalSpace: () => void;
 }
 
-type PersonalSessionState = 'locked' | 'unlocking' | 'unlocked' | 'locking';
+type PersonalSessionState = "locked" | "unlocking" | "unlocked" | "locking";
 
 interface MeStats {
   ipCount: number;
@@ -73,11 +103,31 @@ function ProfileMemoryCore({ isActive }: { isActive: boolean }) {
       pulse.value = 1;
       return;
     }
-    rot1.value = withRepeat(withTiming(360, { duration: 8000, easing: REasing.linear }), -1, false);
-    rot2.value = withRepeat(withTiming(-360, { duration: 12000, easing: REasing.linear }), -1, false);
-    rot3.value = withRepeat(withTiming(360, { duration: 18000, easing: REasing.linear }), -1, false);
-    rot4.value = withRepeat(withTiming(-360, { duration: 30000, easing: REasing.linear }), -1, false);
-    pulse.value = withRepeat(withTiming(0.7, { duration: 3000, easing: REasing.inOut(REasing.ease) }), -1, true);
+    rot1.value = withRepeat(
+      withTiming(360, { duration: 8000, easing: REasing.linear }),
+      -1,
+      false,
+    );
+    rot2.value = withRepeat(
+      withTiming(-360, { duration: 12000, easing: REasing.linear }),
+      -1,
+      false,
+    );
+    rot3.value = withRepeat(
+      withTiming(360, { duration: 18000, easing: REasing.linear }),
+      -1,
+      false,
+    );
+    rot4.value = withRepeat(
+      withTiming(-360, { duration: 30000, easing: REasing.linear }),
+      -1,
+      false,
+    );
+    pulse.value = withRepeat(
+      withTiming(0.7, { duration: 3000, easing: REasing.inOut(REasing.ease) }),
+      -1,
+      true,
+    );
     return () => {
       cancelAnimation(rot1);
       cancelAnimation(rot2);
@@ -115,28 +165,43 @@ function ProfileMemoryCore({ isActive }: { isActive: boolean }) {
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
-  const coreStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }], opacity: pulse.value }));
+  const coreStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+    opacity: pulse.value,
+  }));
 
   return (
     <View style={styles.coreContainer}>
       <Reanimated.View style={[styles.coreDot, coreStyle]} />
-      
+
       {/* 静止的虚线轨道体系 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX) */}
       <View style={styles.orbit1} />
-      <View style={[styles.orbit2, { transform: [{ rotateX: '70deg' }] }]} />
-      <View style={[styles.orbit3, { transform: [{ rotateZ: '60deg' }, { rotateX: '65deg' }] }]} />
-      <View style={[styles.orbit4, { transform: [{ rotateZ: '-45deg' }, { rotateX: '75deg' }] }]} />
+      <View style={[styles.orbit2, { transform: [{ rotateX: "70deg" }] }]} />
+      <View
+        style={[
+          styles.orbit3,
+          { transform: [{ rotateZ: "60deg" }, { rotateX: "65deg" }] },
+        ]}
+      />
+      <View
+        style={[
+          styles.orbit4,
+          { transform: [{ rotateZ: "-45deg" }, { rotateX: "75deg" }] },
+        ]}
+      />
 
       {/* 运动的星球实体 (绝对居中，依靠 translateX/Y 实现运动) */}
       <Reanimated.View style={[styles.planet1, style1]} />
-      
+
       <Reanimated.View style={[styles.planet2, style2]} />
-      
-      <View style={{ position: 'absolute', transform: [{ rotateZ: '60deg' }] }}>
+
+      <View style={{ position: "absolute", transform: [{ rotateZ: "60deg" }] }}>
         <Reanimated.View style={[styles.planet3, style3]} />
       </View>
-      
-      <View style={{ position: 'absolute', transform: [{ rotateZ: '-45deg' }] }}>
+
+      <View
+        style={{ position: "absolute", transform: [{ rotateZ: "-45deg" }] }}
+      >
         <Reanimated.View style={[styles.planet4, style4]} />
       </View>
     </View>
@@ -146,7 +211,7 @@ function ProfileMemoryCore({ isActive }: { isActive: boolean }) {
 export function MeScreen({
   refreshToken,
   isActive = true,
-  space = 'normal',
+  space = "normal",
   personalSessionState,
   footer,
   onOpenFavorites,
@@ -161,11 +226,16 @@ export function MeScreen({
   onLockPersonalSpace,
 }: MeScreenProps) {
   const { showToast } = useToast();
-  const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
+  const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(
+    null,
+  );
   const [isRenameDialogVisible, setIsRenameDialogVisible] = useState(false);
-  const isPersonalMode = space === 'personal';
-  const isPersonalSwitchBusy = personalSessionState === 'unlocking' || personalSessionState === 'locking';
-  const lockTransition = useRef(new Animated.Value(isPersonalMode ? 1 : 0)).current;
+  const isPersonalMode = space === "personal";
+  const isPersonalSwitchBusy =
+    personalSessionState === "unlocking" || personalSessionState === "locking";
+  const lockTransition = useRef(
+    new Animated.Value(isPersonalMode ? 1 : 0),
+  ).current;
   const lockPulse = useRef(new Animated.Value(1)).current;
   const { data, isLoading, errorMessage, reload } = useScreenLoad<MeStats>(
     async () => {
@@ -180,18 +250,26 @@ export function MeScreen({
         profileAvatarUri,
         profileNickname,
         uid,
-      ] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        ipRepository.count(db),
-        imageRepository.count(db, { mediaType: 'all' }),
-        imageRepository.countRecentViewed(db),
-        imageRepository.countFavorites(db),
-        imageRepository.countDeleted(db),
-        imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'image' }),
-        imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'video' }),
-        settingsRepository.getProfileAvatarUri(db),
-        settingsRepository.getProfileNickname(db),
-        UidService.getUid(),
-      ]));
+      ] = await runWithDatabaseSpace(space, (db) =>
+        Promise.all([
+          ipRepository.count(db),
+          imageRepository.count(db, { mediaType: "all" }),
+          imageRepository.countRecentViewed(db),
+          imageRepository.countFavorites(db),
+          imageRepository.countDeleted(db),
+          imageRepository.sumFileSize(db, {
+            includeDeleted: true,
+            mediaType: "image",
+          }),
+          imageRepository.sumFileSize(db, {
+            includeDeleted: true,
+            mediaType: "video",
+          }),
+          settingsRepository.getProfileAvatarUri(db),
+          settingsRepository.getProfileNickname(db),
+          UidService.getUid(),
+        ]),
+      );
 
       return {
         ipCount,
@@ -209,48 +287,58 @@ export function MeScreen({
     [refreshToken, space],
     {
       formatError: (error) => {
-        const message = error instanceof Error ? error.message : '未知错误';
+        const message = error instanceof Error ? error.message : "未知错误";
         return `读取个人页数据失败：${message}`;
       },
-    }
+    },
   );
 
-  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'settings') {
-    if (key === 'favorites') {
+  function handleEntryPress(
+    key:
+      | "favorites"
+      | "recent"
+      | "trash"
+      | "backup"
+      | "duplicate-review"
+      | "storage-usage"
+      | "about"
+      | "settings",
+  ) {
+    if (key === "favorites") {
       onOpenFavorites();
       return;
     }
 
-    if (key === 'recent') {
+    if (key === "recent") {
       onOpenRecentViewed();
       return;
     }
 
-    if (key === 'trash') {
+    if (key === "trash") {
       onOpenTrash();
       return;
     }
 
-    if (key === 'backup') {
+    if (key === "backup") {
       onOpenBackup();
       return;
     }
 
-    if (key === 'duplicate-review') {
+    if (key === "duplicate-review") {
       onOpenDuplicateReview();
       return;
     }
 
-    if (key === 'storage-usage') {
+    if (key === "storage-usage") {
       onOpenStorageUsage();
       return;
     }
 
-    if (key === 'about') {
+    if (key === "about") {
       onOpenAbout();
       return;
     }
-    if (key === 'settings') onOpenSettings();
+    if (key === "settings") onOpenSettings();
   }
 
   function handlePersonalToggle() {
@@ -258,7 +346,7 @@ export function MeScreen({
       return;
     }
 
-    if (space === 'personal') {
+    if (space === "personal") {
       onLockPersonalSpace();
       return;
     }
@@ -268,15 +356,16 @@ export function MeScreen({
 
   async function handleAvatarPress() {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        showToast('Pixory 需要访问相册来选择本地头像');
+        showToast("Pixory 需要访问相册来选择本地头像");
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: false,
-        mediaTypes: ['images'],
+        mediaTypes: ["images"],
         quality: 1,
       });
 
@@ -286,15 +375,17 @@ export function MeScreen({
 
       const sourceUri = result.assets[0]?.uri;
       if (!sourceUri) {
-        throw new Error('没有读取到所选图片。');
+        throw new Error("没有读取到所选图片。");
       }
 
       const avatarUri = await copyProfileAvatarToAppStorage(sourceUri);
-      await runWithDatabaseSpace(space, (db) => settingsRepository.setProfileAvatarUri(db, avatarUri));
+      await runWithDatabaseSpace(space, (db) =>
+        settingsRepository.setProfileAvatarUri(db, avatarUri),
+      );
       setAvatarOverrideUri(avatarUri);
       reload();
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
+      const message = error instanceof Error ? error.message : "未知错误";
       showToast(`更换头像失败：${message}`);
     }
   }
@@ -309,7 +400,7 @@ export function MeScreen({
   const lockClosedOpacity = lockTransition;
   const lockRotate = lockTransition.interpolate({
     inputRange: [0, 1],
-    outputRange: ['-12deg', '0deg'],
+    outputRange: ["-12deg", "0deg"],
   });
 
   useEffect(() => {
@@ -338,211 +429,470 @@ export function MeScreen({
   }, [isPersonalMode, lockPulse, lockTransition]);
 
   return (
-    <ScreenScaffold backgroundColor="#f9f9f9" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
-      <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
+    <ScreenScaffold
+      backgroundColor="#f9f9f9"
+      errorMessage={errorMessage}
+      footer={footer}
+      scrollable
+      showHeader={false}
+    >
+      <MagneticLiquidContainer
+        damping={16}
+        magneticStrength={0.15}
+        stiffness={400}
+        stretchFactor={0.001}
+        maxScale={1.02}
+        maxTranslation={10}
+      >
         <ContentCard style={styles.heroCard}>
-        <Pressable
-          accessibilityLabel={space === 'personal' ? '返回普通模式' : '进入隐私模式'}
-          accessibilityRole="button"
-          accessibilityState={{ busy: isPersonalSwitchBusy, selected: isPersonalMode }}
-          disabled={isPersonalSwitchBusy}
-          hitSlop={12}
-          onPress={handlePersonalToggle}
-          style={({ pressed }) => [
-            styles.personalLockButton,
-            isPersonalMode && styles.personalLockButtonActive,
-            isPersonalSwitchBusy && styles.personalLockButtonBusy,
-            pressed && !isPersonalSwitchBusy && styles.pressed,
-          ]}
-        >
-          <Animated.View style={[styles.personalLockIconStage, { transform: [{ scale: lockPulse }, { rotate: lockRotate }] }]}>
-            <Animated.View style={[styles.personalLockIconLayer, { opacity: lockOpenOpacity }]}>
-              <Ionicons color={colors.border.strong} name="lock-open-outline" size={19} />
+          <Pressable
+            accessibilityLabel={
+              space === "personal" ? "返回普通模式" : "进入隐私模式"
+            }
+            accessibilityRole="button"
+            accessibilityState={{
+              busy: isPersonalSwitchBusy,
+              selected: isPersonalMode,
+            }}
+            disabled={isPersonalSwitchBusy}
+            hitSlop={12}
+            onPress={handlePersonalToggle}
+            style={({ pressed }) => [
+              styles.personalLockButton,
+              isPersonalMode && styles.personalLockButtonActive,
+              isPersonalSwitchBusy && styles.personalLockButtonBusy,
+              pressed && !isPersonalSwitchBusy && styles.pressed,
+            ]}
+          >
+            <Animated.View
+              style={[
+                styles.personalLockIconStage,
+                { transform: [{ scale: lockPulse }, { rotate: lockRotate }] },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.personalLockIconLayer,
+                  { opacity: lockOpenOpacity },
+                ]}
+              >
+                <Ionicons
+                  color={colors.border.strong}
+                  name="lock-open-outline"
+                  size={19}
+                />
+              </Animated.View>
+              <Animated.View
+                style={[
+                  styles.personalLockIconLayer,
+                  { opacity: lockClosedOpacity },
+                ]}
+              >
+                <Ionicons
+                  color={colors.text.primary}
+                  name="lock-closed-outline"
+                  size={19}
+                />
+              </Animated.View>
             </Animated.View>
-            <Animated.View style={[styles.personalLockIconLayer, { opacity: lockClosedOpacity }]}>
-              <Ionicons color={colors.text.primary} name="lock-closed-outline" size={19} />
-            </Animated.View>
-          </Animated.View>
-        </Pressable>
-        <View style={styles.profileRow}>
-          <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={12} stretchFactor={0.02}>
-            <Pressable onPress={handleAvatarPress} style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
-              <View style={styles.avatar}>
-                {avatarUri ? (
-                  <Image resizeMode="cover" source={{ uri: avatarUri }} style={styles.avatarImage} />
-                ) : (
-                  <Ionicons color={colors.primary.active} name="person" size={34} />
-                )}
-              </View>
-              <OrbitalSpectralRing avatarSize={68} isActive={false} padding={2} />
-              <View style={styles.avatarEditBadge}>
-                <Ionicons color={colors.primary.active} name="camera-outline" size={13} />
-              </View>
-            </Pressable>
-          </MagneticLiquidContainer>
-          <View style={styles.profileCopy}>
-            <View style={styles.nameRow}>
-              <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.heroTitleContainer, pressed && styles.pressed]}>
-                <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
-                  <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
-                  {data?.uid ? (
-                    <Text style={[typography.textStyles.brandSubtitle, { fontFamily: typography.family.brand, marginTop: 2, fontSize: 11, opacity: 0.6 }]}>
-                      UID: {data.uid}
-                    </Text>
-                  ) : null}
-                </MagneticLiquidContainer>
+          </Pressable>
+          <View style={styles.profileRow}>
+            <MagneticLiquidContainer
+              damping={14}
+              stiffness={350}
+              maxTranslation={12}
+              stretchFactor={0.02}
+            >
+              <Pressable
+                onPress={handleAvatarPress}
+                style={({ pressed }) => [
+                  styles.avatarButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.avatar}>
+                  {avatarUri ? (
+                    <Image
+                      resizeMode="cover"
+                      source={{ uri: avatarUri }}
+                      style={styles.avatarImage}
+                    />
+                  ) : (
+                    <Ionicons
+                      color={colors.primary.active}
+                      name="person"
+                      size={34}
+                    />
+                  )}
+                </View>
+                <OrbitalSpectralRing
+                  avatarSize={68}
+                  isActive={false}
+                  padding={2}
+                />
+                <View style={styles.avatarEditBadge}>
+                  <Ionicons
+                    color={colors.primary.active}
+                    name="camera-outline"
+                    size={13}
+                  />
+                </View>
               </Pressable>
-              <ProfileMemoryCore isActive={isActive} />
+            </MagneticLiquidContainer>
+            <View style={styles.profileCopy}>
+              <View style={styles.nameRow}>
+                <Pressable
+                  onPress={() => setIsRenameDialogVisible(true)}
+                  hitSlop={12}
+                  style={({ pressed }) => [
+                    styles.heroTitleContainer,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <MagneticLiquidContainer
+                    damping={14}
+                    stiffness={350}
+                    maxTranslation={8}
+                    stretchFactor={0.01}
+                  >
+                    <Text style={styles.heroTitle}>
+                      {data?.profileNickname || "本地空间"}
+                    </Text>
+                    {data?.uid ? (
+                      <Text
+                        style={[
+                          typography.textStyles.brandSubtitle,
+                          {
+                            fontFamily: typography.family.brand,
+                            marginTop: 2,
+                            fontSize: 11,
+                            opacity: 0.6,
+                          },
+                        ]}
+                      >
+                        UID: {data.uid}
+                      </Text>
+                    ) : null}
+                  </MagneticLiquidContainer>
+                </Pressable>
+                <ProfileMemoryCore isActive={isActive} />
+              </View>
             </View>
           </View>
-        </View>
-        <View style={styles.libraryStatsRow}>
-          <StatBlock label="素材总数" value={data?.activeAssetCount ?? 0} />
-          <View style={styles.statDivider} />
-          <StatBlock label="IP 数量" value={data?.ipCount ?? 0} />
-        </View>
-        <View style={styles.storageBlock}>
-          <View style={styles.storageVisualContainer}>
-            <View style={styles.storageHeader}>
-              <Text style={styles.storageTotalLabel}>存储总计</Text>
-              <Text style={styles.storageTotalValue}>{formatFileSize(imageBytes + videoBytes)}</Text>
-            </View>
-            <View style={styles.storageProgressBar}>
-              <View style={[styles.storageProgressSegment, { backgroundColor: colors.semantic.success, width: `${(imageBytes / (imageBytes + videoBytes || 1)) * 100}%` }]} />
-              <View style={[styles.storageProgressSegment, { backgroundColor: colors.primary.weak, width: `${(videoBytes / (imageBytes + videoBytes || 1)) * 100}%` }]} />
-            </View>
-            <View style={styles.storageLegendRow}>
-              <View style={styles.storageInlineRow}>
-                <View style={[styles.storageLegendDot, { backgroundColor: colors.semantic.success }]} />
-                <Text style={styles.storageLegendText}>图片原图</Text>
-                <Text style={styles.storageValue}>{formatFileSize(imageBytes)}</Text>
+          <View style={styles.libraryStatsRow}>
+            <StatBlock label="素材总数" value={data?.activeAssetCount ?? 0} />
+            <View style={styles.statDivider} />
+            <StatBlock label="IP 数量" value={data?.ipCount ?? 0} />
+          </View>
+          <View style={styles.storageBlock}>
+            <View style={styles.storageVisualContainer}>
+              <View style={styles.storageHeader}>
+                <Text style={styles.storageTotalLabel}>存储总计</Text>
+                <Text style={styles.storageTotalValue}>
+                  {formatFileSize(imageBytes + videoBytes)}
+                </Text>
               </View>
-              <View style={styles.storageInlineRow}>
-                <View style={[styles.storageLegendDot, { backgroundColor: colors.primary.weak }]} />
-                <Text style={styles.storageLegendText}>视频存储</Text>
-                <Text style={styles.storageValue}>{formatFileSize(videoBytes)}</Text>
+              <View style={styles.storageProgressBar}>
+                <View
+                  style={[
+                    styles.storageProgressSegment,
+                    {
+                      backgroundColor: colors.semantic.success,
+                      width: `${(imageBytes / (imageBytes + videoBytes || 1)) * 100}%`,
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.storageProgressSegment,
+                    {
+                      backgroundColor: colors.primary.weak,
+                      width: `${(videoBytes / (imageBytes + videoBytes || 1)) * 100}%`,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.storageLegendRow}>
+                <View style={styles.storageInlineRow}>
+                  <View
+                    style={[
+                      styles.storageLegendDot,
+                      { backgroundColor: colors.semantic.success },
+                    ]}
+                  />
+                  <Text style={styles.storageLegendText}>图片原图</Text>
+                  <Text style={styles.storageValue}>
+                    {formatFileSize(imageBytes)}
+                  </Text>
+                </View>
+                <View style={styles.storageInlineRow}>
+                  <View
+                    style={[
+                      styles.storageLegendDot,
+                      { backgroundColor: colors.primary.weak },
+                    ]}
+                  />
+                  <Text style={styles.storageLegendText}>视频存储</Text>
+                  <Text style={styles.storageValue}>
+                    {formatFileSize(videoBytes)}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-
-        </View>
         </ContentCard>
       </MagneticLiquidContainer>
 
       <View style={styles.entryList}>
         {/* BLOCK 1: Core Assets (Side-by-side squares) */}
         <View style={styles.coreAssetsRow}>
-          <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10} style={{ flex: 1 }}>
+          <MagneticLiquidContainer
+            damping={16}
+            magneticStrength={0.15}
+            stiffness={400}
+            stretchFactor={0.001}
+            maxScale={1.02}
+            maxTranslation={10}
+            style={{ flex: 1 }}
+          >
             <Pressable
               accessibilityLabel="收藏图片"
               accessibilityRole="button"
-            onPress={() => handleEntryPress('favorites')}
-            style={({ pressed }) => [styles.coreAssetCard, pressed && styles.pressed]}
-          >
-            <View style={styles.coreAssetHeader}>
-              <Ionicons color="#22C55E" name="star" size={28} />
-              <View style={styles.arrowButtonBadge}>
-                <Ionicons color={colors.text.tertiary} name="arrow-forward" size={14} style={{ transform: [{ rotate: '-45deg' }] }} />
+              onPress={() => handleEntryPress("favorites")}
+              style={({ pressed }) => [
+                styles.coreAssetCard,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.coreAssetHeader}>
+                <Ionicons color="#22C55E" name="star" size={28} />
+                <View style={styles.arrowButtonBadge}>
+                  <Ionicons
+                    color={colors.text.tertiary}
+                    name="arrow-forward"
+                    size={14}
+                    style={{ transform: [{ rotate: "-45deg" }] }}
+                  />
+                </View>
               </View>
-            </View>
-            <View style={styles.coreAssetBody}>
-              <View style={styles.coreAssetCountRow}>
-                <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
-                  <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
-                </MagneticLiquidContainer>
-                <AnimatedSparkline active={isActive} heights={[6, 12, 4, 9]} />
+              <View style={styles.coreAssetBody}>
+                <View style={styles.coreAssetCountRow}>
+                  <MagneticLiquidContainer
+                    damping={14}
+                    stiffness={350}
+                    maxTranslation={8}
+                    stretchFactor={0.01}
+                  >
+                    <Text style={styles.coreAssetCount}>
+                      {data?.favoriteImageCount ?? 0}
+                    </Text>
+                  </MagneticLiquidContainer>
+                  <AnimatedSparkline
+                    active={isActive}
+                    heights={[6, 12, 4, 9]}
+                  />
+                </View>
+                <Text style={styles.coreAssetTitle}>收藏图片</Text>
               </View>
-              <Text style={styles.coreAssetTitle}>收藏图片</Text>
-            </View>
-          </Pressable>
+            </Pressable>
           </MagneticLiquidContainer>
 
-          <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10} style={{ flex: 1 }}>
+          <MagneticLiquidContainer
+            damping={16}
+            magneticStrength={0.15}
+            stiffness={400}
+            stretchFactor={0.001}
+            maxScale={1.02}
+            maxTranslation={10}
+            style={{ flex: 1 }}
+          >
             <Pressable
               accessibilityLabel="最近查看"
               accessibilityRole="button"
-            onPress={() => handleEntryPress('recent')}
-            style={({ pressed }) => [styles.coreAssetCard, pressed && styles.pressed]}
-          >
-            <View style={styles.coreAssetHeader}>
-              <Ionicons color={colors.text.secondary} name="time-outline" size={28} />
-              <View style={styles.arrowButtonBadge}>
-                <Ionicons color={colors.text.tertiary} name="arrow-forward" size={14} style={{ transform: [{ rotate: '-45deg' }] }} />
+              onPress={() => handleEntryPress("recent")}
+              style={({ pressed }) => [
+                styles.coreAssetCard,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.coreAssetHeader}>
+                <Ionicons
+                  color={colors.text.secondary}
+                  name="time-outline"
+                  size={28}
+                />
+                <View style={styles.arrowButtonBadge}>
+                  <Ionicons
+                    color={colors.text.tertiary}
+                    name="arrow-forward"
+                    size={14}
+                    style={{ transform: [{ rotate: "-45deg" }] }}
+                  />
+                </View>
               </View>
-            </View>
-            <View style={styles.coreAssetBody}>
-              <View style={styles.coreAssetCountRow}>
-                <MagneticLiquidContainer damping={14} stiffness={350} maxTranslation={8} stretchFactor={0.01}>
-                  <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
-                </MagneticLiquidContainer>
-                <AnimatedSparkline active={isActive} heights={[4, 9, 11, 5]} />
+              <View style={styles.coreAssetBody}>
+                <View style={styles.coreAssetCountRow}>
+                  <MagneticLiquidContainer
+                    damping={14}
+                    stiffness={350}
+                    maxTranslation={8}
+                    stretchFactor={0.01}
+                  >
+                    <Text style={styles.coreAssetCount}>
+                      {data?.recentViewedCount ?? 0}
+                    </Text>
+                  </MagneticLiquidContainer>
+                  <AnimatedSparkline
+                    active={isActive}
+                    heights={[4, 9, 11, 5]}
+                  />
+                </View>
+                <Text style={styles.coreAssetTitle}>最近查看</Text>
               </View>
-              <Text style={styles.coreAssetTitle}>最近查看</Text>
-            </View>
-          </Pressable>
+            </Pressable>
           </MagneticLiquidContainer>
         </View>
 
         {/* BLOCK 2: Tools Grid (4 columns) */}
-        <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
+        <MagneticLiquidContainer
+          damping={16}
+          magneticStrength={0.15}
+          stiffness={400}
+          stretchFactor={0.001}
+          maxScale={1.02}
+          maxTranslation={10}
+        >
           <ContentCard style={styles.toolsGroup}>
-          <View style={styles.toolsGrid}>
-            <Pressable onPress={() => handleEntryPress('trash')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
-              <View style={styles.toolIconWrap}>
-                <Ionicons color={colors.semantic.danger} name="trash-outline" size={22} />
-              </View>
-              <Text style={styles.toolTitle}>回收站</Text>
-            </Pressable>
-
-            <Pressable onPress={() => handleEntryPress('backup')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
-              <View style={styles.toolIconWrap}>
-                <Ionicons color={colors.primary.active} name="archive-outline" size={22} />
-              </View>
-              <Text style={styles.toolTitle}>备份导出</Text>
-            </Pressable>
-
-            <Pressable onPress={() => handleEntryPress('duplicate-review')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
-              <View style={styles.toolIconWrap}>
-                <Ionicons color={colors.primary.active} name="copy-outline" size={22} />
-              </View>
-              <Text style={styles.toolTitle}>重复检测</Text>
-            </Pressable>
-
-            <Pressable onPress={() => handleEntryPress('storage-usage')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
-              <View style={styles.toolIconWrap}>
-                <View style={{ transform: [{ scale: 0.85 }] }}>
-                  <StorageUsageGlyph />
+            <View style={styles.toolsGrid}>
+              <Pressable
+                onPress={() => handleEntryPress("trash")}
+                style={({ pressed }) => [
+                  styles.toolGridItem,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.toolIconWrap}>
+                  <Ionicons
+                    color={colors.semantic.danger}
+                    name="trash-outline"
+                    size={22}
+                  />
                 </View>
-              </View>
-              <Text style={styles.toolTitle}>存储占用</Text>
-            </Pressable>
-          </View>
-        </ContentCard>
+                <Text style={styles.toolTitle}>回收站</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleEntryPress("backup")}
+                style={({ pressed }) => [
+                  styles.toolGridItem,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.toolIconWrap}>
+                  <Ionicons
+                    color={colors.primary.active}
+                    name="archive-outline"
+                    size={22}
+                  />
+                </View>
+                <Text style={styles.toolTitle}>备份导出</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleEntryPress("duplicate-review")}
+                style={({ pressed }) => [
+                  styles.toolGridItem,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.toolIconWrap}>
+                  <Ionicons
+                    color={colors.primary.active}
+                    name="copy-outline"
+                    size={22}
+                  />
+                </View>
+                <Text style={styles.toolTitle}>重复检测</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleEntryPress("storage-usage")}
+                style={({ pressed }) => [
+                  styles.toolGridItem,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.toolIconWrap}>
+                  <View style={{ transform: [{ scale: 0.85 }] }}>
+                    <StorageUsageGlyph />
+                  </View>
+                </View>
+                <Text style={styles.toolTitle}>存储占用</Text>
+              </Pressable>
+            </View>
+          </ContentCard>
         </MagneticLiquidContainer>
 
         {/* BLOCK 3: System List */}
-        <MagneticLiquidContainer damping={16} magneticStrength={0.15} stiffness={400} stretchFactor={0.001} maxScale={1.02} maxTranslation={10}>
+        <MagneticLiquidContainer
+          damping={16}
+          magneticStrength={0.15}
+          stiffness={400}
+          stretchFactor={0.001}
+          maxScale={1.02}
+          maxTranslation={10}
+        >
           <ContentCard style={styles.systemGroup}>
-          <Pressable onPress={() => handleEntryPress('about')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
-            <View style={styles.systemListIcon}>
-              <Ionicons color={colors.primary.active} name="information-circle-outline" size={20} />
-            </View>
-            <Text style={styles.systemListTitle}>关于</Text>
-            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
-          </Pressable>
-          <View style={styles.systemListDivider} />
-          <Pressable onPress={() => handleEntryPress('settings')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
-            <View style={styles.systemListIcon}>
-              <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
-            </View>
-            <Text style={styles.systemListTitle}>设置</Text>
-            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
-          </Pressable>
-        </ContentCard>
+            <Pressable
+              onPress={() => handleEntryPress("about")}
+              style={({ pressed }) => [
+                styles.systemListItem,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.systemListIcon}>
+                <Ionicons
+                  color={colors.primary.active}
+                  name="information-circle-outline"
+                  size={20}
+                />
+              </View>
+              <Text style={styles.systemListTitle}>关于</Text>
+              <Ionicons
+                color={colors.text.secondary}
+                name="chevron-forward"
+                size={18}
+              />
+            </Pressable>
+            <View style={styles.systemListDivider} />
+            <Pressable
+              onPress={() => handleEntryPress("settings")}
+              style={({ pressed }) => [
+                styles.systemListItem,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.systemListIcon}>
+                <Ionicons
+                  color={colors.primary.active}
+                  name="settings-outline"
+                  size={20}
+                />
+              </View>
+              <Text style={styles.systemListTitle}>设置</Text>
+              <Ionicons
+                color={colors.text.secondary}
+                name="chevron-forward"
+                size={18}
+              />
+            </Pressable>
+          </ContentCard>
         </MagneticLiquidContainer>
       </View>
 
-      {isLoading ? <Text style={styles.loadingText}>正在刷新本地统计…</Text> : null}
+      {isLoading ? (
+        <Text style={styles.loadingText}>正在刷新本地统计…</Text>
+      ) : null}
       {errorMessage ? (
         <Text onPress={reload} style={styles.retryText}>
           重新加载
@@ -563,10 +913,17 @@ export function MeScreen({
   );
 }
 
-
-function AnimatedSparklineBar({ active, baseHeight, delay }: { active: boolean; baseHeight: number; delay: number }) {
+function AnimatedSparklineBar({
+  active,
+  baseHeight,
+  delay,
+}: {
+  active: boolean;
+  baseHeight: number;
+  delay: number;
+}) {
   const currentHeight = useSharedValue(baseHeight);
-  
+
   useEffect(() => {
     if (!active) {
       cancelAnimation(currentHeight);
@@ -579,19 +936,22 @@ function AnimatedSparklineBar({ active, baseHeight, delay }: { active: boolean; 
     const dur = () => 400 + Math.random() * 400;
 
     // 生成一系列随机高度，每次循环所有柱子都有机会达到最大高度 13 或最小高度 3
-    currentHeight.value = withDelay(delay, withRepeat(
-      withSequence(
-        withTiming(gen(), { duration: dur() }),
-        withTiming(gen(), { duration: dur() }),
-        withTiming(gen(), { duration: dur() }),
-        withTiming(gen(), { duration: dur() }),
-        withTiming(gen(), { duration: dur() }),
-        withTiming(gen(), { duration: dur() }),
-        withTiming(baseHeight, { duration: dur() }),
+    currentHeight.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(gen(), { duration: dur() }),
+          withTiming(gen(), { duration: dur() }),
+          withTiming(gen(), { duration: dur() }),
+          withTiming(gen(), { duration: dur() }),
+          withTiming(gen(), { duration: dur() }),
+          withTiming(gen(), { duration: dur() }),
+          withTiming(baseHeight, { duration: dur() }),
+        ),
+        -1, // infinite
+        true, // reverse
       ),
-      -1, // infinite
-      true // reverse
-    ));
+    );
     return () => cancelAnimation(currentHeight);
   }, [active, baseHeight, delay, currentHeight]);
 
@@ -602,17 +962,34 @@ function AnimatedSparklineBar({ active, baseHeight, delay }: { active: boolean; 
   return <Reanimated.View style={[styles.sparklineBar, style]} />;
 }
 
-function AnimatedSparkline({ active, heights }: { active: boolean; heights: number[] }) {
+function AnimatedSparkline({
+  active,
+  heights,
+}: {
+  active: boolean;
+  heights: number[];
+}) {
   return (
     <View style={styles.sparkline}>
       {heights.map((h, i) => (
-        <AnimatedSparklineBar active={active} key={i} baseHeight={h} delay={i * 200} />
+        <AnimatedSparklineBar
+          active={active}
+          key={i}
+          baseHeight={h}
+          delay={i * 200}
+        />
       ))}
     </View>
   );
 }
 
-function StatBlock({ label, value }: { label: string; value: number | string }) {
+function StatBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
   return (
     <View style={styles.statBlock}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -625,9 +1002,15 @@ function StorageUsageGlyph() {
   return (
     <View style={styles.storageGlyph}>
       <View style={styles.storageGlyphTop}>
-        <View style={[styles.storageGlyphSlice, styles.storageGlyphSlicePrimary]} />
-        <View style={[styles.storageGlyphSlice, styles.storageGlyphSliceGold]} />
-        <View style={[styles.storageGlyphSlice, styles.storageGlyphSliceSoft]} />
+        <View
+          style={[styles.storageGlyphSlice, styles.storageGlyphSlicePrimary]}
+        />
+        <View
+          style={[styles.storageGlyphSlice, styles.storageGlyphSliceGold]}
+        />
+        <View
+          style={[styles.storageGlyphSlice, styles.storageGlyphSliceSoft]}
+        />
       </View>
       <View style={styles.storageGlyphFace}>
         <View style={[styles.storageGlyphBar, styles.storageGlyphBarTall]} />
@@ -640,76 +1023,75 @@ function StorageUsageGlyph() {
 
 const styles = StyleSheet.create({
   heroCard: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: "#FFFFFF",
     gap: spacing[6],
     minHeight: 202,
     padding: spacing[4],
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: rhythm.heroToListGap,
   },
   profileRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: spacing[4],
     paddingRight: 50,
     zIndex: 1,
   },
   personalLockButton: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
     borderRadius: radius.pill,
     height: 42,
-    justifyContent: 'center',
-    position: 'absolute',
+    justifyContent: "center",
+    position: "absolute",
     right: spacing[4],
     top: spacing[4],
     width: 42,
     zIndex: 2,
   },
   personalLockButtonActive: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: "#FFFFFF",
   },
   personalLockButtonBusy: {
     opacity: 0.7,
   },
   personalLockIconStage: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 24,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 24,
   },
   personalLockIconLayer: {
-    position: 'absolute',
+    position: "absolute",
   },
   avatarButton: {
-    position: 'relative',
+    position: "relative",
   },
   avatar: {
-    ...shadows.sm,
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: colors.primary.weak,
     borderColor: colors.border.default,
     borderRadius: 34,
     borderWidth: StyleSheet.hairlineWidth,
     height: 68,
-    justifyContent: 'center',
-    overflow: 'hidden',
+    justifyContent: "center",
+    overflow: "hidden",
     width: 68,
   },
   avatarImage: {
-    height: '100%',
-    width: '100%',
+    height: "100%",
+    width: "100%",
   },
   avatarEditBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
     borderColor: colors.border.default,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     bottom: -1,
     height: 24,
-    justifyContent: 'center',
-    position: 'absolute',
+    justifyContent: "center",
+    position: "absolute",
     right: -2,
     width: 24,
   },
@@ -718,9 +1100,9 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   nameRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   heroTitleContainer: {
     flexShrink: 1,
@@ -740,137 +1122,136 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   storageHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[2],
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: spacing[1],
   },
   storageTotalLabel: {
     fontFamily: typography.family.base,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.text.title,
   },
   storageTotalValue: {
     fontFamily: typography.family.stat,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.primary.active,
   },
   storageProgressBar: {
-    ...shadows.sm,
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.background.empty,
     borderColor: colors.border.default,
     borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   storageProgressSegment: {
-    height: '100%',
+    height: "100%",
   },
   storageLegendRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[4],
     marginTop: spacing[1],
   },
   storageInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing[1],
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   coreContainer: {
     width: 54,
     height: 54,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: spacing[2],
   },
   coreDot: {
-    position: 'absolute',
+    position: "absolute",
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.text.primary,
   },
   orbitWrapper: {
-    position: 'absolute',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
+    position: "absolute",
+    justifyContent: "flex-start",
+    alignItems: "center",
   },
   orbit1: {
-    position: 'absolute',
+    position: "absolute",
     width: 23,
     height: 23,
     borderRadius: 11.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
     opacity: 0.3,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   planet1: {
-    position: 'absolute',
+    position: "absolute",
     width: 4,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.support.mint300,
   },
   orbit2: {
-    position: 'absolute',
+    position: "absolute",
     width: 33,
     height: 33,
     borderRadius: 16.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
     opacity: 0.3,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   planet2: {
-    position: 'absolute',
+    position: "absolute",
     width: 5,
     height: 5,
     borderRadius: 2.5,
     backgroundColor: colors.support.lilac300,
   },
   orbit3: {
-    position: 'absolute',
+    position: "absolute",
     width: 43,
     height: 43,
     borderRadius: 21.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
     opacity: 0.3,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   planet3: {
-    position: 'absolute',
+    position: "absolute",
     width: 4,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.support.sky300,
   },
   orbit4: {
-    position: 'absolute',
+    position: "absolute",
     width: 55,
     height: 55,
     borderRadius: 27.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
     opacity: 0.3,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   planet4: {
-    position: 'absolute',
+    position: "absolute",
     width: 4,
     height: 4,
     borderRadius: 2,
@@ -889,11 +1270,11 @@ const styles = StyleSheet.create({
   storageValue: {
     ...typography.textStyles.caption,
     color: colors.text.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   libraryStatsRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: spacing[4],
   },
   statDivider: {
@@ -902,14 +1283,14 @@ const styles = StyleSheet.create({
     width: StyleSheet.hairlineWidth,
   },
   statBlock: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: spacing[2],
   },
   statValue: {
     fontFamily: typography.family.stat,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.text.title,
   },
   statLabel: {
@@ -920,36 +1301,35 @@ const styles = StyleSheet.create({
     gap: rhythm.entryCardGap,
   },
   coreAssetsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[4],
   },
   coreAssetCard: {
-    ...shadows.sm,
-    backgroundColor: colors.background.surface,
+    backgroundColor: "#FFFFFF",
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
     padding: spacing[4],
     aspectRatio: 1.15,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   coreAssetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   coreAssetBody: {
     gap: spacing[1],
   },
   coreAssetCountRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: spacing[2],
   },
   sparkline: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: 3,
     paddingBottom: 8,
   },
@@ -963,8 +1343,8 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     backgroundColor: colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   coreAssetCount: {
     fontFamily: typography.family.monoBold,
@@ -975,7 +1355,7 @@ const styles = StyleSheet.create({
   coreAssetTitle: {
     fontFamily: typography.family.stat,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: colors.text.secondary,
   },
   toolsGroup: {
@@ -983,38 +1363,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
   },
   toolsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "flex-start",
   },
   toolGridItem: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: spacing[3],
     flex: 1,
   },
   toolIconWrap: {
-    ...shadows.sm,
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
     borderColor: colors.border.default,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 24,
     height: 48,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 48,
   },
   toolTitle: {
     ...typography.textStyles.micro,
     color: colors.text.title,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   systemGroup: {
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
   },
   systemListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: spacing[4],
     gap: spacing[3],
   },
@@ -1025,8 +1404,8 @@ const styles = StyleSheet.create({
   },
   systemListIcon: {
     width: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   systemListTitle: {
     ...typography.textStyles.body,
@@ -1034,31 +1413,31 @@ const styles = StyleSheet.create({
   },
 
   storageGlyph: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 27,
-    justifyContent: 'center',
-    transform: [{ rotateZ: '-6deg' }],
+    justifyContent: "center",
+    transform: [{ rotateZ: "-6deg" }],
     width: 28,
   },
   storageGlyphTop: {
-    alignItems: 'flex-end',
-    backgroundColor: colors.background.surface,
+    alignItems: "flex-end",
+    backgroundColor: "#FFFFFF",
     borderColor: colors.border.default,
     borderRadius: 6,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 2,
     height: 13,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingBottom: 2,
     paddingHorizontal: 3,
-    position: 'absolute',
+    position: "absolute",
     top: 1,
-    transform: [{ skewX: '-12deg' }],
+    transform: [{ skewX: "-12deg" }],
     width: 23,
   },
   storageGlyphFace: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     backgroundColor: colors.primary.default,
     borderBottomLeftRadius: 6,
     borderBottomRightRadius: 7,
@@ -1066,13 +1445,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 3,
     borderTopRightRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 2,
     height: 17,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingBottom: 3,
     paddingHorizontal: 4,
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     width: 25,
   },
@@ -1097,7 +1476,7 @@ const styles = StyleSheet.create({
     width: 4,
   },
   storageGlyphBarTall: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: "#FFFFFF",
     height: 10,
   },
   storageGlyphBarMid: {
@@ -1119,14 +1498,14 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.secondary,
     minWidth: 32,
-    textAlign: 'right',
+    textAlign: "right",
   },
   unavailableBadge: {
     ...typography.textStyles.micro,
     backgroundColor: colors.background.tag,
     borderRadius: radius.pill,
     color: colors.text.secondary,
-    overflow: 'hidden',
+    overflow: "hidden",
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
@@ -1138,11 +1517,11 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.textStyles.caption,
-    textAlign: 'center',
+    textAlign: "center",
   },
   retryText: {
     ...typography.textStyles.caption,
     color: colors.primary.default,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });
