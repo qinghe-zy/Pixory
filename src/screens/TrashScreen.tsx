@@ -243,7 +243,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B7280' }}>占用空间：{formatFileSize(trashBytes)}</Text>
           </View>
-        ) : <View />
+        ) : undefined
       }
     />
   );
@@ -270,18 +270,34 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         />
         <PageStateBlock
           emptyActionLabel={undefined}
-          emptyDescription="当前没有处于软删除状态的图片或视频。"
-        emptyIconName="trash-outline"
-        emptyTitle="回收站是空的"
-        errorMessage={combinedError}
-        isEmpty={!combinedLoading && images.length === 0}
-        loading={combinedLoading}
-        loadingDescription="本地回收站索引读取完成后，这里会展示已软删除图片和视频。"
-        loadingTitle="正在读取回收站"
-        onRetry={reloadAll}
-      >
+          emptyDescription=""
+          emptyIconName="trash-outline"
+          emptyTitle=""
+          errorMessage={combinedError}
+          isEmpty={false}
+          loading={false}
+          onRetry={reloadAll}
+        >
         <VirtualizedAssetCollection
           headerComponent={headerComponent}
+          emptyComponent={
+            (combinedLoading || images.length === 0) ? (
+              <PageStateBlock
+                emptyActionLabel={undefined}
+                emptyDescription="当前没有处于软删除状态的图片或视频。"
+                emptyIconName="trash-outline"
+                emptyTitle="回收站是空的"
+                errorMessage={null}
+                isEmpty={!combinedLoading && images.length === 0}
+                loading={combinedLoading}
+                loadingDescription="本地回收站索引读取完成后，这里会展示已软删除图片和视频。"
+                loadingTitle="正在读取回收站"
+                onRetry={reloadAll}
+              >
+                <View />
+              </PageStateBlock>
+            ) : undefined
+          }
           onScroll={handleScroll}
           scrollOffsetRef={scrollOffsetRef}
           images={visibleImages}
