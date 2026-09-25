@@ -1,19 +1,21 @@
 import type { ComponentProps } from 'react';
 
 import {
-  AiAnchoredContextMenu,
-  type AiAnchoredContextMenuAction,
-} from './AiAnchoredContextMenu';
+  AnchoredContextMenu,
+  type AnchoredContextMenuAction,
+} from '../AnchoredContextMenu';
 
-export type AiMessageContextMenuAction = AiAnchoredContextMenuAction;
+export type AiMessageContextMenuAction = AnchoredContextMenuAction;
 
 export function AiMessageContextMenu(
-  props: Omit<ComponentProps<typeof AiAnchoredContextMenu>, 'dismissAccessibilityLabel'>,
+  props: Omit<ComponentProps<typeof AnchoredContextMenu>, 'dismissAccessibilityLabel'>,
 ) {
   return (
-    <AiAnchoredContextMenu
+    <AnchoredContextMenu
       {...props}
       dismissAccessibilityLabel="关闭消息操作菜单"
     />
   );
 }
+
+

@@ -8,7 +8,7 @@ import { Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AiAnchoredContextMenu } from '../components/ai/AiAnchoredContextMenu';
+import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
 import { IPCard } from '../components/IPCard';
 import { IPCardSkeleton } from '../components/IPCardSkeleton';
@@ -595,7 +595,7 @@ export function HomeLibraryScreen({
         <Text style={{ color: colors.text.secondary, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>
       )}
     </AppDialog>
-    <AiAnchoredContextMenu
+    <AnchoredContextMenu
       actions={actionMenuState ? [
         {
           key: 'pin',
@@ -865,6 +865,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
 });
+
+
 
 
 

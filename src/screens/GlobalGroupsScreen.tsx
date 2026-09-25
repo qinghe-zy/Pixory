@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState, useMemo } from 'react';
 import { ActivityIndicator, Pressable, SectionList, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 
-import { AppActionSheet } from '../components/AppActionSheet';
+import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
 import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { ListSkeleton } from '../components/ListSkeleton';
@@ -53,7 +53,7 @@ export function GlobalGroupsScreen({
   onImportVideosToGroup,
 }: GlobalGroupsScreenProps) {
   const { showToast } = useToast();
-  const [actionGroup, setActionGroup] = useState<GlobalGroupListItem | null>(null);
+  const [actionGroupState, setActionGroupState] = useState<{ group: GlobalGroupListItem; anchorX: number; anchorY: number } | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
@@ -267,7 +267,7 @@ export function GlobalGroupsScreen({
           renderItem={({ item: group }) => (
             <View style={styles.groupCardWrapper}>
               <Pressable
-                onLongPress={() => setActionGroup(group)}
+                onLongPress={(e) => setActionGroupState({ group, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
                 onPress={() => onOpenGroup(group.ipId, group.id)}
                 style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressedCard]}
               >
@@ -283,7 +283,7 @@ export function GlobalGroupsScreen({
                       )}
                     </View>
                   </View>
-                  <GroupCardCopy group={group} onOpenGroup={onOpenGroup} setActionGroup={setActionGroup} />
+                  <GroupCardCopy group={group} onOpenGroup={onOpenGroup} onOpenMenu={(group, anchorX, anchorY) => setActionGroupState({ group, anchorX, anchorY })} />
                 </View>
               </Pressable>
             </View>
@@ -300,32 +300,29 @@ export function GlobalGroupsScreen({
         />
       </PageStateBlock>
     </ScreenScaffold>
-    <AppActionSheet
-      items={actionGroup ? [
-        { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.ipId, actionGroup.id) },
-        ...(onImportImagesToGroup ? [{ key: 'add-images', label: '添加图片', icon: 'image-outline' as const, onPress: () => onImportImagesToGroup(actionGroup.ipId, actionGroup.id) }] : []),
-        ...(onImportVideosToGroup ? [{ key: 'add-videos', label: '添加视频', icon: 'videocam-outline' as const, onPress: () => onImportVideosToGroup(actionGroup.ipId, actionGroup.id) }] : []),
-        { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.ipId, actionGroup.id) },
-        { key: 'rename', label: '重命名', icon: 'text-outline', onPress: () => setRenameGroup(actionGroup) },
-        { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.ipId, actionGroup.id) },
+    <AnchoredContextMenu
+      actions={actionGroupState ? [
+        { key: 'cover', label: actionGroupState.group.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroupState.group.ipId, actionGroupState.group.id) },
+        { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroupState.group.ipId, actionGroupState.group.id) },
         {
           key: 'pin',
-          label: actionGroup.isPinned ? '取消置顶' : '置顶分组',
-          icon: 'pin-outline',
+          label: actionGroupState.group.isPinned ? '取消置顶' : '置顶分组',
+          icon: actionGroupState.group.isPinned ? 'pin' : 'pin-outline',
           onPress: () => {
             void (async () => {
-              await runWithDatabaseSpace(space, (db) => groupRepository.updatePinned(db, actionGroup.id, !actionGroup.isPinned));
-              showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
+              await runWithDatabaseSpace(space, (db) => groupRepository.updatePinned(db, actionGroupState.group.id, !actionGroupState.group.isPinned));
+              showToast(actionGroupState.group.isPinned ? '已取消置顶' : '已置顶');
               reload();
             })();
           },
         },
-        { key: 'delete', label: '删除分组', icon: 'trash-outline', danger: true, onPress: () => setDeleteGroup(actionGroup) },
+        { key: 'delete', label: '删除分组', icon: 'trash-outline', danger: true, onPress: () => setDeleteGroup(actionGroupState.group) },
       ] : []}
-      message="删除分组不会删除图片，图片会保留在所属 IP 中。"
-      onClose={() => setActionGroup(null)}
-      title={actionGroup?.name ?? '分组操作'}
-      visible={Boolean(actionGroup)}
+      anchorX={actionGroupState?.anchorX ?? 0}
+      anchorY={actionGroupState?.anchorY ?? 0}
+      dismissAccessibilityLabel="关闭分组菜单"
+      onClose={() => setActionGroupState(null)}
+      visible={Boolean(actionGroupState)}
     />
     <GroupRenameDialog
       group={renameGroup}
@@ -347,7 +344,7 @@ export function GlobalGroupsScreen({
   );
 }
 
-function GroupCardCopy({ group, onOpenGroup, setActionGroup }: { group: GlobalGroupListItem, onOpenGroup: (ipId: number, groupId: number) => void, setActionGroup: (group: GlobalGroupListItem) => void }) {
+function GroupCardCopy({ group, onOpenGroup, onOpenMenu }: { group: GlobalGroupListItem, onOpenGroup: (ipId: number, groupId: number) => void, onOpenMenu: (group: GlobalGroupListItem, anchorX: number, anchorY: number) => void }) {
   return (
     <View style={styles.groupBody}>
       <View>
@@ -365,7 +362,7 @@ function GroupCardCopy({ group, onOpenGroup, setActionGroup }: { group: GlobalGr
           {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
         </Text>
         <View style={styles.groupActions}>
-          <Pressable onPress={() => setActionGroup(group)} style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}>
+          <Pressable onPress={(e) => onOpenMenu(group, e.nativeEvent.pageX, e.nativeEvent.pageY)} style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}>
             <MaterialIcons name="more-horiz" size={14} color={protoColors.secondary} />
           </Pressable>
           <Pressable onPress={() => onOpenGroup(group.ipId, group.id)} style={({ pressed }) => [styles.groupActionBtnPrimary, pressed && styles.pressed]}>

@@ -46,9 +46,9 @@ import { AiChatErrorBanner } from "../components/ai/AiChatErrorBanner";
 import { DiaryChatCard } from '../components/ai/DiaryChatCard';
 import { DreamChatCard } from '../components/ai/DreamChatCard';
 import {
-  AiAnchoredContextMenu,
-  type AiAnchoredContextMenuAction,
-} from '../components/ai/AiAnchoredContextMenu';
+  AnchoredContextMenu,
+  type AnchoredContextMenuAction,
+} from '../components/AnchoredContextMenu';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import { AiSessionConfigScreen } from "./AiSessionConfigScreen";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
@@ -6503,7 +6503,7 @@ export function AiChatScreen({
     }
   }, [artifactContextMenuState, reloadRoleDreams, space]);
 
-  const artifactContextMenuActions: AiAnchoredContextMenuAction[] = artifactContextMenuState
+  const artifactContextMenuActions: AnchoredContextMenuAction[] = artifactContextMenuState
     ? artifactContextMenuState.artifactKind === 'dreamJob'
       ? [
           {
@@ -7547,7 +7547,7 @@ export function AiChatScreen({
         timeLabel={messageContextMenuPresentation?.timeLabel ?? ""}
         visible={Boolean(messageContextMenuPresentation)}
       />
-      <AiAnchoredContextMenu
+      <AnchoredContextMenu
         actions={artifactContextMenuActions}
         anchorX={artifactContextMenuState?.anchorX ?? 0}
         anchorY={artifactContextMenuState?.anchorY ?? 0}
@@ -7890,5 +7890,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+
 
 
