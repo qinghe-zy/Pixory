@@ -291,12 +291,9 @@ export function GlobalGroupsScreen({
     <>
     <ScreenScaffold showHeader={false} backgroundColor={protoColors.surface} contentContainerStyle={{ paddingHorizontal: 16 }} decorativeTitle={undefined} footer={footer} title="">
       <PageStateBlock
-        loadingComponent={<ListSkeleton />}
         errorMessage={errorMessage}
         isEmpty={false} emptyTitle="" emptyDescription=""
-        loading={isLoading}
-        loadingDescription="本地分组数据读取完成后，这里会展示全部分组。"
-        loadingTitle="正在读取分组"
+        loading={false}
         onEmptyAction={onCreateFirstIp}
         onRetry={reload}
       >
@@ -308,7 +305,9 @@ export function GlobalGroupsScreen({
           keyExtractor={(group: any) => String(group.id)}
           ListHeaderComponent={expandedHeader}
           ListEmptyComponent={
-            !isLoading && groups.length === 0 ? (
+            isLoading ? (
+              <ListSkeleton showHeader={false} />
+            ) : groups.length === 0 ? (
               <View style={styles.emptyInline}>
                 <MaterialIcons name="folder-open" size={32} color={protoColors.outlineVariant} />
                 <Text style={styles.emptyInlineTitle}>还没有分组</Text>

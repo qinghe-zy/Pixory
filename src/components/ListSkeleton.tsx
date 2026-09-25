@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { colors, radius, rhythm, spacing } from '../design/tokens';
 
-export function ListSkeleton() {
+export function ListSkeleton({ showHeader = true }: { showHeader?: boolean }) {
   const opacity = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -24,10 +24,12 @@ export function ListSkeleton() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Animated.View style={[styles.titleSkeleton, { opacity }]} />
-        <Animated.View style={[styles.actionSkeleton, { opacity }]} />
-      </View>
+      {showHeader && (
+        <View style={styles.header}>
+          <Animated.View style={[styles.titleSkeleton, { opacity }]} />
+          <Animated.View style={[styles.actionSkeleton, { opacity }]} />
+        </View>
+      )}
       <View style={styles.list}>
         {Array.from({ length: 10 }).map((_, i) => (
           <View key={i} style={styles.card}>
