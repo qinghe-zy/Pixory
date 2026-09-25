@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     width: 192,
     height: 48,
     backgroundColor: "#000000",
-    borderRadius: 9999,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -350,3 +350,4 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 });
+

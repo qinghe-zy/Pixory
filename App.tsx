@@ -1542,7 +1542,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'edit-ip') {
-    content = <EditIpScreen ipId={currentRoute.ipId} space={currentRoute.space} onBack={popRoute} onSaved={popAndRefresh} />;
+    content = <EditIpScreen ipId={currentRoute.ipId} space={currentRoute.space} onBack={popRoute} onSaved={popAndRefresh} onSelectCover={() => pushRoute({ name: 'ip-cover-picker', ipId: currentRoute.ipId, space: currentRoute.space })} />;
   } else if (currentRoute.name === 'edit-group') {
     content = (
       <EditGroupScreen
@@ -2632,6 +2632,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
 
 
 

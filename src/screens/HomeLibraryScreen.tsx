@@ -604,6 +604,12 @@ export function HomeLibraryScreen({
           onPress: () => void handleTogglePin(actionMenuState.ip),
         },
         {
+          key: 'edit',
+          label: '编辑 IP',
+          icon: 'create-outline',
+          onPress: () => onEditIp?.(actionMenuState.ip.id),
+        },
+        {
           key: 'space',
           label: space === 'normal' ? '移入隐私空间' : '移出隐私空间',
           icon: space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline',
