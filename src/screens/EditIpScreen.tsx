@@ -234,8 +234,8 @@ export function EditIpScreen({
         </View>
       </AppScreen>
 
-      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-        <BlurView intensity={80} tint="light" style={styles.headerBlur}>
+      <View style={styles.headerContainer}>
+        <View style={[styles.headerSolid, { paddingTop: insets.top }]}>
           <View style={styles.headerContent}>
             <Pressable
               onPress={onBack}
@@ -254,7 +254,7 @@ export function EditIpScreen({
             </View>
             <View style={{ width: 44 }} />
           </View>
-        </BlurView>
+        </View>
       </View>
     </View>
   );
@@ -277,8 +277,8 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 50,
   },
-  headerBlur: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
+  headerSolid: {
+    backgroundColor: "#ffffff",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -428,4 +428,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 });
+
+
 
