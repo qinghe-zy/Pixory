@@ -65,6 +65,11 @@ export function IPCard({
       return (
         <View style={styles.heroWrapper}>
           <View style={styles.heroCard}>
+            {ip.isPinned && (
+              <View style={styles.pinBadge}>
+                <MaterialIcons name="push-pin" size={12} color="#747878" />
+              </View>
+            )}
             <Pressable style={styles.heroImageContainer} onPress={() => onPress(ip.id)}>
               {ip.coverThumbnailFileUri ? (
                 <SecureImage
@@ -133,6 +138,11 @@ export function IPCard({
     if (variant === 'grid') {
       return (
         <View style={styles.gridCard}>
+          {ip.isPinned && (
+            <View style={styles.pinBadge}>
+              <MaterialIcons name="push-pin" size={12} color="#747878" />
+            </View>
+          )}
           <Pressable style={styles.gridImageContainer} onPress={() => onPress(ip.id)}>
             {ip.coverThumbnailFileUri ? (
               <SecureImage
@@ -182,6 +192,11 @@ export function IPCard({
     return (
       <View style={styles.stdWrapper}>
         <View style={styles.stdCard}>
+          {ip.isPinned && (
+            <View style={styles.pinBadge}>
+              <MaterialIcons name="push-pin" size={12} color="#747878" />
+            </View>
+          )}
           <Pressable style={styles.stdImageContainer} onPress={() => onPress(ip.id)}>
             {ip.coverThumbnailFileUri ? (
               <SecureImage
@@ -253,6 +268,23 @@ export function IPCard({
 }
 
 const styles = StyleSheet.create({
+  pinBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
   heroWrapper: {
     
     paddingTop: 8,
@@ -558,6 +590,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
+
 
 
 

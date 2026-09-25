@@ -329,6 +329,11 @@ export function GlobalGroupsScreen({
                   style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressedCard]}
                 >
                   <View style={styles.groupCardInner}>
+                    {group.isPinned && (
+                      <View style={styles.pinBadge}>
+                        <MaterialIcons name="push-pin" size={12} color="#747878" />
+                      </View>
+                    )}
                     <View style={styles.coverWrap}>
                       <View style={[StyleSheet.absoluteFill, styles.coverLayer2]} />
                       <View style={[StyleSheet.absoluteFill, styles.coverLayer1]} />
@@ -751,6 +756,23 @@ const styles = StyleSheet.create({
     backgroundColor: protoColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pinBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
 });
 

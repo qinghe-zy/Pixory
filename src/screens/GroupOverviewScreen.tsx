@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
@@ -149,6 +149,11 @@ export function GroupOverviewScreen({
             <View style={styles.groupCardWrapper}>
               <Pressable onLongPress={() => setActionGroup(group)} onPress={() => onOpenGroup(group.id)} style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}>
                 <View style={styles.groupCardInner}>
+                  {group.isPinned && (
+                    <View style={styles.pinBadge}>
+                      <MaterialIcons name="push-pin" size={12} color="#747878" />
+                    </View>
+                  )}
                   <View style={styles.coverWrap}>
                     {group.coverThumbnailFileUri ? <SecureImage blurRadius={groupCoverBlurRadius} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} /> : <View style={styles.coverEmpty}><Ionicons color={colors.primary.default} name="images-outline" size={26} /><Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text></View>}
                   </View>
@@ -260,6 +265,23 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     ...shadows.sm,
+  },
+  pinBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   groupCardInner: {
     alignItems: 'center',
