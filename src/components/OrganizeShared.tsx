@@ -23,34 +23,38 @@ export function OrganizeSegmentedControl({
   mode,
   onSelect,
   rightAction,
+  collapsed = false,
 }: {
   mode: OrganizeMode;
   onSelect: (mode: OrganizeMode) => void;
   rightAction?: ReactNode;
+  collapsed?: boolean;
 }) {
   return (
-    <View style={styles.segmentContainer}>
+    <View style={[styles.segmentContainer, collapsed && styles.segmentContainerCollapsed]}>
       <View style={styles.segmentGroup}>
         <Pressable
           accessibilityRole="button"
           onPress={() => onSelect('groups')}
-          style={[styles.segmentBtn, mode === 'groups' && styles.segmentBtnActive]}
+          style={[styles.segmentBtn, collapsed && styles.segmentBtnCollapsed, mode === 'groups' && styles.segmentBtnActive]}
         >
           <MaterialIcons name="folder-copy" size={14} color={mode === 'groups' ? protoColors.primary : protoColors.secondary} />
-          <Text style={[styles.segmentText, mode === 'groups' && styles.segmentTextActive]}>分组</Text>
+          {!collapsed && <Text style={[styles.segmentText, mode === 'groups' && styles.segmentTextActive]}>分组</Text>}
         </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={() => onSelect('tags')}
-          style={[styles.segmentBtn, mode === 'tags' && styles.segmentBtnActive]}
+          style={[styles.segmentBtn, collapsed && styles.segmentBtnCollapsed, mode === 'tags' && styles.segmentBtnActive]}
         >
           <MaterialIcons name="label" size={14} color={mode === 'tags' ? protoColors.primary : protoColors.secondary} />
-          <Text style={[styles.segmentText, mode === 'tags' && styles.segmentTextActive]}>标签</Text>
+          {!collapsed && <Text style={[styles.segmentText, mode === 'tags' && styles.segmentTextActive]}>标签</Text>}
         </Pressable>
       </View>
-      <View style={styles.segmentRight}>
-        {rightAction}
-      </View>
+      {rightAction && !collapsed && (
+        <View style={styles.segmentRight}>
+          {rightAction}
+        </View>
+      )}
     </View>
   );
 }
@@ -61,6 +65,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+  },
+  segmentContainerCollapsed: {
+    width: 'auto',
   },
   segmentGroup: {
     flexDirection: 'row',
@@ -79,6 +86,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 6,
     gap: 6,
+  },
+  segmentBtnCollapsed: {
+    paddingHorizontal: 8,
   },
   segmentBtnActive: {
     backgroundColor: protoColors.surfaceContainerLowest,

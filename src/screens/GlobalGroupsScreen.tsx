@@ -1,7 +1,7 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useState, useMemo } from 'react';
-import { ActivityIndicator, Pressable, SectionList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SectionList, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -164,6 +164,17 @@ export function GlobalGroupsScreen({
     })();
   }
 
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = event.nativeEvent.contentOffset.y;
+    if (y > 20 && !isCollapsed) {
+      setIsCollapsed(true);
+    } else if (y <= 20 && isCollapsed) {
+      setIsCollapsed(false);
+    }
+  };
+
   const rightAction = (
     <View style={styles.headerActions}>
       {selectedIpId !== null && (
@@ -172,18 +183,18 @@ export function GlobalGroupsScreen({
           style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
         >
           <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
-          <Text style={styles.newBtnText}>新建</Text>
+          {!isCollapsed && <Text style={styles.newBtnText}>新建</Text>}
         </Pressable>
       )}
     </View>
   );
 
-  const listHeader = (
-    <View style={styles.topSection}>
+  const stickyHeader = (
+    <View style={[styles.topSection, isCollapsed && styles.topSectionCollapsed]}>
       {mode && onSelectMode && (
-        <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} />
+        <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} collapsed={isCollapsed} />
       )}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRail} style={{ marginHorizontal: -16 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.ipRail, isCollapsed && styles.ipRailCollapsed]} style={[{ marginHorizontal: -16 }, isCollapsed && styles.ipScrollCollapsed]}>
         <Pressable
           onPress={() => setSelectedIpId(null)}
           style={[styles.ipPill, selectedIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
@@ -218,6 +229,7 @@ export function GlobalGroupsScreen({
           </Pressable>
         )}
       </ScrollView>
+      {isCollapsed && rightAction}
     </View>
   );
 
@@ -234,10 +246,12 @@ export function GlobalGroupsScreen({
         onEmptyAction={onCreateFirstIp}
         onRetry={reload}
       >
+        {stickyHeader}
         <SectionList
           contentContainerStyle={styles.list}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           keyExtractor={(group) => String(group.id)}
-          ListHeaderComponent={listHeader}
           ListEmptyComponent={
             !isLoading && groups.length === 0 ? (
               <View style={styles.emptyInline}>
@@ -375,6 +389,13 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     gap: 10,
   },
+  topSectionCollapsed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+    paddingTop: 0,
+    gap: 8,
+  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -403,6 +424,13 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     alignItems: 'center',
     paddingHorizontal: 16,
+  },
+  ipRailCollapsed: {
+    paddingHorizontal: 0,
+  },
+  ipScrollCollapsed: {
+    flex: 1,
+    marginHorizontal: 0,
   },
   ipPill: {
     height: 28,
