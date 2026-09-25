@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   menu: {
-    backgroundColor: colors.background.elevated,
+    backgroundColor: '#FFFFFF',
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
