@@ -472,7 +472,7 @@ export function HomeLibraryScreen({
           ) : isSearchOrFilterEmpty && activeFilter === 'favorite' ? (
             <HomeEmptyState 
               title="暂无收藏" 
-              description="点击 IP 卡片右上角将其添加到收藏。"
+              description="点击编辑 IP 将其添加到收藏。"
               actionLabel="返回全部"
               onCreate={() => setActiveFilter('all')} 
             />
