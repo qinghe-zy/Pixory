@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
   ipScrollCollapsed: {
     flex: 1,
     marginHorizontal: 0,
-    maxWidth: '50%',
+    maxWidth: '62%',
     marginLeft: 'auto',
   },
   ipPill: {
