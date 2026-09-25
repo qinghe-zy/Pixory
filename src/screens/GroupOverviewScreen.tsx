@@ -121,7 +121,7 @@ export function GroupOverviewScreen({
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="archive" onBack={onBack} rightAction={rightSlot} title="分组">
+    <ScreenScaffold backgroundColor="#f9f9f9" onBack={onBack} rightAction={rightSlot} title="分组">
       {ip ? <Text style={styles.subhead}>{ip.name}</Text> : null}
 
       <PageStateBlock

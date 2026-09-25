@@ -41,7 +41,7 @@ export function ImportDevelopmentScreen({ onBack }: ImportDevelopmentScreenProps
   }
 
   return (
-    <AppScreen backgroundVariant="workflow" scrollable>
+    <AppScreen backgroundColor="#f9f9f9" scrollable>
       <Header onBack={onBack} title="导入 Smoke Test" />
 
       <View style={styles.card}>

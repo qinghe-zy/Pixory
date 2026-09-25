@@ -129,7 +129,7 @@ export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBa
 
   return (
     <>
-      <ScreenScaffold backgroundVariant="backup" decorativeTitle="Backup" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="备份与导出">
+      <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Backup" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="备份与导出">
         <View style={styles.summary}>
           <Text style={styles.totalValue}>{formatFileSize(totalBytes)}</Text>
           <View style={styles.typeGrid}>

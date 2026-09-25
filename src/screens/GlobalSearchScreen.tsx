@@ -190,7 +190,7 @@ export function GlobalSearchScreen({
 
   return (
     <>
-      <ScreenScaffold backgroundVariant="search" decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
+      <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
         <SearchBar onChangeText={onChangeQuery} placeholder="搜聊天 / 记录 / 角色 / 素材..." value={query} />
         
         <Pressable style={{ flex: 1 }} onPress={() => setHistoryEditMode(false)}>

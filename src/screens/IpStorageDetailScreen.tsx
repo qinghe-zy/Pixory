@@ -39,7 +39,7 @@ export function IpStorageDetailScreen({ space = 'normal', ipId, refreshToken, on
   const images = data?.images ?? [];
 
   return (
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Storage" onBack={onBack} scrollable title={data?.ip.ipName ?? '素材占用'}>
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Storage" onBack={onBack} scrollable title={data?.ip.ipName ?? '素材占用'}>
       {data ? (
         <View style={styles.summary}>
           <Text style={styles.totalValue}>{formatFileSize(data.ip.totalBytes)}</Text>

@@ -30,7 +30,7 @@ export function ChatStorageUsageScreen({ space = 'normal', refreshToken, onBack,
   const totalBytes = items.reduce((sum, item) => sum + item.bytes, 0);
 
   return (
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Chat History" onBack={onBack} scrollable title="聊天记录">
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Chat History" onBack={onBack} scrollable title="聊天记录">
       <View style={styles.summaryRow}>
         <Text style={styles.summaryLabel}>全部聊天记录</Text>
         <Text style={styles.summaryValue}>{formatFileSize(totalBytes)}</Text>

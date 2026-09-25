@@ -223,7 +223,7 @@ export function VideoDetailScreen({
   return (
     <>
       <ScreenScaffold
-        backgroundVariant="detail"
+        backgroundColor="#f9f9f9"
         onBack={onBack}
         rightAction={
           video ? (

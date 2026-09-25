@@ -286,7 +286,7 @@ export function ImageDetailScreen({
   }
 
   return (
-    <AppScreen backgroundDimmed backgroundVariant="detail" scrollable>
+    <AppScreen backgroundDimmed backgroundColor="#f9f9f9" scrollable>
       <Header onBack={onBack} rightSlot={rightSlot} title={image ? (image.originalFilename || image.internalFilename).replace(/\.[^.]+$/, '') : "图片详情"} />
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

@@ -30,7 +30,7 @@ export function OriginalStorageScreen({ space = 'normal', refreshToken, onBack, 
   const totalBytes = items.reduce((sum, item) => sum + item.totalBytes, 0);
 
   return (
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Originals" onBack={onBack} scrollable title="素材占用">
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Originals" onBack={onBack} scrollable title="素材占用">
       <View style={styles.summaryRow}>
         <Text style={styles.summaryLabel}>全部原始素材</Text>
         <Text style={styles.summaryValue}>{formatFileSize(totalBytes)}</Text>

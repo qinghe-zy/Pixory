@@ -80,7 +80,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
   }
 
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Duplicate" onBack={onBack} scrollable title={importBatchId != null ? '疑似重复' : '重复检测'}>
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Duplicate" onBack={onBack} scrollable title={importBatchId != null ? '疑似重复' : '重复检测'}>
       <View style={styles.contentStack}>
         <View style={styles.hero}>
           <View style={styles.heroIcon}>

@@ -133,7 +133,7 @@ export function StorageUsageScreen({
   return (
     <>
       <ScreenScaffold
-        backgroundVariant="profile"
+        backgroundColor="#f9f9f9"
         decorativeTitle="Storage"
         errorMessage={errorMessage}
         onBack={onBack}

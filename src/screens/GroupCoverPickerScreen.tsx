@@ -71,7 +71,7 @@ export function GroupCoverPickerScreen({ ipId, groupId, space = 'normal', onBack
   }
 
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Cover" onBack={onBack} scrollable title="选择分组封面">
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Cover" onBack={onBack} scrollable title="选择分组封面">
       <View style={styles.headerPanel}>
         <View style={styles.iconWrap}>
           <Ionicons color={colors.primary.active} name="folder-open-outline" size={18} />

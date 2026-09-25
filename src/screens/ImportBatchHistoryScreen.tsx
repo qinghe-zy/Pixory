@@ -59,7 +59,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
   const itemCountsByBatchId = data?.itemCountsByBatchId ?? {};
 
   return (
-    <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batches" onBack={onBack} scrollable title="导入批次">
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Batches" onBack={onBack} scrollable title="导入批次">
       <PageStateBlock
         emptyDescription="旧图片不会被强行补批次；这里会从下一次导入开始记录。"
         emptyIconName="file-tray-stacked-outline"

@@ -324,7 +324,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   return (
-    <ScreenScaffold backgroundVariant="backup" decorativeTitle="Backup" onBack={onBack} scrollable title="备份导出">
+    <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Backup" onBack={onBack} scrollable title="备份导出">
       <View style={styles.safetyPanel}>
         <Ionicons color={colors.semantic.success} name="shield-checkmark-outline" size={18} />
         <View style={styles.safetyCopy}>

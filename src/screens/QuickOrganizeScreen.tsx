@@ -290,7 +290,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
 
   return (
     <>
-      <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Queue" onBack={onBack} scrollable title="待整理">
+      <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Queue" onBack={onBack} scrollable title="待整理">
         <PageStateBlock
         loadingComponent={<GallerySkeleton />}
           emptyDescription="还没有分组的图片都已处理完。无标签图片会在进度里单独提醒。"

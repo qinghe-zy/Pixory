@@ -147,7 +147,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
 
   return (
     <FormScreenScaffold
-      backgroundVariant="detail"
+      backgroundColor="#f9f9f9"
       errorMessage={submitError ?? loadErrorMessage}
       onBack={onBack}
       primaryAction={{ disabled: !canSave, label: '保存修改', loading: isSubmitting, onPress: handleSave }}
