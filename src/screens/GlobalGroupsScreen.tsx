@@ -194,7 +194,7 @@ export function GlobalGroupsScreen({
           style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
         >
           <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
-          <Text style={styles.newBtnText}>新建</Text>
+          <Text style={styles.newBtnText}>新建分组</Text>
         </Pressable>
       )}
     </View>

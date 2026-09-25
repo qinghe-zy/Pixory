@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
-import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
 import Animated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -12,7 +12,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { clearTrash, clearTrashItems, TRASH_RETENTION_DAYS } from '../services/trashService';
@@ -22,6 +22,7 @@ import { useToast } from '../components/AppToast';
 import { useAssetListPreferences } from '../services/assetListPreferences';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { componentTokens } from '../design/tokens';
+import { protoColors } from '../components/OrganizeShared';
 
 interface TrashScreenProps {
   space: PixorySpace;
@@ -36,7 +37,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
   const { showToast } = useToast();
   const { viewMode, setViewMode } = useAssetListPreferences(space, 'createdAtDesc');
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
-  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
+
   const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
   const [isClearSelectedDialogVisible, setIsClearSelectedDialogVisible] = useState(false);
   const listRef = useRef<FlatList<ImageListItem> | null>(null);
@@ -215,10 +216,27 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
       count={trashCount}
       topRightActions={rightAction}
       middleContent={
-        <Pressable onPress={() => setIsFilterSheetVisible(true)} style={galleryHeaderStyles.advancedFilterButton}>
-          <FilterIcon />
-          <Text style={galleryHeaderStyles.advancedFilterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
-        </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRail} style={{ marginHorizontal: -layout.pagePaddingHorizontal }}>
+          <Pressable
+            onPress={() => setActiveIpId(null)}
+            style={[styles.ipPill, activeIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
+          >
+            <Text style={[styles.ipPillText, activeIpId === null ? styles.ipPillTextActive : styles.ipPillTextInactive]}>全部 IP</Text>
+          </Pressable>
+          {ips.map((ip) => {
+            const isSelected = activeIpId === ip.id;
+            return (
+              <Pressable
+                key={ip.id}
+                onPress={() => setActiveIpId(ip.id)}
+                style={[styles.ipPill, isSelected ? styles.ipPillActive : styles.ipPillInactive]}
+              >
+                {!isSelected && <View style={styles.ipPillDot} />}
+                <Text style={[styles.ipPillText, isSelected ? styles.ipPillTextActive : styles.ipPillTextInactive]}>{ip.name}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       }
       bottomContent={
         storageMode ? (
@@ -323,15 +341,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
         />
       </PageStateBlock>
     </ScreenScaffold>
-    <AppActionSheet
-      items={[
-        { key: 'all', label: '全部 IP', icon: 'albums-outline', onPress: () => setActiveIpId(null) },
-        ...ips.map((ip) => ({ key: String(ip.id), label: ip.name, icon: 'archive-outline' as const, onPress: () => setActiveIpId(ip.id) })),
-      ]}
-      onClose={() => setIsFilterSheetVisible(false)}
-      title="按 IP 筛选"
-      visible={isFilterSheetVisible}
-    />
+
     <AppDialog
       danger
       message="清空后会永久删除回收站中的原图、缩略图和数据库记录，这个操作不可撤销。"
@@ -370,6 +380,47 @@ function getTrashStatusLabel(deletedAt: string | null) {
 }
 
 const styles = StyleSheet.create({
+  ipRail: {
+    gap: 6,
+    paddingVertical: 2,
+    alignItems: 'center',
+    paddingHorizontal: layout.pagePaddingHorizontal,
+  },
+  ipPill: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ipPillActive: {
+    backgroundColor: protoColors.primary,
+  },
+  ipPillInactive: {
+    backgroundColor: protoColors.surfaceContainerLowest,
+    borderColor: 'rgba(196,199,199,0.3)',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  ipPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: protoColors.primary,
+  },
+  ipPillText: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.66,
+    fontWeight: '600',
+  },
+  ipPillTextActive: {
+    color: protoColors.onPrimary,
+  },
+  ipPillTextInactive: {
+    color: protoColors.onSurface,
+  },
   notice: {
     alignItems: 'center',
     backgroundColor: colors.background.input,
