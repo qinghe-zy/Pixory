@@ -509,7 +509,7 @@ function IpSection({ items, onOpen, query, space, activeFilter, onViewMore }: an
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={`${items.length} 项`} />
+      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={items.length > 20 ? undefined : `${items.length} 项`} />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.ipCard}>
           <View style={protoStyles.ipCardRow}>
@@ -554,7 +554,7 @@ function RoleSection({ items, onOpen, query, space, activeFilter, onViewMore }: 
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={`${items.length} 命中 ›`} />
+      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={items.length > 20 ? undefined : `${items.length} 命中 ›`} />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.roleCard}>
           <View style={protoStyles.roleAvatarBox}>
@@ -594,7 +594,7 @@ function GroupSection({ items, onOpen, query, space, activeFilter, onViewMore }:
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={`${items.length} 个目录`} />
+      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={items.length > 20 ? undefined : `${items.length} 个目录`} />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.ipId, item.id)} style={protoStyles.groupCard}>
@@ -636,7 +636,7 @@ function TagSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={`${items.length} 个匹配`} />
+      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={items.length > 20 ? undefined : `${items.length} 个匹配`} />
       <View style={protoStyles.tagFlow}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.tagPill}>
@@ -662,7 +662,7 @@ function ImageSection({ items, onOpen, query, space, activeFilter, onViewMore }:
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" count={`${items.length} 个文件`} />
+      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.imageCard}>
@@ -695,7 +695,7 @@ function ThreadSection({ items, onOpen, query, activeFilter, onViewMore }: any) 
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={`${items.length} 个活跃流`} />
+      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={items.length > 20 ? undefined : `${items.length} 个活跃流`} />
       <View style={protoStyles.threadList}>
         {displayItems.map((item: any, idx: number) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={[protoStyles.threadItem, idx > 0 && protoStyles.threadItemBorder]}>
@@ -731,7 +731,7 @@ function MessageSection({ items, onOpen, query, activeFilter, sortDesc, onToggle
       <SectionHeader 
         title="聊天记录" 
         subtitle="MESSAGES · 精确高亮" 
-        count={`${items.length} 条记录`}
+        count={items.length > 20 ? undefined : `${items.length} 条记录`}
         actionText={sortDesc ? '时间倒序' : '时间正序'}
         onAction={onToggleSort}
       />
@@ -1630,3 +1630,4 @@ function GuessYouWantList({
     </View>
   );
 }
+
