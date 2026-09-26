@@ -242,17 +242,18 @@ export function AiHomeScreen({
   return (
     <View style={{ flex: 1 }}>
       <AiLightScaffold
-      backgroundColor="#f9f9f9"
-      bodyStyle={styles.homeBody}
-      contentContainerStyle={styles.screenContent}
-      customTopPadding={insets.top + spacing[2]}
-      errorMessage={errorMessage}
-      footer={footer}
-      headerDividerVisible={false}
-      scrollable={false}
+        backgroundColor="#f9f9f9"
+        bodyStyle={styles.homeBody}
+        contentContainerStyle={styles.screenContent}
+        customTopPadding={insets.top + spacing[2]}
+        errorMessage={errorMessage}
+        footer={footer}
+        headerDividerVisible={false}
+        scrollable={false}
         showHeader={false}
         title=""
       >
+        {/* Scrollable content */}
         <Animated.ScrollView
           bounces={false}
           onScroll={scrollHandler}
@@ -261,119 +262,122 @@ export function AiHomeScreen({
           style={{ flex: 1 }}
           contentContainerStyle={[styles.screenContent, styles.homeBody, { paddingTop: insets.top + spacing[2], paddingBottom: 96 }]}
         >
+          {/* Start Chat Card + Role Rail */}
           <View style={styles.mainStack}>
-        <Animated.View style={[styles.primaryChatCardWrapper, primaryCardAnimatedStyle]}>
-          <Pressable 
-            accessibilityRole="button" 
-            onPress={onStartNormalChat} 
-            onPressIn={() => { primaryCardScale.value = withSpring(0.95, { damping: 14, stiffness: 300 }); }}
-            onPressOut={() => { primaryCardScale.value = withSpring(1, { damping: 14, stiffness: 300 }); }}
-            style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}
-          >
-            <Image resizeMode="contain" source={primaryCardPatternImage} style={styles.primaryCardPattern} />
-            <View style={styles.primaryIcon}>
-              <Ionicons color={aiLightColors.primary} name="chatbubble-ellipses-outline" size={26} />
-            </View>
-            <View style={styles.primaryCopy}>
-              <Text style={styles.primaryTitle}>开始聊天</Text>
-              <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
-            </View>
-            <AiActiveSpectrum active={isActive} />
-            <View style={styles.primaryArrow}>
-              <Ionicons color={aiLightColors.onDark} name="chevron-forward" size={22} />
-            </View>
-          </Pressable>
-        </Animated.View>
-
-        <View style={styles.roleRailWrap}>
-          <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.roleRailScroll} contentContainerStyle={styles.roleRailContent}>
-            {roleShortcuts.length ? (
-              roleShortcuts.map((role) => (
-                <Pressable
-                  accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
-                  accessibilityRole="button"
-                  key={role.roleCardId}
-                  onPress={() => onStartChatWithRole(role.roleCardId)}
-                  style={({ pressed }) => [styles.roleShortcut, pressed && styles.pressed]}
-                >
-                  <View style={styles.roleAvatarContainer}>
-                    <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
-                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.sm, overflow: 'hidden' }]}>
-                      <LiquidGlassBezel contentIntensity="none" radius={radius.sm} />
-                    </View>
-                  </View>
-                  <Text numberOfLines={1} style={styles.roleName}>{role.name}</Text>
-                </Pressable>
-              ))
-            ) : (
-              <View style={styles.emptyRoleHint}>
-                <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconSizeMd} />
-                <Text style={styles.emptyRoleText}>有头像的角色会显示在这里</Text>
-              </View>
-            )}
-          </ScrollView>
-          <Pressable accessibilityLabel="打开角色库" accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.roleLibraryButton, pressed && styles.pressed]}>
-            <Ionicons color="#5e5e5e" name="ellipsis-vertical" size={20} />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionInner}>
-          <View style={styles.searchHeader}>
-            <Pressable style={styles.searchContainer} onPress={onOpenSearch}>
-              <Ionicons name="search" size={17} color="#5e5e5e" />
-              <Text style={styles.searchInputPlaceholder}>搜索聊天记录 / 角色 / 设定...</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={onOpenHistory} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
-              <Text style={styles.sectionActionText}>全部</Text>
-              <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.recentChatList}>
-          {threads.length ? (
-            threads.map((thread, index) => (
+            <Animated.View style={[styles.primaryChatCardWrapper, primaryCardAnimatedStyle]}>
               <Pressable
-                accessibilityLabel={`打开最近聊天 ${thread.title}`}
                 accessibilityRole="button"
-                key={thread.id}
-                onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
-                onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
-                style={({ pressed }) => [styles.threadRow, thread.isPinned && { backgroundColor: '#f3f3f4' }, index > 0 && styles.threadDivider, pressed && styles.pressed]}
+                onPress={onStartNormalChat}
+                onPressIn={() => { primaryCardScale.value = withSpring(0.95, { damping: 14, stiffness: 300 }); }}
+                onPressOut={() => { primaryCardScale.value = withSpring(1, { damping: 14, stiffness: 300 }); }}
+                style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}
               >
-                <ThreadAvatar thread={thread} space={space} />
-                <View style={styles.threadCopy}>
-                  <View style={styles.threadTitleRow}>
-                    <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
-                    <Text numberOfLines={1} style={styles.threadTime}>
-                      {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
-                    </Text>
-                  </View>
-                  <View style={styles.threadMetaRow}>
-                    <Text numberOfLines={1} style={styles.threadDescription}>
-                      {thread.lastMessagePreview || labelForContext(thread)}
-                    </Text>
-                  </View>
+                <Image resizeMode="contain" source={primaryCardPatternImage} style={styles.primaryCardPattern} />
+                <View style={styles.primaryIcon}>
+                  <Ionicons color={aiLightColors.primary} name="chatbubble-ellipses-outline" size={26} />
                 </View>
-                <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
+                <View style={styles.primaryCopy}>
+                  <Text style={styles.primaryTitle}>开始聊天</Text>
+                  <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
+                </View>
+                <AiActiveSpectrum active={isActive} />
+                <View style={styles.primaryArrow}>
+                  <Ionicons color={aiLightColors.onDark} name="chevron-forward" size={22} />
+                </View>
               </Pressable>
-            ))
-          ) : (
-            <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
-              <View style={styles.threadIcon}>
-                <Ionicons color={aiLightColors.primaryActive} name="chatbubble-ellipses-outline" size={metrics.iconSizeMd} />
-              </View>
-              <View style={styles.threadCopy}>
-                <Text style={styles.threadTitle}>还没有最近聊天</Text>
-                <Text style={styles.threadDescription}>开始一次普通聊天后，这里会显示记录。</Text>
-              </View>
-            </Pressable>
-          )}
-        </View>
-      </View>
+            </Animated.View>
 
+            <View style={styles.roleRailWrap}>
+              <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.roleRailScroll} contentContainerStyle={styles.roleRailContent}>
+                {roleShortcuts.length ? (
+                  roleShortcuts.map((role) => (
+                    <Pressable
+                      accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
+                      accessibilityRole="button"
+                      key={role.roleCardId}
+                      onPress={() => onStartChatWithRole(role.roleCardId)}
+                      style={({ pressed }) => [styles.roleShortcut, pressed && styles.pressed]}
+                    >
+                      <View style={styles.roleAvatarContainer}>
+                        <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
+                        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.sm, overflow: 'hidden' }]}>
+                          <LiquidGlassBezel contentIntensity="none" radius={radius.sm} />
+                        </View>
+                      </View>
+                      <Text numberOfLines={1} style={styles.roleName}>{role.name}</Text>
+                    </Pressable>
+                  ))
+                ) : (
+                  <View style={styles.emptyRoleHint}>
+                    <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconSizeMd} />
+                    <Text style={styles.emptyRoleText}>有头像的角色会显示在这里</Text>
+                  </View>
+                )}
+              </ScrollView>
+              <Pressable accessibilityLabel="打开角色库" accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.roleLibraryButton, pressed && styles.pressed]}>
+                <Ionicons color="#5e5e5e" name="ellipsis-vertical" size={20} />
+              </Pressable>
+            </View>
+          </View>
 
+          {/* Recent chat section */}
+          <View style={styles.section}>
+            <View style={styles.sectionInner}>
+              <View style={styles.searchHeader}>
+                <Pressable style={styles.searchContainer} onPress={onOpenSearch}>
+                  <Ionicons name="search" size={17} color="#5e5e5e" />
+                  <Text style={styles.searchInputPlaceholder}>搜索聊天记录 / 角色 / 设定...</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={onOpenHistory} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
+                  <Text style={styles.sectionActionText}>全部</Text>
+                  <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.recentChatList}>
+              {threads.length ? (
+                threads.map((thread, index) => (
+                  <Pressable
+                    accessibilityLabel={`打开最近聊天 ${thread.title}`}
+                    accessibilityRole="button"
+                    key={thread.id}
+                    onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
+                    onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
+                    style={({ pressed }) => [styles.threadRow, thread.isPinned && { backgroundColor: '#f3f3f4' }, index > 0 && styles.threadDivider, pressed && styles.pressed]}
+                  >
+                    <ThreadAvatar thread={thread} space={space} />
+                    <View style={styles.threadCopy}>
+                      <View style={styles.threadTitleRow}>
+                        <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
+                        <Text numberOfLines={1} style={styles.threadTime}>
+                          {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                        </Text>
+                      </View>
+                      <View style={styles.threadMetaRow}>
+                        <Text numberOfLines={1} style={styles.threadDescription}>
+                          {thread.lastMessagePreview || labelForContext(thread)}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
+                  </Pressable>
+                ))
+              ) : (
+                <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
+                  <View style={styles.threadIcon}>
+                    <Ionicons color={aiLightColors.primaryActive} name="chatbubble-ellipses-outline" size={metrics.iconSizeMd} />
+                  </View>
+                  <View style={styles.threadCopy}>
+                    <Text style={styles.threadTitle}>还没有最近聊天</Text>
+                    <Text style={styles.threadDescription}>开始一次普通聊天后，这里会显示记录。</Text>
+                  </View>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </Animated.ScrollView>
+
+        {/* Dialogs — must be outside ScrollView */}
         <AppDialog appearance="opaqueMonochrome" message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
           onClose={() => {
             if (!busy) {
@@ -450,7 +454,6 @@ export function AiHomeScreen({
           ) : null}
         </AppDialog>
 
-        </Animated.ScrollView>
         <AnchoredContextMenu
           actions={actionMenuState ? [
             {
@@ -512,7 +515,6 @@ export function AiHomeScreen({
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100 }} pointerEvents="box-none">
           <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#f9f9f9', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }, stickyBgStyle]} pointerEvents="none" />
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], paddingTop: insets.top, height: 48 }} pointerEvents="box-none">
-            
             {/* Left: Search */}
             <Animated.View style={[{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }, searchShrunkStyle]} pointerEvents="auto">
               <Pressable
@@ -554,7 +556,6 @@ export function AiHomeScreen({
                 </View>
               </Pressable>
             </Animated.View>
-
           </View>
         </View>
       </AiLightScaffold>
