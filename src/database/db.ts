@@ -570,10 +570,18 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V63);
     }
     if (currentVersion < 64) {
-      await database.execAsync(MIGRATION_STATEMENTS_V64);
+      try {
+        await database.execAsync(MIGRATION_STATEMENTS_V64);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
     }
     if (currentVersion < 65) {
-      await database.execAsync(MIGRATION_STATEMENTS_V65);
+      try {
+        await database.execAsync(MIGRATION_STATEMENTS_V65);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
     }
 
     await ensureImportTemplatesSchema(database);

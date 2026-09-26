@@ -43,9 +43,10 @@ interface CompactHeaderProps {
   animatedProps?: any;
   staticMode?: boolean; // If true, don't use absolute positioning (for 1-line layouts without hero)
   leftActions?: ReactNode;
+  centerSlot?: ReactNode;
 }
 
-export function GalleryCompactHeader({ title, count, space, onBack, leftActions, rightActions, animatedStyle, animatedProps, staticMode }: CompactHeaderProps) {
+export function GalleryCompactHeader({ title, count, space, onBack, leftActions, centerSlot, rightActions, animatedStyle, animatedProps, staticMode }: CompactHeaderProps) {
   const { top: statusBarHeight } = useSafeAreaInsets();
   
   const content = (
@@ -59,10 +60,12 @@ export function GalleryCompactHeader({ title, count, space, onBack, leftActions,
             </Pressable>
           )}
           {leftActions}
-          {!!title && (
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2 }} numberOfLines={1}>
-              {title}
-            </Text>
+          {centerSlot ? centerSlot : (
+            !!title && (
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', letterSpacing: -0.2 }} numberOfLines={1}>
+                {title}
+              </Text>
+            )
           )}
           {count !== undefined && (
             <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
