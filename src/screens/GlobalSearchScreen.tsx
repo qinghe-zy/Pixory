@@ -13,7 +13,6 @@ import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { SearchBar } from '../components/SearchBar';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
@@ -241,11 +240,22 @@ export function GlobalSearchScreen({
             <View style={{ width: 44, height: 44 }} />
           </View>
           <View style={newStyles.searchBarContainer}>
-            <SearchBar
-              value={query}
-              onChangeText={onChangeQuery}
-              placeholder="搜聊天 / 记录 / 角色 / 素材..."
-            />
+            <View style={newStyles.searchBarInner}>
+              <Ionicons name="search" size={17} color="#444748" />
+              <TextInput
+                value={query}
+                onChangeText={onChangeQuery}
+                placeholder="搜索 IP企划 / 标签 / 角色 / 备注..."
+                placeholderTextColor="#747878"
+                style={newStyles.searchInput}
+                selectionColor={htmlColors.primary}
+              />
+              {query ? (
+                <Pressable onPress={() => onChangeQuery('')} hitSlop={8} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={15} color="#747878" />
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         </View>
         
@@ -614,6 +624,26 @@ const newStyles = StyleSheet.create({
   searchBarContainer: {
     paddingHorizontal: 16,
     paddingTop: 4,
+  },
+  searchBarInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 36,
+    backgroundColor: '#f3f3f4',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111111',
+    paddingVertical: 0,
   },
   sectionContainer: {
     gap: 8,
