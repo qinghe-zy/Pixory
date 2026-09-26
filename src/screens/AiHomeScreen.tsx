@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
-import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
+import { listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, type AiHomeThreadItem } from '../ai/aiChatService';
+import { AppDialog } from '../components/AppDialog';
+import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -84,6 +86,77 @@ export function AiHomeScreen({
   const threads = loadedThreads.space === space ? loadedThreads.threads : [];
   const roleCards = loadedRoleCards.space === space ? loadedRoleCards.roleCards : [];
   const spaceLabel = space === 'personal' ? '私密空间 · 本地保存对话、资料与角色' : '普通空间 · 本地保存对话、资料与角色';
+
+  const [actionMenuState, setActionMenuState] = useState<{ thread: AiHomeThreadItem; anchorX: number; anchorY: number } | null>(null);
+  const [renameThread, setRenameThread] = useState<AiHomeThreadItem | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteThread, setDeleteThread] = useState<AiHomeThreadItem | null>(null);
+  const [moveThread, setMoveThread] = useState<AiHomeThreadItem | null>(null);
+  const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
+  const [personalPassword, setPersonalPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
+
+  async function reloadThreads() {
+    try {
+      const nextThreads = await listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space });
+      homeThreadCache[space] = nextThreads;
+      setLoadedThreads({ space, threads: nextThreads });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  async function confirmRenameThread() {
+    if (!renameThread) return;
+    setBusy(true);
+    try {
+      await renameAiThread(space, renameThread.id, renameValue);
+      setRenameThread(null);
+      setRenameValue('');
+      await reloadThreads();
+    } catch (error) {
+      // ignore
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmMoveThread() {
+    if (!moveThread) return;
+    setBusy(true);
+    try {
+      await moveAiThreadsBetweenSpaces({
+        personalPassword,
+        sourceSpace: space,
+        targetSpace,
+        threadIds: [moveThread.id],
+      });
+      setMoveThread(null);
+      setPendingAction(null);
+      setPersonalPassword('');
+      await reloadThreads();
+    } catch (error) {
+      // ignore
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDeleteThread() {
+    if (!deleteThread) return;
+    setBusy(true);
+    try {
+      await deleteAiThreads(space, [deleteThread.id]);
+      setDeleteThread(null);
+      setPendingAction(null);
+      await reloadThreads();
+    } catch (error) {
+      // ignore
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -228,6 +301,7 @@ export function AiHomeScreen({
                 accessibilityLabel={`打开最近聊天 ${thread.title}`}
                 accessibilityRole="button"
                 key={thread.id}
+                onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
                 onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
                 style={({ pressed }) => [styles.threadRow, index > 0 && styles.threadDivider, pressed && styles.pressed]}
               >
@@ -263,6 +337,132 @@ export function AiHomeScreen({
       </View>
 
 
+        <AppDialog
+          accent="ai"
+          message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
+          onClose={() => {
+            if (!busy) {
+              setRenameThread(null);
+              setRenameValue('');
+            }
+          }}
+          onPrimary={() => void confirmRenameThread()}
+          primaryDisabled={busy || !renameValue.trim()}
+          primaryLabel={busy ? '正在保存' : '保存'}
+          title="重命名聊天"
+          visible={Boolean(renameThread)}
+        >
+          <TextInput
+            editable={!busy}
+            onChangeText={setRenameValue}
+            placeholder="聊天名称"
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.primary}
+            style={[{
+              backgroundColor: aiLightColors.surface,
+              borderColor: aiLightColors.hairline,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              color: aiLightColors.ink,
+              fontSize: 16,
+              padding: 12,
+              marginTop: 12,
+            }]}
+            value={renameValue}
+          />
+        </AppDialog>
+
+        <AppDialog
+          accent="ai"
+          danger
+          message="将聊天记录移入回收站。之后可在回收站中恢复或永久删除。"
+          onClose={() => {
+            if (!busy) {
+              setPendingAction(null);
+              setDeleteThread(null);
+            }
+          }}
+          onPrimary={() => void confirmDeleteThread()}
+          primaryLabel={busy ? '正在移入' : '移入回收站'}
+          title="移入回收站"
+          visible={pendingAction === 'delete'}
+        />
+
+        <AppDialog
+          accent="ai"
+          message={`${space === 'normal' ? '移入' : '移出'}隐私空间。`}
+          onClose={() => {
+            if (!busy) {
+              setPendingAction(null);
+              setPersonalPassword('');
+            }
+          }}
+          onPrimary={() => void confirmMoveThread()}
+          primaryDisabled={busy || (targetSpace === 'personal' && !personalPassword.trim())}
+          primaryLabel={busy ? '正在移动' : space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+          title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+          visible={pendingAction === 'move'}
+        >
+          {targetSpace === 'personal' ? (
+            <TextInput
+              editable={!busy}
+              onChangeText={setPersonalPassword}
+              placeholder="隐私密码"
+              placeholderTextColor={aiLightColors.mutedSoft}
+              secureTextEntry
+              selectionColor={aiLightColors.primary}
+              style={[{
+                backgroundColor: aiLightColors.surface,
+                borderColor: aiLightColors.hairline,
+                borderRadius: radius.md,
+                borderWidth: 1,
+                color: aiLightColors.ink,
+                fontSize: 16,
+                padding: 12,
+                marginTop: 12,
+              }]}
+              value={personalPassword}
+            />
+          ) : null}
+        </AppDialog>
+
+        <AnchoredContextMenu
+          actions={actionMenuState ? [
+            {
+              key: 'rename',
+              label: '重命名',
+              icon: 'create-outline',
+              onPress: () => {
+                setRenameThread(actionMenuState.thread);
+                setRenameValue(actionMenuState.thread.title);
+              },
+            },
+            {
+              key: 'space',
+              label: space === 'normal' ? '移入隐私空间' : '移出隐私空间',
+              icon: space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline',
+              onPress: () => {
+                setMoveThread(actionMenuState.thread);
+                setPendingAction('move');
+              },
+            },
+            {
+              key: 'delete',
+              label: '移入回收站',
+              icon: 'trash-outline',
+              danger: true,
+              onPress: () => {
+                setDeleteThread(actionMenuState.thread);
+                setPendingAction('delete');
+              },
+            },
+          ] : []}
+          anchorX={actionMenuState?.anchorX ?? 0}
+          anchorY={actionMenuState?.anchorY ?? 0}
+          dismissAccessibilityLabel="关闭菜单"
+          onClose={() => setActionMenuState(null)}
+          visible={Boolean(actionMenuState)}
+        />
     </AiLightScaffold>
   );
 }

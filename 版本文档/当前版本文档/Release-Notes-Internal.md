@@ -37,3 +37,9 @@
 - 将旧版 Ionicons 替换为等价的 MaterialIcons 以对齐设计方案。
 - 移除独立的编辑模式，采用内嵌叉号进行单点删除，历史头部统一清空的设计，简化了操作链路。
 
+
+### [2026-09-26 OTA热更新] 搜索页顶部栏和搜索框重构
+- 完全剥离了原先基于 ScreenScaffold 的默认 header 和基于组件库的 SearchBar。
+- 以自定义视图替换顶部返回导航与搜索输入框，像素级还原 docs/globalsearch/code.html 中的阴影和布局间距。
+- 搜索框 TextInput 的文字排版直接继承 typography.textStyles.body，从而保证与首页搜索框行高的一致性。
+

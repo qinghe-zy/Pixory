@@ -2,7 +2,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput } from 'react-native';
 import type { ReactNode } from 'react';
 
 import { searchGlobalMessages, searchGlobalThreads, type AiHomeThreadItem } from '../ai/aiChatService';
@@ -41,6 +41,12 @@ interface GlobalSearchScreenProps {
 
 const SEARCH_RESULT_LIMIT = 20;
 
+interface RecommendedItem {
+  id: string;
+  name: string;
+  type: 'IP' | '聊天' | '角色' | '分组' | '标签' | '素材';
+}
+
 export function GlobalSearchScreen({
   space = 'normal',
   query,
@@ -64,23 +70,50 @@ export function GlobalSearchScreen({
   const [historyEditMode, setHistoryEditMode] = useState(false);
 
   // Recommendations
-  const [allRoleCards, setAllRoleCards] = useState<AiRoleCardRecord[]>([]);
-  const [recommendedRoleCards, setRecommendedRoleCards] = useState<AiRoleCardRecord[]>([]);
+  const [allRecommendedItems, setAllRecommendedItems] = useState<RecommendedItem[]>([]);
+  const [displayRecommendedItems, setDisplayRecommendedItems] = useState<RecommendedItem[]>([]);
 
   useEffect(() => {
     let isMounted = true;
-    void listRoleCards(space).then((cards) => {
-      if (!isMounted) return;
-      setAllRoleCards(cards);
-      setRecommendedRoleCards(cards.slice(0, 8)); // Initial 8 items
-    });
+    const fetchRecommendations = async () => {
+      try {
+        const [ipPage, groupPage, tagList, allRoles, threads, imagePage] = await runWithDatabaseSpace(space, (db) => Promise.all([
+          ipRepository.findLibraryItemsPage(db, { limit: 15 }),
+          groupRepository.findOverviewPage(db, { limit: 15 }),
+          tagRepository.findPopular(db, 15),
+          listRoleCards(space),
+          searchGlobalThreads({ space, query: '', limit: 15 }),
+          imageRepository.findFilteredPage(db, { mediaType: 'all', limit: 15 }),
+        ]));
+
+        if (!isMounted) return;
+
+        const items: RecommendedItem[] = [];
+        allRoles.forEach(r => items.push({ id: `role_${r.id}`, name: r.name, type: '角色' }));
+        ipPage.items.forEach(i => items.push({ id: `ip_${i.id}`, name: i.name, type: 'IP' }));
+        groupPage.items.forEach(g => items.push({ id: `group_${g.id}`, name: g.name, type: '分组' }));
+        tagList.forEach(t => items.push({ id: `tag_${t.id}`, name: t.name, type: '标签' }));
+        threads.forEach(t => items.push({ id: `thread_${t.id}`, name: t.title || 'Chat', type: '聊天' }));
+        imagePage.items.forEach(img => items.push({ id: `image_${img.id}`, name: img.originalFilename || '未命名素材', type: '素材' }));
+
+        setAllRecommendedItems(items);
+        
+        // Shuffle and pick 8
+        const shuffled = [...items].sort(() => 0.5 - Math.random());
+        setDisplayRecommendedItems(shuffled.slice(0, 8));
+      } catch (error) {
+        console.error('Failed to load recommendations', error);
+      }
+    };
+
+    void fetchRecommendations();
     return () => { isMounted = false; };
   }, ["GlobalSearchScreen", space]);
 
   const handleRefreshTrending = () => {
-    if (allRoleCards.length <= 8) return; // Not enough to shuffle meaningfully
-    const shuffled = [...allRoleCards].sort(() => 0.5 - Math.random());
-    setRecommendedRoleCards(shuffled.slice(0, 8));
+    if (allRecommendedItems.length <= 8) return; 
+    const shuffled = [...allRecommendedItems].sort(() => 0.5 - Math.random());
+    setDisplayRecommendedItems(shuffled.slice(0, 8));
   };
 
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -190,8 +223,33 @@ export function GlobalSearchScreen({
 
   return (
     <>
-      <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
-        <SearchBar onChangeText={onChangeQuery} placeholder="搜聊天 / 记录 / 角色 / 素材..." value={query} />
+      <ScreenScaffold backgroundColor="#f9f9f9" showHeader={false} scrollable>
+        <View style={newStyles.topBar}>
+          <Pressable onPress={onBack} style={newStyles.backButton} hitSlop={8}>
+            <MaterialIcons name="arrow-back" size={20} color={htmlColors.onSurface} />
+          </Pressable>
+          <Text style={newStyles.topBarTitle}>全局搜索</Text>
+          <View style={{ width: 28, height: 28 }} />
+        </View>
+
+        <View style={newStyles.searchBarContainer}>
+          <View style={newStyles.searchBarInner}>
+            <MaterialIcons name="search" size={17} color={htmlColors.onSurfaceVariant} />
+            <TextInput
+              value={query}
+              onChangeText={onChangeQuery}
+              placeholder="搜聊天 / 记录 / 角色 / 素材..."
+              placeholderTextColor={htmlColors.outline}
+              style={newStyles.searchInput}
+              selectionColor={htmlColors.primary}
+            />
+            {query ? (
+              <Pressable onPress={() => onChangeQuery('')} style={newStyles.clearInputBtn} hitSlop={8}>
+                <MaterialIcons name="close" size={16} color={htmlColors.outline} />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
         
         <Pressable style={{ flex: 1 }} onPress={() => setHistoryEditMode(false)}>
           <PageStateBlock
@@ -228,9 +286,9 @@ export function GlobalSearchScreen({
                   </>
                 )}
                 
-                {recommendedRoleCards.length > 0 && (
+                {displayRecommendedItems.length > 0 && (
                   <GuessYouWantList
-                    items={recommendedRoleCards}
+                    items={displayRecommendedItems}
                     onRefresh={handleRefreshTrending}
                     onUseItem={useHistoryItem}
                   />
@@ -398,10 +456,22 @@ function GuessYouWantList({
   onRefresh,
   onUseItem,
 }: {
-  items: AiRoleCardRecord[];
+  items: RecommendedItem[];
   onRefresh: () => void;
   onUseItem: (value: string) => void;
 }) {
+  const getDotColor = (type: RecommendedItem['type']) => {
+    switch (type) {
+      case '角色': return htmlColors.primary;      // #000000
+      case 'IP': return htmlColors.secondary;    // #5e5e5e
+      case '聊天': return htmlColors.outline;      // #747878
+      case '标签': return htmlColors.outlineVariant; // #c4c7c7
+      case '分组': return htmlColors.error;        // #ba1a1a
+      case '素材': return htmlColors.onSurfaceVariant; // #444748
+      default: return htmlColors.primary;
+    }
+  };
+
   return (
     <View style={newStyles.sectionContainer}>
       <View style={newStyles.header}>
@@ -417,7 +487,7 @@ function GuessYouWantList({
 
       <View style={newStyles.grid}>
         {items.map((item, index) => {
-          const dotColor = index % 2 === 0 ? htmlColors.primary : htmlColors.secondary;
+          const dotColor = getDotColor(item.type);
           return (
             <View key={item.id} style={newStyles.gridItemWrapper}>
               <Pressable
@@ -431,7 +501,7 @@ function GuessYouWantList({
                   </Text>
                 </View>
                 <View style={newStyles.badge}>
-                  <Text style={newStyles.badgeText}>角色</Text>
+                  <Text style={newStyles.badgeText}>{item.type}</Text>
                 </View>
               </Pressable>
             </View>
@@ -503,6 +573,70 @@ function ResultRow({ label, meta, onPress, highlight, snippet }: { label: string
 }
 
 const newStyles = StyleSheet.create({
+  topBar: {
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(249, 249, 249, 0.8)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+    marginHorizontal: -16,
+  },
+  backButton: {
+    width: 28,
+    height: 28,
+    marginLeft: -4,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topBarTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '500',
+    color: htmlColors.onSurface,
+    letterSpacing: -0.075,
+  },
+  searchBarContainer: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 8,
+    backgroundColor: htmlColors.surface,
+    marginHorizontal: -16,
+  },
+  searchBarInner: {
+    height: 40,
+    paddingHorizontal: 12,
+    backgroundColor: htmlColors.surfaceContainerLowest,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    shadowColor: htmlColors.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  searchInput: {
+    ...typography.textStyles.body,
+    color: htmlColors.onSurface,
+    flex: 1,
+    paddingVertical: 0,
+    letterSpacing: -0.1,
+  },
+  clearInputBtn: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sectionContainer: {
     gap: 8,
     paddingTop: 4,

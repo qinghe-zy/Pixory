@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
+import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
 import { AiLightChip } from '../components/ai/AiLightChip';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
@@ -77,8 +77,9 @@ export function AiHistoryScreen({
   const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
   const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
+  const [actionMenuState, setActionMenuState] = useState<{ thread: AiThreadHistoryItem; anchorX: number; anchorY: number } | null>(null);
   const [deleteThread, setDeleteThread] = useState<AiThreadHistoryItem | null>(null);
+  const [moveThread, setMoveThread] = useState<AiThreadHistoryItem | null>(null);
   const [swipedThreadId, setSwipedThreadId] = useState<string | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -170,44 +171,6 @@ export function AiHistoryScreen({
       }
     }
   }, [debouncedSearchText, filter, hasMore, nextCursor, space]);
-  const actionSheetItems: AppActionSheetItem[] = actionThread
-    ? [
-        {
-          key: 'rename',
-          label: '重命名',
-          icon: 'create-outline',
-          onPress: () => {
-            setRenameThread(actionThread);
-            setRenameValue(actionThread.title);
-          },
-        },
-        {
-          key: 'select',
-          label: '多选',
-          icon: 'checkmark-circle-outline',
-          onPress: () => toggleSelected(actionThread.id),
-        },
-        ...(actionThread.archivedAt ? [{
-          key: 'restore',
-          label: '移出回收站',
-          icon: 'arrow-undo-outline' as const,
-          onPress: () => {
-            void confirmRestoreSelected([actionThread.id]);
-          },
-        }] : []),
-        {
-          key: 'delete',
-          label: actionThread.archivedAt ? '永久删除' : '移入回收站',
-          icon: 'trash-outline',
-          danger: true,
-          onPress: () => {
-            setDeleteThread(actionThread);
-            setPendingAction('delete');
-          },
-        },
-      ]
-    : [];
-
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -222,8 +185,9 @@ export function AiHistoryScreen({
     setPendingAction(null);
     setPersonalPassword('');
     setSwipedThreadId(null);
-    setActionThread(null);
+    setActionMenuState(null);
     setDeleteThread(null);
+    setMoveThread(null);
   }, [filter, space]);
 
   async function toggleArchive(thread: AiThreadHistoryItem) {
@@ -328,7 +292,7 @@ export function AiHistoryScreen({
       const count = threadIds.length;
       setStatus(`已移出回收站 ${count} 条。`);
       setSelectedIds([]);
-      setActionThread(null);
+      setActionMenuState(null);
       setPendingAction(null);
       await reload();
     } catch (error) {
@@ -339,16 +303,18 @@ export function AiHistoryScreen({
   }
 
   async function confirmMoveSelected() {
+    const threadIds = moveThread ? [moveThread.id] : selectedIds;
     setBusy(true);
     try {
       const count = await moveAiThreadsBetweenSpaces({
         personalPassword,
         sourceSpace: space,
         targetSpace,
-        threadIds: selectedIds,
+        threadIds,
       });
       setStatus(`已移动 ${count} 条。`);
       setSelectedIds([]);
+      setMoveThread(null);
       setPendingAction(null);
       setPersonalPassword('');
       await reload();
@@ -458,7 +424,7 @@ export function AiHistoryScreen({
                       <View style={styles.rowContent}>
                         <Pressable
                           accessibilityRole="button"
-                          onLongPress={() => toggleSelected(thread.id)}
+                          onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
                           onPress={() => handleRowPress(thread)}
                           style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                         >
@@ -477,7 +443,7 @@ export function AiHistoryScreen({
                           <Pressable
                             accessibilityLabel="会话操作"
                             accessibilityRole="button"
-                            onPress={() => setActionThread(thread)}
+                            onPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
                             style={({ pressed }) => [styles.rowMenuButton, pressed && styles.pressed]}
                           >
                             <Ionicons color={aiLightColors.muted} name="ellipsis-horizontal" size={18} />
@@ -543,11 +509,54 @@ export function AiHistoryScreen({
         )}
       </AppDialog>
 
-      <AppActionSheet
-        items={actionSheetItems}
-        onClose={() => setActionThread(null)}
-        title={actionThread?.title ?? '会话操作'}
-        visible={Boolean(actionThread)}
+            <AnchoredContextMenu
+        actions={actionMenuState ? [
+          {
+            key: 'rename',
+            label: '重命名',
+            icon: 'create-outline',
+            onPress: () => {
+              setRenameThread(actionMenuState.thread);
+              setRenameValue(actionMenuState.thread.title);
+            },
+          },
+          {
+            key: 'select',
+            label: '多选',
+            icon: 'checkmark-circle-outline',
+            onPress: () => toggleSelected(actionMenuState.thread.id),
+          },
+          ...(actionMenuState.thread.archivedAt ? [{
+            key: 'restore',
+            label: '移出回收站',
+            icon: 'arrow-undo-outline' as const,
+            onPress: () => void confirmRestoreSelected([actionMenuState.thread.id]),
+          }] : []),
+          {
+            key: 'space',
+            label: space === 'normal' ? '移入隐私空间' : '移出隐私空间',
+            icon: space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline',
+            onPress: () => {
+              setMoveThread(actionMenuState.thread);
+              setPendingAction('move');
+            },
+          },
+          {
+            key: 'delete',
+            label: actionMenuState.thread.archivedAt ? '永久删除' : '移入回收站',
+            icon: 'trash-outline',
+            danger: true,
+            onPress: () => {
+              setDeleteThread(actionMenuState.thread);
+              setPendingAction('delete');
+            },
+          },
+        ] : []}
+        anchorX={actionMenuState?.anchorX ?? 0}
+        anchorY={actionMenuState?.anchorY ?? 0}
+        dismissAccessibilityLabel="关闭菜单"
+        onClose={() => setActionMenuState(null)}
+        visible={Boolean(actionMenuState)}
       />
 
       <AppDialog
@@ -799,3 +808,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
 });
+
