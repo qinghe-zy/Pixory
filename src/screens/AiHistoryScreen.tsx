@@ -559,9 +559,7 @@ export function AiHistoryScreen({
         visible={Boolean(actionMenuState)}
       />
 
-      <AppDialog
-        accent="ai"
-        message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
+      <AppDialog appearance="opaqueMonochrome" message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
         onClose={() => {
           if (!busy) {
             setRenameThread(null);
@@ -578,9 +576,7 @@ export function AiHistoryScreen({
           editable={!busy}
           onChangeText={setRenameValue}
           placeholder="聊天名称"
-          placeholderTextColor={aiLightColors.mutedSoft}
-          selectionColor={aiLightColors.primary}
-          style={styles.passwordInput}
+          placeholderTextColor="#747878" selectionColor="#000000" style={styles.renameInput}
           value={renameValue}
         />
       </AppDialog>
@@ -796,6 +792,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
   },
+
+  renameInput: {
+    ...typography.textStyles.body,
+    backgroundColor: '#ffffff',
+    borderColor: '#1a1c1c',
+    borderRadius: 4,
+    borderWidth: 1,
+    color: '#1a1c1c',
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
   passwordInput: {
     ...typography.textStyles.body,
     backgroundColor: aiLightColors.canvas,
@@ -808,4 +816,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
 });
+
+
+
+
 

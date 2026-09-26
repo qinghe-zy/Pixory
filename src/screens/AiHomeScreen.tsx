@@ -337,9 +337,7 @@ export function AiHomeScreen({
       </View>
 
 
-        <AppDialog
-          accent="ai"
-          message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
+        <AppDialog appearance="opaqueMonochrome" message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
           onClose={() => {
             if (!busy) {
               setRenameThread(null);
@@ -356,18 +354,7 @@ export function AiHomeScreen({
             editable={!busy}
             onChangeText={setRenameValue}
             placeholder="聊天名称"
-            placeholderTextColor={aiLightColors.mutedSoft}
-            selectionColor={aiLightColors.primary}
-            style={[{
-              backgroundColor: aiLightColors.surface,
-              borderColor: aiLightColors.hairline,
-              borderRadius: radius.md,
-              borderWidth: 1,
-              color: aiLightColors.ink,
-              fontSize: 16,
-              padding: 12,
-              marginTop: 12,
-            }]}
+            placeholderTextColor="#747878" selectionColor="#000000" style={[{ backgroundColor: '#ffffff', borderColor: '#1a1c1c', borderRadius: 4, borderWidth: 1, color: '#1a1c1c', fontSize: 16, padding: 12, marginTop: 12 }]}
             value={renameValue}
           />
         </AppDialog>
@@ -837,3 +824,5 @@ const styles = StyleSheet.create({
   },
 
 });
+
+

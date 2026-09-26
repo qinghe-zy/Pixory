@@ -43,3 +43,8 @@
 - 以自定义视图替换顶部返回导航与搜索输入框，像素级还原 docs/globalsearch/code.html 中的阴影和布局间距。
 - 搜索框 TextInput 的文字排版直接继承 typography.textStyles.body，从而保证与首页搜索框行高的一致性。
 
+
+- **AI聊天**: 
+  - 将聊天首页列表与历史会话页的底部操作面板（ActionSheet）统一替换为原位浮层菜单（AnchoredContextMenu）。
+  - 在聊天列表页与历史会话页菜单中整合“重命名”、“移入/移出隐私空间”、“移入回收站”功能。
+  - 将“重命名”对话框样式调整为黑白纯色外观（opaqueMonochrome），输入框样式变更为矩形、纯黑光标。
