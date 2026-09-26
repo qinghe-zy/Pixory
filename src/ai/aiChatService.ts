@@ -2930,6 +2930,7 @@ export async function searchGlobalMessages(input: {
   query: string;
   offset?: number;
   limit?: number;
+  sortDesc?: boolean;
 }): Promise<{ results: (AiChatSearchResult & { threadTitle: string; threadId: string })[]; hasMore: boolean; totalCount: number }> {
   const terms = buildChatSearchTerms(input.query);
   const limit = Math.max(1, input.limit ?? 40);
@@ -2940,11 +2941,12 @@ export async function searchGlobalMessages(input: {
   const candidateLimit = offset + limit + 1;
   let globalTotalCount = 0;
   const matches = await runWithDatabaseSpace(input.space, async (db) => {
-    const candidateRows = await aiThreadRepository.searchGlobalCompletedMessageFts(db, input.space, {
+    const { items: candidateRows, totalCount } = await aiThreadRepository.searchGlobalCompletedMessageFts(db, input.space, {
       limit: candidateLimit,
       query: input.query,
+      sortDesc: input.sortDesc,
     });
-    globalTotalCount = candidateRows.length;
+    globalTotalCount = totalCount;
     const messageIds = candidateRows.map((message) => message.id);
     const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
     const candidates: (AiMessageWithCitations & { threadTitle: string })[] = candidateRows
@@ -3387,6 +3389,14 @@ export async function renameAiThread(space: PixorySpace, threadId: string, title
     aiThreadRepository.updateThread(db, threadId, {
       title: nextTitle.slice(0, 40),
       titleStatus: 'custom',
+    })
+  );
+}
+
+export async function toggleAiThreadPin(space: PixorySpace, threadId: string, isPinned: boolean): Promise<AiThreadRecord | null> {
+  return runWithDatabaseSpace(space, (db) =>
+    aiThreadRepository.updateThread(db, threadId, {
+      isPinned,
     })
   );
 }

@@ -126,6 +126,7 @@ export interface AiThreadRecord {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  isPinned: boolean;
 }
 
 export interface AiCitationRecord {

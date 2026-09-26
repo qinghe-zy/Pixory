@@ -2540,15 +2540,21 @@ export const aiThreadRepository = {
       values.push(searchPattern, searchPattern);
     }
     if (input.before) {
+      const beforePinned = booleanToSqlite(input.before.isPinned);
       clauses.push(`(
-        projected_history.lastMessageAt < ?
-        OR (projected_history.lastMessageAt = ? AND ai_threads.createdAt < ?)
-        OR (projected_history.lastMessageAt = ? AND ai_threads.createdAt = ? AND ai_threads.id < ?)
+        ai_threads.isPinned < ?
+        OR (ai_threads.isPinned = ? AND projected_history.lastMessageAt < ?)
+        OR (ai_threads.isPinned = ? AND projected_history.lastMessageAt = ? AND ai_threads.createdAt < ?)
+        OR (ai_threads.isPinned = ? AND projected_history.lastMessageAt = ? AND ai_threads.createdAt = ? AND ai_threads.id < ?)
       )`);
       values.push(
+        beforePinned,
+        beforePinned,
         input.before.lastMessageAt,
+        beforePinned,
         input.before.lastMessageAt,
         input.before.createdAt,
+        beforePinned,
         input.before.lastMessageAt,
         input.before.createdAt,
         input.before.id

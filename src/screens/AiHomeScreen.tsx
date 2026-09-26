@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
-import { listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, type AiHomeThreadItem } from '../ai/aiChatService';
+import { listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
 import { AppDialog } from '../components/AppDialog';
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
@@ -49,6 +49,7 @@ interface AiHomeScreenProps {
   onOpenGlobalMaterials: () => void;
   onOpenHistory: () => void;
   onOpenSearch: () => void;
+  onOpenIpChatPicker: () => void;
   onOpenThread: (thread: AiHomeThreadItem) => void;
   onStartChatWithRole: (roleCardId: string) => void;
 }
@@ -277,7 +278,7 @@ export function AiHomeScreen({
             )}
           </ScrollView>
           <Pressable accessibilityLabel="打开角色库" accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.roleLibraryButton, pressed && styles.pressed]}>
-            <Ionicons color={aiLightColors.primaryActive} name="ellipsis-vertical" size={20} />
+            <Ionicons color="#5e5e5e" name="ellipsis-vertical" size={20} />
           </Pressable>
         </View>
       </View>
@@ -304,7 +305,7 @@ export function AiHomeScreen({
                 key={thread.id}
                 onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
                 onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
-                style={({ pressed }) => [styles.threadRow, index > 0 && styles.threadDivider, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.threadRow, thread.isPinned && { backgroundColor: '#f3f3f4' }, index > 0 && styles.threadDivider, pressed && styles.pressed]}
               >
                 <ThreadAvatar thread={thread} space={space} />
                 <View style={styles.threadCopy}>
@@ -423,6 +424,25 @@ export function AiHomeScreen({
               onPress: () => {
                 setRenameThread(actionMenuState.thread);
                 setRenameValue(actionMenuState.thread.title);
+              },
+            },
+            {
+              key: 'pin',
+              label: actionMenuState.thread.isPinned ? '取消置顶' : '置顶',
+              icon: 'pin-outline',
+              onPress: () => {
+                void (async () => {
+                  if (busy) return;
+                  setBusy(true);
+                  try {
+                    await toggleAiThreadPin(space, actionMenuState.thread.id, !actionMenuState.thread.isPinned);
+                    await reloadThreads();
+                  } catch (e) {
+                    console.error('Failed to pin thread:', e);
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
               },
             },
             {
@@ -698,13 +718,8 @@ const styles = StyleSheet.create({
   roleLibraryButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
     height: 48,
     width: 32,
-    ...shadows.sm,
   },
   roleLibraryText: {
     ...typography.textStyles.caption,
