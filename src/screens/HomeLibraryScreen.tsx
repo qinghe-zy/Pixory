@@ -52,6 +52,7 @@ interface HomeLibraryScreenProps {
   onOpenNeedsOrganizing: () => void;
   onImportIp?: (ipId: number) => void;
   onEditIp?: (ipId: number) => void;
+  onStartChatWithIp?: (ipId: number, ipName: string) => void;
 }
 
 type LayoutItem = 
@@ -71,6 +72,7 @@ export function HomeLibraryScreen({
   onOpenNeedsOrganizing,
   onImportIp,
   onEditIp,
+  onStartChatWithIp,
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
@@ -597,6 +599,15 @@ export function HomeLibraryScreen({
     </AppDialog>
     <AnchoredContextMenu
       actions={actionMenuState ? [
+        ...(onStartChatWithIp ? [{
+          key: 'chat',
+          label: '开始聊天',
+          icon: 'chatbubble-ellipses-outline' as const,
+          onPress: () => {
+            onStartChatWithIp(actionMenuState.ip.id, actionMenuState.ip.name);
+            setActionMenuState(null);
+          },
+        }] : []),
         {
           key: 'pin',
           label: actionMenuState.ip.isPinned ? '取消置顶' : 'IP 置顶',

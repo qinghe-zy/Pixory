@@ -1410,6 +1410,7 @@ export default function App() {
               isActive={currentTab === 'ai'}
               onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
               onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
+              onOpenSearch={() => pushRoute({ name: 'global-search', space: activeSpace })}
               onOpenIpChatPicker={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
               onOpenKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
               onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}

@@ -46,6 +46,7 @@ interface AiHomeScreenProps {
   onOpenKnowledgeBase: () => void;
   onOpenGlobalMaterials: () => void;
   onOpenHistory: () => void;
+  onOpenSearch: () => void;
   onOpenThread: (thread: AiHomeThreadItem) => void;
   onStartChatWithRole: (roleCardId: string) => void;
 }
@@ -67,6 +68,7 @@ export function AiHomeScreen({
   onOpenKnowledgeBase,
   onOpenGlobalMaterials,
   onOpenHistory,
+  onOpenSearch,
   onOpenThread,
   onStartChatWithRole,
 }: AiHomeScreenProps) {
@@ -201,15 +203,23 @@ export function AiHomeScreen({
             )}
           </ScrollView>
           <Pressable accessibilityLabel="打开角色库" accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.roleLibraryButton, pressed && styles.pressed]}>
-            <Ionicons color={aiLightColors.primaryActive} name="people-outline" size={metrics.iconSizeSm} />
-            <Text style={styles.roleLibraryText}>角色库</Text>
+            <Ionicons color={aiLightColors.primaryActive} name="ellipsis-vertical" size={20} />
           </Pressable>
         </View>
       </View>
 
       <View style={styles.section}>
         <View style={styles.sectionInner}>
-          <SectionTitle actionLabel="全部" isActive={isActive} title="最近聊天" showDecoration onPress={onOpenHistory} />
+          <View style={styles.searchHeader}>
+            <Pressable style={styles.searchContainer} onPress={onOpenSearch}>
+              <Ionicons name="search" size={17} color="#5e5e5e" />
+              <Text style={styles.searchInputPlaceholder}>搜索聊天记录 / 角色 / 设定...</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onOpenHistory} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
+              <Text style={styles.sectionActionText}>全部</Text>
+              <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
+            </Pressable>
+          </View>
         </View>
         <View style={styles.recentChatList}>
           {threads.length ? (
@@ -225,13 +235,13 @@ export function AiHomeScreen({
                 <View style={styles.threadCopy}>
                   <View style={styles.threadTitleRow}>
                     <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
+                    <Text numberOfLines={1} style={styles.threadTime}>
+                      {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                    </Text>
                   </View>
                   <View style={styles.threadMetaRow}>
                     <Text numberOfLines={1} style={styles.threadDescription}>
                       {thread.lastMessagePreview || labelForContext(thread)}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.threadTime}>
-                      {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
                     </Text>
                   </View>
                 </View>
@@ -326,6 +336,33 @@ function SectionTitle({ actionLabel, isActive = true, title, onPress, showDecora
 
 
 const styles = StyleSheet.create({
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: rhythm.inlineGap,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 36,
+    backgroundColor: '#f3f3f4',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  searchInputPlaceholder: {
+    flex: 1,
+    ...typography.textStyles.body,
+    fontSize: 14,
+    color: '#8e8e93',
+  },
   screenContent: {
     gap: rhythm.screenSectionGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
@@ -352,19 +389,19 @@ const styles = StyleSheet.create({
   primaryChatCardWrapper: {
     ...shadows.sm,
     backgroundColor: aiLightColors.surface,
-    borderRadius: 36,
+    borderRadius: radius.sm,
   },
   primaryChatCard: {
     alignItems: 'center',
     borderColor: aiLightColors.hairline,
-    borderRadius: 36,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    minHeight: 104,
+    minHeight: 72,
     overflow: 'hidden',
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
+    paddingVertical: spacing[3],
     position: 'relative',
   },
   primaryCardPattern: {
@@ -470,14 +507,13 @@ const styles = StyleSheet.create({
   },
   roleLibraryButton: {
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-    minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[3],
+    height: 48,
+    width: 32,
     ...shadows.sm,
   },
   roleLibraryText: {
@@ -574,6 +610,7 @@ const styles = StyleSheet.create({
   threadTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: rhythm.inlineGap,
   },
   threadTitle: {
     ...typography.textStyles.bodyStrong,
