@@ -79,13 +79,9 @@ export function GlobalSearchScreen({
       setActiveFilter('all');
       return true;
     }
-    if (keyword !== '') {
-      onChangeQuery('');
-      return true;
-    }
     onBack();
     return true;
-  }, [activeFilter, keyword, onChangeQuery, onBack]);
+  }, [activeFilter, onBack]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
@@ -297,11 +293,11 @@ export function GlobalSearchScreen({
         >
           <Pressable style={{ flex: 1 }} onPress={() => setHistoryEditMode(false)}>
           <PageStateBlock
-            emptyDescription=""
+            emptyDescription="尝试更换关键词或检查输入是否正确"
             emptyIconName="search-outline"
-            emptyTitle=""
+            emptyTitle="未找到搜索结果"
             errorMessage={isCurrentResult ? errorMessage : null}
-            isEmpty={false}
+            isEmpty={isEmpty && !showHistory}
             loading={isSearchLoading}
             loadingDescription="正在搜索..."
             loadingTitle="搜索中"
@@ -633,12 +629,16 @@ function GroupSection({ items, onOpen, query, space, activeFilter, onViewMore }:
   );
 }
 
-function TagSection({ items, onOpen, query }: any) {
+function TagSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 10) : items;
+  const hasMore = isAllFilter && items.length > 10;
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={`${items.length} 个匹配`} />
       <View style={protoStyles.tagFlow}>
-        {items.map((item: any) => (
+        {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.tagPill}>
             <Text style={protoStyles.tagHash}>#</Text>
             <HighlightedText text={item.name} keyword={query} style={protoStyles.tagText} highlightWrapperStyle={protoStyles.highlightBox} />
@@ -646,16 +646,25 @@ function TagSection({ items, onOpen, query }: any) {
           </Pressable>
         ))}
       </View>
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多标签</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function ImageSection({ items, onOpen, query, space }: any) {
+function ImageSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 6) : items;
+  const hasMore = isAllFilter && items.length > 6;
+
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" actionText={`在画廊查看全部 (${items.length})`} />
+      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" count={`${items.length} 个文件`} />
       <View style={protoStyles.grid2Col}>
-        {items.map((item: any) => (
+        {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.imageCard}>
             <View style={protoStyles.imageBox}>
               <SecureImage uri={item.thumbnailFileUri} space={space} style={StyleSheet.absoluteFill} contentFit="cover" />
@@ -670,16 +679,25 @@ function ImageSection({ items, onOpen, query, space }: any) {
           </Pressable>
         ))}
       </View>
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多素材</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function ThreadSection({ items, onOpen, query }: any) {
+function ThreadSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 3) : items;
+  const hasMore = isAllFilter && items.length > 3;
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={`${items.length} 个活跃流`} />
       <View style={protoStyles.threadList}>
-        {items.map((item: any, idx: number) => (
+        {displayItems.map((item: any, idx: number) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={[protoStyles.threadItem, idx > 0 && protoStyles.threadItemBorder]}>
             <View style={protoStyles.threadIconBox}>
               <MaterialIcons name="forum" size={20} color={htmlColors.onSurfaceVariant} />
@@ -694,16 +712,31 @@ function ThreadSection({ items, onOpen, query }: any) {
           </Pressable>
         ))}
       </View>
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多会话</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function MessageSection({ items, onOpen, query }: any) {
+function MessageSection({ items, onOpen, query, activeFilter, sortDesc, onToggleSort, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 10) : items;
+  const hasMore = isAllFilter && items.length > 10;
+
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="聊天记录" subtitle="MESSAGES · 精确高亮" count={`时间倒序 (${items.length})`} />
+      <SectionHeader 
+        title="聊天记录" 
+        subtitle="MESSAGES · 精确高亮" 
+        count={`${items.length} 条记录`}
+        actionText={sortDesc ? '时间倒序' : '时间正序'}
+        onAction={onToggleSort}
+      />
       <View style={protoStyles.messageList}>
-        {items.map((item: any) => {
+        {displayItems.map((item: any) => {
           const text = item.content;
           const lowerText = text.toLowerCase();
           const index = lowerText.indexOf(query.toLowerCase());
@@ -717,7 +750,7 @@ function MessageSection({ items, onOpen, query }: any) {
           }
 
           return (
-            <View key={item.id} style={protoStyles.messageCard}>
+            <Pressable key={item.id} onPress={() => onOpen(item.threadId, item.id)} style={({ pressed }) => [protoStyles.messageCard, pressed && { opacity: 0.8 }]}>
               <View style={protoStyles.messageTopRow}>
                 <View style={protoStyles.messageSourceRow}>
                   <MaterialIcons name="chat-bubble-outline" size={13} color={htmlColors.outline} />
@@ -725,18 +758,23 @@ function MessageSection({ items, onOpen, query }: any) {
                   <Text style={protoStyles.messageSourceText}>·</Text>
                   <Text style={protoStyles.messageSourceText}>{format(new Date(item.createdAt), 'MM-dd HH:mm')}</Text>
                 </View>
-                <Pressable onPress={() => onOpen(item.threadId, item.id)} style={protoStyles.messageJumpBtn}>
+                <View style={protoStyles.messageJumpBtn}>
                   <Text style={protoStyles.messageJumpText}>跳转</Text>
                   <MaterialIcons name="north-east" size={12} color={htmlColors.onSurface} />
-                </Pressable>
+                </View>
               </View>
               <View style={protoStyles.messageBubble}>
                 <HighlightedText text={snippet} keyword={query} style={protoStyles.messageText} highlightWrapperStyle={protoStyles.highlightBoxText} />
               </View>
-            </View>
+            </Pressable>
           );
         })}
       </View>
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多聊天记录</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
