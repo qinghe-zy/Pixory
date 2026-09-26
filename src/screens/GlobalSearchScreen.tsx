@@ -2,7 +2,8 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler } from 'react-native';
+import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -71,6 +72,26 @@ export function GlobalSearchScreen({
   
   const [activeFilter, setActiveFilter] = useState<'all' | 'ip' | 'role' | 'group' | 'tag' | 'image' | 'thread' | 'message'>('all');
 
+  const [messageSortDesc, setMessageSortDesc] = useState(true);
+
+  const handleBackPress = useCallback(() => {
+    if (activeFilter !== 'all') {
+      setActiveFilter('all');
+      return true;
+    }
+    if (keyword !== '') {
+      onChangeQuery('');
+      return true;
+    }
+    onBack();
+    return true;
+  }, [activeFilter, keyword, onChangeQuery, onBack]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    return () => subscription.remove();
+  }, [handleBackPress]);
+
   // Recommendations
   const [allRecommendedItems, setAllRecommendedItems] = useState<RecommendedItem[]>([]);
   const [displayRecommendedItems, setDisplayRecommendedItems] = useState<RecommendedItem[]>([]);
@@ -133,13 +154,13 @@ export function GlobalSearchScreen({
       }
 
       const [ipPage, groups, tagPage, imagePage, allRoles, threads, messagesRes] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        ipRepository.findLibraryItemsPage(db, { searchText: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
-        groupRepository.findOverviewSearch(db, debouncedKeyword, SEARCH_RESULT_LIMIT),
-        tagRepository.findUsageOverviewPage(db, { searchText: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
-        imageRepository.findFilteredPage(db, { mediaType: 'all', searchText: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
+        ipRepository.findLibraryItemsPage(db, { searchText: debouncedKeyword, limit: activeFilter === 'ip' ? 1000 : SEARCH_RESULT_LIMIT }),
+        groupRepository.findOverviewSearch(db, debouncedKeyword, activeFilter === 'group' ? 1000 : SEARCH_RESULT_LIMIT),
+        tagRepository.findUsageOverviewPage(db, { searchText: debouncedKeyword, limit: activeFilter === 'tag' ? 1000 : SEARCH_RESULT_LIMIT }),
+        imageRepository.findFilteredPage(db, { mediaType: 'all', searchText: debouncedKeyword, limit: activeFilter === 'image' ? 1000 : SEARCH_RESULT_LIMIT }),
         listRoleCards(space),
-        searchGlobalThreads({ space, query: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
-        searchGlobalMessages({ space, query: debouncedKeyword, limit: SEARCH_RESULT_LIMIT }),
+        searchGlobalThreads({ space, query: debouncedKeyword, limit: activeFilter === 'thread' ? 1000 : SEARCH_RESULT_LIMIT }),
+        searchGlobalMessages({ space, query: debouncedKeyword, limit: activeFilter === 'message' ? 1000 : SEARCH_RESULT_LIMIT }),
       ]));
 
       const filteredRoles = allRoles.filter((role) => pinyinMatch.match(role.name, debouncedKeyword)).slice(0, SEARCH_RESULT_LIMIT);
@@ -161,7 +182,7 @@ export function GlobalSearchScreen({
         resultKey,
       };
     },
-    [debouncedKeyword, space],
+    [debouncedKeyword, space, activeFilter, messageSortDesc],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -232,7 +253,7 @@ export function GlobalSearchScreen({
       >
         <View style={[newStyles.stickyHeaderBlock, { paddingTop: insets.top }]}>
           <View style={newStyles.topBar}>
-            <Pressable onPress={onBack} style={newStyles.backButton} hitSlop={8}>
+            <Pressable onPress={handleBackPress} style={newStyles.backButton} hitSlop={8}>
               <MaterialIcons name="arrow-back" size={24} color={htmlColors.onSurface} />
             </Pressable>
             <Text style={newStyles.topBarTitle}>全局搜索</Text>
@@ -323,31 +344,31 @@ export function GlobalSearchScreen({
               <View style={protoStyles.content}>
                 {/* 1. IP */}
                 {(activeFilter === 'all' || activeFilter === 'ip') && ips.length > 0 && (
-                  <IpSection items={ips} onOpen={onOpenIp} query={debouncedKeyword} />
+                  <IpSection items={ips} onOpen={onOpenIp} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('ip')} />
                 )}
                 {/* 2. Role Cards */}
                 {(activeFilter === 'all' || activeFilter === 'role') && roles.length > 0 && (
-                  <RoleSection items={roles} onOpen={onOpenRoleCard} query={debouncedKeyword} />
+                  <RoleSection items={roles} onOpen={onOpenRoleCard} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('role')} />
                 )}
                 {/* 3. Groups */}
                 {(activeFilter === 'all' || activeFilter === 'group') && groups.length > 0 && (
-                  <GroupSection items={groups} onOpen={onOpenGroup} query={debouncedKeyword} />
+                  <GroupSection items={groups} onOpen={onOpenGroup} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('group')} />
                 )}
                 {/* 4. Tags */}
                 {(activeFilter === 'all' || activeFilter === 'tag') && tags.length > 0 && (
-                  <TagSection items={tags} onOpen={onOpenTag} query={debouncedKeyword} />
+                  <TagSection items={tags} onOpen={onOpenTag} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('tag')} />
                 )}
                 {/* 5. Images */}
                 {(activeFilter === 'all' || activeFilter === 'image') && images.length > 0 && (
-                  <ImageSection items={images} onOpen={onOpenImageDetail} query={debouncedKeyword} space={space} />
+                  <ImageSection items={images} onOpen={onOpenImageDetail} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('image')} />
                 )}
                 {/* 6. Threads */}
                 {(activeFilter === 'all' || activeFilter === 'thread') && threads.length > 0 && (
-                  <ThreadSection items={threads} onOpen={onOpenThread} query={debouncedKeyword} />
+                  <ThreadSection items={threads} onOpen={onOpenThread} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('thread')} />
                 )}
                 {/* 7. Messages */}
                 {(activeFilter === 'all' || activeFilter === 'message') && messages.length > 0 && (
-                  <MessageSection items={messages} onOpen={onOpenThread} query={debouncedKeyword} />
+                  <MessageSection items={messages} onOpen={onOpenThread} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('message')} sortDesc={messageSortDesc} onToggleSort={() => setMessageSortDesc(!messageSortDesc)} />
                 )}
               </View>
             )}
@@ -485,15 +506,22 @@ function SectionHeader({ title, subtitle, count, actionText, onAction }: any) {
   );
 }
 
-function IpSection({ items, onOpen, query }: any) {
+function IpSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 3) : items;
+  const hasMore = isAllFilter && items.length > 3;
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={`${items.length} 项`} />
-      {items.map((item: any) => (
+      {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.ipCard}>
           <View style={protoStyles.ipCardRow}>
             <View style={protoStyles.ipCoverBox}>
               <View style={[StyleSheet.absoluteFill, { backgroundColor: htmlColors.surfaceContainer }]} />
+              {item.coverThumbnailFileUri ? (
+                <SecureImage uri={item.coverThumbnailFileUri} space={space} style={StyleSheet.absoluteFill} contentFit="cover" />
+              ) : null}
               <View style={protoStyles.ipTagAbsolute}>
                 <Text style={protoStyles.ipTagAbsoluteText}>ARC-{item.id.toString().padStart(2, '0')}</Text>
               </View>
@@ -514,18 +542,30 @@ function IpSection({ items, onOpen, query }: any) {
           </View>
         </Pressable>
       ))}
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多 IP</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function RoleSection({ items, onOpen, query }: any) {
+function RoleSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 3) : items;
+  const hasMore = isAllFilter && items.length > 3;
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={`${items.length} 命中 ›`} />
-      {items.map((item: any) => (
+      {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.roleCard}>
           <View style={protoStyles.roleAvatarBox}>
             <View style={[StyleSheet.absoluteFill, { backgroundColor: htmlColors.surfaceContainer, borderRadius: 28 }]} />
+            {item.avatarUri ? (
+              <SecureImage uri={item.avatarUri} space={space} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} contentFit="cover" />
+            ) : null}
             <View style={protoStyles.roleSparkleBadge}>
               <MaterialIcons name="auto-awesome" size={10} color={htmlColors.onPrimary} />
             </View>
@@ -542,30 +582,53 @@ function RoleSection({ items, onOpen, query }: any) {
           </View>
         </Pressable>
       ))}
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多角色</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function GroupSection({ items, onOpen, query }: any) {
+function GroupSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+  const isAllFilter = activeFilter === 'all';
+  const displayItems = isAllFilter ? items.slice(0, 6) : items;
+  const hasMore = isAllFilter && items.length > 6;
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={`${items.length} 个目录`} />
       <View style={protoStyles.grid2Col}>
-        {items.map((item: any) => (
+        {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.ipId, item.id)} style={protoStyles.groupCard}>
-            <View style={protoStyles.groupTopRow}>
-              <View style={protoStyles.groupIconBox}>
-                <MaterialIcons name="folder-open" size={18} color={htmlColors.onSurface} />
+            <View style={protoStyles.groupCardInner}>
+              <View style={protoStyles.groupCardTopRow}>
+                <View style={protoStyles.groupCoverBox}>
+                  {item.coverThumbnailFileUri ? (
+                    <SecureImage uri={item.coverThumbnailFileUri} space={space} style={StyleSheet.absoluteFill} contentFit="cover" />
+                  ) : (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: htmlColors.surfaceContainer }]} />
+                  )}
+                </View>
+                <MaterialIcons name="folder-open" size={18} color={htmlColors.outline} />
               </View>
-              <View style={protoStyles.metaPill}><Text style={protoStyles.metaPillText}>{item.imageCount} 项</Text></View>
-            </View>
-            <View>
-              <HighlightedText text={item.name} keyword={query} style={protoStyles.groupTitle} highlightWrapperStyle={protoStyles.highlightBox} />
-              <Text style={protoStyles.groupSub} numberOfLines={1}>归属于 {item.ipName}</Text>
+              <View style={protoStyles.groupCardBottomRow}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <HighlightedText text={item.name} keyword={query} style={protoStyles.groupTitle} highlightWrapperStyle={protoStyles.highlightBox} />
+                  <Text style={protoStyles.groupSub} numberOfLines={1}>归属于 {item.ipName}</Text>
+                </View>
+                <Text style={protoStyles.groupCountText}>{item.imageCount} 项</Text>
+              </View>
             </View>
           </Pressable>
         ))}
       </View>
+      {hasMore && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>查看更多分组</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -940,26 +1003,36 @@ const protoStyles = StyleSheet.create({
     width: '50%',
     padding: 4,
   },
-  groupTopRow: {
+  groupCardInner: {
     backgroundColor: htmlColors.surfaceContainerLowest,
-    borderRadius: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: htmlColors.surfaceVariant,
+    overflow: 'hidden',
     padding: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-    height: 104,
-    justifyContent: 'space-between',
+    gap: 12,
   },
-  groupIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 4,
+  groupCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  groupCoverBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    overflow: 'hidden',
     backgroundColor: htmlColors.surfaceContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+  },
+  groupCardBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  groupCountText: {
+    fontSize: 10,
+    color: htmlColors.outline,
+    fontWeight: '500',
   },
   groupTitle: {
     fontSize: 15,
