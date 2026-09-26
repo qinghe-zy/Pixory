@@ -197,13 +197,25 @@ export const groupRepository = {
     };
   },
 
-  async findOverviewSearch(db: SQLiteDatabase, searchText: string, limit = 20): Promise<GlobalGroupListItem[]> {
+  async findOverviewSearch(db: SQLiteDatabase, searchText: string, limit = 20): Promise<{ items: GlobalGroupListItem[]; totalCount: number }> {
     const normalizedSearchText = searchText.trim();
     if (!normalizedSearchText) {
-      return [];
+      return { items: [], totalCount: 0 };
     }
     const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const likeValue = `%${normalizedSearchText}%`;
+    
+    const countRow = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(DISTINCT groups.id) as count 
+       FROM groups
+       JOIN ips ON groups.ipId = ips.id
+       WHERE ips.deletedAt IS NULL
+         AND (groups.name LIKE ? COLLATE NOCASE OR ips.name LIKE ? COLLATE NOCASE)`,
+      likeValue,
+      likeValue
+    );
+    const totalCount = countRow?.count ?? 0;
+
     const rows = await db.getAllAsync<GlobalGroupListItemRow>(
       `${GROUP_OVERVIEW_SELECT}
        WHERE ips.deletedAt IS NULL
@@ -215,7 +227,7 @@ export const groupRepository = {
       likeValue,
       boundedLimit
     );
-    return rows.map(mapGlobalGroupListItemRow);
+    return { items: rows.map(mapGlobalGroupListItemRow), totalCount };
   },
 
   async findOverview(db: SQLiteDatabase): Promise<GlobalGroupListItem[]> {

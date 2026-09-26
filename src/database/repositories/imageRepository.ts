@@ -1018,6 +1018,7 @@ export const imageRepository = {
     const limit = Math.max(1, Math.min(100, Math.floor(options?.limit ?? 20)));
     const offset = Math.max(0, Math.floor(options?.offset ?? 0));
     const queryParts = buildImageListQueryParts([], [], options);
+    const countRow = await db.getFirstAsync<{ count: number }>(`SELECT COUNT(DISTINCT image_assets.id) AS count FROM image_assets INNER JOIN ips ON ips.id = image_assets.ipId ${queryParts.whereClause}`, ...queryParts.values);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        ${queryParts.whereClause}
@@ -1031,6 +1032,7 @@ export const imageRepository = {
     return {
       items: rows.slice(0, limit).map(mapImageListItemRow),
       hasMore: rows.length > limit,
+      totalCount: countRow?.count ?? 0,
     };
   },
 

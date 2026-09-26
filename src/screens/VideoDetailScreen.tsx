@@ -268,7 +268,7 @@ export function VideoDetailScreen({
                 <Text style={styles.subtitle}>{video.ipName} · {formatDateTime(video.createdAt)}</Text>
               </View>
 
-              <PrimaryButton label="播放视频" onPress={handlePlay} />
+              <PrimaryButton label="播放视频" onPress={handlePlay} shape="rectangular" tone="dark" />
 
               <View style={styles.infoPanel}>
                 <InfoRow label="文件大小" value={formatFileSize(video.fileSize)} />

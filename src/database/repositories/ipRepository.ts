@@ -183,7 +183,7 @@ function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array
   };
 }
 
-function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: Array<number | string>; limit: number } {
+function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: Array<number | string>; limit: number; countSql: string; countValues: Array<number | string> } {
   const values: Array<number | string> = [];
   const whereClauses: string[] = ['ips.deletedAt IS NULL'];
   const normalizedSearchText = query?.searchText?.trim();
@@ -295,6 +295,8 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
     ORDER BY page_ips.isPinned DESC, ${orderBy.replaceAll('ips.', 'page_ips.')}`,
     values: [...values, limit + 1, offset],
     limit,
+    countSql: `SELECT COUNT(*) AS total FROM ips WHERE ${whereClauses.join(' AND ')}`,
+    countValues: values,
   };
 }
 
@@ -382,11 +384,15 @@ export const ipRepository = {
 
   async findLibraryItemsPage(db: SQLiteDatabase, query?: IpLibraryQuery): Promise<PageResult<IpListItem>> {
     const builtQuery = buildLibraryPageQuery(query);
+    const countRow = await db.getFirstAsync<{ count: number }>(builtQuery.countSql, ...builtQuery.countValues);
+    const totalCount = countRow?.count ?? 0;
+    
     const rows = await db.getAllAsync<IpListItemRow>(builtQuery.sql, ...builtQuery.values);
     const hasMore = rows.length > builtQuery.limit;
     return {
       items: rows.slice(0, builtQuery.limit).map(mapIpListItemRow),
       hasMore,
+      totalCount,
     };
   },
 
@@ -523,3 +529,4 @@ export const ipRepository = {
 };
 
 export default ipRepository;
+

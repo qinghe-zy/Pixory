@@ -231,6 +231,7 @@ export const tagRepository = {
     const searchText = input?.searchText?.trim();
     const where = searchText ? 'WHERE tags.name LIKE ? COLLATE NOCASE' : '';
     const values: Array<number | string> = searchText ? [`%${searchText}%`] : [];
+    const countRow = await db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM tags ${where}`, ...values);
     const rows = await db.getAllAsync<TagUsageItemRow>(
       `SELECT
          tags.*,
@@ -250,6 +251,7 @@ export const tagRepository = {
     return {
       items: rows.slice(0, limit).map(mapTagUsageItemRow),
       hasMore: rows.length > limit,
+      totalCount: countRow?.count ?? 0,
     };
   },
 
@@ -476,3 +478,4 @@ export const tagRepository = {
 };
 
 export default tagRepository;
+

@@ -70,6 +70,7 @@ export interface PageRequest {
 export interface PageResult<T> {
   items: T[];
   hasMore: boolean;
+  totalCount?: number;
 }
 
 export type MediaCursorSortOrder = ImageSortOrder;
