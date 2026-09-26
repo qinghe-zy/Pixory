@@ -260,7 +260,7 @@ export function AiHomeScreen({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.screenContent, styles.homeBody, { paddingTop: insets.top + spacing[2], paddingBottom: 96 }]}
+          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top + spacing[2], paddingBottom: 96 }]}
         >
           {/* Start Chat Card + Role Rail */}
           <View style={styles.mainStack}>
@@ -665,6 +665,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   homeBody: {
+    flex: 1,
     gap: rhythm.screenSectionGap,
   },
   topAction: {

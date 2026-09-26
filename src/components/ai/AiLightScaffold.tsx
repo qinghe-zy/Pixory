@@ -98,7 +98,7 @@ export function AiLightScaffold({
         <View style={{ paddingTop: computedTopPadding }} />
       )}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      <View pointerEvents={loading ? 'none' : 'auto'} style={[bodyStyle, loading && styles.loadingContent]}>
+      <View pointerEvents={loading ? 'none' : 'auto'} style={[{ flex: 1 }, bodyStyle, loading && styles.loadingContent]}>
         {children}
       </View>
     </AppScreen>
