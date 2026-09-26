@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
@@ -224,7 +224,7 @@ export function GlobalSearchScreen({
                         setIsHistoryExpanded(true);
                       }}
                     />
-                    <View style={styles.divider} />
+                    <View style={newStyles.separator} />
                   </>
                 )}
                 
@@ -305,6 +305,21 @@ export function GlobalSearchScreen({
   );
 }
 
+// Literal values used for pixel-perfect restoration of reference HTML design
+const htmlColors = {
+  surfaceContainerLowest: '#ffffff',
+  surfaceContainer: '#eeeeee',
+  surfaceContainerHigh: '#e8e8e8',
+  onSurface: '#1a1c1c',
+  onSurfaceVariant: '#444748',
+  outline: '#747878',
+  outlineVariant: '#c4c7c7',
+  primary: '#000000',
+  error: '#ba1a1a',
+  secondary: '#5e5e5e',
+  surface: '#f9f9f9',
+};
+
 function SearchHistoryList({
   history,
   isExpanded,
@@ -332,65 +347,46 @@ function SearchHistoryList({
   const displayHistory = history.slice(0, displayLimit);
 
   return (
-    <View style={styles.historyBlock}>
-      <View style={styles.historyHeader}>
-        <Text style={styles.historyTitle}>历史记录</Text>
-        <View style={styles.headerRight}>
-          {editMode ? (
-            <>
-              <Pressable hitSlop={8} onPress={onClearAll} style={styles.headerAction}>
-                <Text style={styles.headerActionText}>全部删除</Text>
-              </Pressable>
-              <View style={styles.headerDivider} />
-              <Pressable hitSlop={8} onPress={() => setEditMode(false)} style={styles.headerAction}>
-                <Text style={styles.headerActionText}>完成</Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              {history.length > 6 && (
-                <>
-                  <Pressable hitSlop={8} onPress={onToggleExpand} style={styles.headerAction}>
-                    <Text style={styles.headerActionText}>{isExpanded ? '收起' : '展开'}</Text>
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text.tertiary} />
-                  </Pressable>
-                  <View style={styles.headerDivider} />
-                </>
-              )}
-              <Pressable accessibilityLabel="编辑搜索记录" hitSlop={8} onPress={onEditModeStart} style={styles.headerAction}>
-                <Ionicons name="trash-outline" size={16} color={colors.text.tertiary} />
-              </Pressable>
-            </>
-          )}
+    <View style={newStyles.sectionContainer}>
+      <View style={newStyles.header}>
+        <View style={newStyles.headerLeft}>
+          <Text style={newStyles.headerTitle}>历史记录</Text>
+          <Text style={newStyles.headerSubtitle}>RECENT QUERIES</Text>
         </View>
+        <Pressable onPress={onClearAll} style={newStyles.iconButton} hitSlop={8}>
+          <MaterialIcons name="delete" size={16} color={htmlColors.outline} />
+        </Pressable>
       </View>
 
-      <View style={styles.twoColumnList}>
+      <View style={newStyles.grid}>
         {displayHistory.map((item) => (
-          <View key={item.id} style={styles.twoColumnItemWrapper}>
+          <View key={item.id} style={newStyles.gridItemWrapper}>
             <Pressable
-              onPress={() => {
-                if (editMode) onDeleteItem(item.id);
-                else onUseItem(item.keyword);
-              }}
-              style={({ pressed }) => [styles.textItemRow, pressed && styles.pressed]}
+              onPress={() => onUseItem(item.keyword)}
+              style={({ pressed }) => [newStyles.historyItem, pressed && newStyles.pressed]}
             >
-              <Text numberOfLines={1} ellipsizeMode="tail" style={styles.textItemText}>
-                {item.keyword}
-              </Text>
-              {editMode && (
-                <View style={styles.deleteIconWrapper}>
-                  <Ionicons name="close" size={18} color={colors.text.tertiary} />
-                </View>
-              )}
+              <View style={newStyles.itemLeft}>
+                <MaterialIcons name="history" size={13} color={htmlColors.outline} />
+                <Text numberOfLines={1} ellipsizeMode="tail" style={newStyles.itemText}>
+                  {item.keyword}
+                </Text>
+              </View>
+              <Pressable onPress={() => onDeleteItem(item.id)} hitSlop={8} style={newStyles.closeButton}>
+                <MaterialIcons name="close" size={13} color={htmlColors.outline} />
+              </Pressable>
             </Pressable>
           </View>
         ))}
       </View>
       
+      {history.length > 6 && !isExpanded && (
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onToggleExpand}>
+          <Text style={newStyles.expandBtnText}>查看更多历史记录</Text>
+        </Pressable>
+      )}
       {onViewMore && isExpanded && (
-        <Pressable style={styles.viewMoreButton} onPress={onViewMore}>
-          <Text style={styles.viewMoreText}>查看更多搜索记录</Text>
+        <Pressable style={({ pressed }) => [newStyles.expandBtn, pressed && newStyles.pressedBtn]} onPress={onViewMore}>
+          <Text style={newStyles.expandBtnText}>进入完整历史</Text>
         </Pressable>
       )}
     </View>
@@ -407,30 +403,40 @@ function GuessYouWantList({
   onUseItem: (value: string) => void;
 }) {
   return (
-    <View style={styles.historyBlock}>
-      <View style={styles.historyHeader}>
-        <Text style={styles.historyTitle}>猜你想搜</Text>
-        <View style={styles.headerRight}>
-          <Pressable hitSlop={8} onPress={onRefresh} style={styles.headerAction}>
-            <Ionicons name="refresh" size={14} color={colors.text.tertiary} />
-            <Text style={styles.headerActionText}>换一换</Text>
-          </Pressable>
+    <View style={newStyles.sectionContainer}>
+      <View style={newStyles.header}>
+        <View style={newStyles.headerLeft}>
+          <Text style={newStyles.headerTitle}>猜你想搜</Text>
+          <Text style={newStyles.headerSubtitle}>EXPLORE & DISCOVER</Text>
         </View>
+        <Pressable hitSlop={8} onPress={onRefresh} style={newStyles.refreshBtn}>
+          <MaterialIcons name="autorenew" size={14} color={htmlColors.onSurfaceVariant} />
+          <Text style={newStyles.refreshBtnText}>换一换</Text>
+        </Pressable>
       </View>
 
-      <View style={styles.twoColumnList}>
-        {items.map((item) => (
-          <View key={item.id} style={styles.twoColumnItemWrapper}>
-            <Pressable
-              onPress={() => onUseItem(item.name)}
-              style={({ pressed }) => [styles.textItemRow, pressed && styles.pressed]}
-            >
-              <Text numberOfLines={1} ellipsizeMode="tail" style={styles.textItemText}>
-                {item.name}
-              </Text>
-            </Pressable>
-          </View>
-        ))}
+      <View style={newStyles.grid}>
+        {items.map((item, index) => {
+          const dotColor = index % 2 === 0 ? htmlColors.primary : htmlColors.secondary;
+          return (
+            <View key={item.id} style={newStyles.gridItemWrapper}>
+              <Pressable
+                onPress={() => onUseItem(item.name)}
+                style={({ pressed }) => [newStyles.suggestionItem, pressed && newStyles.pressed]}
+              >
+                <View style={newStyles.itemLeft}>
+                  <View style={[newStyles.dot, { backgroundColor: dotColor }]} />
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={newStyles.itemText}>
+                    {item.name}
+                  </Text>
+                </View>
+                <View style={newStyles.badge}>
+                  <Text style={newStyles.badgeText}>角色</Text>
+                </View>
+              </Pressable>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -496,6 +502,169 @@ function ResultRow({ label, meta, onPress, highlight, snippet }: { label: string
   );
 }
 
+const newStyles = StyleSheet.create({
+  sectionContainer: {
+    gap: 8,
+    paddingTop: 4,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-end', // similar to baseline for RN
+    gap: 6,
+  },
+  headerTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: htmlColors.onSurface,
+    letterSpacing: -0.075,
+  },
+  headerSubtitle: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '500',
+    color: htmlColors.outline,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  iconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  refreshBtnText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: htmlColors.onSurfaceVariant,
+    letterSpacing: 0.66,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  gridItemWrapper: {
+    width: '50%',
+    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  historyItem: {
+    height: 40,
+    paddingHorizontal: 12,
+    backgroundColor: htmlColors.surfaceContainerLowest,
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: htmlColors.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  suggestionItem: {
+    height: 44,
+    paddingHorizontal: 12,
+    backgroundColor: htmlColors.surfaceContainerLowest,
+    borderRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: htmlColors.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  itemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    marginRight: 4,
+  },
+  itemText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '400',
+    color: htmlColors.onSurface,
+    flexShrink: 1,
+  },
+  closeButton: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: htmlColors.surfaceContainer,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: htmlColors.outlineVariant,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: htmlColors.onSurfaceVariant,
+    lineHeight: 14,
+  },
+  expandBtn: {
+    width: '100%',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 4,
+    backgroundColor: htmlColors.surfaceContainerLowest,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: htmlColors.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  expandBtnText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: htmlColors.onSurfaceVariant,
+    letterSpacing: -0.1,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    backgroundColor: htmlColors.surfaceContainerHigh,
+    marginVertical: 12,
+  },
+  pressed: {
+    backgroundColor: htmlColors.surfaceContainer,
+  },
+  pressedBtn: {
+    backgroundColor: htmlColors.surfaceContainer,
+  },
+});
+
 const styles = StyleSheet.create({
   content: {
     gap: rhythm.screenSectionGap,
@@ -504,99 +673,7 @@ const styles = StyleSheet.create({
     minHeight: 360,
   },
   historyAndRecommendationsBlock: {
-    gap: rhythm.screenSectionGap,
-  },
-  historyBlock: {
-    gap: rhythm.listCardGap,
-    paddingTop: spacing[1],
-  },
-  historyHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  historyTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.tertiary,
-    fontWeight: '500',
-    fontSize: 15,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-  },
-  headerActionText: {
-    ...typography.textStyles.caption,
-    color: colors.text.tertiary,
-    fontSize: 13,
-  },
-  headerDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 12,
-    backgroundColor: colors.border.default,
-    marginHorizontal: 4,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border.subtle,
-    marginVertical: spacing[1],
-  },
-  twoColumnList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -spacing[2],
-  },
-  twoColumnItemWrapper: {
-    width: '50%',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[2] + 2,
-  },
-  textItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[1],
-  },
-  textItemText: {
-    ...typography.textStyles.body,
-    color: colors.text.title,
-    fontSize: 15,
-    flexShrink: 1,
-  },
-  hotText: {
-    color: '#FF4D4F',
-  },
-  badgeWrapper: {
-    backgroundColor: '#FF7A45',
-    borderRadius: radius.sm,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  badgeText: {
-    ...typography.textStyles.micro,
-    color: '#FFF',
-    fontSize: 10,
-    lineHeight: 12,
-  },
-  deleteIconWrapper: {
-    marginLeft: 'auto',
-  },
-  viewMoreButton: {
-    alignItems: 'center',
-    marginTop: spacing[3],
-    paddingVertical: spacing[1],
-  },
-  viewMoreText: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    // keeping base gap if needed, though handled by separator now
   },
   section: {
     gap: rhythm.listCardGap,
@@ -638,3 +715,4 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
