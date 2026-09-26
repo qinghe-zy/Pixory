@@ -75,13 +75,17 @@ export function GlobalSearchScreen({
   const [messageSortDesc, setMessageSortDesc] = useState(true);
 
   const handleBackPress = useCallback(() => {
+    if (query && query.trim() !== '') {
+      onChangeQuery('');
+      return true;
+    }
     if (activeFilter !== 'all') {
       setActiveFilter('all');
       return true;
     }
     onBack();
     return true;
-  }, [activeFilter, onBack]);
+  }, [query, onChangeQuery, activeFilter, onBack]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
@@ -457,9 +461,7 @@ function SearchFilterRail({ counts, activeFilter, onSelectFilter }: { counts: an
               style={[protoStyles.filterChip, isActive && protoStyles.filterChipActive]}
             >
               <Text style={[protoStyles.filterChipText, isActive && protoStyles.filterChipTextActive]}>{f.label}</Text>
-              <View style={[protoStyles.filterChipCountBox, isActive && protoStyles.filterChipCountBoxActive]}>
-                <Text style={[protoStyles.filterChipCountText, isActive && protoStyles.filterChipCountTextActive]}>{f.count}</Text>
-              </View>
+
             </Pressable>
           );
         })}
@@ -522,7 +524,7 @@ function IpSection({ items, totalCount, onOpen, query, space, activeFilter, onVi
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={`${totalCount} 项`} />
+      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.ipCard}>
           <View style={protoStyles.ipCardRow}>
@@ -567,7 +569,7 @@ function RoleSection({ items, totalCount, onOpen, query, space, activeFilter, on
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={`${totalCount} 命中 ›`} />
+      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.roleCard}>
           <View style={protoStyles.roleAvatarBox}>
@@ -607,7 +609,7 @@ function GroupSection({ items, totalCount, onOpen, query, space, activeFilter, o
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={`${totalCount} 个目录`} />
+      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.ipId, item.id)} style={protoStyles.groupCard}>
@@ -649,7 +651,7 @@ function TagSection({ items, totalCount, onOpen, query, activeFilter, onViewMore
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={`${totalCount} 个匹配`} />
+      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" />
       <View style={protoStyles.tagFlow}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.tagPill}>
@@ -675,7 +677,7 @@ function ImageSection({ items, totalCount, onOpen, query, space, activeFilter, o
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" count={`${totalCount} 个文件`} />
+      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.imageCard}>
@@ -708,7 +710,7 @@ function ThreadSection({ items, totalCount, onOpen, query, activeFilter, onViewM
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={`${totalCount} 个活跃流`} />
+      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" />
       <View style={protoStyles.threadList}>
         {displayItems.map((item: any, idx: number) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={[protoStyles.threadItem, idx > 0 && protoStyles.threadItemBorder]}>
@@ -744,7 +746,6 @@ function MessageSection({ items, totalCount, onOpen, query, activeFilter, sortDe
       <SectionHeader 
         title="聊天记录" 
         subtitle="MESSAGES · 精确高亮" 
-        count={`${totalCount} 条记录`}
         actionText={sortDesc ? '时间倒序' : '时间正序'}
         onAction={onToggleSort}
       />
