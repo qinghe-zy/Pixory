@@ -212,7 +212,8 @@ export function AiHomeScreen({
   const roleShortcuts = useMemo(() => buildRoleLibraryShortcuts(roleCards), [roleCards]);
 
   return (
-    <AiLightScaffold
+    <View style={{ flex: 1 }}>
+      <AiLightScaffold
       backgroundColor="#f9f9f9"
       bodyStyle={styles.homeBody}
       contentContainerStyle={styles.screenContent}
@@ -450,7 +451,9 @@ export function AiHomeScreen({
           onClose={() => setActionMenuState(null)}
           visible={Boolean(actionMenuState)}
         />
-    </AiLightScaffold>
+      </AiLightScaffold>
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9', zIndex: 99 }} pointerEvents="none" />
+    </View>
   );
 }
 
@@ -824,5 +827,6 @@ const styles = StyleSheet.create({
   },
 
 });
+
 
 

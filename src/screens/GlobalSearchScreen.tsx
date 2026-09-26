@@ -2,8 +2,9 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, TextInput } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
 import type { ReactNode } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { searchGlobalMessages, searchGlobalThreads, type AiHomeThreadItem } from '../ai/aiChatService';
 import { listRoleCards } from '../ai/aiRoleCardService';
@@ -60,6 +61,7 @@ export function GlobalSearchScreen({
   onOpenRoleCard,
   onOpenHistory,
 }: GlobalSearchScreenProps) {
+  const insets = useSafeAreaInsets();
   const keyword = query.trim();
   const [debouncedKeyword, setDebouncedKeyword] = useState(keyword);
   const resultKey = JSON.stringify([space, debouncedKeyword]);
@@ -223,35 +225,37 @@ export function GlobalSearchScreen({
 
   return (
     <>
-      <ScreenScaffold backgroundColor="#f9f9f9" showHeader={false} scrollable>
-        <View style={newStyles.topBar}>
-          <Pressable onPress={onBack} style={newStyles.backButton} hitSlop={8}>
-            <MaterialIcons name="arrow-back" size={20} color={htmlColors.onSurface} />
-          </Pressable>
-          <Text style={newStyles.topBarTitle}>全局搜索</Text>
-          <View style={{ width: 28, height: 28 }} />
-        </View>
-
-        <View style={newStyles.searchBarContainer}>
-          <View style={newStyles.searchBarInner}>
-            <MaterialIcons name="search" size={17} color={htmlColors.onSurfaceVariant} />
-            <TextInput
+      <ScreenScaffold
+        backgroundColor="#f9f9f9"
+        fullScreen
+        showHeader={false}
+        scrollable={false}
+        contentContainerStyle={{ paddingHorizontal: 0, gap: 0 }}
+      >
+        <View style={[newStyles.stickyHeaderBlock, { paddingTop: insets.top }]}>
+          <View style={newStyles.topBar}>
+            <Pressable onPress={onBack} style={newStyles.backButton} hitSlop={8}>
+              <MaterialIcons name="arrow-back" size={24} color={htmlColors.onSurface} />
+            </Pressable>
+            <Text style={newStyles.topBarTitle}>全局搜索</Text>
+            <View style={{ width: 44, height: 44 }} />
+          </View>
+          <View style={newStyles.searchBarContainer}>
+            <SearchBar
               value={query}
               onChangeText={onChangeQuery}
               placeholder="搜聊天 / 记录 / 角色 / 素材..."
-              placeholderTextColor={htmlColors.outline}
-              style={newStyles.searchInput}
-              selectionColor={htmlColors.primary}
             />
-            {query ? (
-              <Pressable onPress={() => onChangeQuery('')} style={newStyles.clearInputBtn} hitSlop={8}>
-                <MaterialIcons name="close" size={16} color={htmlColors.outline} />
-              </Pressable>
-            ) : null}
           </View>
         </View>
         
-        <Pressable style={{ flex: 1 }} onPress={() => setHistoryEditMode(false)}>
+        <ScrollView
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={newStyles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setHistoryEditMode(false)}>
           <PageStateBlock
             emptyDescription=""
             emptyIconName="search-outline"
@@ -339,6 +343,7 @@ export function GlobalSearchScreen({
             )}
           </PageStateBlock>
         </Pressable>
+        </ScrollView>
       </ScreenScaffold>
       
       <ParallaxLightSweep
@@ -573,69 +578,42 @@ function ResultRow({ label, meta, onPress, highlight, snippet }: { label: string
 }
 
 const newStyles = StyleSheet.create({
+  stickyHeaderBlock: {
+    backgroundColor: '#f9f9f9',
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 120,
+    gap: 16,
+  },
   topBar: {
     height: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(249, 249, 249, 0.8)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    marginHorizontal: -16,
   },
   backButton: {
-    width: 28,
-    height: 28,
-    marginLeft: -4,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    marginLeft: -12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   topBarTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '500',
-    color: htmlColors.onSurface,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    color: htmlColors.primary,
     letterSpacing: -0.075,
   },
   searchBarContainer: {
-    width: '100%',
     paddingHorizontal: 16,
     paddingTop: 4,
-    paddingBottom: 8,
-    backgroundColor: htmlColors.surface,
-    marginHorizontal: -16,
-  },
-  searchBarInner: {
-    height: 40,
-    paddingHorizontal: 12,
-    backgroundColor: htmlColors.surfaceContainerLowest,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    shadowColor: htmlColors.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  searchInput: {
-    ...typography.textStyles.body,
-    color: htmlColors.onSurface,
-    flex: 1,
-    paddingVertical: 0,
-    letterSpacing: -0.1,
-  },
-  clearInputBtn: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sectionContainer: {
     gap: 8,
