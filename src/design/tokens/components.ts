@@ -19,7 +19,7 @@ export const componentTokens = {
   primaryButton: {
     height: metrics.bottomActionHeight,
     horizontalPadding: 24,
-    radius: radius.pill,
+    radius: 4,
   },
   iconButton: {
     size: metrics.iconButtonSize,

@@ -44,7 +44,7 @@ export function AppDialog({
   compactActions = false,
   accent = 'default',
   dismissible = true,
-  appearance = 'default',
+  appearance = 'opaqueMonochrome',
 }: AppDialogProps) {
   const isOpaqueMonochrome = appearance === 'opaqueMonochrome';
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);

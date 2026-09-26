@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
 import { listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
 import { AppDialog } from '../components/AppDialog';
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
@@ -212,6 +212,33 @@ export function AiHomeScreen({
 
   const roleShortcuts = useMemo(() => buildRoleLibraryShortcuts(roleCards), [roleCards]);
 
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const newChatShrunkStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [60, 100], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [60, 100], [-100, 0], Extrapolation.CLAMP) }],
+  }));
+
+  const roleRailShrunkStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [140, 180], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [140, 180], [-100, 0], Extrapolation.CLAMP) }],
+  }));
+
+  const searchShrunkStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [220, 260], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [220, 260], [-100, 0], Extrapolation.CLAMP) }],
+  }));
+
+  const stickyBgStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [220, 260], [0, 1], Extrapolation.CLAMP),
+  }));
+
   return (
     <View style={{ flex: 1 }}>
       <AiLightScaffold
@@ -222,11 +249,19 @@ export function AiHomeScreen({
       errorMessage={errorMessage}
       footer={footer}
       headerDividerVisible={false}
-      scrollable
-      showHeader={false}
-      title=""
-    >
-      <View style={styles.mainStack}>
+      scrollable={false}
+        showHeader={false}
+        title=""
+      >
+        <Animated.ScrollView
+          bounces={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={[styles.screenContent, styles.homeBody, { paddingTop: insets.top + spacing[2], paddingBottom: 96 }]}
+        >
+          <View style={styles.mainStack}>
         <Animated.View style={[styles.primaryChatCardWrapper, primaryCardAnimatedStyle]}>
           <Pressable 
             accessibilityRole="button" 
@@ -415,6 +450,7 @@ export function AiHomeScreen({
           ) : null}
         </AppDialog>
 
+        </Animated.ScrollView>
         <AnchoredContextMenu
           actions={actionMenuState ? [
             {
@@ -471,6 +507,56 @@ export function AiHomeScreen({
           onClose={() => setActionMenuState(null)}
           visible={Boolean(actionMenuState)}
         />
+
+        {/* --- STICKY FLOATING HEADER --- */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100 }} pointerEvents="box-none">
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#f9f9f9', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }, stickyBgStyle]} pointerEvents="none" />
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], paddingTop: insets.top, height: 48 }} pointerEvents="box-none">
+            
+            {/* Left: Search */}
+            <Animated.View style={[{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }, searchShrunkStyle]} pointerEvents="auto">
+              <Pressable
+                accessibilityLabel="搜索"
+                onPress={onOpenSearch}
+                style={({ pressed }) => [{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+              >
+                <Ionicons name="search" size={20} color={aiLightColors.primary} />
+              </Pressable>
+            </Animated.View>
+
+            {/* Center: Role Rail */}
+            <Animated.View style={[{ flex: 1, paddingHorizontal: 12, height: 36, justifyContent: 'center' }, roleRailShrunkStyle]} pointerEvents="auto">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 32 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
+                {roleShortcuts.map((role) => (
+                  <Pressable
+                    accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
+                    accessibilityRole="button"
+                    key={role.roleCardId}
+                    onPress={() => onStartChatWithRole(role.roleCardId)}
+                    style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, overflow: 'hidden' }, pressed && styles.pressed]}
+                  >
+                    <SecureImage contentFit="cover" space={space} style={{ width: '100%', height: '100%' }} uri={role.avatarUri} />
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Animated.View>
+
+            {/* Right: New Chat */}
+            <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-end', justifyContent: 'center' }, newChatShrunkStyle]} pointerEvents="auto">
+              <Pressable
+                accessibilityLabel="开始聊天"
+                onPress={onStartNormalChat}
+                style={({ pressed }) => [{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.primary} name="chatbubble-outline" size={22} />
+                <View style={{ position: 'absolute', right: 0, bottom: 2, backgroundColor: '#f9f9f9', borderRadius: 10 }}>
+                  <Ionicons color={aiLightColors.primary} name="add-circle" size={14} />
+                </View>
+              </Pressable>
+            </Animated.View>
+
+          </View>
+        </View>
       </AiLightScaffold>
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9', zIndex: 99 }} pointerEvents="none" />
     </View>
@@ -842,6 +928,7 @@ const styles = StyleSheet.create({
   },
 
 });
+
 
 
 
