@@ -1,19 +1,19 @@
 {
-  "version": "2.8.7.1",
+  "version": "2.8.7.2",
   "versionCode": 2871,
   "enabled": true,
   "forceUpdate": false,
   "minSupportVersion": "2.1.2",
-  "message": "Pixory 2.8.7.1 正式版发布。修复数据库字段兼容性问题，优化视频详情页体验，提升 IP 与图片管理稳定性。推荐所有用户更新。",
+  "message": "Pixory 2.8.7.2 正式版发布。修复数据库字段兼容性问题，优化视频详情页体验，提升 IP 与图片管理稳定性。推荐所有用户更新。",
   "detailLines": [
     "🔧 数据库兼容性：修复 repository 层字段映射问题，提升数据读写稳定性",
     "🎬 视频详情优化：改善视频详情页交互与显示体验",
     "🗂️ IP 与图片管理：优化 IP 仓库与图片仓库逻辑，提升可靠性",
     "🏷️ 标签管理增强：修复标签仓库相关问题"
   ],
-  "latestVersion": "2.8.7.1",
+  "latestVersion": "2.8.7.2",
   "latestVersionCode": 2871,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 数据库修复：修复 repository 字段兼容性；2. 视频详情优化；3. IP/图片/标签管理稳定性提升。",
-  "releaseNotes": "Pixory 2.8.7.1 正式版：修复数据库字段兼容性问题，优化视频详情页，提升 IP 与图片管理稳定性。"
+  "releaseNotes": "Pixory 2.8.7.2 正式版：修复数据库字段兼容性问题，优化视频详情页，提升 IP 与图片管理稳定性。"
 }

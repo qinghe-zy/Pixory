@@ -1,15 +1,26 @@
 import 'react-native-gesture-handler';
+import React from 'react';
 import { registerRootComponent } from 'expo';
 import { AppRegistry } from 'react-native';
 
-import App from './App';
-
 import { GlobalErrorBoundary } from './src/components/GlobalErrorBoundary';
 
-const Root = () => (
-  <GlobalErrorBoundary>
-    <App />
-  </GlobalErrorBoundary>
+// Use dynamic inline require for App to catch module evaluation errors (e.g. top-level syntax/reference errors in App.tsx)
+let App: any;
+try {
+  App = require('./App').default;
+} catch (e: any) {
+  // If App.tsx fails to evaluate, fallback to a component that throws during render
+  // This guarantees GlobalErrorBoundary will catch it and display the recovery UI
+  App = () => {
+    throw e;
+  };
+}
+
+const Root = () => React.createElement(
+  GlobalErrorBoundary,
+  null,
+  React.createElement(App, null)
 );
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
