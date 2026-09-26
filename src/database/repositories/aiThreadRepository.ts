@@ -348,12 +348,13 @@ export type AiMessageVersionRow = Omit<AiMessageVersionRecord, 'citations'> & {
   citationsJson: string;
 };
 
-export type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments' | 'thinkingDisabled'> & {
+export type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments' | 'thinkingDisabled' | 'isPinned'> & {
   includeIpDocuments: number;
   modelSnapshotJson: string;
   roleCardId: string | null;
   roleSnapshotJson: string;
   thinkingDisabled: number;
+  isPinned: number;
 };
 
 export type AiCitationRow = Omit<AiCitationRecord, 'locator'> & {
@@ -386,6 +387,7 @@ export interface CreateAiThreadInput {
   boundaryMode?: AiBoundaryMode;
   summary?: string | null;
   lastMessagePreview?: string | null;
+  isPinned?: boolean;
 }
 
 export interface AiThreadListQuery {
@@ -407,6 +409,7 @@ export interface AiThreadHistoryPageCursor {
   lastMessageAt: string;
   createdAt: string;
   id: string;
+  isPinned: boolean;
 }
 
 export interface AiThreadHistoryPage {
@@ -439,6 +442,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'materialRulesSnapshot'
     | 'boundaryMode'
     | 'summary'
+    | 'isPinned'
   >
 > & {
   lastMessagePreview?: string | null;
@@ -737,6 +741,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt ?? null,
+    isPinned: sqliteToBoolean(row.isPinned),
   };
 }
 
@@ -1320,8 +1325,9 @@ export const aiThreadRepository = {
         lastMessagePreview,
         createdAt,
         updatedAt,
-        archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        archivedAt,
+        isPinned
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.space,
       input.contextType,
@@ -1348,7 +1354,9 @@ export const aiThreadRepository = {
       input.summary ?? null,
       normalizeOptionalText(input.lastMessagePreview) ?? null,
       now,
-      now
+      now,
+      null,
+      booleanToSqlite(input.isPinned ?? false)
     );
 
     const thread = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', input.id);
@@ -1379,6 +1387,7 @@ export const aiThreadRepository = {
         ? undefined
         : Math.max(1, Math.floor(patch.contextHistoryRoundLimit)),
       thinkingDisabled: patch.thinkingDisabled === undefined ? undefined : booleanToSqlite(patch.thinkingDisabled),
+      isPinned: patch.isPinned === undefined ? undefined : booleanToSqlite(patch.isPinned),
       systemPrompt: patch.systemPrompt,
       materialRulesSnapshot: patch.materialRulesSnapshot,
       boundaryMode: patch.boundaryMode,
@@ -2620,7 +2629,8 @@ export const aiThreadRepository = {
        LEFT JOIN ai_knowledge_bases ON ai_knowledge_bases.id = ai_threads.boundKnowledgeBaseId
        JOIN projected_history ON projected_history.threadId = ai_threads.id
        WHERE ${clauses.join(' AND ')}
-       ORDER BY projected_history.lastMessageAt DESC,
+       ORDER BY ai_threads.isPinned DESC,
+                projected_history.lastMessageAt DESC,
                 ai_threads.createdAt DESC,
                 ai_threads.id DESC
        LIMIT ?`,
@@ -2639,7 +2649,7 @@ export const aiThreadRepository = {
       hasMore: rows.length > limit,
       items,
       nextCursor: last?.lastMessageAt
-        ? { createdAt: last.createdAt, id: last.id, lastMessageAt: last.lastMessageAt }
+        ? { createdAt: last.createdAt, id: last.id, lastMessageAt: last.lastMessageAt, isPinned: last.isPinned }
         : null,
     };
   },
@@ -3887,16 +3897,28 @@ export const aiThreadRepository = {
     }
   },
 
-  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number }): Promise<(AiMessageRecord & { threadTitle: string })[]> {
+  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number; sortDesc?: boolean }): Promise<{ items: (AiMessageRecord & { threadTitle: string })[], totalCount: number }> {
     const ftsQuery = buildFtsQuery(input.query);
     if (!ftsQuery || input.limit <= 0) {
-      return [];
+      return { items: [], totalCount: 0 };
     }
     const fallbackTerms = buildSearchTerms(input.query).slice(0, 8);
     const fallbackClause = fallbackTerms.length > 0 ? `AND (${fallbackTerms.map(() => 'candidate.content LIKE ?').join(' OR ')})` : 'AND candidate.content LIKE ?';
     const fallbackValues = fallbackTerms.length > 0 ? fallbackTerms.map((term) => `%${term}%`) : [`%${input.query.trim()}%`];
     const fallbackSearch = async () => {
-      return db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
+      const countRow = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count
+         FROM ai_messages candidate
+         JOIN ai_threads t ON t.id = candidate.threadId
+         WHERE t.space = ?
+           AND t.archivedAt IS NULL
+           AND candidate.status = 'completed'
+           AND candidate.role <> 'system'
+           ${fallbackClause}`,
+        space,
+        ...fallbackValues
+      );
+      const items = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
         `SELECT candidate.*, t.title as threadTitle
          FROM ai_messages candidate
          JOIN ai_threads t ON t.id = candidate.threadId
@@ -3905,14 +3927,28 @@ export const aiThreadRepository = {
            AND candidate.status = 'completed'
            AND candidate.role <> 'system'
            ${fallbackClause}
-         ORDER BY candidate.updatedAt DESC
+         ORDER BY candidate.updatedAt ${input.sortDesc === false ? 'ASC' : 'DESC'}
          LIMIT ?`,
         space,
         ...fallbackValues,
         input.limit
       );
+      return { items, totalCount: countRow?.count ?? 0 };
     };
     try {
+      const countRow = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count
+         FROM ai_message_fts
+         JOIN ai_messages ON ai_messages.id = ai_message_fts.id
+         JOIN ai_threads t ON t.id = ai_messages.threadId
+         WHERE ai_message_fts MATCH ?
+           AND t.space = ?
+           AND t.archivedAt IS NULL
+           AND ai_messages.status = 'completed'
+           AND ai_messages.role <> 'system'`,
+        ftsQuery,
+        space
+      );
       const rows = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
         `SELECT ai_messages.*, t.title as threadTitle
          FROM ai_message_fts
@@ -3923,13 +3959,13 @@ export const aiThreadRepository = {
            AND t.archivedAt IS NULL
            AND ai_messages.status = 'completed'
            AND ai_messages.role <> 'system'
-         ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
+         ORDER BY ai_messages.updatedAt ${input.sortDesc === false ? 'ASC' : 'DESC'}
          LIMIT ?`,
         ftsQuery,
         space,
         input.limit
       );
-      return rows.length > 0 ? rows : fallbackSearch();
+      return rows.length > 0 ? { items: rows, totalCount: countRow?.count ?? 0 } : fallbackSearch();
     } catch {
       return fallbackSearch();
     }

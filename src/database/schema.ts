@@ -2296,3 +2296,7 @@ SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson,
 FROM ai_memories
 WHERE status = 'active' AND supersededByMemoryId IS NULL;
 `;
+
+export const MIGRATION_STATEMENTS_V65 = `nALTER TABLE ai_threads ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_ai_threads_is_pinned ON ai_threads(isPinned);
+`;

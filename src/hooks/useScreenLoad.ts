@@ -7,6 +7,7 @@ interface UseScreenLoadOptions<T> {
   formatError?: (error: unknown) => string;
   initialData?: T;
   deferUntilInteractions?: boolean;
+    keepPreviousData?: boolean;
 }
 
 const screenDataCache = new Map<string, any>();
@@ -47,7 +48,7 @@ export function useScreenLoad<T>(
 
   const load = useCallback(async () => {
     const request = requestGateRef.current.beginRequest();
-    if (!screenDataCache.has(cacheKey)) { setIsLoading(true); }
+    if (!screenDataCache.has(cacheKey) && !options?.keepPreviousData) { setIsLoading(true); }
     setErrorMessage(null);
 
     try {

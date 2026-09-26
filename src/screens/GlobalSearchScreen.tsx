@@ -159,7 +159,7 @@ export function GlobalSearchScreen({
         imageRepository.findFilteredPage(db, { mediaType: 'all', searchText: debouncedKeyword, limit: activeFilter === 'image' ? 1000 : SEARCH_RESULT_LIMIT }),
         listRoleCards(space),
         searchGlobalThreads({ space, query: debouncedKeyword, limit: activeFilter === 'thread' ? 1000 : SEARCH_RESULT_LIMIT }),
-        searchGlobalMessages({ space, query: debouncedKeyword, limit: activeFilter === 'message' ? 1000 : SEARCH_RESULT_LIMIT }),
+        searchGlobalMessages({ space, query: debouncedKeyword, limit: activeFilter === 'message' ? 1000 : SEARCH_RESULT_LIMIT, sortDesc: messageSortDesc }),
       ]));
 
       const filteredRolesAll = allRoles.filter((role) => pinyinMatch.match(role.name, debouncedKeyword));
@@ -201,6 +201,7 @@ export function GlobalSearchScreen({
         return `搜索失败：${message}`;
       },
       initialData: { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey: '', counts: { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } },
+        keepPreviousData: true,
     }
   );
 
