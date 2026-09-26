@@ -44,7 +44,7 @@ const SEARCH_RESULT_LIMIT = 20;
 interface RecommendedItem {
   id: string;
   name: string;
-  type: 'IP' | '聊天' | '角色' | '分组' | '标签' | '素材';
+  type: 'IP' | '聊天' | '角色' | '分组' | '标签';
 }
 
 export function GlobalSearchScreen({
@@ -96,13 +96,12 @@ export function GlobalSearchScreen({
     let isMounted = true;
     const fetchRecommendations = async () => {
       try {
-        const [ipPage, groupPage, tagList, allRoles, threads, imagePage] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        const [ipPage, groupPage, tagList, allRoles, threads] = await runWithDatabaseSpace(space, (db) => Promise.all([
           ipRepository.findLibraryItemsPage(db, { limit: 15 }),
           groupRepository.findOverviewPage(db, { limit: 15 }),
           tagRepository.findPopular(db, 15),
           listRoleCards(space),
           searchGlobalThreads({ space, query: '', limit: 15 }),
-          imageRepository.findFilteredPage(db, { mediaType: 'all', limit: 15 }),
         ]));
 
         if (!isMounted) return;
@@ -112,8 +111,7 @@ export function GlobalSearchScreen({
         ipPage.items.forEach(i => items.push({ id: `ip_${i.id}`, name: i.name, type: 'IP' }));
         groupPage.items.forEach(g => items.push({ id: `group_${g.id}`, name: g.name, type: '分组' }));
         tagList.forEach(t => items.push({ id: `tag_${t.id}`, name: t.name, type: '标签' }));
-        threads.forEach(t => items.push({ id: `thread_${t.id}`, name: t.title || 'Chat', type: '聊天' }));
-        imagePage.items.forEach(img => items.push({ id: `image_${img.id}`, name: img.originalFilename || '未命名素材', type: '素材' }));
+        threads.items.forEach((t: AiHomeThreadItem) => items.push({ id: `thread_${t.id}`, name: t.title || 'Chat', type: '聊天' }));
 
         setAllRecommendedItems(items);
         
@@ -143,10 +141,11 @@ export function GlobalSearchScreen({
     messages: { id: string; threadId: string; threadTitle: string; content: string; createdAt: string }[];
     roles: AiRoleCardRecord[];
     resultKey: string;
+    counts: { ips: number; groups: number; tags: number; images: number; threads: number; messages: number; roles: number; all: number };
   }>(
     async () => {
       if (!debouncedKeyword) {
-        return { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey };
+        return { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey, counts: { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } };
       }
 
       const [ipPage, groups, tagPage, imagePage, allRoles, threads, messagesRes] = await runWithDatabaseSpace(space, (db) => Promise.all([
@@ -159,15 +158,27 @@ export function GlobalSearchScreen({
         searchGlobalMessages({ space, query: debouncedKeyword, limit: activeFilter === 'message' ? 1000 : SEARCH_RESULT_LIMIT }),
       ]));
 
-      const filteredRoles = allRoles.filter((role) => pinyinMatch.match(role.name, debouncedKeyword)).slice(0, SEARCH_RESULT_LIMIT);
+      const filteredRolesAll = allRoles.filter((role) => pinyinMatch.match(role.name, debouncedKeyword));
+      const filteredRolesSlice = filteredRolesAll.slice(0, activeFilter === 'role' ? 1000 : SEARCH_RESULT_LIMIT);
+
+      const counts = {
+        ips: ipPage.totalCount ?? ipPage.items.length,
+        groups: groups.totalCount,
+        tags: tagPage.totalCount ?? tagPage.items.length,
+        images: imagePage.totalCount ?? imagePage.items.length,
+        roles: filteredRolesAll.length,
+        threads: threads.totalCount,
+        messages: messagesRes.totalCount,
+      };
+      const totalCount = counts.ips + counts.groups + counts.tags + counts.images + counts.roles + counts.threads + counts.messages;
 
       return {
         ips: ipPage.items,
-        groups,
+        groups: groups.items,
         tags: tagPage.items,
         images: imagePage.items,
-        roles: filteredRoles,
-        threads,
+        roles: filteredRolesSlice,
+        threads: threads.items,
         messages: messagesRes.results.map((res) => ({
           id: res.messageId,
           threadId: res.threadId,
@@ -176,6 +187,7 @@ export function GlobalSearchScreen({
           createdAt: res.createdAt,
         })),
         resultKey,
+        counts: { ...counts, all: totalCount },
       };
     },
     [debouncedKeyword, space, activeFilter, messageSortDesc],
@@ -184,7 +196,7 @@ export function GlobalSearchScreen({
         const message = error instanceof Error ? error.message : '未知错误';
         return `搜索失败：${message}`;
       },
-      initialData: { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey: '' },
+      initialData: { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey: '', counts: { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } },
     }
   );
 
@@ -197,7 +209,8 @@ export function GlobalSearchScreen({
   const threads = isCurrentResult ? data.threads : [];
   const messages = isCurrentResult ? data.messages : [];
 
-  const totalCount = ips.length + groups.length + tags.length + images.length + roles.length + threads.length + messages.length;
+  const counts = isCurrentResult && data.counts ? data.counts : { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 };
+  const totalCount = counts.all;
   const isSearchLoading = Boolean(keyword) && (isLoading || !isCurrentResult);
   const isEmpty = !isSearchLoading && totalCount === 0;
   const showHistory = !keyword;
@@ -278,7 +291,7 @@ export function GlobalSearchScreen({
           
           {!showHistory && (
              <SearchFilterRail 
-                counts={{ ips: ips.length, roles: roles.length, groups: groups.length, tags: tags.length, images: images.length, threads: threads.length, messages: messages.length, all: totalCount }}
+                counts={counts}
                 activeFilter={activeFilter}
                 onSelectFilter={setActiveFilter}
              />
@@ -340,7 +353,7 @@ export function GlobalSearchScreen({
               <View style={protoStyles.content}>
                 {/* 1. IP */}
                 {(activeFilter === 'all' || activeFilter === 'ip') && ips.length > 0 && (
-                  <IpSection items={ips} onOpen={onOpenIp} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('ip')} />
+                  <IpSection items={ips} totalCount={counts.ips} onOpen={onOpenIp} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('ip')} />
                 )}
                 {/* 2. Role Cards */}
                 {(activeFilter === 'all' || activeFilter === 'role') && roles.length > 0 && (
@@ -348,23 +361,23 @@ export function GlobalSearchScreen({
                 )}
                 {/* 3. Groups */}
                 {(activeFilter === 'all' || activeFilter === 'group') && groups.length > 0 && (
-                  <GroupSection items={groups} onOpen={onOpenGroup} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('group')} />
+                  <GroupSection items={groups} totalCount={counts.groups} onOpen={onOpenGroup} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('group')} />
                 )}
                 {/* 4. Tags */}
                 {(activeFilter === 'all' || activeFilter === 'tag') && tags.length > 0 && (
-                  <TagSection items={tags} onOpen={onOpenTag} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('tag')} />
+                  <TagSection items={tags} totalCount={counts.tags} onOpen={onOpenTag} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('tag')} />
                 )}
                 {/* 5. Images */}
                 {(activeFilter === 'all' || activeFilter === 'image') && images.length > 0 && (
-                  <ImageSection items={images} onOpen={onOpenImageDetail} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('image')} />
+                  <ImageSection items={images} totalCount={counts.images} onOpen={onOpenImageDetail} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('image')} />
                 )}
                 {/* 6. Threads */}
                 {(activeFilter === 'all' || activeFilter === 'thread') && threads.length > 0 && (
-                  <ThreadSection items={threads} onOpen={onOpenThread} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('thread')} />
+                  <ThreadSection items={threads} totalCount={counts.threads} onOpen={onOpenThread} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('thread')} />
                 )}
                 {/* 7. Messages */}
                 {(activeFilter === 'all' || activeFilter === 'message') && messages.length > 0 && (
-                  <MessageSection items={messages} onOpen={onOpenThread} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('message')} sortDesc={messageSortDesc} onToggleSort={() => setMessageSortDesc(!messageSortDesc)} />
+                  <MessageSection items={messages} totalCount={counts.messages} onOpen={onOpenThread} query={debouncedKeyword} activeFilter={activeFilter} onViewMore={() => setActiveFilter('message')} sortDesc={messageSortDesc} onToggleSort={() => setMessageSortDesc(!messageSortDesc)} />
                 )}
               </View>
             )}
@@ -437,7 +450,6 @@ function SearchFilterRail({ counts, activeFilter, onSelectFilter }: { counts: an
         {filters.map((f) => {
           if (f.count === 0 && f.key !== 'all') return null;
           const isActive = activeFilter === f.key;
-          const showCount = isActive || f.count < 20;
           return (
             <Pressable
               key={f.key}
@@ -445,11 +457,9 @@ function SearchFilterRail({ counts, activeFilter, onSelectFilter }: { counts: an
               style={[protoStyles.filterChip, isActive && protoStyles.filterChipActive]}
             >
               <Text style={[protoStyles.filterChipText, isActive && protoStyles.filterChipTextActive]}>{f.label}</Text>
-              {showCount && (
-                <View style={[protoStyles.filterChipCountBox, isActive && protoStyles.filterChipCountBoxActive]}>
-                  <Text style={[protoStyles.filterChipCountText, isActive && protoStyles.filterChipCountTextActive]}>{f.count}</Text>
-                </View>
-              )}
+              <View style={[protoStyles.filterChipCountBox, isActive && protoStyles.filterChipCountBoxActive]}>
+                <Text style={[protoStyles.filterChipCountText, isActive && protoStyles.filterChipCountTextActive]}>{f.count}</Text>
+              </View>
             </Pressable>
           );
         })}
@@ -505,14 +515,14 @@ function SectionHeader({ title, subtitle, count, actionText, onAction }: any) {
   );
 }
 
-function IpSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+function IpSection({ items, totalCount, onOpen, query, space, activeFilter, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 3) : items;
   const hasMore = isAllFilter && items.length > 3;
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 项`} />
+      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={`${totalCount} 项`} />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.ipCard}>
           <View style={protoStyles.ipCardRow}>
@@ -550,14 +560,14 @@ function IpSection({ items, onOpen, query, space, activeFilter, onViewMore }: an
   );
 }
 
-function RoleSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+function RoleSection({ items, totalCount, onOpen, query, space, activeFilter, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 3) : items;
   const hasMore = isAllFilter && items.length > 3;
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 命中 ›`} />
+      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={`${totalCount} 命中 ›`} />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.roleCard}>
           <View style={protoStyles.roleAvatarBox}>
@@ -590,14 +600,14 @@ function RoleSection({ items, onOpen, query, space, activeFilter, onViewMore }: 
   );
 }
 
-function GroupSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+function GroupSection({ items, totalCount, onOpen, query, space, activeFilter, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 6) : items;
   const hasMore = isAllFilter && items.length > 6;
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 个目录`} />
+      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={`${totalCount} 个目录`} />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.ipId, item.id)} style={protoStyles.groupCard}>
@@ -632,14 +642,14 @@ function GroupSection({ items, onOpen, query, space, activeFilter, onViewMore }:
   );
 }
 
-function TagSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
+function TagSection({ items, totalCount, onOpen, query, activeFilter, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 10) : items;
   const hasMore = isAllFilter && items.length > 10;
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 个匹配`} />
+      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={`${totalCount} 个匹配`} />
       <View style={protoStyles.tagFlow}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.tagPill}>
@@ -658,14 +668,14 @@ function TagSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
   );
 }
 
-function ImageSection({ items, onOpen, query, space, activeFilter, onViewMore }: any) {
+function ImageSection({ items, totalCount, onOpen, query, space, activeFilter, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 6) : items;
   const hasMore = isAllFilter && items.length > 6;
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" />
+      <SectionHeader title="图片 / 素材" subtitle="ASSETS · 视觉切片" count={`${totalCount} 个文件`} />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.imageCard}>
@@ -691,14 +701,14 @@ function ImageSection({ items, onOpen, query, space, activeFilter, onViewMore }:
   );
 }
 
-function ThreadSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
+function ThreadSection({ items, totalCount, onOpen, query, activeFilter, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 3) : items;
   const hasMore = isAllFilter && items.length > 3;
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 个活跃流`} />
+      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={`${totalCount} 个活跃流`} />
       <View style={protoStyles.threadList}>
         {displayItems.map((item: any, idx: number) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={[protoStyles.threadItem, idx > 0 && protoStyles.threadItemBorder]}>
@@ -724,7 +734,7 @@ function ThreadSection({ items, onOpen, query, activeFilter, onViewMore }: any) 
   );
 }
 
-function MessageSection({ items, onOpen, query, activeFilter, sortDesc, onToggleSort, onViewMore }: any) {
+function MessageSection({ items, totalCount, onOpen, query, activeFilter, sortDesc, onToggleSort, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 10) : items;
   const hasMore = isAllFilter && items.length > 10;
@@ -734,7 +744,7 @@ function MessageSection({ items, onOpen, query, activeFilter, sortDesc, onToggle
       <SectionHeader 
         title="聊天记录" 
         subtitle="MESSAGES · 精确高亮" 
-        count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 条记录`}
+        count={`${totalCount} 条记录`}
         actionText={sortDesc ? '时间倒序' : '时间正序'}
         onAction={onToggleSort}
       />
@@ -1589,7 +1599,6 @@ function GuessYouWantList({
       case '聊天': return htmlColors.outline;      
       case '标签': return htmlColors.outlineVariant; 
       case '分组': return htmlColors.error;        
-      case '素材': return htmlColors.onSurfaceVariant; 
       default: return htmlColors.primary;
     }
   };
@@ -1633,5 +1642,24 @@ function GuessYouWantList({
     </View>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -2930,19 +2930,21 @@ export async function searchGlobalMessages(input: {
   query: string;
   offset?: number;
   limit?: number;
-}): Promise<{ results: (AiChatSearchResult & { threadTitle: string; threadId: string })[]; hasMore: boolean }> {
+}): Promise<{ results: (AiChatSearchResult & { threadTitle: string; threadId: string })[]; hasMore: boolean; totalCount: number }> {
   const terms = buildChatSearchTerms(input.query);
   const limit = Math.max(1, input.limit ?? 40);
   const offset = Math.max(0, input.offset ?? 0);
   if (terms.length === 0) {
-    return { hasMore: false, results: [] };
+    return { hasMore: false, results: [], totalCount: 0 };
   }
   const candidateLimit = offset + limit + 1;
+  let globalTotalCount = 0;
   const matches = await runWithDatabaseSpace(input.space, async (db) => {
     const candidateRows = await aiThreadRepository.searchGlobalCompletedMessageFts(db, input.space, {
       limit: candidateLimit,
       query: input.query,
     });
+    globalTotalCount = candidateRows.length;
     const messageIds = candidateRows.map((message) => message.id);
     const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
     const candidates: (AiMessageWithCitations & { threadTitle: string })[] = candidateRows
@@ -2975,6 +2977,7 @@ export async function searchGlobalMessages(input: {
         threadTitle: item.message.threadTitle,
         threadId: item.message.threadId,
       })),
+    totalCount: globalTotalCount,
   };
 }
 
@@ -3038,7 +3041,7 @@ export async function searchGlobalThreads(input: {
   space: PixorySpace;
   query: string;
   limit?: number;
-}): Promise<AiHomeThreadItem[]> {
+}): Promise<{ items: AiHomeThreadItem[]; totalCount: number }> {
   return runWithDatabaseSpace(input.space, async (db) => {
     // Fetch a larger pool of recent threads without text filtering (so we don't match message contents)
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', 1000, '');
@@ -3058,12 +3061,9 @@ export async function searchGlobalThreads(input: {
           avatarAvailable: Boolean(roleCard),
           roleCardName,
         });
-        if (results.length >= (input.limit ?? 20)) {
-          break;
-        }
       }
     }
-    return results;
+    return { items: results.slice(0, input.limit ?? 20), totalCount: results.length };
   });
 }
 
