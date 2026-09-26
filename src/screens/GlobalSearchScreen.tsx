@@ -437,6 +437,7 @@ function SearchFilterRail({ counts, activeFilter, onSelectFilter }: { counts: an
         {filters.map((f) => {
           if (f.count === 0 && f.key !== 'all') return null;
           const isActive = activeFilter === f.key;
+          const showCount = isActive || f.count < 20;
           return (
             <Pressable
               key={f.key}
@@ -444,9 +445,11 @@ function SearchFilterRail({ counts, activeFilter, onSelectFilter }: { counts: an
               style={[protoStyles.filterChip, isActive && protoStyles.filterChipActive]}
             >
               <Text style={[protoStyles.filterChipText, isActive && protoStyles.filterChipTextActive]}>{f.label}</Text>
-              <View style={[protoStyles.filterChipCountBox, isActive && protoStyles.filterChipCountBoxActive]}>
-                <Text style={[protoStyles.filterChipCountText, isActive && protoStyles.filterChipCountTextActive]}>{f.count}</Text>
-              </View>
+              {showCount && (
+                <View style={[protoStyles.filterChipCountBox, isActive && protoStyles.filterChipCountBoxActive]}>
+                  <Text style={[protoStyles.filterChipCountText, isActive && protoStyles.filterChipCountTextActive]}>{f.count}</Text>
+                </View>
+              )}
             </Pressable>
           );
         })}
@@ -509,7 +512,7 @@ function IpSection({ items, onOpen, query, space, activeFilter, onViewMore }: an
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={items.length > 20 ? undefined : `${items.length} 项`} />
+      <SectionHeader title="IP" subtitle="PROJECT · 核心素材库" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 项`} />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.ipCard}>
           <View style={protoStyles.ipCardRow}>
@@ -554,7 +557,7 @@ function RoleSection({ items, onOpen, query, space, activeFilter, onViewMore }: 
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={items.length > 20 ? undefined : `${items.length} 命中 ›`} />
+      <SectionHeader title="角色卡" subtitle="PERSONA · 拼音匹配" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 命中 ›`} />
       {displayItems.map((item: any) => (
         <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.roleCard}>
           <View style={protoStyles.roleAvatarBox}>
@@ -594,7 +597,7 @@ function GroupSection({ items, onOpen, query, space, activeFilter, onViewMore }:
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={items.length > 20 ? undefined : `${items.length} 个目录`} />
+      <SectionHeader title="分组" subtitle="GROUPS · 图集与分类" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 个目录`} />
       <View style={protoStyles.grid2Col}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.ipId, item.id)} style={protoStyles.groupCard}>
@@ -636,7 +639,7 @@ function TagSection({ items, onOpen, query, activeFilter, onViewMore }: any) {
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={items.length > 20 ? undefined : `${items.length} 个匹配`} />
+      <SectionHeader title="标签" subtitle="TAGS · 自定义分类元数据" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 个匹配`} />
       <View style={protoStyles.tagFlow}>
         {displayItems.map((item: any) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={protoStyles.tagPill}>
@@ -695,7 +698,7 @@ function ThreadSection({ items, onOpen, query, activeFilter, onViewMore }: any) 
 
   return (
     <View style={protoStyles.sectionWrapper}>
-      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={items.length > 20 ? undefined : `${items.length} 个活跃流`} />
+      <SectionHeader title="会话" subtitle="THREADS · 伴聊状态" count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 个活跃流`} />
       <View style={protoStyles.threadList}>
         {displayItems.map((item: any, idx: number) => (
           <Pressable key={item.id} onPress={() => onOpen(item.id)} style={[protoStyles.threadItem, idx > 0 && protoStyles.threadItemBorder]}>
@@ -731,7 +734,7 @@ function MessageSection({ items, onOpen, query, activeFilter, sortDesc, onToggle
       <SectionHeader 
         title="聊天记录" 
         subtitle="MESSAGES · 精确高亮" 
-        count={items.length > 20 ? undefined : `${items.length} 条记录`}
+        count={(isAllFilter && items.length >= 20) ? undefined : `${items.length} 条记录`}
         actionText={sortDesc ? '时间倒序' : '时间正序'}
         onAction={onToggleSort}
       />
@@ -1630,4 +1633,5 @@ function GuessYouWantList({
     </View>
   );
 }
+
 
