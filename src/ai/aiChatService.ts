@@ -2266,19 +2266,30 @@ async function buildPromptForThread(
   const chatMode = deriveAiChatMode(thread, thread.space);
   const generationMetrics = options?.generationMetrics ?? null;
   const fastPathContext = await runWithDatabaseSpace(thread.space, async (db) => {
-    const [threadMaterialCount, messageCount] = await Promise.all([
+    const [threadMaterialCount, messageCount, roleCard] = await Promise.all([
       aiKnowledgeRepository.countDocumentsByOwner(db, {
         ownerId: thread.id,
         ownerType: 'thread',
         space: thread.space,
       }),
       aiThreadRepository.countCompletedNonSystemMessages(db, thread.id, branchScopes),
+      thread.roleCardId ? aiRoleCardRepository.findById(db, thread.roleCardId) : Promise.resolve(null),
     ]);
     return {
       hasThreadMaterials: threadMaterialCount > 0,
       messageCount,
+      roleCard,
     };
   });
+  
+  let effectiveSystemPrompt = thread.systemPrompt;
+  if (fastPathContext.roleCard) {
+    const snapshot = parseThreadRoleSnapshot(thread.roleSnapshotJson);
+    const isPromptUnmodified = thread.systemPrompt === (snapshot.prompt ?? getDefaultThreadSystemPrompt(thread.contextType));
+    if (isPromptUnmodified || !thread.systemPrompt.trim()) {
+      effectiveSystemPrompt = fastPathContext.roleCard.prompt;
+    }
+  }
   const fastPath = classifyAiChatFastPath({
     contextType: thread.contextType,
     hasThreadMaterials: fastPathContext.hasThreadMaterials,
@@ -2496,7 +2507,7 @@ async function buildPromptForThread(
         stableMemoryPrefix,
         stableSummarySnapshot: coverage.stableSummaryText,
         roleCardContext,
-        systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
+        systemPrompt: thread.contextType === 'normal' ? effectiveSystemPrompt : effectiveSystemPrompt || DEFAULT_AI_ROLE_PROMPT,
         materialSnippets: citationRegistry.map((snippet) => ({ label: snippet.label, refId: snippet.refId, text: snippet.text })),
         attachmentPromptContext: options?.attachmentPromptContext ?? null,
         userMessage,
@@ -2518,7 +2529,7 @@ async function buildPromptForThread(
   return {
     prompt: builderFn({
       chatMode,
-      editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
+      editablePrompt: effectiveSystemPrompt || DEFAULT_AI_ROLE_PROMPT,
       dynamicMemoryContext,
       dynamicSegments,
       memoryEpoch,
@@ -3069,10 +3080,26 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
     const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
     const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
     const memoryJob = await aiThreadRepository.getThreadMemoryJob(db, thread.id);
+    
+    // Auto-sync role card if not separately configured
+    const snapshot = parseThreadRoleSnapshot(thread.roleSnapshotJson);
+    const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+    
+    // If systemPrompt is exactly the original snapshot prompt, OR if it's completely empty, fallback to live role card prompt
+    const isPromptUnmodified = thread.systemPrompt === (snapshot.prompt ?? getDefaultThreadSystemPrompt(thread.contextType));
+    const effectiveSystemPrompt = roleCard && (isPromptUnmodified || !thread.systemPrompt.trim())
+      ? roleCard.prompt
+      : thread.systemPrompt;
+      
+    // If the thread has no avatar explicitly configured (or if it was cleared), fallback to the live role card's avatar
+    const effectiveAvatar = roleCard && !parsedAvatar.avatarUri
+      ? { avatarEnabled: roleCard.avatarEnabled ?? true, avatarUri: roleCard.avatarUri }
+      : parsedAvatar;
+
     return {
-      thread,
+      thread: { ...thread, systemPrompt: effectiveSystemPrompt },
       roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
-      avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+      avatar: effectiveAvatar,
       userAvatarEnabled:
         parseThreadMessageAppearanceConfig(thread.roleSnapshotJson)
           .userAvatarEnabled,

@@ -369,8 +369,13 @@ export function AiSessionConfigScreen({
   ]);
 
   useEffect(() => {
-    void reloadConfig();
-  }, [reloadConfig]);
+    if (visible) {
+      settingsLoadedRef.current = false;
+      void reloadConfig();
+    } else {
+      settingsLoadedRef.current = false;
+    }
+  }, [reloadConfig, visible]);
 
   useEffect(() => {
     setSelectedSessionModelKeys([]);
