@@ -40,6 +40,7 @@ interface AiLightScaffoldProps {
   subtitle?: string;
   title: string;
   titleSlot?: ReactNode;
+  customTopPadding?: number;
 }
 
 export function AiLightScaffold({
@@ -61,9 +62,11 @@ export function AiLightScaffold({
   subtitle,
   title,
   titleSlot,
+  customTopPadding,
 }: AiLightScaffoldProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+  const computedTopPadding = customTopPadding !== undefined ? customTopPadding : statusBarHeight + layout.pageTopOffset;
 
   return (
     <AppScreen
@@ -77,7 +80,7 @@ export function AiLightScaffold({
       scrollable={scrollable}
     >
       {showHeader ? (
-        <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
+        <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: computedTopPadding }]}>
           <View style={styles.side}>
             {onBack ? <BackButton onPress={onBack} color={aiLightColors.ink} /> : null}
           </View>
@@ -92,7 +95,7 @@ export function AiLightScaffold({
           <View style={styles.side}>{rightAction}</View>
         </View>
       ) : (
-        <View style={{ paddingTop: statusBarHeight + layout.pageTopOffset }} />
+        <View style={{ paddingTop: computedTopPadding }} />
       )}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       <View pointerEvents={loading ? 'none' : 'auto'} style={[bodyStyle, loading && styles.loadingContent]}>

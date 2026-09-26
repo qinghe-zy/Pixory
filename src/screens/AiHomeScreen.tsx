@@ -5,6 +5,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
@@ -21,7 +22,6 @@ import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
 const HOME_THREAD_LIMIT = 30;
-const RECENT_CHAT_VISIBLE_ROWS = 5;
 const RECENT_CHAT_ROW_HEIGHT = 72;
 const homeThreadCache: Partial<Record<PixorySpace, AiHomeThreadItem[]>> = {};
 const homeRoleCardCache: Partial<Record<PixorySpace, AiRoleCardRecord[]>> = {};
@@ -43,7 +43,6 @@ interface AiHomeScreenProps {
   onStartNormalChat: () => void;
   onOpenRoleLibrary: () => void;
   onOpenProviderSettings: () => void;
-  onOpenIpChatPicker: () => void;
   onOpenKnowledgeBase: () => void;
   onOpenGlobalMaterials: () => void;
   onOpenHistory: () => void;
@@ -65,13 +64,13 @@ export function AiHomeScreen({
   onStartNormalChat,
   onOpenRoleLibrary,
   onOpenProviderSettings,
-  onOpenIpChatPicker,
   onOpenKnowledgeBase,
   onOpenGlobalMaterials,
   onOpenHistory,
   onOpenThread,
   onStartChatWithRole,
 }: AiHomeScreenProps) {
+  const insets = useSafeAreaInsets();
   const primaryCardScale = useSharedValue(1);
   const primaryCardAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: primaryCardScale.value }],
@@ -142,6 +141,7 @@ export function AiHomeScreen({
       backgroundColor="#f9f9f9"
       bodyStyle={styles.homeBody}
       contentContainerStyle={styles.screenContent}
+      customTopPadding={insets.top + spacing[2]}
       errorMessage={errorMessage}
       footer={footer}
       headerDividerVisible={false}
@@ -186,8 +186,8 @@ export function AiHomeScreen({
                 >
                   <View style={styles.roleAvatarContainer}>
                     <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
-                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.pill, overflow: 'hidden' }]}>
-                      <LiquidGlassBezel contentIntensity="none" radius={radius.pill} />
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.sm, overflow: 'hidden' }]}>
+                      <LiquidGlassBezel contentIntensity="none" radius={radius.sm} />
                     </View>
                   </View>
                   <Text numberOfLines={1} style={styles.roleName}>{role.name}</Text>
@@ -208,54 +208,51 @@ export function AiHomeScreen({
       </View>
 
       <View style={styles.section}>
-        <SectionTitle actionLabel="全部" isActive={isActive} title="最近聊天" showDecoration onPress={onOpenHistory} />
-        <View style={[styles.recentChatPanel, threads.length ? styles.recentChatPanelFilled : styles.recentChatPanelEmpty]}>
-          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={threads.length > RECENT_CHAT_VISIBLE_ROWS} style={styles.recentChatScroll}>
-            {threads.length ? (
-              threads.map((thread, index) => (
-                <Pressable
-                  accessibilityLabel={`打开最近聊天 ${thread.title}`}
-                  accessibilityRole="button"
-                  key={thread.id}
-                  onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
-                  style={({ pressed }) => [styles.threadRow, index > 0 && styles.threadDivider, pressed && styles.pressed]}
-                >
-                  <ThreadAvatar thread={thread} space={space} />
-                  <View style={styles.threadCopy}>
-                    <View style={styles.threadTitleRow}>
-                      <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
-                    </View>
-                    <View style={styles.threadMetaRow}>
-                      <Text numberOfLines={1} style={styles.threadDescription}>
-                        {thread.lastMessagePreview || labelForContext(thread)}
-                      </Text>
-                      <Text numberOfLines={1} style={styles.threadTime}>
-                        {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
-                </Pressable>
-              ))
-            ) : (
-              <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
-                <View style={styles.threadIcon}>
-                  <Ionicons color={aiLightColors.primaryActive} name="chatbubble-ellipses-outline" size={metrics.iconSizeMd} />
-                </View>
+        <View style={styles.sectionInner}>
+          <SectionTitle actionLabel="全部" isActive={isActive} title="最近聊天" showDecoration onPress={onOpenHistory} />
+        </View>
+        <View style={styles.recentChatList}>
+          {threads.length ? (
+            threads.map((thread, index) => (
+              <Pressable
+                accessibilityLabel={`打开最近聊天 ${thread.title}`}
+                accessibilityRole="button"
+                key={thread.id}
+                onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
+                style={({ pressed }) => [styles.threadRow, index > 0 && styles.threadDivider, pressed && styles.pressed]}
+              >
+                <ThreadAvatar thread={thread} space={space} />
                 <View style={styles.threadCopy}>
-                  <Text style={styles.threadTitle}>还没有最近聊天</Text>
-                  <Text style={styles.threadDescription}>开始一次普通聊天后，这里会显示记录。</Text>
+                  <View style={styles.threadTitleRow}>
+                    <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
+                  </View>
+                  <View style={styles.threadMetaRow}>
+                    <Text numberOfLines={1} style={styles.threadDescription}>
+                      {thread.lastMessagePreview || labelForContext(thread)}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.threadTime}>
+                      {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                    </Text>
+                  </View>
                 </View>
+                <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
               </Pressable>
-            )}
-          </ScrollView>
+            ))
+          ) : (
+            <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
+              <View style={styles.threadIcon}>
+                <Ionicons color={aiLightColors.primaryActive} name="chatbubble-ellipses-outline" size={metrics.iconSizeMd} />
+              </View>
+              <View style={styles.threadCopy}>
+                <Text style={styles.threadTitle}>还没有最近聊天</Text>
+                <Text style={styles.threadDescription}>开始一次普通聊天后，这里会显示记录。</Text>
+              </View>
+            </Pressable>
+          )}
         </View>
       </View>
 
-      <View style={styles.quickGrid}>
-        <QuickEntry icon="albums-outline" label="选择 IP 开聊" meta="从角色或 IP 开始对话" onPress={onOpenIpChatPicker} tone="primary" />
-        <QuickEntry icon="time-outline" label="会话历史" meta="查看与管理历史记录" onPress={onOpenHistory} tone="gold" />
-      </View>
+
     </AiLightScaffold>
   );
 }
@@ -326,56 +323,7 @@ function SectionTitle({ actionLabel, isActive = true, title, onPress, showDecora
   );
 }
 
-type QuickEntryTone = 'primary' | 'green' | 'gold' | 'warm';
 
-function QuickEntry({
-  icon,
-  label,
-  meta,
-  onPress,
-  tone,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  meta: string;
-  onPress: () => void;
-  tone: QuickEntryTone;
-}) {
-  return (
-    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.quickEntry, pressed && styles.pressed]}>
-      <View style={[styles.quickIcon, quickIconToneStyles[tone]]}>
-        <Ionicons color={quickToneColor[tone]} name={icon} size={metrics.iconSizeMd} />
-      </View>
-      <View style={styles.quickCopy}>
-        <Text numberOfLines={1} style={styles.quickLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.quickMeta}>{meta}</Text>
-      </View>
-      <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
-    </Pressable>
-  );
-}
-
-const quickToneColor: Record<QuickEntryTone, string> = {
-  primary: aiLightColors.primaryActive,
-  gold: colors.text.gold,
-  green: colors.primary.default,
-  warm: colors.semantic.warning,
-};
-
-const quickIconToneStyles = StyleSheet.create({
-  primary: {
-    borderColor: aiLightColors.primary,
-  },
-  gold: {
-    borderColor: colors.semantic.warning,
-  },
-  green: {
-    borderColor: colors.primary.light,
-  },
-  warm: {
-    borderColor: colors.border.strong,
-  },
-});
 
 const styles = StyleSheet.create({
   screenContent: {
@@ -476,7 +424,7 @@ const styles = StyleSheet.create({
     width: 54,
   },
   roleAvatarContainer: {
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     ...shadows.md,
     backgroundColor: colors.background.empty,
     shadowColor: '#2C2318',
@@ -490,13 +438,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   roleAvatarImage: {
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     height: 48,
     width: 48,
   },
   glassOverlay: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     overflow: 'hidden',
   },
   roleName: {
@@ -509,7 +457,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: aiLightColors.cardWash,
     borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.microGap,
@@ -524,7 +472,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.microGap,
@@ -539,6 +487,10 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: rhythm.cardContentGap,
+    marginHorizontal: -layout.pagePaddingHorizontal,
+  },
+  sectionInner: {
+    paddingHorizontal: layout.pagePaddingHorizontal,
   },
   sectionHeader: {
     alignItems: 'center',
@@ -572,29 +524,19 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
   },
-  recentChatPanel: {
+  recentChatList: {
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    ...shadows.sm,
-  },
-  recentChatPanelFilled: {
-    height: RECENT_CHAT_ROW_HEIGHT * RECENT_CHAT_VISIBLE_ROWS,
-  },
-  recentChatPanelEmpty: {
-    minHeight: 92,
-  },
-  recentChatScroll: {
-    maxHeight: RECENT_CHAT_ROW_HEIGHT * RECENT_CHAT_VISIBLE_ROWS,
+    borderTopColor: aiLightColors.hairline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: aiLightColors.hairline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   threadRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: RECENT_CHAT_ROW_HEIGHT,
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: layout.pagePaddingHorizontal,
     paddingVertical: spacing[2],
   },
   emptyRecentRow: {
@@ -602,7 +544,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: 72,
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: layout.pagePaddingHorizontal,
     paddingVertical: spacing[2],
   },
   threadDivider: {
@@ -612,14 +554,14 @@ const styles = StyleSheet.create({
   threadIcon: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     height: 42,
     justifyContent: 'center',
     width: 42,
   },
   threadAvatarImage: {
     borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     height: 42,
     width: 42,
@@ -656,48 +598,5 @@ const styles = StyleSheet.create({
     color: aiLightColors.mutedSoft,
     flexShrink: 0,
   },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: rhythm.inlineGap,
-    rowGap: rhythm.entryCardGap,
-  },
-  quickEntry: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexBasis: '48.6%',
-    flexDirection: 'row',
-    flexGrow: 1,
-    gap: rhythm.inlineGap,
-    minHeight: 54,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[2],
-    ...shadows.sm,
-  },
-  quickIcon: {
-    alignItems: 'center',
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  quickCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  quickLabel: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  quickMeta: {
-    ...typography.textStyles.micro,
-    color: aiLightColors.muted,
-  },
+
 });
