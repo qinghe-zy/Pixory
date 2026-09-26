@@ -940,3 +940,9 @@ efreshKey，在用户下拉刷新首页或切换空间时自动更新占用数�
   - Bug修复：修复了由于 useScreenLoad 钩子缓存键（Cache Key）冲突导致在特定情况下打开备份导出等统计页面时，应用报错崩溃（TypeError: undefined is not a function）的问题，隔离了各个页面的缓存数据。
   - TypeScript 类型修复：补充了 FormScreenScaffoldProps 接口缺失的 backgroundColor 类型定义，并透传给基础组件。
 
+
+### 2026-09-25 20:49:07 +08:00 · LocalCommit
+
+- 来源提交/更新：18c014ba764c68db3e39ffcebf8653bb043073da
+- 变更摘要：本地提交变更
+- 文档规则：如与既有需求冲突，先更新 PRD/TDD/测试/发布说明的“当前有效内容”，再在“变更记录”标注替代关系并知会干系人。
