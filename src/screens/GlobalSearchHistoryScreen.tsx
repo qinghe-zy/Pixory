@@ -1,11 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { addMonths, addYears, differenceInDays, eachDayOfInterval, format, isToday, isYesterday, subDays, subHours, subMonths, subYears } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 
 import { AppDialog } from '../components/AppDialog';
-import { ScreenScaffold } from '../components/ScreenScaffold';
 import { type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import {
@@ -14,7 +15,6 @@ import {
   deleteSearchHistoryByTimeRange,
   type SearchHistoryItem,
 } from '../services/searchHistoryService';
-
 import { loadSearchHistory } from '../services/searchHistoryService';
 
 interface GlobalSearchHistoryScreenProps {
@@ -25,19 +25,30 @@ interface GlobalSearchHistoryScreenProps {
 
 type DateFilterType = '3h' | '24h' | '7d' | '1m' | 'custom' | 'all';
 
+const prototypeColors = {
+  surface: '#f9f9f9',
+  onSurface: '#1a1c1c',
+  secondary: '#5e5e5e',
+  surfaceContainerLowest: '#ffffff',
+  surfaceContainerLow: '#f3f3f4',
+  surfaceContainer: '#eeeeee',
+  primary: '#000000',
+  outline: '#747878',
+};
+
 export function GlobalSearchHistoryScreen({
   space,
   onBack,
   onUseItem,
 }: GlobalSearchHistoryScreenProps) {
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteMenuVisible, setDeleteMenuVisible] = useState(false);
   const [customDateVisible, setCustomDateVisible] = useState(false);
   const [customStartDate, setCustomStartDate] = useState<string | null>(null);
   const [customEndDate, setCustomEndDate] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     let isMounted = true;
@@ -50,25 +61,26 @@ export function GlobalSearchHistoryScreen({
   }, [space]);
 
   const listData = useMemo(() => {
-    type FlatItem = SearchHistoryItem | { id: string; isHeader: true; title: string; count: number; data: SearchHistoryItem[] };
+    type FlatItem = SearchHistoryItem | { id: string; isHeader: true; title: string; subtitle: string; count: number; data: SearchHistoryItem[] };
     const flat: FlatItem[] = [];
     let currentDayStr = '';
     let currentDayLabel = '';
+    let currentDaySubtitle = '';
     let currentDayCount = 0;
     let currentDayItems: SearchHistoryItem[] = [];
 
-    // History is implicitly sorted descending by timestamp
     for (const item of history) {
       const dayStr = format(item.timestamp, 'yyyy年MM月dd日');
-      const dayLabel = isToday(item.timestamp) ? `${dayStr} (今天)` : isYesterday(item.timestamp) ? `${dayStr} (昨天)` : dayStr;
+      const subtitle = isToday(item.timestamp) ? '(今天)' : isYesterday(item.timestamp) ? '(昨天)' : '';
 
       if (currentDayStr !== dayStr) {
         if (currentDayItems.length > 0) {
-          flat.push({ id: `day_${currentDayStr}`, isHeader: true, title: currentDayLabel, count: currentDayCount, data: currentDayItems });
+          flat.push({ id: `day_${currentDayStr}`, isHeader: true, title: currentDayLabel, subtitle: currentDaySubtitle, count: currentDayCount, data: currentDayItems });
           flat.push(...currentDayItems);
         }
         currentDayStr = dayStr;
-        currentDayLabel = dayLabel;
+        currentDayLabel = dayStr;
+        currentDaySubtitle = subtitle;
         currentDayCount = 0;
         currentDayItems = [];
       }
@@ -77,7 +89,7 @@ export function GlobalSearchHistoryScreen({
     }
     
     if (currentDayItems.length > 0) {
-      flat.push({ id: `day_${currentDayStr}`, isHeader: true, title: currentDayLabel, count: currentDayCount, data: currentDayItems });
+      flat.push({ id: `day_${currentDayStr}`, isHeader: true, title: currentDayLabel, subtitle: currentDaySubtitle, count: currentDayCount, data: currentDayItems });
       flat.push(...currentDayItems);
     }
 
@@ -86,12 +98,6 @@ export function GlobalSearchHistoryScreen({
 
   async function handleDeleteSingle(id: string) {
     const next = await batchDeleteSearchHistory(space, [id]);
-    setHistory(next);
-  }
-
-  async function handleDeleteGroup(groupData: SearchHistoryItem[]) {
-    const ids = groupData.map(i => i.id);
-    const next = await batchDeleteSearchHistory(space, ids);
     setHistory(next);
   }
 
@@ -122,12 +128,10 @@ export function GlobalSearchHistoryScreen({
   async function handleCustomDateDelete() {
     if (!customStartDate) return;
     
-    // Determine exact bounds
     const startStr = customEndDate && customEndDate < customStartDate ? customEndDate : customStartDate;
     const endStr = customEndDate && customEndDate > customStartDate ? customEndDate : (customEndDate || customStartDate);
 
     const startMs = new Date(startStr).getTime();
-    // End of the day
     const endMs = new Date(endStr).getTime() + 24 * 60 * 60 * 1000 - 1;
     
     const next = await deleteSearchHistoryByTimeRange(space, startMs, endMs);
@@ -216,65 +220,95 @@ export function GlobalSearchHistoryScreen({
   }, [customStartDate, customEndDate]);
 
   return (
-    <>
-      <ScreenScaffold
-        onBack={onBack}
-        subtitle={history.length > 0 ? `共 ${history.length} 条` : undefined}
-        title="搜索历史"
-      >
-        <FlatList
-          contentContainerStyle={styles.listContent}
-          data={listData}
-          keyExtractor={(item) => ('isHeader' in item ? item.id : item.id)}
-          renderItem={({ item }) => {
-            if ('isHeader' in item) {
-              return (
-                <View style={styles.groupHeader}>
-                  <Text style={styles.groupHeaderText}>{item.title} <Text style={styles.groupHeaderCount}>{item.data.length}</Text></Text>
-                </View>
-              );
-            }
-
-            return (
-              <Pressable
-                onPress={() => onUseItem(item.keyword)}
-                style={styles.historyItem}
-              >
-                <View style={styles.itemContent}>
-                  <Text style={styles.itemText} numberOfLines={1}>
-                    {item.keyword}
-                  </Text>
-                  <Text style={styles.itemTime}>{format(item.timestamp, 'HH:mm')}</Text>
-                </View>
-                <Pressable hitSlop={15} onPress={() => handleDeleteSingle(item.id)}>
-                  <Ionicons name="close" size={18} color={colors.text.tertiary} />
-                </Pressable>
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="search-outline" size={48} color={colors.text.tertiary} />
-              <Text style={styles.emptyText}>暂无搜索历史</Text>
-            </View>
-          }
-        />
-        {history.length > 0 && (
-          <View style={styles.floatingActionContainer}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.floatingActionButton,
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={() => setDeleteMenuVisible(true)}
-            >
-              <Ionicons name="trash" size={16} color={colors.text.inverse} style={{ marginRight: spacing[2] }} />
-              <Text style={styles.floatingActionText}>清空历史</Text>
-            </Pressable>
-          </View>
+    <View style={styles.container}>
+      {/* 顶部导航栏 */}
+      <View style={{ zIndex: 50, position: 'absolute', top: 0, left: 0, right: 0 }}>
+        {Platform.OS === 'ios' ? (
+           <BlurView tint="light" intensity={80} style={[StyleSheet.absoluteFill, styles.headerBg]} />
+        ) : (
+           <View style={[StyleSheet.absoluteFill, styles.headerBg, { backgroundColor: 'rgba(249, 249, 249, 0.9)' }]} />
         )}
-      </ScreenScaffold>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <Pressable onPress={onBack} style={styles.backButton}>
+            <MaterialIcons name="arrow-back" size={20} color={prototypeColors.onSurface} />
+          </Pressable>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>搜索历史</Text>
+          </View>
+          <View style={styles.headerRight} />
+        </View>
+      </View>
 
+      <FlatList
+        contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 56 + 8, paddingBottom: insets.bottom + 100 }]}
+        data={listData}
+        keyExtractor={(item) => ('isHeader' in item ? item.id : item.id)}
+        renderItem={({ item, index }) => {
+          if ('isHeader' in item) {
+            return (
+              <View style={[styles.groupHeader, index === 0 ? { marginTop: 0 } : undefined]}>
+                <View style={styles.groupTitleRow}>
+                  <Text style={styles.groupDate}>{item.title}</Text>
+                  {item.subtitle ? <Text style={styles.groupRelativeDate}>{item.subtitle}</Text> : null}
+                </View>
+                <View style={styles.groupBadge}>
+                  <Text style={styles.groupBadgeText}>{item.count} 项</Text>
+                </View>
+              </View>
+            );
+          }
+
+          return (
+            <Pressable
+              onPress={() => onUseItem(item.keyword)}
+              style={({ pressed }) => [
+                styles.historyItem,
+                pressed && { backgroundColor: prototypeColors.surfaceContainerLow, transform: [{ scale: 0.99 }] }
+              ]}
+            >
+              <View style={styles.itemLeft}>
+                <View style={styles.itemIconContainer}>
+                  <MaterialIcons name="history" size={16} color={prototypeColors.secondary} />
+                </View>
+                <Text style={styles.itemTitle} numberOfLines={1}>
+                  {item.keyword}
+                </Text>
+              </View>
+              <View style={styles.itemRight}>
+                <Text style={styles.itemTime}>{format(item.timestamp, 'HH:mm')}</Text>
+                <Pressable hitSlop={15} onPress={() => handleDeleteSingle(item.id)} style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: prototypeColors.surfaceContainer }]}>
+                  <MaterialIcons name="close" size={16} color={prototypeColors.outline} />
+                </Pressable>
+              </View>
+            </Pressable>
+          );
+        }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <MaterialIcons name="search-off" size={28} color={prototypeColors.secondary} />
+            </View>
+            <Text style={styles.emptyTitle}>暂无匹配的历史记录</Text>
+            <Text style={styles.emptySubtitle}>所有的搜索记录皆已清空或未找到结果</Text>
+          </View>
+        }
+      />
+      {history.length > 0 && (
+        <View style={[styles.floatingActionContainer, { bottom: insets.bottom + spacing[8] }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.floatingActionButton,
+              pressed && { opacity: 0.8 }
+            ]}
+            onPress={() => setDeleteMenuVisible(true)}
+          >
+            <Ionicons name="trash" size={16} color={colors.text.inverse} style={{ marginRight: spacing[2] }} />
+            <Text style={styles.floatingActionText}>清空历史</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* AppDialog components remain same as original for function but style intact */}
       <AppDialog
         onClose={() => setDeleteMenuVisible(false)}
         title="清除搜索历史"
@@ -410,19 +444,193 @@ export function GlobalSearchHistoryScreen({
           />
         </View>
       </AppDialog>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  actionButton: {
-    marginLeft: spacing[4],
-    padding: spacing[1],
+  container: {
+    flex: 1,
+    backgroundColor: prototypeColors.surface,
   },
-  actionText: {
+  headerBg: {
+    backgroundColor: 'rgba(249, 249, 249, 0.8)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
+  },
+  header: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    marginLeft: -4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: prototypeColors.onSurface,
+    letterSpacing: -0.005 * 15,
+  },
+  headerRight: {
+    width: 44,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  groupTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  groupDate: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: prototypeColors.onSurface,
+    letterSpacing: -0.01 * 20,
+  },
+  groupRelativeDate: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: prototypeColors.secondary,
+    letterSpacing: 0.08 * 10,
+    marginLeft: 8,
+  },
+  groupBadge: {
+    backgroundColor: prototypeColors.surfaceContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  groupBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: prototypeColors.secondary,
+    letterSpacing: 0.08 * 10,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: prototypeColors.surfaceContainerLowest,
+    borderRadius: 12,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  itemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  itemIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: prototypeColors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  itemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: prototypeColors.onSurface,
+    letterSpacing: -0.005 * 15,
+    flex: 1,
+  },
+  itemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  itemTime: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: prototypeColors.secondary,
+    letterSpacing: 0.08 * 10,
+  },
+  deleteBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 24,
+  },
+  emptyIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: prototypeColors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: prototypeColors.onSurface,
+    marginBottom: 4,
+    letterSpacing: -0.01 * 20,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: prototypeColors.secondary,
+  },
+  floatingActionContainer: {
+    alignItems: 'center',
+    bottom: spacing[8],
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  floatingActionButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
+  floatingActionText: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+    color: colors.text.inverse,
   },
+  // Calendar Dialog styles
   calendarContainer: {
     marginTop: spacing[2],
   },
@@ -450,105 +658,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[3],
     width: '100%',
-  },
-  checkbox: {
-    alignItems: 'center',
-    borderColor: colors.border.default,
-    borderRadius: radius.xs,
-    borderWidth: 1,
-    height: 20,
-    justifyContent: 'center',
-    marginRight: spacing[3],
-    width: 20,
-  },
-  checkboxSelected: {
-    backgroundColor: colors.primary.default,
-    borderColor: colors.primary.default,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingTop: 100,
-  },
-  emptyText: {
-    ...typography.textStyles.body,
-    color: colors.text.secondary,
-    marginTop: spacing[3],
-  },
-  floatingActionContainer: {
-    alignItems: 'center',
-    bottom: spacing[8],
-    left: 0,
-    position: 'absolute',
-    right: 0,
-  },
-  floatingActionButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-  },
-  floatingActionText: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.inverse,
-  },
-  groupHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: spacing[2],
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[6],
-  },
-  groupHeaderText: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  groupHeaderCount: {
-    ...typography.textStyles.caption,
-    color: colors.text.tertiary,
-    fontWeight: '400',
-    marginLeft: spacing[2],
-  },
-  headerActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  historyItem: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-  },
-  historyItemSelected: {
-    backgroundColor: colors.background.elevated,
-  },
-  itemContent: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  itemIcon: {
-    marginRight: spacing[3],
-  },
-  itemText: {
-    ...typography.textStyles.body,
-    color: colors.text.title,
-    flex: 1,
-  },
-  itemTime: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    marginLeft: spacing[3],
-  },
-  listContent: {
-    paddingBottom: spacing[8],
   },
   menuContainer: {
     marginTop: spacing[3],
