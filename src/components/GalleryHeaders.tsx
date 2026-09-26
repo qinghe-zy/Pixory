@@ -53,7 +53,7 @@ export function GalleryCompactHeader({ title, count, space, onBack, leftActions,
     <>
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FFFFFF' }} />
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, backgroundColor: '#FAFAFA', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1 }}>
           {onBack && (
             <Pressable onPress={onBack} style={({ pressed }) => [{ height: 32, width: 28, alignItems: 'center', justifyContent: 'center', marginLeft: -6 }, pressed && { opacity: 0.6 }]}>
               <Ionicons name="chevron-back" size={22} color="#111827" />
