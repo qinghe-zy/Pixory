@@ -16,8 +16,11 @@
 
 // ─── Public constants ────────────────────────────────────────────────────────
 
-/** Default gap between images (px) — both horizontal and vertical. */
-export const JUSTIFIED_GAP = 2;
+/** Default gap between images horizontally (px). */
+export const JUSTIFIED_GAP = 1;
+
+/** Default gap between rows vertically (px). */
+export const JUSTIFIED_ROW_GAP = 0;
 
 /** Default target row height (px). */
 export const JUSTIFIED_TARGET_HEIGHT = 150;
@@ -62,8 +65,10 @@ export interface JustifiedRow {
 export interface JustifiedLayoutOptions {
   /** Usable container width in physical pixels (full-bleed, no padding). */
   containerWidth: number;
-  /** Pixel gap between cells and between rows. @default JUSTIFIED_GAP */
+  /** Pixel gap between cells horizontally. @default JUSTIFIED_GAP */
   gap?: number;
+  /** Pixel gap between rows vertically. @default JUSTIFIED_ROW_GAP */
+  rowGap?: number;
   /** Target row height; greedy algorithm commits a row near this value. @default JUSTIFIED_TARGET_HEIGHT */
   targetHeight?: number;
 }
@@ -86,6 +91,7 @@ export function computeJustifiedLayout(
   const {
     containerWidth,
     gap = JUSTIFIED_GAP,
+    rowGap = JUSTIFIED_ROW_GAP,
     targetHeight = JUSTIFIED_TARGET_HEIGHT,
   } = options;
 
@@ -140,7 +146,7 @@ export function computeJustifiedLayout(
 
     const h = Math.round(finalHeight);
     rows.push({ cells, height: h, top: currentTop });
-    currentTop += h + gap;
+    currentTop += h + rowGap;
 
     // Reset accumulators
     rowItems = [];

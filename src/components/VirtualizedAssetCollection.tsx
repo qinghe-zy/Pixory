@@ -20,6 +20,7 @@ import { JustifiedRowView } from './JustifiedRowView';
 import {
   computeJustifiedLayout,
   JUSTIFIED_GAP,
+  JUSTIFIED_ROW_GAP,
   JUSTIFIED_TARGET_HEIGHT,
   type JustifiedRow,
 } from '../utils/justifiedLayout';
@@ -85,6 +86,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
     const rows = computeJustifiedLayout(images, {
       containerWidth,
       gap: JUSTIFIED_GAP,
+      rowGap: JUSTIFIED_ROW_GAP,
       targetHeight: JUSTIFIED_TARGET_HEIGHT,
     });
     const byId = new Map<number, ImageListItem>();
@@ -164,7 +166,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
           const row = justifiedRows[index];
           if (!row) return { length: 0, offset: 0, index };
           return {
-            length: row.height + JUSTIFIED_GAP,
+            length: row.height + JUSTIFIED_ROW_GAP,
             offset: row.top,
             index,
           };
@@ -209,16 +211,15 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
       ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.active} style={styles.loader} /> : null}
       ListHeaderComponent={headerComponent ? <View style={{ zIndex: 1000, elevation: 100 }}>{headerComponent}</View> : null}
       columnWrapperStyle={isGrid ? styles.gridRow : undefined}
-      contentContainerStyle={[styles.content, images.length === 0 && styles.emptyContent, contentContainerStyle]}
+      contentContainerStyle={[styles.content, isGrid && styles.gridContent, images.length === 0 && styles.emptyContent, contentContainerStyle]}
       data={images}
       initialNumToRender={12}
       key={viewMode}
       initialScrollIndex={initialIndex.current !== -1 ? initialIndex.current : undefined}
       getItemLayout={(data, index) => {
         const windowWidth = Dimensions.get('window').width;
-        const contentWidth = windowWidth - 40; 
-        const itemHeight = isGrid ? (contentWidth * 0.318) : 86;
-        const gap = 12; 
+        const itemHeight = isGrid ? (windowWidth - 4) / 3 : 86;
+        const gap = isGrid ? 2 : 12; 
         const rowHeight = itemHeight + gap;
         return {
           length: rowHeight,
@@ -301,11 +302,10 @@ const styles = StyleSheet.create({
   justifiedContent: {
     paddingBottom: spacing[6],
   },
-  // Each justified row cancels the AppScreen horizontal padding so images
-  // bleed to the screen edges. Row spacing is fully owned by the algorithm's
-  // `top` offsets + getItemLayout `length` — no extra margin needed here.
+  // Row spacing must be explicitly rendered via marginBottom. 
+  // FlatList does NOT use getItemLayout for positioning, only for scroll optimization.
   justifiedRowWrap: {
-    
+    marginBottom: JUSTIFIED_ROW_GAP,
   },
   justifiedCellInner: {
     flex: 1,
@@ -315,14 +315,17 @@ const styles = StyleSheet.create({
   detailCell: {
     width: '100%',
   },
+  gridContent: {
+    gap: 2,
+  },
   emptyContent: {
     flexGrow: 1,
   },
   gridCell: {
-    width: (Dimensions.get('window').width - 8) / 3,
+    width: (Dimensions.get('window').width - 4) / 3,
   },
   gridRow: {
-    justifyContent: 'flex-start', gap: 4,
+    justifyContent: 'flex-start', gap: 2,
   },
   loader: {
     paddingVertical: spacing[4],
