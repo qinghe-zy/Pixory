@@ -225,8 +225,8 @@ export function FavoritesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'media-query', request: favoriteMediaRequest, label: filterLabel, space }
-        : { type: 'favorites', space }
+        ? { type: 'media-query', request: favoriteMediaRequest, label: filterLabel, space, orderBy: sortOrder }
+        : { type: 'favorites', space, orderBy: sortOrder }
     );
   }
 

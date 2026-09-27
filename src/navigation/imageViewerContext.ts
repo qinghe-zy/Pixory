@@ -1,4 +1,4 @@
-import type { MediaCursorPageRequest, PixorySpace } from '../database';
+import type { MediaCursorPageRequest, MediaCursorSortOrder, PixorySpace } from '../database';
 
 export type SpacedId = {
   id: number;
@@ -12,6 +12,7 @@ export type SpacedRecord<T> = {
 
 type ImageViewerContextBase = {
   space: PixorySpace;
+  orderBy?: MediaCursorSortOrder;
 };
 
 export type ImageViewerIpAllFilter =

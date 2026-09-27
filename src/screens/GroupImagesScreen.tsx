@@ -241,8 +241,9 @@ export function GroupImagesScreen({
             request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
             label: `${group?.name ?? '分组'} · ${filterLabel}`,
             space,
+            orderBy: sortOrder,
           }
-        : { type: 'group', ipId, groupId, space }
+        : { type: 'group', ipId, groupId, space, orderBy: sortOrder }
     );
   }
 

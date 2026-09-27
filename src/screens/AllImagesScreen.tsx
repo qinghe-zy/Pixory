@@ -264,8 +264,9 @@ export function AllImagesScreen({
             request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
             label: activeFilterLabel,
             space,
+            orderBy: sortOrder,
           }
-        : { type: 'ip-all', ipId, filter: { type: 'all' }, space }
+        : { type: 'ip-all', ipId, filter: { type: 'all' }, space, orderBy: sortOrder }
     );
   }
 

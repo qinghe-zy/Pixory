@@ -252,8 +252,9 @@ export function TagResultScreen({
             request: { ...mediaRequest, imageIds: hasRepeatedFilter ? repeated.data ?? [] : undefined },
             label: `#${tag?.name ?? '标签'} · ${filterLabel}`,
             space,
+            orderBy: sortOrder,
           }
-        : { type: 'tag', tagId, space }
+        : { type: 'tag', tagId, space, orderBy: sortOrder }
     );
   }
 
