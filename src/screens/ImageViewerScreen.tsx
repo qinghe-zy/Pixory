@@ -299,27 +299,10 @@ export function ImageViewerScreen({
     if (!activeImage || images.length === 0) {
       return;
     }
-    const halfWindow = Math.floor(MEDIA_READER_INITIAL_WINDOW_SIZE / 2);
-    const start = Math.max(0, activeIndex - halfWindow);
-    const end = Math.min(images.length, start + MEDIA_READER_INITIAL_WINDOW_SIZE);
-    const adjustedStart = Math.max(0, end - MEDIA_READER_INITIAL_WINDOW_SIZE);
-    const sessionItems = images.slice(adjustedStart, end);
-    const sessionIndex = Math.max(0, sessionItems.findIndex((item) => item.id === activeImage.id));
+    const sessionIndex = Math.max(0, images.findIndex((item) => item.id === activeImage.id));
     const cursorRequest = buildMediaReaderCursorRequest(context);
-    const leadingBoundary = adjustedStart > 0 && sessionItems[0] && cursorRequest
-      ? {
-          cursor: createReaderCursor(sessionItems[0], cursorRequest.orderBy),
-          direction: leadingBoundaryRef.current.direction,
-          hasMore: true,
-        }
-      : leadingBoundaryRef.current;
-    const trailingBoundary = end < images.length && sessionItems[sessionItems.length - 1] && cursorRequest
-      ? {
-          cursor: createReaderCursor(sessionItems[sessionItems.length - 1], cursorRequest.orderBy),
-          direction: trailingBoundaryRef.current.direction,
-          hasMore: true,
-        }
-      : trailingBoundaryRef.current;
+    const leadingBoundary = leadingBoundaryRef.current;
+    const trailingBoundary = trailingBoundaryRef.current;
 
     setMediaReaderSession(context.space, sessionContextKey, mediaEpoch, {
       currentId: activeImage.id,
@@ -327,7 +310,7 @@ export function ImageViewerScreen({
       entryId: imageId,
       hasNewer: leadingBoundary.hasMore,
       hasOlder: trailingBoundary.hasMore,
-      items: sessionItems,
+      items: images,
       leadingBoundary,
       newerCursor: leadingBoundary.cursor,
       olderCursor: trailingBoundary.cursor,

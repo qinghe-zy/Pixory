@@ -1036,6 +1036,23 @@ export const imageRepository = {
     };
   },
 
+  async countFilteredCursorPage(
+    db: SQLiteDatabase,
+    request: MediaCursorPageRequest = {}
+  ): Promise<number> {
+    const sort = resolveMediaCursorSort(request.orderBy);
+    const base = buildMediaCursorBase(request, sort);
+    const queryParts = buildImageListQueryParts(base.clauses, base.values, request);
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(DISTINCT image_assets.id) AS count
+       FROM image_assets
+       INNER JOIN ips ON ips.id = image_assets.ipId
+       ${queryParts.whereClause}`,
+      ...queryParts.values
+    );
+    return row?.count ?? 0;
+  },
+
   async findFilteredCursorPage(
     db: SQLiteDatabase,
     request: MediaCursorPageRequest = {}
