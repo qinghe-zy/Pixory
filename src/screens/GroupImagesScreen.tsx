@@ -274,7 +274,7 @@ export function GroupImagesScreen({
   const compactRightAction = (
     <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, compactHeaderStyle]} pointerEvents="box-none">
       <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
-        {images.length} 张
+        {media.totalCount ?? images.length} 张
       </Text>
       {selectAllButton}
       {sortButton}
@@ -350,7 +350,7 @@ export function GroupImagesScreen({
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FAFAFA', zIndex: 20 }} />
       <GalleryCompactHeader
         title={group ? group.name : '分组图片'}
-        count={images.length}
+        count={media.totalCount ?? images.length}
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
@@ -429,7 +429,7 @@ export function GroupImagesScreen({
           headerComponent={
             <GalleryNormalHeader
               title={group ? group.name : '分组图片'}
-              count={images.length}
+              count={media.totalCount ?? images.length}
               animatedStyle={heroStyle}
               topRightActions={
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

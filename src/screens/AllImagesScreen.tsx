@@ -378,7 +378,7 @@ export function AllImagesScreen({
             {ip ? (ip.name.length > 5 ? ip.name : `全部素材.${ip.name}`) : '全部素材'}
           </Text>
           <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF', flexShrink: 0 }}>
-            {images.length} 张素材
+            {media.totalCount ?? images.length} 张素材
           </Text>
         </View>
 
@@ -490,7 +490,7 @@ export function AllImagesScreen({
             </Text>
             <View style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, flexShrink: 0 }}>
               <Text style={{ fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontWeight: '500', color: '#4B5563', lineHeight: 12 }}>
-                {images.length}
+                {media.totalCount ?? images.length}
               </Text>
             </View>
           </View>

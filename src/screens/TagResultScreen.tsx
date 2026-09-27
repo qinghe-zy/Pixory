@@ -285,7 +285,7 @@ export function TagResultScreen({
   const compactRightAction = (
     <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, compactHeaderStyle]} pointerEvents="box-none">
       <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
-        {images.length} 张
+        {media.totalCount ?? images.length} 张
       </Text>
       {selectAllButton}
       {sortButton}
@@ -371,7 +371,7 @@ export function TagResultScreen({
     >
       <GalleryCompactHeader
         title={tag ? `#${tag.name}` : '标签结果'}
-        count={images.length}
+        count={media.totalCount ?? images.length}
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
@@ -453,7 +453,7 @@ export function TagResultScreen({
           headerComponent={
             <GalleryNormalHeader
               title={tag ? `#${tag.name}` : '标签结果'}
-              count={images.length}
+              count={media.totalCount ?? images.length}
               animatedStyle={heroStyle}
               topRightActions={
                 <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>

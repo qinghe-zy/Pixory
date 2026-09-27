@@ -7,6 +7,7 @@ export interface PagedLoadResult<TItem, TMeta> {
   items: TItem[];
   hasMore: boolean;
   meta?: TMeta;
+  totalCount?: number;
 }
 
 interface UsePagedScreenLoadOptions<TItem, TMeta> {
@@ -23,6 +24,7 @@ interface PagedScreenData<TItem, TMeta> {
   items: TItem[];
   hasMore: boolean;
   meta: TMeta;
+  totalCount?: number;
 }
 
 const pagedScreenCache = new Map<string, PagedScreenData<any, any>>();
@@ -95,11 +97,12 @@ export function usePagedScreenLoad<TItem, TMeta>(
         if (!isMountedRef.current || !gate.isCurrent(request)) {
           return;
         }
-        const nextData = {
+        const nextData: PagedScreenData<TItem, TMeta> = {
           requestKey: request.requestKey,
           items: next.items,
           hasMore: next.hasMore,
           meta: next.meta ?? optionsRef.current.initialMeta,
+          totalCount: next.totalCount,
         };
         dataRef.current = nextData;
         pagedScreenCache.set(request.requestKey, nextData);
@@ -191,6 +194,7 @@ export function usePagedScreenLoad<TItem, TMeta>(
     items: isCurrentRequest ? data.items : [],
     hasMore: isCurrentRequest ? data.hasMore : false,
     meta: isCurrentRequest ? data.meta : options.initialMeta,
+    totalCount: isCurrentRequest ? data.totalCount : undefined,
     isLoading: isCurrentRequest ? isLoading : true,
     isLoadingMore: isCurrentRequest ? isLoadingMore : false,
     errorMessage: isCurrentRequest ? errorMessage : null,

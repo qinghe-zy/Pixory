@@ -21,16 +21,21 @@ export function useMediaCursorCollection({
 }: UseMediaCursorCollectionOptions) {
   return usePagedScreenLoad<ImageListItem, MediaPageCursor | null>(
     async (_offset, cursor) => runWithDatabaseSpace(space, async (db) => {
-      const page = await imageRepository.findFilteredCursorPage(db, {
+      const pagePromise = imageRepository.findFilteredCursorPage(db, {
         ...request,
         cursor,
         direction: 'after',
         limit: pageSize,
       });
+      const countPromise = cursor == null ? imageRepository.countFilteredCursorPage(db, request) : Promise.resolve(undefined);
+      
+      const [page, totalCount] = await Promise.all([pagePromise, countPromise]);
+
       return {
         items: page.items,
         hasMore: page.hasOlder,
         meta: page.olderCursor,
+        totalCount,
       };
     }),
     {

@@ -737,7 +737,7 @@ export function BatchManageImagesScreen({
       
       <GalleryCompactHeader
         title={`已选择 ${selectedCount} 张`}
-        count={images.length}
+        count={media.totalCount ?? images.length}
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
@@ -818,7 +818,7 @@ export function BatchManageImagesScreen({
           headerComponent={<View>
             <GalleryNormalHeader
               title={`已选择 ${selectedCount} 张`}
-              count={images.length}
+              count={media.totalCount ?? images.length}
               animatedStyle={heroStyle}
               topRightActions={
                 <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
