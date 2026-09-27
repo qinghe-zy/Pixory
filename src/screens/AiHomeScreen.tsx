@@ -222,17 +222,17 @@ export function AiHomeScreen({
   });
 
   const compactHeaderBgStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [30, 70], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [150, 190], [0, 1], Extrapolation.CLAMP),
   }));
 
   const newChatShrunkStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [30, 70], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [30, 70], [5, 0], Extrapolation.CLAMP) }],
+    opacity: interpolate(scrollY.value, [150, 190], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [150, 190], [5, 0], Extrapolation.CLAMP) }],
   }));
 
   const roleRailShrunkStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [90, 130], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [90, 130], [5, 0], Extrapolation.CLAMP) }],
+    opacity: interpolate(scrollY.value, [150, 190], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [150, 190], [5, 0], Extrapolation.CLAMP) }],
   }));
 
   const searchShrunkStyle = useAnimatedStyle(() => ({
