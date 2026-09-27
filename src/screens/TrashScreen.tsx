@@ -23,6 +23,7 @@ import { useAssetListPreferences } from '../services/assetListPreferences';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { componentTokens } from '../design/tokens';
 import { protoColors } from '../components/OrganizeShared';
+import { globalScrollState } from '../utils/scrollState';
 
 interface TrashScreenProps {
   space: PixorySpace;
@@ -307,7 +308,10 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
           onEndReached={media.loadMore}
           renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
             <Pressable
-              onLongPress={() => multiSelect.enterSelection(image.id)}
+              onLongPress={() => {
+                if (globalScrollState.isScrolling) return;
+                multiSelect.enterSelection(image.id);
+              }}
               onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
               style={({ pressed }) => [styles.itemCard, multiSelect.selectedImageIds.includes(image.id) ? styles.selectedItem : null, pressed && styles.pressed]}
             >

@@ -15,6 +15,7 @@ import { colors, radius, rhythm, shadows, spacing, typography } from '../design/
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { OrganizeSegmentedControl, protoColors, type OrganizeMode } from '../components/OrganizeShared';
+import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 interface TagsOverviewScreenProps {
   space?: PixorySpace;
@@ -132,6 +133,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mod
   }
 
   function handleTagPress(tag: TagUsageItem) {
+    if (globalScrollState.isScrolling) return;
     if (isSelectionMode) {
       toggleTagSelection(tag.id);
       return;
@@ -141,6 +143,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mod
   }
 
   function handleTagLongPress(tag: TagUsageItem) {
+    if (globalScrollState.isScrolling) return;
     if (isSelectionMode) {
       toggleTagSelection(tag.id);
       return;
@@ -361,6 +364,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mod
         onRetry={reload}
       >
         <FlatList
+          {...createScrollHandlers()}
           contentContainerStyle={styles.tagList}
           data={visibleTags}
           keyboardDismissMode="on-drag"

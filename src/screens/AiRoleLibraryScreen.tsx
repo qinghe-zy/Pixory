@@ -11,6 +11,7 @@ import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
 import type { PixorySpace } from '../database';
 import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { globalScrollState } from '../utils/scrollState';
 
 interface AiRoleLibraryScreenProps {
   space: PixorySpace;
@@ -49,6 +50,7 @@ export function AiRoleLibraryScreen({
   }, [loadCards]);
 
   function toggleSelected(card: AiRoleCardRecord) {
+    if (globalScrollState.isScrolling) return;
     setSelectedCardIds((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id]);
   }
 

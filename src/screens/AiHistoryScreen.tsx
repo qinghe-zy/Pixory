@@ -13,6 +13,7 @@ import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
+import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 interface AiHistoryScreenProps {
   space: PixorySpace;
@@ -369,6 +370,7 @@ export function AiHistoryScreen({
 
         <FlatList
           contentContainerStyle={[styles.list, styles.threadList]}
+          {...createScrollHandlers()}
           data={items}
           initialNumToRender={10}
           keyExtractor={(thread) => thread.id}
@@ -424,7 +426,10 @@ export function AiHistoryScreen({
                       <View style={styles.rowContent}>
                         <Pressable
                           accessibilityRole="button"
-                          onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
+                          onLongPress={(e) => {
+                            if (globalScrollState.isScrolling) return;
+                            setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
+                          }}
                           onPress={() => handleRowPress(thread)}
                           style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                         >

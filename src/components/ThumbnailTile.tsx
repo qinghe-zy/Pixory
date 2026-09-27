@@ -5,6 +5,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import type { ImageListItem, PixorySpace } from '../database';
 import { colors, componentTokens, radius, spacing, typography, shadows } from '../design/tokens';
 import { formatDuration } from '../utils/formatters';
+import { globalScrollState } from '../utils/scrollState';
 import { SecureImage } from './SecureImage';
 
 interface ThumbnailTileProps {
@@ -88,8 +89,14 @@ export function ThumbnailTile({
       accessibilityState={{ selected }}
       delayLongPress={700}
       onLayout={onLayout}
-      onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
-      onPress={onPress ? () => onPress(image.id) : undefined}
+      onLongPress={onLongPress ? () => {
+        if (globalScrollState.isScrolling) return;
+        onLongPress(image.id);
+      } : undefined}
+      onPress={onPress ? () => {
+        if (globalScrollState.isScrolling) return;
+        onPress(image.id);
+      } : undefined}
       style={({ pressed }) => [styles.pressable, aspectRatio === 'auto' && styles.fillPressable, containerStyle, pressed && styles.pressed]}
     >
       {content}

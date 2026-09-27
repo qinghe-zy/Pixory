@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 import type { ImageListItem } from '../database';
 import type { AssetListViewMode } from '../database/repositories/settingsRepository';
@@ -69,6 +70,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
   const isGrid = viewMode === 'grid';
   const isJustified = viewMode === 'justified';
   const numColumns = isGrid ? 3 : 1;
+  const scrollHandlers = useMemo(() => createScrollHandlers(), []);
 
   // ── Justified layout pre-computation ──────────────────────────────────────
   // Single useMemo: one O(N) pass builds the row layout, the id→item lookup,
@@ -145,6 +147,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
     return (
       <Animated.FlatList<JustifiedRow>
         {...panHandlers}
+        {...scrollHandlers}
         ListEmptyComponent={emptyComponent ? <View>{emptyComponent}</View> : null}
         ListFooterComponent={
           isLoadingMore ? (
@@ -207,6 +210,7 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
   return (
     <Animated.FlatList
       {...panHandlers}
+      {...scrollHandlers}
       ListEmptyComponent={emptyComponent ? <View>{emptyComponent}</View> : null}
       ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.active} style={styles.loader} /> : null}
       ListHeaderComponent={headerComponent ? <View style={{ zIndex: 1000, elevation: 100 }}>{headerComponent}</View> : null}

@@ -21,6 +21,7 @@ import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography }
 import type { PixorySpace } from '../database';
 import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
+import { globalScrollState } from '../utils/scrollState';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
@@ -338,7 +339,10 @@ export function AiHomeScreen({
                     accessibilityLabel={`打开最近聊天 ${thread.title}`}
                     accessibilityRole="button"
                     key={thread.id}
-                    onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
+                    onLongPress={(e) => {
+                      if (globalScrollState.isScrolling) return;
+                      setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
+                    }}
                     onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
                     style={({ pressed }) => [styles.threadRow, thread.isPinned && { backgroundColor: '#f3f3f4' }, pressed && styles.pressed]}
                   >

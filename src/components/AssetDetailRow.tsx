@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react
 import type { ImageListItem, PixorySpace } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatDateTime, formatDuration, formatFileSize, formatImageDimensions } from '../utils/formatters';
+import { globalScrollState } from '../utils/scrollState';
 import { SecureImage } from './SecureImage';
 
 interface AssetDetailRowProps {
@@ -84,8 +85,14 @@ export function AssetDetailRow({
       accessibilityState={{ selected }}
       delayLongPress={700}
       onLayout={onLayout}
-      onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
-      onPress={onPress ? () => onPress(image.id) : undefined}
+      onLongPress={onLongPress ? () => {
+        if (globalScrollState.isScrolling) return;
+        onLongPress(image.id);
+      } : undefined}
+      onPress={onPress ? () => {
+        if (globalScrollState.isScrolling) return;
+        onPress(image.id);
+      } : undefined}
       style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
     >
       {content}

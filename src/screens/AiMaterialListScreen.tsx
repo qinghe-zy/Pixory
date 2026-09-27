@@ -24,6 +24,7 @@ import type { AiDocumentOwnerType, AiDocumentStatus } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
+import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 interface AiMaterialListScreenProps {
   space: PixorySpace;
@@ -201,7 +202,10 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
       <View key={item.id} style={[compact ? styles.groupMaterialRow : styles.row, selected && styles.selectedRow]}>
         <Pressable
           accessibilityRole="button"
-          onLongPress={() => toggleSelected(item.id)}
+          onLongPress={() => {
+            if (globalScrollState.isScrolling) return;
+            toggleSelected(item.id);
+          }}
           onPress={() => {
             if (selectedIds.length) {
               toggleSelected(item.id);
@@ -268,6 +272,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
         ) : null}
         {isGlobalView ? (
           <FlatList
+            {...createScrollHandlers()}
             contentContainerStyle={styles.list}
             data={conversationGroups}
             keyExtractor={(group) => `${group.ownerType}:${group.ownerId}`}
@@ -310,6 +315,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
           />
         ) : (
           <FlatList
+            {...createScrollHandlers()}
             contentContainerStyle={styles.list}
             data={items}
             keyExtractor={(item) => item.id}

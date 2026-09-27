@@ -11,6 +11,7 @@ import { createKnowledgeBase, deleteKnowledgeBases, listKnowledgeBases } from '.
 import type { AiKnowledgeBaseRecord } from '../database/repositories/aiKnowledgeRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+import { globalScrollState } from '../utils/scrollState';
 
 interface AiKnowledgeBaseScreenProps {
   space: PixorySpace;
@@ -53,6 +54,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
   }
 
   function toggleSelected(knowledgeBaseId: string) {
+    if (globalScrollState.isScrolling) return;
     setSelectedIds((current) => current.includes(knowledgeBaseId) ? current.filter((id) => id !== knowledgeBaseId) : [...current, knowledgeBaseId]);
   }
 

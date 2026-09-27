@@ -6425,6 +6425,7 @@ export function AiChatScreen({
     pageX: number,
     pageY: number,
   ) => {
+    if (isUserDraggingRef.current || isMomentumScrollingRef.current) return;
     setArtifactContextMenuState({
       anchorX: pageX,
       anchorY: pageY,
@@ -6567,6 +6568,7 @@ export function AiChatScreen({
       pageX: number,
       pageY: number,
     ) => {
+      if (isUserDraggingRef.current || isMomentumScrollingRef.current) return;
       setMessageContextMenuState({
         anchorX: pageX,
         anchorY: pageY,

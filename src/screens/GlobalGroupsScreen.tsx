@@ -22,6 +22,7 @@ import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
 import { OrganizeSegmentedControl, protoColors, type OrganizeMode } from '../components/OrganizeShared';
+import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 interface GlobalGroupsScreenProps {
   space?: PixorySpace;
@@ -299,6 +300,7 @@ export function GlobalGroupsScreen({
       >
         {compactHeader}
         <AnimatedSectionList
+          {...createScrollHandlers()}
           contentContainerStyle={styles.list}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -323,7 +325,10 @@ export function GlobalGroupsScreen({
             return (
               <View style={styles.groupCardWrapper}>
                 <Pressable
-                  onLongPress={(e) => setActionGroupState({ group, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
+                  onLongPress={(e) => {
+                    if (globalScrollState.isScrolling) return;
+                    setActionGroupState({ group, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
+                  }}
                   onPress={() => onOpenGroup(group.ipId, group.id)}
                   style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressedCard]}
                 >

@@ -10,6 +10,7 @@ import { thoughtRepository, type ThoughtRecord } from '../ai/thought/thoughtRepo
 import { AppScreen } from '../components/AppScreen';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import { colors, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { globalScrollState } from '../utils/scrollState';
 
 type InnerLifeKind = 'diary' | 'thought' | 'dream';
 
@@ -93,6 +94,7 @@ export function CompanionInnerLifeScreen({
   }, []);
 
   const enterSelection = useCallback((key: string) => {
+    if (globalScrollState.isScrolling) return;
     setSelectionMode(true);
     setSelectedKeys(new Set([key]));
   }, []);
