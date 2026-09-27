@@ -260,7 +260,7 @@ export function AiHomeScreen({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top }]}
         >
           {/* Start Chat Card + Role Rail */}
           <View style={styles.mainStack}>

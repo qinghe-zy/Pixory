@@ -56,7 +56,8 @@ export function AppScreen({
   
   // When footer is present and absolute, we need extra padding so content isn't hidden
   const footerEstimateHeight = footer ? 100 : 0;
-  const bodyBottomPadding = (footer ? footerEstimateHeight : insets.bottom) + layout.pageBottomOffset + floatingFooterHeight;
+  const baseBottomInset = footer ? footerEstimateHeight : (floatingFooterHeight > 0 ? 0 : insets.bottom);
+  const bodyBottomPadding = baseBottomInset + layout.pageBottomOffset + floatingFooterHeight;
 
   const body = scrollable ? (
     <ScrollView

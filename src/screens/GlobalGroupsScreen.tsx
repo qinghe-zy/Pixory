@@ -416,8 +416,13 @@ function GroupCardCopy({ group, onOpenGroup, onOpenMenu }: { group: GlobalGroupL
           </Text>
         </View>
         <Text numberOfLines={1} style={styles.groupIpName}>
-          {group.ipName}
-        </Text>
+            {group.ipName}
+          </Text>
+          {group.description ? (
+            <Text numberOfLines={2} style={styles.groupDescription}>
+              {group.description}
+            </Text>
+          ) : null}
       </View>
       <View style={styles.groupFooter}>
         <Text style={styles.groupFooterMeta}>
@@ -715,8 +720,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '600',
-    letterSpacing: 0.66, // 0.06em
+    letterSpacing: 0.66,
     color: protoColors.secondary,
+  },
+  groupDescription: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    lineHeight: 14,
+    color: protoColors.secondary,
+    marginTop: 2,
   },
   groupFooter: {
     flexDirection: 'row',

@@ -320,10 +320,15 @@ export function IpDetailScreen({
                 </View>
 
                 <View style={styles.heroBottomContent}>
-                  <View style={{ flex: 1 }}>
-                    <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={2} style={styles.heroTitle}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', flex: 1, columnGap: 8, overflow: 'hidden' }}>
+                    <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={1} style={[styles.heroTitle, { flexShrink: 1, maxWidth: '100%' }]}>
                       {ip.name}
                     </Text>
+                    {ip.description ? (
+                      <Text numberOfLines={2} style={[styles.heroDescription, { flexShrink: 1, minWidth: '45%', flexGrow: 1, paddingBottom: 2 }]}>
+                        {ip.description}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
               </Pressable>
@@ -776,6 +781,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: -0.22,
     color: '#ffffff',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  heroDescription: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontFamily: typography.family.base,
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,

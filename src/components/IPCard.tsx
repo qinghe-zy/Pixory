@@ -88,15 +88,20 @@ export function IPCard({
               )}
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']} style={styles.heroGradient}>
                 <View style={styles.heroTitleRow}>
-                    <Text style={styles.heroTitleMain} numberOfLines={1}>{ip.name}</Text>
-                    <Pressable
-                      hitSlop={12}
-                      onPress={(e) => onOptionsPress?.(ip, e.nativeEvent.pageX, e.nativeEvent.pageY)}
-                      style={styles.moreBtn}
-                    >
-                      <MaterialIcons name="more-horiz" size={18} color="#ffffff" />
-                    </Pressable>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', flex: 1, columnGap: 8, paddingRight: 16, overflow: 'hidden' }}>
+                    <Text style={[styles.heroTitleMain, { flexShrink: 1, maxWidth: '100%' }]} numberOfLines={1}>{ip.name}</Text>
+                    {ip.description ? (
+                      <Text style={[styles.heroDescriptionMain, { flexShrink: 1, minWidth: '45%', flexGrow: 1, paddingBottom: 4 }]} numberOfLines={2}>{ip.description}</Text>
+                    ) : null}
                   </View>
+                  <Pressable
+                    hitSlop={12}
+                    onPress={(e) => onOptionsPress?.(ip, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                    style={styles.moreBtn}
+                  >
+                    <MaterialIcons name="more-horiz" size={18} color="#ffffff" />
+                  </Pressable>
+                </View>
                 <View style={styles.heroMetaRow}>
                   <View style={styles.heroMetaItem}>
                     <MaterialIcons name="photo-library" size={13} color="#fff" />
@@ -219,8 +224,11 @@ export function IPCard({
           </Pressable>
           <View style={styles.stdBody}>
             <View style={styles.stdHeaderRow}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.stdTitleMain} numberOfLines={1}>{ip.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', flex: 1, gap: 8, paddingRight: 8, overflow: 'hidden' }}>
+                <Text style={[styles.stdTitleMain, { flexShrink: 1 }]} numberOfLines={1}>{ip.name}</Text>
+                {ip.description ? (
+                  <Text style={[styles.stdDescriptionMain, { flexShrink: 1 }]} numberOfLines={1}>{ip.description}</Text>
+                ) : null}
               </View>
               <Pressable
                 hitSlop={12}
@@ -326,9 +334,14 @@ const styles = StyleSheet.create({
     fontSize: 32,
     color: '#ffffff',
     lineHeight: 36,
-    fontFamily: typography.family.display,
-      letterSpacing: -0.5,
-      fontWeight: '400',
+    fontFamily: typography.family.serifItalic,
+    letterSpacing: -0.5,
+    fontWeight: '400',
+  },
+  heroDescriptionMain: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontFamily: typography.family.base,
   },
   heroMetaRow: {
     flexDirection: 'row',
@@ -441,8 +454,13 @@ const styles = StyleSheet.create({
     color: '#1a1c1c',
     lineHeight: 26,
     fontFamily: typography.family.display,
-      letterSpacing: -0.2,
-      fontWeight: '500',
+    letterSpacing: -0.2,
+    fontWeight: '500',
+  },
+  stdDescriptionMain: {
+    fontSize: 12,
+    color: '#747878',
+    fontFamily: typography.family.base,
   },
   moreBtn: {
     padding: 4,
