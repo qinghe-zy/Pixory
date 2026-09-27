@@ -99,7 +99,7 @@ export function TagResultScreen({
       }
       return { tag, ips, groups };
     },
-    [activeFilters, tagId, refreshToken, sortOrder, space],
+    ['TagResultScreen', activeFilters, tagId, refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -131,7 +131,7 @@ export function TagResultScreen({
           sameSize: activeFilters.similarSameSize,
         }))
       : null,
-    [activeFilters, refreshToken, sortOrder, space, tagId],
+    ['TagResultScreen:similar', activeFilters, refreshToken, sortOrder, space, tagId],
     { initialData: null, deferUntilInteractions: true }
   );
   const repeatedKey = hasRepeatedFilter

@@ -48,7 +48,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
 
       return { image: { ...detail, loadedGroupIds: groupIds }, groups, tags };
     },
-    [imageId, refreshToken, space],
+    ['EditImageScreen', imageId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

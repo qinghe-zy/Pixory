@@ -28,7 +28,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
       imageRepository.findExactDuplicateGroups(db, importBatchId != null ? { importBatchId } : undefined),
       imageRepository.findSimilarImageGroups(db, importBatchId != null ? { importBatchId } : undefined),
     ]).then(([exact, similar]) => ({ exact, similar }))),
-    [importBatchId, refreshToken, space],
+    ['DuplicateReviewScreen', importBatchId, refreshToken, space],
     {
       initialData: { exact: [], similar: [] },
       formatError: (error) => {

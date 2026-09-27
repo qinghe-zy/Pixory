@@ -36,7 +36,7 @@ export function MoveImageGroupScreen({ imageId, space = 'normal', refreshToken, 
       ]));
       return { image: { ...detail, loadedGroupIds: groupIds }, groups };
     },
-    [imageId, refreshToken, space],
+    ['MoveImageGroupScreen', imageId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

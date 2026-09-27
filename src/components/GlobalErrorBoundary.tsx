@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, SafeAreaView } from 'react-native';
 import * as Updates from 'expo-updates';
+import * as Clipboard from 'expo-clipboard';
 
 interface Props {
   children: React.ReactNode;
@@ -29,6 +30,12 @@ export class GlobalErrorBoundary extends React.Component<Props, State> {
       errorStack: (error.stack || '') + '\n\n' + (errorInfo.componentStack || '')
     });
   }
+
+  handleCopyError = async () => {
+    const errorDetails = `错误信息:\n${this.state.errorText}\n\n详细堆栈:\n${this.state.errorStack}`;
+    await Clipboard.setStringAsync(errorDetails);
+    Alert.alert("提示", "错误信息已复制到剪贴板");
+  };
 
   handleCheckUpdate = async () => {
     this.setState({ checking: true });
@@ -73,6 +80,15 @@ export class GlobalErrorBoundary extends React.Component<Props, State> {
             >
               <Text style={styles.buttonText}>
                 {this.state.checking ? "正在检查更新..." : "检查热更新并修复"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton]}
+              onPress={this.handleCopyError}
+            >
+              <Text style={styles.secondaryButtonText}>
+                一键复制错误信息
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -137,6 +153,17 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#D1D5DB', // gray-300
+    marginTop: 16,
+  },
+  secondaryButtonText: {
+    color: '#374151', // gray-700
     fontSize: 16,
     fontWeight: '600',
   }

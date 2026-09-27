@@ -31,7 +31,7 @@ export function IpStorageDetailScreen({ space = 'normal', ipId, refreshToken, on
   const [sortMode, setSortMode] = useState<StorageSortMode>('fileSizeDesc');
   const { data, isLoading, errorMessage, reload } = useScreenLoad<IpStorageDetail>(
     () => getIpStorageDetail(space, ipId, sortMode),
-    [space, ipId, sortMode, refreshToken],
+    ['IpStorageDetailScreen', space, ipId, sortMode, refreshToken],
     {
       formatError: (error) => error instanceof Error ? `读取 IP 占用失败：${error.message}` : '读取 IP 占用失败',
     }

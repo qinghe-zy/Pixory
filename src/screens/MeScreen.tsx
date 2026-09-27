@@ -284,7 +284,7 @@ export function MeScreen({
         videoOriginalBytes,
       };
     },
-    [refreshToken, space],
+    ['MeScreen', refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : "未知错误";

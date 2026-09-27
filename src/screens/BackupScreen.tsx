@@ -67,7 +67,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
       );
       return { ips, lastBackupAt, backupExportDirectoryUri };
     },
-    [refreshToken, space],
+    ['BackupScreen', refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

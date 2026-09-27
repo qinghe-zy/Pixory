@@ -46,7 +46,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
           itemCountsByBatchId: Object.fromEntries(itemCountEntries),
         };
       }),
-    [ipId, refreshToken, space],
+    ['ImportBatchHistoryScreen', ipId, refreshToken, space],
     {
       initialData: { batches: [], itemCountsByBatchId: {} },
       formatError: (error) => {

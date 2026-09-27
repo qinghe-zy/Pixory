@@ -91,7 +91,7 @@ export function FavoritesScreen({
       ]));
       return { ips, groups, tags };
     },
-    [activeFilters, refreshToken, sortOrder, space],
+    ['FavoritesScreen', activeFilters, refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

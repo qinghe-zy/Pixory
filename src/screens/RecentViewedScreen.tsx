@@ -50,7 +50,7 @@ export function RecentViewedScreen({
   const scrollViewRef = useRef<ScrollView | null>(null);
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
     () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db, 60, { mediaType: 'all', orderBy: sortOrder })),
-    [refreshToken, sortOrder, space],
+    ['RecentViewedScreen', refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

@@ -56,7 +56,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
       ]));
       return { ips, summary };
     },
-    [activeIpId, refreshToken, space],
+    ['TrashScreen', activeIpId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
