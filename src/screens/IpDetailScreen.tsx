@@ -321,7 +321,7 @@ export function IpDetailScreen({
 
                 <View style={styles.heroBottomContent}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', flex: 1, columnGap: 8, overflow: 'hidden' }}>
-                    <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={1} style={[styles.heroTitle, { flexShrink: 1, maxWidth: '100%' }]}>
+                    <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={1} style={[styles.heroTitle, { flexShrink: 0, maxWidth: '100%' }]}>
                       {ip.name}
                     </Text>
                     {ip.description ? (

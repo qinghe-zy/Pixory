@@ -89,7 +89,7 @@ export function IPCard({
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']} style={styles.heroGradient}>
                 <View style={styles.heroTitleRow}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', flex: 1, columnGap: 8, paddingRight: 16, overflow: 'hidden' }}>
-                    <Text style={[styles.heroTitleMain, { flexShrink: 1, maxWidth: '100%' }]} numberOfLines={1}>{ip.name}</Text>
+                    <Text style={[styles.heroTitleMain, { flexShrink: 0, maxWidth: '100%' }]} numberOfLines={1}>{ip.name}</Text>
                     {ip.description ? (
                       <Text style={[styles.heroDescriptionMain, { flexShrink: 1, minWidth: '45%', flexGrow: 1, paddingBottom: 4 }]} numberOfLines={2}>{ip.description}</Text>
                     ) : null}
@@ -224,10 +224,10 @@ export function IPCard({
           </Pressable>
           <View style={styles.stdBody}>
             <View style={styles.stdHeaderRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', flex: 1, gap: 8, paddingRight: 8, overflow: 'hidden' }}>
-                <Text style={[styles.stdTitleMain, { flexShrink: 1 }]} numberOfLines={1}>{ip.name}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', flex: 1, columnGap: 8, paddingRight: 8, overflow: 'hidden' }}>
+                <Text style={[styles.stdTitleMain, { flexShrink: 0, maxWidth: '100%' }]} numberOfLines={1}>{ip.name}</Text>
                 {ip.description ? (
-                  <Text style={[styles.stdDescriptionMain, { flexShrink: 1 }]} numberOfLines={1}>{ip.description}</Text>
+                  <Text style={[styles.stdDescriptionMain, { flexShrink: 1, minWidth: '45%', flexGrow: 1, paddingBottom: 2 }]} numberOfLines={2}>{ip.description}</Text>
                 ) : null}
               </View>
               <Pressable
