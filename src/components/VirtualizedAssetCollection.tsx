@@ -161,20 +161,6 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
         ]}
         data={justifiedRows}
         // One item = one row → O(1) getItemLayout via pre-computed offsets.
-        getItemLayout={(_data, index) => {
-          const row = justifiedRows[index];
-          if (!row) return { length: 0, offset: 0, index };
-          return {
-            length: row.height + JUSTIFIED_GAP,
-            offset: row.top,
-            index,
-          };
-        }}
-        initialNumToRender={8}
-        initialScrollIndex={
-          initialIndex.current !== -1 ? initialIndex.current : undefined
-        }
-        key="justified"
         keyExtractor={(_row, index) => `jr-${index}`}
         maxToRenderPerBatch={8}
         onEndReached={onEndReached}
@@ -188,7 +174,6 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
           }
         }}
         ref={listRef}
-        removeClippedSubviews
         renderItem={({ item: row }) => (
           <View style={styles.justifiedRowWrap}>
             <JustifiedRowView
@@ -222,19 +207,6 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
       key={viewMode}
 
       initialScrollIndex={initialIndex.current !== -1 ? initialIndex.current : undefined}
-      getItemLayout={(data, index) => {
-        const windowWidth = Dimensions.get('window').width;
-        const contentWidth = windowWidth - 40; // spacing[5] * 2 padding in ScreenScaffold
-        const itemHeight = isGrid ? (contentWidth * 0.318) : 86;
-        const gap = 12; // rhythm.listCardGap
-        const rowHeight = itemHeight + gap;
-        return {
-          length: rowHeight,
-          offset: rowHeight * index,
-          index,
-        };
-      }}
-
       onScrollToIndexFailed={(info) => {
         if (images.length > 0) {
           setTimeout(() => {
@@ -249,7 +221,6 @@ export const VirtualizedAssetCollection = memo(function VirtualizedAssetCollecti
       onEndReachedThreshold={0.6}
       onScroll={onScroll}
       ref={listRef}
-      removeClippedSubviews
       renderItem={({ item, index }) => (
         <MeasuredAssetCell
           imageId={item.id}
