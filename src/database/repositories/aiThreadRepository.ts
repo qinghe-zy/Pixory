@@ -3933,7 +3933,7 @@ export const aiThreadRepository = {
            AND candidate.status = 'completed'
            AND candidate.role <> 'system'
            ${fallbackClause}
-         ORDER BY candidate.updatedAt ${input.sortDesc === false ? 'ASC' : 'DESC'}
+         ORDER BY candidate.createdAt ${input.sortDesc === false ? 'ASC' : 'DESC'}
          LIMIT ?`,
         space,
         ...fallbackValues,
@@ -3965,7 +3965,7 @@ export const aiThreadRepository = {
            AND t.archivedAt IS NULL
            AND ai_messages.status = 'completed'
            AND ai_messages.role <> 'system'
-         ORDER BY ai_messages.updatedAt ${input.sortDesc === false ? 'ASC' : 'DESC'}
+         ORDER BY ai_messages.createdAt ${input.sortDesc === false ? 'ASC' : 'DESC'}
          LIMIT ?`,
         ftsQuery,
         space,

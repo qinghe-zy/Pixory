@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
 import { AppDialog } from '../components/AppDialog';
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
@@ -220,23 +221,23 @@ export function AiHomeScreen({
     },
   });
 
+  const compactHeaderBgStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [30, 70], [0, 1], Extrapolation.CLAMP),
+  }));
+
   const newChatShrunkStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [60, 100], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [60, 100], [-100, 0], Extrapolation.CLAMP) }],
+    opacity: interpolate(scrollY.value, [30, 70], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [30, 70], [5, 0], Extrapolation.CLAMP) }],
   }));
 
   const roleRailShrunkStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [140, 180], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [140, 180], [-100, 0], Extrapolation.CLAMP) }],
+    opacity: interpolate(scrollY.value, [90, 130], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [90, 130], [5, 0], Extrapolation.CLAMP) }],
   }));
 
   const searchShrunkStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [220, 260], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [220, 260], [-100, 0], Extrapolation.CLAMP) }],
-  }));
-
-  const stickyBgStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [220, 260], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [150, 190], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [150, 190], [5, 0], Extrapolation.CLAMP) }],
   }));
 
   return (
@@ -245,9 +246,8 @@ export function AiHomeScreen({
         backgroundColor="#f9f9f9"
         bodyStyle={styles.homeBody}
         contentContainerStyle={styles.screenContent}
-        customTopPadding={insets.top + spacing[2]}
+        customTopPadding={0}
         errorMessage={errorMessage}
-        footer={footer}
         headerDividerVisible={false}
         scrollable={false}
         showHeader={false}
@@ -260,7 +260,7 @@ export function AiHomeScreen({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top + spacing[2], paddingBottom: 96 }]}
+          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
         >
           {/* Start Chat Card + Role Rail */}
           <View style={styles.mainStack}>
@@ -328,10 +328,7 @@ export function AiHomeScreen({
                   <Ionicons name="search" size={17} color="#5e5e5e" />
                   <Text style={styles.searchInputPlaceholder}>搜索聊天记录 / 角色 / 设定...</Text>
                 </Pressable>
-                <Pressable accessibilityRole="button" onPress={onOpenHistory} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
-                  <Text style={styles.sectionActionText}>全部</Text>
-                  <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
-                </Pressable>
+                
               </View>
             </View>
             <View style={styles.recentChatList}>
@@ -343,9 +340,9 @@ export function AiHomeScreen({
                     key={thread.id}
                     onLongPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
                     onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
-                    style={({ pressed }) => [styles.threadRow, thread.isPinned && { backgroundColor: '#f3f3f4' }, index > 0 && styles.threadDivider, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.threadRow, thread.isPinned && { backgroundColor: '#f3f3f4' }, pressed && styles.pressed]}
                   >
-                    <ThreadAvatar thread={thread} space={space} />
+                    {index > 0 && <View style={{ position: "absolute", top: 0, left: 70, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: aiLightColors.hairline }} />}<ThreadAvatar thread={thread} space={space} />
                     <View style={styles.threadCopy}>
                       <View style={styles.threadTitleRow}>
                         <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
@@ -511,55 +508,64 @@ export function AiHomeScreen({
           visible={Boolean(actionMenuState)}
         />
 
-        {/* --- STICKY FLOATING HEADER --- */}
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100 }} pointerEvents="box-none">
-          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#f9f9f9', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }, stickyBgStyle]} pointerEvents="none" />
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], paddingTop: insets.top, height: 48 }} pointerEvents="box-none">
-            {/* Left: Search */}
-            <Animated.View style={[{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }, searchShrunkStyle]} pointerEvents="auto">
-              <Pressable
-                accessibilityLabel="搜索"
-                onPress={onOpenSearch}
-                style={({ pressed }) => [{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
-              >
-                <Ionicons name="search" size={20} color={aiLightColors.primary} />
-              </Pressable>
-            </Animated.View>
-
-            {/* Center: Role Rail */}
-            <Animated.View style={[{ flex: 1, paddingHorizontal: 12, height: 36, justifyContent: 'center' }, roleRailShrunkStyle]} pointerEvents="auto">
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 32 }} contentContainerStyle={{ gap: 8, paddingRight: 16 }}>
-                {roleShortcuts.map((role) => (
-                  <Pressable
-                    accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
-                    accessibilityRole="button"
-                    key={role.roleCardId}
-                    onPress={() => onStartChatWithRole(role.roleCardId)}
-                    style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, overflow: 'hidden' }, pressed && styles.pressed]}
-                  >
-                    <SecureImage contentFit="cover" space={space} style={{ width: '100%', height: '100%' }} uri={role.avatarUri} />
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Animated.View>
-
-            {/* Right: New Chat */}
-            <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-end', justifyContent: 'center' }, newChatShrunkStyle]} pointerEvents="auto">
-              <Pressable
-                accessibilityLabel="开始聊天"
-                onPress={onStartNormalChat}
-                style={({ pressed }) => [{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
-              >
-                <Ionicons color={aiLightColors.primary} name="chatbubble-outline" size={22} />
-                <View style={{ position: 'absolute', right: 0, bottom: 2, backgroundColor: '#f9f9f9', borderRadius: 10 }}>
-                  <Ionicons color={aiLightColors.primary} name="add-circle" size={14} />
-                </View>
-              </Pressable>
-            </Animated.View>
-          </View>
-        </View>
       </AiLightScaffold>
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9', zIndex: 99 }} pointerEvents="none" />
+
+      {/* --- STICKY FLOATING HEADER --- */}
+      <Animated.View style={[
+        { position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100, paddingTop: insets.top },
+        compactHeaderBgStyle
+      ]} pointerEvents="box-none">
+        <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
+        {/* iOS Top Status Bar Background */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9' }} />
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], height: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }} pointerEvents="box-none">
+          {/* Left: Search */}
+          <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-start', justifyContent: 'center' }, searchShrunkStyle]} pointerEvents="auto">
+            <Pressable
+              accessibilityLabel="搜索"
+              onPress={onOpenSearch}
+              style={({ pressed }) => [{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+            >
+              <Ionicons name="search" size={20} color="#111827" />
+            </Pressable>
+          </Animated.View>
+
+          {/* Center: Role Rail */}
+          <Animated.View style={[{ flex: 1, paddingHorizontal: 12, height: 36, justifyContent: 'center' }, roleRailShrunkStyle]} pointerEvents="auto">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 32 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+              {roleShortcuts.map((role) => (
+                <Pressable
+                  accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
+                  accessibilityRole="button"
+                  key={role.roleCardId}
+                  onPress={() => onStartChatWithRole(role.roleCardId)}
+                  style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, overflow: 'hidden' }, pressed && styles.pressed]}
+                >
+                  <SecureImage contentFit="cover" space={space} style={{ width: '100%', height: '100%' }} uri={role.avatarUri} />
+                </Pressable>
+              ))}
+              <Pressable
+                accessibilityLabel="角色库"
+                onPress={onOpenRoleLibrary}
+                style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, backgroundColor: '#f3f3f4', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+              >
+                <Ionicons name="ellipsis-vertical" size={16} color="#111827" />
+              </Pressable>
+            </ScrollView>
+          </Animated.View>
+
+          {/* Right: New Chat */}
+          <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-end', justifyContent: 'center' }, newChatShrunkStyle]} pointerEvents="auto">
+            <Pressable
+              accessibilityLabel="开始聊天"
+              onPress={onStartNormalChat}
+              style={({ pressed }) => [{ width: 32, height: 32, backgroundColor: '#111827', borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+            >
+              <Ionicons color="#FFFFFF" name="add" size={20} />
+            </Pressable>
+          </Animated.View>
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -661,12 +667,13 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
   },
   screenContent: {
-    gap: rhythm.screenSectionGap,
-    paddingHorizontal: layout.pagePaddingHorizontal,
+    gap: rhythm.cardContentGap,
+    paddingHorizontal: 0,
   },
   homeBody: {
+    paddingHorizontal: 0,
     flex: 1,
-    gap: rhythm.screenSectionGap,
+    gap: rhythm.cardContentGap,
   },
   topAction: {
     alignItems: 'center',
@@ -688,6 +695,7 @@ const styles = StyleSheet.create({
     ...shadows.sm,
     backgroundColor: aiLightColors.surface,
     borderRadius: radius.sm,
+    marginHorizontal: spacing[2],
   },
   primaryChatCard: {
     alignItems: 'center',
@@ -752,6 +760,7 @@ const styles = StyleSheet.create({
   roleRailContent: {
     gap: rhythm.inlineGap,
     paddingRight: spacing[1],
+    paddingHorizontal: spacing[2],
   },
   roleShortcut: {
     alignItems: 'center',
@@ -816,11 +825,8 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: rhythm.cardContentGap,
-    marginHorizontal: -layout.pagePaddingHorizontal,
   },
-  sectionInner: {
-    paddingHorizontal: layout.pagePaddingHorizontal,
-  },
+  sectionInner: { paddingHorizontal: spacing[2] },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -861,19 +867,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   threadRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: RECENT_CHAT_ROW_HEIGHT,
-    paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingVertical: spacing[2],
-  },
+      alignItems: "center",
+      flexDirection: "row",
+      gap: rhythm.inlineGap,
+      minHeight: RECENT_CHAT_ROW_HEIGHT,
+      paddingVertical: spacing[3],
+      paddingHorizontal: spacing[4],
+    },
   emptyRecentRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: 72,
-    paddingHorizontal: layout.pagePaddingHorizontal,
+    paddingHorizontal: spacing[2],
     paddingVertical: spacing[2],
   },
   threadDivider: {

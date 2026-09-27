@@ -2964,11 +2964,13 @@ export async function searchGlobalMessages(input: {
         return score ? { message, ...score } : null;
       })
       .filter((item): item is { message: AiMessageWithCitations & { threadTitle: string }; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
-      .sort((left, right) =>
-        left.rank - right.rank ||
-        left.message.createdAt.localeCompare(right.message.createdAt) ||
-        left.message.id.localeCompare(right.message.id)
-      );
+      .sort((left, right) => {
+        const rankDiff = left.rank - right.rank;
+        if (rankDiff !== 0) return rankDiff;
+        const timeCmp = left.message.createdAt.localeCompare(right.message.createdAt);
+        if (timeCmp !== 0) return input.sortDesc ? -timeCmp : timeCmp;
+        return left.message.id.localeCompare(right.message.id);
+      });
   });
   const pagedMatches = matches.slice(offset, offset + limit);
   return {
