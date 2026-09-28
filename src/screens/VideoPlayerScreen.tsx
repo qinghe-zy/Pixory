@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer, createVideoPlayer, type VideoPlayer } from 'expo-video';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import * as Brightness from 'expo-brightness';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -20,7 +20,6 @@ import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlayb
 import { formatDuration } from '../utils/formatters';
 import { VideoShuffleSession } from '../media/videoShuffleSession';
 import { resolveVideoSwipe } from '../media/videoSwipePolicy';
-import { VideoPreloadPool } from '../media/videoPreloadPool';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
 const CONTROL_HIDE_DELAY_MS = 5000;
@@ -189,46 +188,14 @@ export function VideoPlayerScreen({
   const sourceFileName = externalSource?.fileName ?? activeVideoSource?.originalFilename ?? 'video.mp4';
 
   const poolDirectionRef = useRef<1 | -1>(1);
-  const poolRef = useRef<VideoPreloadPool<ImageListItem, VideoPlayer, number> | null>(null);
 
-  if (!poolRef.current) {
-    poolRef.current = new VideoPreloadPool({
-      createPlayer: (item) => {
-        const p = createVideoPlayer(item.originalFileUri);
-        p.timeUpdateEventInterval = 0.25;
-        p.loop = true;
-        p.playbackRate = speed;
-        return p;
-      },
-      getItemId: (item) => item.id,
-      preparePlayer: async (p) => {
-        return Promise.resolve();
-      },
-      releasePlayer: (p) => {
-        try {
-          p.release();
-        } catch {
-          // ignore
-        }
-      },
-      setPlayerActive: (p, active) => {
-        p.muted = !active;
-        if (!active) {
-          p.pause();
-        }
-      },
-    });
-  }
-
-  const fallbackPlayer = useVideoPlayer(null, (instance) => {
+  const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.playbackRate = speed;
     instance.loop = true;
   });
 
   const isExternal = Boolean(externalSource);
-  const activePoolPlayer = !isExternal && activeVideoId ? poolRef.current.getPlayer(activeVideoId) : null;
-  const player = isExternal || queue.length <= 1 ? fallbackPlayer : (activePoolPlayer ?? fallbackPlayer);
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
 
   useEffect(() => {
@@ -400,18 +367,6 @@ export function VideoPlayerScreen({
     setNextSwitchVideo(nextVideo);
   }, [activeVideoId, currentIndex, externalSource, isLandscape, playbackOrder, queue]);
 
-  // Update VideoPreloadPool
-  useEffect(() => {
-    if (externalSource || queue.length <= 1 || !activeVideoId) {
-      void poolRef.current?.update({ currentId: 0, direction: 1, items: [] });
-      return;
-    }
-    void poolRef.current?.update({
-      currentId: activeVideoId,
-      direction: poolDirectionRef.current,
-      items: queue,
-    });
-  }, [activeVideoId, externalSource, queue]);
 
   useEffect(() => {
     if (!sourceUri) {
@@ -431,9 +386,10 @@ export function VideoPlayerScreen({
     committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
     setLoadingCoverVideo(activeVideoSource);
-
-    const setupPlayer = () => {
-      if (!isActive || sourceLoadVersionRef.current !== loadVersion) return;
+    void player.replaceAsync({ uri: sourceUri }).then(() => {
+      if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
+        return;
+      }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
       player.loop = Boolean(externalSource) || queue.length <= 1;
@@ -442,29 +398,17 @@ export function VideoPlayerScreen({
         currentTimeRef.current = initialDisplayTime;
       }
       safePlayPlayer();
-      // Fallback in case onFirstFrameRender isn't fired
-      setTimeout(() => {
-        if (isActive && sourceLoadVersionRef.current === loadVersion) {
-          setLoadingCoverVideo(null);
-        }
-      }, 500);
-    };
-
-    if (activePoolPlayer) {
-      setupPlayer();
-    } else {
-      void player.replaceAsync({ uri: sourceUri }).then(setupPlayer).catch((error) => {
-        if (isActive) {
-          setLoadingCoverVideo(null);
-          showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
-        }
-      });
-    }
-
+      setLoadingCoverVideo(null);
+    }).catch((error) => {
+      if (isActive) {
+        setLoadingCoverVideo(null);
+        showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
+      }
+    });
     return () => {
       isActive = false;
     };
-  }, [activePoolPlayer, activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
+  }, [activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
 
   useEffect(() => {
     player.loop = Boolean(externalSource) || queue.length <= 1;
@@ -1541,39 +1485,6 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
-        {/* Previous Slot */}
-        {previousSwitchVideo && (
-          <View style={[styles.videoAdjacentSlot, { transform: [{ translateY: -surfaceHeight }] }]}>
-            {(() => {
-              const p = poolRef.current?.getPlayer(previousSwitchVideo.id);
-              return p ? (
-                <>
-                  <VideoView
-                    allowsPictureInPicture={false}
-                    contentFit="contain"
-                    fullscreenOptions={{ enable: false }}
-                    nativeControls={false}
-                    player={p}
-                    startsPictureInPictureAutomatically={false}
-                    style={styles.videoView}
-                  />
-                  {(previousSwitchVideo.coverThumbnailFileUri ?? previousSwitchVideo.thumbnailFileUri) ? (
-                    <View pointerEvents="none" style={styles.videoLoadingCover}>
-                      <SecureImage
-                        contentFit="contain"
-                        space={space}
-                        style={styles.videoLoadingCoverImage}
-                        uri={(previousSwitchVideo.coverThumbnailFileUri ?? previousSwitchVideo.thumbnailFileUri) as string}
-                      />
-                    </View>
-                  ) : null}
-                </>
-              ) : null;
-            })()}
-          </View>
-        )}
-
-        {/* Current Slot */}
         <VideoView
           allowsPictureInPicture={false}
           contentFit="contain"
@@ -1582,7 +1493,6 @@ export function VideoPlayerScreen({
           player={player}
           startsPictureInPictureAutomatically={false}
           style={styles.videoView}
-          onFirstFrameRender={() => setLoadingCoverVideo(null)}
         />
         {loadingCoverVideo?.coverThumbnailFileUri ?? loadingCoverVideo?.thumbnailFileUri ? (
           <View pointerEvents="none" style={styles.videoLoadingCover}>
@@ -1594,38 +1504,6 @@ export function VideoPlayerScreen({
             />
           </View>
         ) : null}
-
-        {/* Next Slot */}
-        {nextSwitchVideo && (
-          <View style={[styles.videoAdjacentSlot, { transform: [{ translateY: surfaceHeight }] }]}>
-            {(() => {
-              const p = poolRef.current?.getPlayer(nextSwitchVideo.id);
-              return p ? (
-                <>
-                  <VideoView
-                    allowsPictureInPicture={false}
-                    contentFit="contain"
-                    fullscreenOptions={{ enable: false }}
-                    nativeControls={false}
-                    player={p}
-                    startsPictureInPictureAutomatically={false}
-                    style={styles.videoView}
-                  />
-                  {(nextSwitchVideo.coverThumbnailFileUri ?? nextSwitchVideo.thumbnailFileUri) ? (
-                    <View pointerEvents="none" style={styles.videoLoadingCover}>
-                      <SecureImage
-                        contentFit="contain"
-                        space={space}
-                        style={styles.videoLoadingCoverImage}
-                        uri={(nextSwitchVideo.coverThumbnailFileUri ?? nextSwitchVideo.thumbnailFileUri) as string}
-                      />
-                    </View>
-                  ) : null}
-                </>
-              ) : null;
-            })()}
-          </View>
-        )}
         <View
           {...surfacePanResponder.panHandlers}
           style={styles.videoGestureLayer}
