@@ -85,7 +85,7 @@ export function TagMultiSelectPanel({
                 onChangeText={setTagSearchText}
                 placeholder="搜索标签"
                 placeholderTextColor={colors.text.placeholder}
-                selectionColor={colors.primary.default}
+                selectionColor={'#111827'}
                 style={styles.searchInput}
                 value={tagSearchText}
               />
@@ -108,7 +108,7 @@ export function TagMultiSelectPanel({
                   <Text numberOfLines={1} style={[styles.optionText, selected ? styles.optionTextSelected : null]}>
                     #{tag.name}
                   </Text>
-                  {selected ? <Ionicons color={colors.primary.active} name="checkmark" size={13} /> : null}
+                  {selected ? <Ionicons color={'#111827'} name="checkmark" size={13} /> : null}
                 </Pressable>
               );
             })}
@@ -135,12 +135,12 @@ export function TagMultiSelectPanel({
           placeholder={placeholder}
           placeholderTextColor={colors.text.placeholder}
           returnKeyType="done"
-          selectionColor={colors.primary.default}
+          selectionColor={'#111827'}
           style={styles.input}
           value={inputValue}
         />
         <Pressable onPress={() => addInputTag()} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
-          <Ionicons color={colors.primary.default} name="add" size={17} />
+          <Ionicons color={'#111827'} name="add" size={17} />
         </Pressable>
       </View>
 
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   },
   optionChipSelected: {
     backgroundColor: colors.background.tag,
-    borderColor: colors.primary.hover,
+    borderColor: '#111827',
   },
   optionText: {
     ...typography.textStyles.micro,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     maxWidth: 120,
   },
   optionTextSelected: {
-    color: colors.primary.active,
+    color: '#111827',
   },
   inputRow: {
     alignItems: 'center',

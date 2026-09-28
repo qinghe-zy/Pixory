@@ -60,8 +60,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
   selected: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
   },
   disabled: {
     opacity: 0.5,
@@ -78,8 +78,8 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
   selectedLabel: {
-    color: colors.primary.active,
-    fontWeight: '500',
+    color: '#111827',
+    fontWeight: '600',
   },
   meta: {
     ...typography.textStyles.caption,
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     width: 22,
   },
   selectedCheck: {
-    backgroundColor: colors.primary.default,
-    borderColor: colors.primary.default,
+    backgroundColor: '#111827',
+    borderColor: '#111827',
   },
 });

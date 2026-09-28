@@ -688,22 +688,18 @@ export function BatchManageImagesScreen({
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>分类与整理 (ORGANIZE)</Text>
-                <View style={styles.grid2}>
-                  <SheetActionItem icon="folder-open-outline" label="加入分组" onPress={() => setMode('add-group')} disabled={selectedCount === 0} />
-                  <SheetActionItem icon="remove-circle-outline" label="移出分组" onPress={() => setMode('remove-group')} disabled={selectedCount === 0} />
-                  <SheetActionItem icon="swap-horizontal-outline" label="替换分组" onPress={() => setMode('replace-group')} disabled={selectedCount === 0} />
-                  <SheetActionItem icon="pricetags-outline" label="添加标签" onPress={() => setMode('add-tags')} disabled={selectedCount === 0} />
-                  <SheetActionItem icon="color-wand-outline" label="套用模板" onPress={() => setMode('apply-template')} disabled={selectedCount === 0} />
-                </View>
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>存储与流转 (EXPORT & STORAGE)</Text>
                 <View style={styles.grid3}>
+                  <SheetVerticalItem icon="folder-open-outline" iconColor="#111111" label="加入分组" onPress={() => setMode('add-group')} disabled={selectedCount === 0} />
+                  <SheetVerticalItem icon="remove-circle-outline" iconColor="#111111" label="移出分组" onPress={() => setMode('remove-group')} disabled={selectedCount === 0} />
+                  <SheetVerticalItem icon="swap-horizontal-outline" iconColor="#111111" label="替换分组" onPress={() => setMode('replace-group')} disabled={selectedCount === 0} />
+                  
+                  <SheetVerticalItem icon="pricetags-outline" iconColor="#111111" label="添加标签" onPress={() => setMode('add-tags')} disabled={selectedCount === 0} />
+                  <SheetVerticalItem icon="color-wand-outline" iconColor="#111111" label="套用模板" onPress={() => setMode('apply-template')} disabled={selectedCount === 0} />
                   <SheetVerticalItem icon="star-outline" iconColor="#111111" label="批量收藏" onPress={() => handleFavoriteUpdate(true)} disabled={selectedCount === 0} />
+                  
                   <SheetVerticalItem icon="star-half-outline" iconColor="#111111" label="取消收藏" onPress={() => handleFavoriteUpdate(false)} disabled={selectedCount === 0} />
                   <SheetVerticalItem icon="download-outline" iconColor="#111111" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} disabled={selectedCount === 0 || isSavingToAlbum} />
+                  <View style={{ width: '31%' }} />
                 </View>
               </View>
 
@@ -804,7 +800,7 @@ export function BatchManageImagesScreen({
   return (
     <>
     <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
-    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle="Batch" footer={footer} onBack={onBack} showHeader={false} fullScreen={true} contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}>
+    <ScreenScaffold backgroundColor="#FFFFFF" decorativeTitle="Batch" footer={footer} footerNaked={true} onBack={onBack} showHeader={false} fullScreen={true} contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}>
       
       <GalleryCompactHeader
         title={`已选择 ${selectedCount} 张`}
@@ -931,100 +927,7 @@ export function BatchManageImagesScreen({
           </View>
         ) : null}
 
-        {isGroupMode(mode) ? (
-          <LightFormSection hint={getGroupModeHint(mode, selectedCount)} title={getGroupModeTitle(mode)}>
-            <View style={styles.optionList}>
-              {mode === 'replace-group' ? (
-                <OptionSelectRow
-                  label="无分组"
-                  meta="保留在当前 IP"
-                  onPress={() => setSelectedGroupId(null)}
-                  selected={selectedGroupId === null}
-                />
-              ) : null}
-              {groups.map((group) => (
-                <OptionSelectRow
-                  key={group.id}
-                  label={group.name}
-                  meta={getGroupTypeLabel(group.type)}
-                  onPress={() => setSelectedGroupId(group.id)}
-                  selected={selectedGroupId === group.id}
-                />
-              ))}
-              {mode !== 'remove-group' ? (
-                <Pressable onPress={() => setIsCreateGroupDialogVisible(true)} style={({ pressed }) => [styles.createGroupRow, pressed && styles.pressed]}>
-                  <Ionicons color={colors.primary.default} name="add" size={18} />
-                  <View style={styles.createGroupCopy}>
-                    <Text style={styles.createGroupTitle}>新建分组</Text>
-                    <Text style={styles.createGroupMeta}>创建后自动选为目标分组</Text>
-                  </View>
-                </Pressable>
-              ) : null}
-            </View>
-          </LightFormSection>
-        ) : null}
 
-        {mode === 'add-tags' ? (
-          <LightFormSection hint={`追加到已选 ${selectedCount} 张图片，不覆盖原有标签。`} title="添加标签">
-            <View style={styles.tagPanel}>
-              <TagMultiSelectPanel
-                availableTags={tags}
-                inputValue={tagInput}
-                onInputChange={(value) => {
-                  setTagInput(value);
-                  if (submitError) {
-                    clearSubmitError();
-                  }
-                }}
-                onSelectedTagNamesChange={(tagNames) => {
-                  setDraftTags(tagNames);
-                  if (submitError) {
-                    clearSubmitError();
-                  }
-                }}
-                placeholder="例如：batchTag"
-                selectedTagNames={draftTags}
-              />
-              {isDevToolsEnabled ? (
-                <Pressable
-                  disabled={isSubmitting}
-                  onPress={() => {
-                    setDraftTags(['batchTag']);
-                    setTagInput('');
-                    if (submitError) {
-                      clearSubmitError();
-                    }
-                  }}
-                  style={({ pressed }) => [styles.devPresetButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
-                >
-                  <Ionicons color={colors.text.tertiary} name="code-working-outline" size={14} />
-                  <Text style={styles.devPresetText}>回归预设 batchTag</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </LightFormSection>
-        ) : null}
-
-        {mode === 'apply-template' ? (
-          <LightFormSection hint={`应用到已选 ${selectedCount} 张图片。`} title="导入模板">
-            <View style={styles.templateGrid}>
-              {importTemplates.map((template) => (
-                <Pressable
-                  disabled={isSubmitting}
-                  key={template.key}
-                  onPress={() => handleApplyTemplate(template)}
-                  style={({ pressed }) => [styles.templateChip, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
-                >
-                  <Ionicons color={colors.primary.active} name="albums-outline" size={15} />
-                  <View style={styles.templateCopy}>
-                    <Text numberOfLines={1} style={styles.templateTitle}>{template.name}</Text>
-                    <Text numberOfLines={1} style={styles.templateMeta}>{template.tags.map((tag) => `#${tag}`).join(' ')}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          </LightFormSection>
-        ) : null}
           </View>}
           images={images}
           isLoadingMore={media.isLoadingMore}
@@ -1264,12 +1167,12 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', marginBottom: 12, letterSpacing: 0.5 },
   grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
-  grid3: { flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
+  grid3: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
   sheetActionItem: { width: '48%', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: '#F8F9FA', borderColor: '#F3F4F6', borderWidth: 1 },
   sheetActionIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }, android: { elevation: 1 } }) },
   sheetActionCopy: { flex: 1 },
   sheetActionLabel: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  sheetVerticalItem: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 14, backgroundColor: '#F8F9FA', borderColor: '#F3F4F6', borderWidth: 1 },
+  sheetVerticalItem: { width: '31%', alignItems: 'center', padding: 12, borderRadius: 14, backgroundColor: '#F8F9FA', borderColor: '#F3F4F6', borderWidth: 1, marginBottom: 8 },
   sheetVerticalIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 8, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }, android: { elevation: 1 } }) },
   sheetVerticalLabel: { fontSize: 12, fontWeight: '600', color: '#1F2937', textAlign: 'center' },
   dangerSection: { marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6', alignItems: 'center' },
