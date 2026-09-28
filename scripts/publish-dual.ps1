@@ -60,3 +60,8 @@ Write-Host "双仓库发布流程完成！" -ForegroundColor Green
 
 
 
+
+
+Write-Host '==== 4. 自动部署至官网服务器 ====' -ForegroundColor Cyan
+.\scripts\deploy-docs-mist01.ps1 -ApkPath "output\release\Pixory-v$version.apk"
+
