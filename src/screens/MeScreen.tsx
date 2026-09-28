@@ -665,7 +665,11 @@ export function MeScreen({
               ]}
             >
               <View style={styles.coreAssetHeader}>
-                <Ionicons color="#22C55E" name="star" size={28} />
+                <View style={styles.coreAssetIconWrap}>
+                  <View style={[styles.coreAssetIconBg, { backgroundColor: '#FFF4EC' }]}>
+                    <Ionicons color="#F4A86A" name="heart" size={22} />
+                  </View>
+                </View>
                 <View style={styles.arrowButtonBadge}>
                   <Ionicons
                     color={colors.text.tertiary}
@@ -716,11 +720,11 @@ export function MeScreen({
               ]}
             >
               <View style={styles.coreAssetHeader}>
-                <Ionicons
-                  color={colors.text.secondary}
-                  name="time-outline"
-                  size={28}
-                />
+                <View style={styles.coreAssetIconWrap}>
+                  <View style={[styles.coreAssetIconBg, { backgroundColor: '#EEF7FD' }]}>
+                    <Ionicons color="#7AB8E8" name="eye-outline" size={22} />
+                  </View>
+                </View>
                 <View style={styles.arrowButtonBadge}>
                   <Ionicons
                     color={colors.text.tertiary}
@@ -822,7 +826,7 @@ export function MeScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={[styles.toolIconWrap, { backgroundColor: '#F0EDF9' }]}>
+                <View style={[styles.toolIconWrap, { backgroundColor: '#E8F6F3' }]}>
                   <View style={{ transform: [{ scale: 0.85 }] }}>
                     <StorageUsageGlyph />
                   </View>
@@ -1302,6 +1306,7 @@ const styles = StyleSheet.create({
   },
   coreAssetsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing[4],
   },
   coreAssetCard: {
@@ -1310,9 +1315,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
+    minWidth: 140,
     padding: spacing[4],
     aspectRatio: 1.15,
     justifyContent: "space-between",
+  },
+  coreAssetIconWrap: {
+    marginBottom: 2,
+  },
+  coreAssetIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   coreAssetHeader: {
     flexDirection: "row",
@@ -1460,15 +1476,15 @@ const styles = StyleSheet.create({
     width: 4,
   },
   storageGlyphSlicePrimary: {
-    backgroundColor: '#9E86E1',
+    backgroundColor: '#5BB8A8',
     height: 8,
   },
   storageGlyphSliceGold: {
-    backgroundColor: '#B8A8EE',
+    backgroundColor: '#7DCFBF',
     height: 6,
   },
   storageGlyphSliceSoft: {
-    backgroundColor: '#D4CAF5',
+    backgroundColor: '#A8E6DA',
     height: 9,
   },
   storageGlyphBar: {
@@ -1476,15 +1492,15 @@ const styles = StyleSheet.create({
     width: 4,
   },
   storageGlyphBarTall: {
-    backgroundColor: '#9E86E1',
+    backgroundColor: '#5BB8A8',
     height: 10,
   },
   storageGlyphBarMid: {
-    backgroundColor: '#B8A8EE',
+    backgroundColor: '#7DCFBF',
     height: 7,
   },
   storageGlyphBarShort: {
-    backgroundColor: '#D4CAF5',
+    backgroundColor: '#A8E6DA',
     height: 5,
   },
   entryCopy: {
