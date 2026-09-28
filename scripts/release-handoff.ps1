@@ -106,17 +106,18 @@ try {
 
 $releaseExists = (& gh release view $tag --repo qinghe-zy/Pixory 2>$null)
 if ($LASTEXITCODE -eq 0) {
-  & gh release edit $tag --repo qinghe-zy/Pixory --title "Pixory v$version" --notes-file $externalNotes
+  & gh release edit $tag --repo qinghe-zy/Pixory --title "Pixory v$version" --notes-file $tempNotesPath
   if ($LASTEXITCODE -ne 0) { throw "更新 GitHub Release 说明失败：$tag" }
   if ($ApkPath) {
     & gh release upload $tag $ApkPath --repo qinghe-zy/Pixory --clobber
     if ($LASTEXITCODE -ne 0) { throw "更新 GitHub Release APK 失败：$tag" }
   }
 } else {
-  $releaseArgs = @('release', 'create', $tag, '--repo', 'qinghe-zy/Pixory', '--title', "Pixory v$version", '--notes-file', $externalNotes)
+  $releaseArgs = @('release', 'create', $tag, '--repo', 'qinghe-zy/Pixory', '--title', "Pixory v$version", '--notes-file', $tempNotesPath)
   if ($ApkPath) { $releaseArgs += $ApkPath }
   & gh @releaseArgs
   if ($LASTEXITCODE -ne 0) { throw "创建 GitHub Release 失败：$tag" }
 }
 
 Write-Host "发版交接完成：v$version / Commit $commit / Tag $tag / origin/main / GitHub Release"
+
