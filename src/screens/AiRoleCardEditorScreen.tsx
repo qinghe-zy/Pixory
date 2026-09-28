@@ -43,7 +43,7 @@ interface RoleCardEditorDraft {
 }
 
 const DEFAULT_ROLE_CARD_DRAFT: RoleCardEditorDraft = {
-  name: '素材整理助手',
+  name: '',
   description: '',
   prompt: '',
   avatarEnabled: false,
@@ -69,7 +69,7 @@ export function AiRoleCardEditorScreen({
   onApplyRoleCard,
   onStartChatWithRole,
 }: AiRoleCardEditorScreenProps) {
-  const [name, setName] = useState('素材整理助手');
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [prompt, setPrompt] = useState('');
   const [avatarEnabled, setAvatarEnabled] = useState(false);
@@ -681,3 +681,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   }
 });
+

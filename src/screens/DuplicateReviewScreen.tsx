@@ -90,7 +90,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
             <Text style={styles.heroTitle}>{activeTab === 'exact' ? '精确重复' : '相似图片'} {duplicateCount} 张</Text>
           </View>
           <Pressable disabled={isScanning} onPress={() => void scanDuplicateHashes()} style={({ pressed }) => [styles.scanButton, isScanning && styles.scanButtonBusy, pressed && !isScanning && styles.pressed]}>
-            <Ionicons color={colors.primary.active} name="scan-outline" size={14} />
+            <Ionicons color={'#FFFFFF'} name="scan-outline" size={14} />
             <Text style={styles.scanButtonText}>{isScanning ? '扫描中' : '扫描重复素材'}</Text>
           </Pressable>
         </View>
@@ -202,19 +202,19 @@ const styles = StyleSheet.create({
   },
   scanButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
+    backgroundColor: '#000000',
+    borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
     flexDirection: 'row',
     gap: spacing[1],
-    minHeight: 30,
-    paddingHorizontal: spacing[2],
+    height: 48,
+    paddingHorizontal: 24,
   },
   scanButtonBusy: {
     opacity: 0.72,
   },
   scanButtonText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
+    fontSize: 15,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   scanMessage: {
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[3],
     minHeight: 62,
-    paddingHorizontal: spacing[2],
+    paddingHorizontal: 24,
     paddingVertical: spacing[2],
   },
   imageRowSelected: {
@@ -325,30 +325,32 @@ const styles = StyleSheet.create({
   },
   deleteSelectedButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary.active,
-    borderRadius: radius.pill,
+    backgroundColor: '#000000',
+    borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
     justifyContent: 'center',
-    minHeight: 34,
-    paddingHorizontal: spacing[5],
+    height: 48,
+    paddingHorizontal: 24,
   },
   deleteSelectedText: {
     ...typography.textStyles.caption,
-    color: colors.text.inverse,
+    color: '#FFFFFF',
     fontWeight: '700',
   },
   keepButton: {
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
-    minHeight: 28,
+    backgroundColor: '#000000',
+    borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
+    height: 32,
     justifyContent: 'center',
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: 16,
   },
   keepButtonText: {
     ...typography.textStyles.micro,
-    color: colors.primary.active,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   pressed: {
     opacity: 0.78,
   },
 });
+
+

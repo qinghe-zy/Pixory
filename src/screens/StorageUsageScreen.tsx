@@ -139,7 +139,7 @@ export function StorageUsageScreen({
         onBack={onBack}
         rightAction={(
           <Pressable accessibilityRole="button" onPress={reload} style={({ pressed }) => [styles.refreshButton, pressed && styles.pressed]}>
-            <Ionicons color={colors.primary.default} name="refresh-outline" size={18} />
+            <Ionicons color={'#000000'} name="refresh-outline" size={18} />
           </Pressable>
         )}
         scrollable
@@ -206,7 +206,6 @@ export function StorageUsageScreen({
                   onPress={handleCleanTemporaryCache}
                   style={({ pressed }) => [styles.smartCleanButton, pressed && styles.pressed, isCleaningTemporary && styles.disabled]}
                 >
-                  <Ionicons color="#FFFFFF" name="sparkles" size={20} />
                   <Text style={styles.smartCleanText}>一键智能清理</Text>
                 </Pressable>
                 <Text style={styles.smartCleanHint}>安全清理临时缓存与系统日志，不影响任何内容</Text>
@@ -273,7 +272,7 @@ function formatSignedBytes(bytes: number): string {
 
 function SegmentBar({ summary }: { summary: StorageUsageSummary }) {
   const values = [
-    { key: 'original', bytes: summary.originalBytes, color: colors.primary.default },
+    { key: 'original', bytes: summary.originalBytes, color: '#000000' },
     { key: 'backup', bytes: summary.backupExportBytes, color: colors.semantic.warning },
     { key: 'preview', bytes: summary.previewBytes, color: colors.semantic.success },
     { key: 'chat', bytes: summary.chatHistoryBytes, color: '#9c27b0' },
@@ -620,7 +619,7 @@ const styles = StyleSheet.create({
   },
   panelButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary.default,
+    backgroundColor: '#000000',
     borderRadius: radius.md,
     justifyContent: 'center',
     minHeight: 44,
@@ -654,12 +653,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary.default,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    gap: spacing[2],
-    minWidth: 200,
+    backgroundColor: '#000000',
+    borderRadius: 24, paddingHorizontal: 24, height: 48, gap: 4, minWidth: 200, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
   },
   smartCleanText: {
     ...typography.textStyles.bodyStrong,
@@ -672,3 +667,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+
