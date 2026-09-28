@@ -1460,15 +1460,15 @@ const styles = StyleSheet.create({
     width: 4,
   },
   storageGlyphSlicePrimary: {
-    backgroundColor: colors.primary.default,
+    backgroundColor: '#9E86E1',
     height: 8,
   },
   storageGlyphSliceGold: {
-    backgroundColor: colors.semantic.warning,
+    backgroundColor: '#B8A8EE',
     height: 6,
   },
   storageGlyphSliceSoft: {
-    backgroundColor: colors.support.sky300,
+    backgroundColor: '#D4CAF5',
     height: 9,
   },
   storageGlyphBar: {
@@ -1476,15 +1476,15 @@ const styles = StyleSheet.create({
     width: 4,
   },
   storageGlyphBarTall: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: '#9E86E1',
     height: 10,
   },
   storageGlyphBarMid: {
-    backgroundColor: colors.semantic.warningBackground,
+    backgroundColor: '#B8A8EE',
     height: 7,
   },
   storageGlyphBarShort: {
-    backgroundColor: colors.support.sky100,
+    backgroundColor: '#D4CAF5',
     height: 5,
   },
   entryCopy: {
