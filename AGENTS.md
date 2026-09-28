@@ -458,11 +458,7 @@ Default release workflow:
     - If a compatible emulator/device is available, install and launch.
     - If release install fails because an existing app has a different signature, do not uninstall user data without explicit confirmation. Use debug install/launch only as a non-destructive smoke test and report that release install was blocked by signature mismatch.
 16. Commit the release changes with a concise release commit.
-17. Push `main` to the GitHub release remote:
-    - `origin` / GitHub
-18. Create and push the version tag to `origin`.
-19. Create a GitHub Release and upload the APK for backup download and historical archive.
-20. Verify the official server APK direct URL, GitHub Release, latest release lists, remote `docs/update-version.json`, remote `docs/announcement.json`, remote release-facing website pages, remote README, and local/remote branch sync with `origin`.
+17. Run `.\scripts\publish-dual.ps1` which automatically handles pushing to both repositories, cleaning the release notes, creating the GitHub Releases, and deploying to the official website.`n  20. Verify the official server APK direct URL, GitHub Release, latest release lists, remote `docs/update-version.json`, remote `docs/announcement.json`, remote release-facing website pages, remote README, and local/remote branch sync with `origin`.
 21. Ensure the app update popup defaults to the official website download section:
     - `app.json` `expo.extra.updateCheck.url` points to `https://mist01.com/update-version.json`.
     - `app.json` `expo.extra.updateCheck.githubLatestUrl` points to `https://api.github.com/repos/qinghe-zy/Pixory/releases/latest` as a fallback version source.
@@ -552,4 +548,5 @@ Pixory should stay focused on:
  # #   P r o b l e m   R e c o r d 
  -   2 0 2 6 - 0 7 :   T h e   A n d r o i d   A P K   b u n d l e d   a   s t a l e   J a v a s c r i p t   p a y l o a d   b e c a u s e   \ . \ g r a d l e w . b a t   c l e a n \   w a s   n o t   r u n   b e f o r e   \  s s e m b l e R e l e a s e \ .   T h i s   c a u s e d   u s e r s   d o w n l o a d i n g   t h e   A P K   d i r e c t l y   t o   g e t   a n   o l d   U I   v e r s i o n   ( 2 . 6 . 0 )   d e s p i t e   t h e   n a t i v e   v e r s i o n   s t r i n g   s a y i n g   2 . 6 . 1 .   T o   f i x   t h i s ,   a l w a y s   c l e a n   t h e   g r a d l e   p r o j e c t   b e f o r e   p a c k a g i n g .  
  
+
 
