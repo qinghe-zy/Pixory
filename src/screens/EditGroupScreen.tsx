@@ -268,6 +268,7 @@ export function EditGroupScreen({
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView
+          automaticallyAdjustKeyboardInsets={true}
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 56, paddingBottom: insets.bottom + atelierSpacing.margin },
