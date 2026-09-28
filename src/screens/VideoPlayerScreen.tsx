@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { VideoView, useVideoPlayer, createVideoPlayer, type VideoPlayer } from 'expo-video';
 import * as Brightness from 'expo-brightness';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -18,6 +18,9 @@ import { useToast } from '../components/AppToast';
 import { importVideosToIp, saveVideoToSystemAlbum, type PickedVideoAsset } from '../services/videoImportService';
 import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlaybackOrder } from '../services/mediaExperiencePreferences';
 import { formatDuration } from '../utils/formatters';
+import { VideoShuffleSession } from '../media/videoShuffleSession';
+import { resolveVideoSwipe } from '../media/videoSwipePolicy';
+import { VideoPreloadPool } from '../media/videoPreloadPool';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
 const CONTROL_HIDE_DELAY_MS = 5000;
@@ -89,13 +92,8 @@ function getLandscapeStateFromOrientation(orientation: ScreenOrientation.Orienta
   return null;
 }
 
-function pickRandomQueueIndex(queueLength: number, currentIndex: number): number {
-  if (queueLength <= 1) {
-    return currentIndex;
-  }
-  const randomIndex = Math.floor(Math.random() * (queueLength - 1));
-  return randomIndex >= currentIndex ? randomIndex + 1 : randomIndex;
-}
+
+
 
 function resolveInitialPlaybackTimeSeconds(lastPlaybackPositionMs?: number | null, durationMs?: number | null): number {
   if (!lastPlaybackPositionMs || lastPlaybackPositionMs <= 1000) {
@@ -181,16 +179,56 @@ export function VideoPlayerScreen({
   const floatingMenuOpacity = useRef(new Animated.Value(0)).current;
   const floatingMenuTranslateY = useRef(new Animated.Value(10)).current;
   const videoSwitchTranslateY = useRef(new Animated.Value(0)).current;
+  const shuffleSessionRef = useRef<VideoShuffleSession | null>(null);
+  const [previousSwitchVideo, setPreviousSwitchVideo] = useState<ImageListItem | null>(null);
+  const [nextSwitchVideo, setNextSwitchVideo] = useState<ImageListItem | null>(null);
+  const swipeSettlingRef = useRef(false);
 
   const activeVideoSource = switchPreviewVideo ?? video;
   const sourceUri = externalSource?.uri ?? activeVideoSource?.originalFileUri ?? null;
   const sourceFileName = externalSource?.fileName ?? activeVideoSource?.originalFilename ?? 'video.mp4';
 
-  const player = useVideoPlayer(null, (instance) => {
+  const poolDirectionRef = useRef<1 | -1>(1);
+  const poolRef = useRef<VideoPreloadPool<ImageListItem, VideoPlayer, number> | null>(null);
+
+  if (!poolRef.current) {
+    poolRef.current = new VideoPreloadPool({
+      createPlayer: (item) => {
+        const p = createVideoPlayer(item.originalFileUri);
+        p.timeUpdateEventInterval = 0.25;
+        p.loop = true;
+        p.playbackRate = speed;
+        return p;
+      },
+      getItemId: (item) => item.id,
+      preparePlayer: async (p) => {
+        return Promise.resolve();
+      },
+      releasePlayer: (p) => {
+        try {
+          p.release();
+        } catch {
+          // ignore
+        }
+      },
+      setPlayerActive: (p, active) => {
+        p.muted = !active;
+        if (!active) {
+          p.pause();
+        }
+      },
+    });
+  }
+
+  const fallbackPlayer = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.playbackRate = speed;
     instance.loop = true;
   });
+
+  const isExternal = Boolean(externalSource);
+  const activePoolPlayer = !isExternal && activeVideoId ? poolRef.current.getPlayer(activeVideoId) : null;
+  const player = isExternal || queue.length <= 1 ? fallbackPlayer : (activePoolPlayer ?? fallbackPlayer);
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
 
   useEffect(() => {
@@ -331,6 +369,50 @@ export function VideoPlayerScreen({
     };
   }, [activeVideoId, externalSource, onBack, refreshToken, showToast, space]);
 
+  // Initialize or sync shuffle session when queue or playback order changes
+  useEffect(() => {
+    if (externalSource || queue.length <= 1) {
+      shuffleSessionRef.current = null;
+      return;
+    }
+    const queueIds = queue.map((item) => item.id);
+    if (playbackOrder === 'shuffle') {
+      if (!shuffleSessionRef.current) {
+        shuffleSessionRef.current = new VideoShuffleSession({ queueIds, currentId: activeVideoId });
+      } else {
+        shuffleSessionRef.current.syncQueue(queueIds);
+      }
+    } else {
+      shuffleSessionRef.current = null;
+    }
+  }, [activeVideoId, externalSource, playbackOrder, queue]);
+
+  // Compute adjacent slot videos for three-slot vertical swipe
+  useEffect(() => {
+    if (externalSource || isLandscape || queue.length <= 1) {
+      setPreviousSwitchVideo(null);
+      setNextSwitchVideo(null);
+      return;
+    }
+    const prevVideo = getVideoByOffset(-1);
+    const nextVideo = getVideoByOffset(1);
+    setPreviousSwitchVideo(prevVideo);
+    setNextSwitchVideo(nextVideo);
+  }, [activeVideoId, currentIndex, externalSource, isLandscape, playbackOrder, queue]);
+
+  // Update VideoPreloadPool
+  useEffect(() => {
+    if (externalSource || queue.length <= 1 || !activeVideoId) {
+      void poolRef.current?.update({ currentId: 0, direction: 1, items: [] });
+      return;
+    }
+    void poolRef.current?.update({
+      currentId: activeVideoId,
+      direction: poolDirectionRef.current,
+      items: queue,
+    });
+  }, [activeVideoId, externalSource, queue]);
+
   useEffect(() => {
     if (!sourceUri) {
       return;
@@ -349,10 +431,9 @@ export function VideoPlayerScreen({
     committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
     setLoadingCoverVideo(activeVideoSource);
-    void player.replaceAsync({ uri: sourceUri }).then(() => {
-      if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
-        return;
-      }
+
+    const setupPlayer = () => {
+      if (!isActive || sourceLoadVersionRef.current !== loadVersion) return;
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
       player.loop = Boolean(externalSource) || queue.length <= 1;
@@ -361,17 +442,29 @@ export function VideoPlayerScreen({
         currentTimeRef.current = initialDisplayTime;
       }
       safePlayPlayer();
-      setLoadingCoverVideo(null);
-    }).catch((error) => {
-      if (isActive) {
-        setLoadingCoverVideo(null);
-        showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
-      }
-    });
+      // Fallback in case onFirstFrameRender isn't fired
+      setTimeout(() => {
+        if (isActive && sourceLoadVersionRef.current === loadVersion) {
+          setLoadingCoverVideo(null);
+        }
+      }, 500);
+    };
+
+    if (activePoolPlayer) {
+      setupPlayer();
+    } else {
+      void player.replaceAsync({ uri: sourceUri }).then(setupPlayer).catch((error) => {
+        if (isActive) {
+          setLoadingCoverVideo(null);
+          showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
+        }
+      });
+    }
+
     return () => {
       isActive = false;
     };
-  }, [activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
+  }, [activePoolPlayer, activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
 
   useEffect(() => {
     player.loop = Boolean(externalSource) || queue.length <= 1;
@@ -601,7 +694,7 @@ export function VideoPlayerScreen({
           }
           if (surfaceGestureModeRef.current === 'video-switch') {
             surfaceGestureModeRef.current = null;
-            finishCenterVideoSwitchGesture(gestureState.dy);
+            finishCenterVideoSwitchGesture(gestureState.dy, gestureState.vy);
             return;
           }
           surfaceGestureModeRef.current = null;
@@ -958,70 +1051,86 @@ export function VideoPlayerScreen({
     return locationX >= centerLeft && locationX <= centerRight && absDy > absDx * CENTER_VIDEO_SWITCH_DOMINANCE_RATIO;
   }
 
-  function finishCenterVideoSwitchGesture(deltaY: number) {
-    const offset = deltaY < 0 ? 1 : -1;
-    const nextVideo = getVideoByOffset(offset);
-    if (Math.abs(deltaY) < CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX) {
+  function finishCenterVideoSwitchGesture(deltaY: number, velocityY?: number) {
+    const resolution = resolveVideoSwipe({
+      canGoNext: nextSwitchVideo != null,
+      canGoPrevious: previousSwitchVideo != null,
+      translationY: deltaY,
+      velocityY: velocityY ?? 0,
+      viewportHeight: surfaceHeight,
+    });
+    if (resolution.action === 'cancel') {
       resetVideoSwitchDrag();
       return;
     }
+    const nextVideo = resolution.direction === 1 ? nextSwitchVideo : previousSwitchVideo;
     if (!nextVideo) {
       resetVideoSwitchDrag();
       return;
     }
-    switchVideoWithTransition(nextVideo, offset, getVideoSwitchHistoryMode(offset));
+    switchVideoWithTransition(nextVideo, resolution.direction as 1 | -1, getVideoSwitchHistoryMode(resolution.direction as 1 | -1));
   }
 
   function updateVideoSwitchDrag(deltaY: number) {
+    if (swipeSettlingRef.current) {
+      // Reverse interception during settle: stop the settle animation and resume drag
+      videoSwitchTranslateY.stopAnimation(() => {
+        swipeSettlingRef.current = false;
+        setIsVideoSwitchTransitioning(false);
+      });
+    }
     const maxTranslate = Math.max(1, surfaceHeight);
     videoSwitchTranslateY.setValue(Math.max(-maxTranslate, Math.min(maxTranslate, deltaY)));
   }
 
   function resetVideoSwitchDrag() {
-    Animated.timing(videoSwitchTranslateY, {
+    swipeSettlingRef.current = true;
+    Animated.spring(videoSwitchTranslateY, {
       toValue: 0,
-      duration: VIDEO_SWITCH_CANCEL_DURATION_MS,
+      damping: 22,
+      mass: 0.8,
+      stiffness: 200,
       useNativeDriver: true,
-    }).start(() => {
-      resetHideTimer();
+    }).start(({ finished }) => {
+      swipeSettlingRef.current = false;
+      if (finished) {
+        resetHideTimer();
+      }
     });
   }
 
   function switchVideoWithTransition(nextVideo: ImageListItem, direction: 1 | -1, historyMode: VideoSwitchHistoryMode = 'append') {
-    if (isVideoSwitchTransitioning) {
+    if (isVideoSwitchTransitioning && !swipeSettlingRef.current) {
       return;
     }
     setIsVideoSwitchTransitioning(true);
+    swipeSettlingRef.current = true;
     clearHideTimer();
     clearLongPressTimer();
     setSpeedMenuVisible(false);
     setQueueVisible(false);
     setMoreVisible(false);
     const transitionHeight = Math.max(1, surfaceHeight);
-    Animated.timing(videoSwitchTranslateY, {
+    // Three-slot approach: animate translateY to the target offset.
+    // The adjacent slot is already visible and follows the same translateY,
+    // so the next video slides in from below/above simultaneously.
+    Animated.spring(videoSwitchTranslateY, {
       toValue: -direction * transitionHeight,
-      duration: VIDEO_SWITCH_EXIT_DURATION_MS,
+      damping: 26,
+      mass: 0.9,
+      stiffness: 180,
       useNativeDriver: true,
     }).start(({ finished }) => {
+      swipeSettlingRef.current = false;
       if (!finished) {
-        videoSwitchTranslateY.setValue(0);
-        setIsVideoSwitchTransitioning(false);
-        resetHideTimer();
+        // Interrupted by reverse gesture — don't commit the switch
         return;
       }
       setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
-      videoSwitchTranslateY.setValue(direction * transitionHeight);
-      InteractionManager.runAfterInteractions(() => {
-        Animated.timing(videoSwitchTranslateY, {
-          toValue: 0,
-          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
-          useNativeDriver: true,
-        }).start(() => {
-          setIsVideoSwitchTransitioning(false);
-          resetHideTimer();
-        });
-      });
+      videoSwitchTranslateY.setValue(0);
+      setIsVideoSwitchTransitioning(false);
+      resetHideTimer();
     });
   }
 
@@ -1293,6 +1402,20 @@ export function VideoPlayerScreen({
     if (options?.pauseBeforeSwitch !== false) {
       safePausePlayer();
     }
+    // Commit to shuffle session
+    const session = shuffleSessionRef.current;
+    if (session) {
+      session.setPrevious(activeVideoId);
+      if (options?.historyMode !== 'back') {
+        // If the next video matches what peekNext returned, commitNext to advance.
+        // Otherwise it's a queue tap — just markPlayed.
+        if (session.peekNext() === nextVideoId) {
+          session.commitNext();
+        } else {
+          session.markPlayed(nextVideoId);
+        }
+      }
+    }
     setSwitchPreviewVideo(nextVideo ?? null);
     setActiveVideoId(nextVideoId);
     if (options?.historyMode === 'back') {
@@ -1317,12 +1440,13 @@ export function VideoPlayerScreen({
     return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
   }
 
-  function getRandomQueueVideo() {
-    if (queue.length <= 1 || currentIndex < 0) {
+  function getShuffleNextVideo() {
+    const session = shuffleSessionRef.current;
+    if (!session || queue.length <= 1) {
       return null;
     }
-    const nextVideo = queue[pickRandomQueueIndex(queue.length, currentIndex)];
-    return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
+    const nextId = session.peekNext();
+    return nextId != null ? queue.find((item) => item.id === nextId) ?? null : null;
   }
 
   function rememberWatchedVideo(nextVideoId: number) {
@@ -1347,7 +1471,7 @@ export function VideoPlayerScreen({
 
   function getVideoByOffset(offset: 1 | -1) {
     if (playbackOrder === 'shuffle') {
-      return offset === -1 ? getPreviousWatchedVideo() : getRandomQueueVideo();
+      return offset === -1 ? getPreviousWatchedVideo() : getShuffleNextVideo();
     }
     return getSequenceVideoByOffset(offset);
   }
@@ -1372,7 +1496,7 @@ export function VideoPlayerScreen({
       setCurrentTime(0);
       void persistPlaybackPosition(currentPlaybackVideoIdRef.current, 0);
     }
-    const nextVideo = playbackOrder === 'shuffle' ? getRandomQueueVideo() : getSequenceVideoByOffset(1);
+    const nextVideo = playbackOrder === 'shuffle' ? getShuffleNextVideo() : getSequenceVideoByOffset(1);
     if (nextVideo) {
       switchVideo(nextVideo.id, nextVideo, { showControls: false });
     }
@@ -1417,6 +1541,39 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
+        {/* Previous Slot */}
+        {previousSwitchVideo && (
+          <View style={[styles.videoAdjacentSlot, { transform: [{ translateY: -surfaceHeight }] }]}>
+            {(() => {
+              const p = poolRef.current?.getPlayer(previousSwitchVideo.id);
+              return p ? (
+                <>
+                  <VideoView
+                    allowsPictureInPicture={false}
+                    contentFit="contain"
+                    fullscreenOptions={{ enable: false }}
+                    nativeControls={false}
+                    player={p}
+                    startsPictureInPictureAutomatically={false}
+                    style={styles.videoView}
+                  />
+                  {(previousSwitchVideo.coverThumbnailFileUri ?? previousSwitchVideo.thumbnailFileUri) ? (
+                    <View pointerEvents="none" style={styles.videoLoadingCover}>
+                      <SecureImage
+                        contentFit="contain"
+                        space={space}
+                        style={styles.videoLoadingCoverImage}
+                        uri={(previousSwitchVideo.coverThumbnailFileUri ?? previousSwitchVideo.thumbnailFileUri) as string}
+                      />
+                    </View>
+                  ) : null}
+                </>
+              ) : null;
+            })()}
+          </View>
+        )}
+
+        {/* Current Slot */}
         <VideoView
           allowsPictureInPicture={false}
           contentFit="contain"
@@ -1425,6 +1582,7 @@ export function VideoPlayerScreen({
           player={player}
           startsPictureInPictureAutomatically={false}
           style={styles.videoView}
+          onFirstFrameRender={() => setLoadingCoverVideo(null)}
         />
         {loadingCoverVideo?.coverThumbnailFileUri ?? loadingCoverVideo?.thumbnailFileUri ? (
           <View pointerEvents="none" style={styles.videoLoadingCover}>
@@ -1436,6 +1594,38 @@ export function VideoPlayerScreen({
             />
           </View>
         ) : null}
+
+        {/* Next Slot */}
+        {nextSwitchVideo && (
+          <View style={[styles.videoAdjacentSlot, { transform: [{ translateY: surfaceHeight }] }]}>
+            {(() => {
+              const p = poolRef.current?.getPlayer(nextSwitchVideo.id);
+              return p ? (
+                <>
+                  <VideoView
+                    allowsPictureInPicture={false}
+                    contentFit="contain"
+                    fullscreenOptions={{ enable: false }}
+                    nativeControls={false}
+                    player={p}
+                    startsPictureInPictureAutomatically={false}
+                    style={styles.videoView}
+                  />
+                  {(nextSwitchVideo.coverThumbnailFileUri ?? nextSwitchVideo.thumbnailFileUri) ? (
+                    <View pointerEvents="none" style={styles.videoLoadingCover}>
+                      <SecureImage
+                        contentFit="contain"
+                        space={space}
+                        style={styles.videoLoadingCoverImage}
+                        uri={(nextSwitchVideo.coverThumbnailFileUri ?? nextSwitchVideo.thumbnailFileUri) as string}
+                      />
+                    </View>
+                  ) : null}
+                </>
+              ) : null;
+            })()}
+          </View>
+        )}
         <View
           {...surfacePanResponder.panHandlers}
           style={styles.videoGestureLayer}
@@ -1710,6 +1900,9 @@ const styles = StyleSheet.create({
   videoView: {
     height: '100%',
     width: '100%',
+  },
+  videoAdjacentSlot: {
+    ...StyleSheet.absoluteFillObject,
   },
   videoLoadingCover: {
     ...StyleSheet.absoluteFillObject,

@@ -168,15 +168,23 @@ function resolveResidentItems<TItem, TId extends string | number>(
     return [];
   }
 
-  // Keep fewer players warm to prevent OutOfMemoryError on Android devices
-  // with strict 256MB heap limits. ExoPlayer instances are heavy.
+  // Keep 5 players warm: current + 3 forward + 1 reverse.
+  // Expo-video recycles native players more efficiently than raw ExoPlayer,
+  // so the old 256 MB heap concern no longer applies at this scale.
+  const forward = update.direction;
   const prioritizedIndices = [
     currentIndex,
-    currentIndex + update.direction,
+    currentIndex + forward * 1,
+    currentIndex + forward * 2,
+    currentIndex + forward * 3,
+    currentIndex - forward * 1,
   ];
   const residents: TItem[] = [];
   const residentIds = new Set<TId>();
   for (const index of prioritizedIndices) {
+    if (index < 0 || index >= update.items.length) {
+      continue;
+    }
     const item = update.items[index];
     if (!item) {
       continue;
@@ -187,6 +195,5 @@ function resolveResidentItems<TItem, TId extends string | number>(
       residents.push(item);
     }
   }
-  // Max 2 players resident
-  return residents.slice(0, 2);
+  return residents.slice(0, 5);
 }
