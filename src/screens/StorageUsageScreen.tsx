@@ -26,6 +26,14 @@ interface StorageUsageScreenProps {
 }
 
 const DASHBOARD_CATEGORY_LABELS = ['原始素材', '预览缓存', '临时缓存', '备份导出', '回收站', '聊天记录'] as const;
+const MACARON_COLORS: Record<string, string> = {
+  'original-assets': '#6A98F0',
+  'backup-export': '#F4B183',
+  'preview-cache': '#82C785',
+  'chat-history': '#9E86E1',
+  'temporary-cache': '#B0B0B0',
+  'trash': '#E57373',
+};
 const sheetPatternImage = require('../../docs/black.png');
 
 export function StorageUsageScreen({
