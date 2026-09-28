@@ -699,15 +699,8 @@ export function BatchManageImagesScreen({
                   
                   <SheetVerticalItem icon="star-half-outline" iconColor="#111111" label="取消收藏" onPress={() => handleFavoriteUpdate(false)} disabled={selectedCount === 0} />
                   <SheetVerticalItem icon="download-outline" iconColor="#111111" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} disabled={selectedCount === 0 || isSavingToAlbum} />
-                  <View style={{ width: '31%' }} />
+                  <SheetVerticalItem icon="trash-outline" iconColor="#E11D48" textColor="#E11D48" label="回收站" onPress={() => setIsDeleteDialogVisible(true)} disabled={selectedCount === 0} />
                 </View>
-              </View>
-
-              <View style={styles.dangerSection}>
-                <Pressable style={styles.dangerBtn} disabled={selectedCount === 0} onPress={() => setIsDeleteDialogVisible(true)}>
-                  <Ionicons name="trash-outline" size={16} color="#E11D48" />
-                  <Text style={styles.dangerBtnText}>彻底删除</Text>
-                </Pressable>
               </View>
             </>
           ) : (
@@ -1077,13 +1070,13 @@ function SheetActionItem({ disabled, icon, label, onPress }: { disabled?: boolea
   );
 }
 
-function SheetVerticalItem({ disabled, icon, iconColor, label, onPress }: { disabled?: boolean; icon: keyof typeof Ionicons.glyphMap; iconColor: string; label: string; onPress: () => void; }) {
+function SheetVerticalItem({ disabled, icon, iconColor, textColor = '#1F2937', label, onPress }: { disabled?: boolean; icon: keyof typeof Ionicons.glyphMap; iconColor: string; textColor?: string; label: string; onPress: () => void; }) {
   return (
     <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.sheetVerticalItem, disabled && styles.batchActionDisabled, pressed && !disabled && styles.pressed]}>
       <View style={styles.sheetVerticalIconBox}>
         <Ionicons name={icon} size={20} color={iconColor} />
       </View>
-      <Text style={styles.sheetVerticalLabel}>{label}</Text>
+      <Text style={[styles.sheetVerticalLabel, { color: textColor }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -1175,9 +1168,6 @@ const styles = StyleSheet.create({
   sheetVerticalItem: { width: '31%', alignItems: 'center', padding: 12, borderRadius: 14, backgroundColor: '#F8F9FA', borderColor: '#F3F4F6', borderWidth: 1, marginBottom: 8 },
   sheetVerticalIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 8, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }, android: { elevation: 1 } }) },
   sheetVerticalLabel: { fontSize: 12, fontWeight: '600', color: '#1F2937', textAlign: 'center' },
-  dangerSection: { marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6', alignItems: 'center' },
-  dangerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 9999 },
-  dangerBtnText: { color: '#E11D48', fontSize: 14, fontWeight: '600' },
   subModeContainer: { paddingBottom: 16 },
   subModeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginHorizontal: -8 },
