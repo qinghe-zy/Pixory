@@ -597,7 +597,7 @@ export function MeScreen({
                   style={[
                     styles.storageProgressSegment,
                     {
-                      backgroundColor: colors.semantic.success,
+                      backgroundColor: '#82C785',
                       width: `${(imageBytes / (imageBytes + videoBytes || 1)) * 100}%`,
                     },
                   ]}
@@ -606,7 +606,7 @@ export function MeScreen({
                   style={[
                     styles.storageProgressSegment,
                     {
-                      backgroundColor: colors.primary.weak,
+                      backgroundColor: '#9E86E1',
                       width: `${(videoBytes / (imageBytes + videoBytes || 1)) * 100}%`,
                     },
                   ]}
@@ -617,7 +617,7 @@ export function MeScreen({
                   <View
                     style={[
                       styles.storageLegendDot,
-                      { backgroundColor: colors.semantic.success },
+                      { backgroundColor: '#82C785' },
                     ]}
                   />
                   <Text style={styles.storageLegendText}>图片原图</Text>
@@ -629,7 +629,7 @@ export function MeScreen({
                   <View
                     style={[
                       styles.storageLegendDot,
-                      { backgroundColor: colors.primary.weak },
+                      { backgroundColor: '#9E86E1' },
                     ]}
                   />
                   <Text style={styles.storageLegendText}>视频存储</Text>
@@ -771,9 +771,9 @@ export function MeScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={styles.toolIconWrap}>
+                <View style={[styles.toolIconWrap, { backgroundColor: '#FDE8E8' }]}>
                   <Ionicons
-                    color={colors.semantic.danger}
+                    color={'#E57373'}
                     name="trash-outline"
                     size={22}
                   />
@@ -788,9 +788,9 @@ export function MeScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={styles.toolIconWrap}>
+                <View style={[styles.toolIconWrap, { backgroundColor: '#FEF3E8' }]}>
                   <Ionicons
-                    color={colors.primary.active}
+                    color={'#F4B183'}
                     name="archive-outline"
                     size={22}
                   />
@@ -805,9 +805,9 @@ export function MeScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={styles.toolIconWrap}>
+                <View style={[styles.toolIconWrap, { backgroundColor: '#EEF2FD' }]}>
                   <Ionicons
-                    color={colors.primary.active}
+                    color={'#6A98F0'}
                     name="copy-outline"
                     size={22}
                   />
@@ -822,7 +822,7 @@ export function MeScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={styles.toolIconWrap}>
+                <View style={[styles.toolIconWrap, { backgroundColor: '#F0EDF9' }]}>
                   <View style={{ transform: [{ scale: 0.85 }] }}>
                     <StorageUsageGlyph />
                   </View>
