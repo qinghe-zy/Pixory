@@ -435,7 +435,7 @@ Default release workflow:
    - Do not push release commits or tags to the `gitee` remote.
    - Do not create or update Gitee Releases.
    - Runtime update and announcement JSON should be served from the official website, not Gitee raw URLs.
-8. Keep remote update JSON and release notes short, concrete, and user-facing.
+8. Keep remote update JSON and external release notes (`Release-Notes-External.md`) extremely short, concrete, and user-facing. Focus ONLY on the value to the user and broad product changes. DO NOT include technical implementation details, commit logs, or pixel-level UI tweaks (e.g., do not say "adjusted 4px round corners" or "reduced padding to 6px").
 9. Do not switch signing certificates, keystores, aliases, or Gradle signing config. The release certificate is local and must stay the existing Pixory local release certificate unless the user explicitly requests a certificate migration.
 10. Run verification before packaging:
    - `pnpm typecheck`
@@ -548,5 +548,6 @@ Pixory should stay focused on:
  # #   P r o b l e m   R e c o r d 
  -   2 0 2 6 - 0 7 :   T h e   A n d r o i d   A P K   b u n d l e d   a   s t a l e   J a v a s c r i p t   p a y l o a d   b e c a u s e   \ . \ g r a d l e w . b a t   c l e a n \   w a s   n o t   r u n   b e f o r e   \  s s e m b l e R e l e a s e \ .   T h i s   c a u s e d   u s e r s   d o w n l o a d i n g   t h e   A P K   d i r e c t l y   t o   g e t   a n   o l d   U I   v e r s i o n   ( 2 . 6 . 0 )   d e s p i t e   t h e   n a t i v e   v e r s i o n   s t r i n g   s a y i n g   2 . 6 . 1 .   T o   f i x   t h i s ,   a l w a y s   c l e a n   t h e   g r a d l e   p r o j e c t   b e f o r e   p a c k a g i n g .  
  
+
 
 
