@@ -38,7 +38,7 @@ export function PrimaryButton({
         ? aiLightColors.primaryText
         : tone === 'danger'
           ? colors.semantic.danger
-          : colors.primary.default;
+          : '#000000';
 
   return (
     <Pressable
@@ -84,7 +84,7 @@ export function PrimaryButton({
 const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
-    borderRadius: componentTokens.primaryButton.radius,
+    borderRadius: 4,
     height: componentTokens.primaryButton.height,
     justifyContent: 'center',
     paddingHorizontal: componentTokens.primaryButton.horizontalPadding,
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     height: Math.round(componentTokens.primaryButton.height * 0.7),
   },
   solid: {
-    backgroundColor: colors.primary.default,
+    backgroundColor: '#000000',
   },
   aiSolid: {
     backgroundColor: aiLightColors.primary,
@@ -111,8 +111,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
   },
   outline: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+    backgroundColor: '#ffffff',
+    borderColor: '#e8e8e8',
     borderWidth: 1,
   },
   darkOutline: {
@@ -124,7 +124,9 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.hairline,
   },
   ghost: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#ffffff',
+    borderColor: '#e8e8e8',
+    borderWidth: 1,
   },
   disabled: {
     opacity: 0.52,
@@ -145,13 +147,13 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
   },
   outlineLabel: {
-    color: colors.primary.default,
+    color: '#000000',
   },
   darkOutlineLabel: {
     color: '#000000',
   },
   ghostLabel: {
-    color: colors.primary.default,
+    color: '#000000',
   },
   aiLabel: {
     color: aiLightColors.primaryText,

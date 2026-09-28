@@ -66,7 +66,7 @@ export function AppActionSheet({ visible, title, message, items, onClose, closeO
                 {item.icon ? (
                   <View style={[styles.iconWrap, item.danger ? styles.dangerIconWrap : null]}>
                     <Ionicons
-                      color={item.danger ? colors.semantic.danger : colors.primary.default}
+                      color={item.danger ? colors.semantic.danger : '#1a1c1c'}
                       name={item.icon}
                       size={18}
                     />
@@ -77,7 +77,7 @@ export function AppActionSheet({ visible, title, message, items, onClose, closeO
                   {item.meta ? <Text numberOfLines={1} style={styles.rowMeta}>{item.meta}</Text> : null}
                 </View>
                 <Ionicons
-                  color={!closeOnSelect && item.selected ? colors.primary.default : colors.text.tertiary}
+                  color={!closeOnSelect && item.selected ? '#1a1c1c' : colors.text.tertiary}
                   name={closeOnSelect ? 'chevron-forward' : item.selected ? 'checkmark-circle' : 'ellipse-outline'}
                   size={15}
                 />
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
+    backgroundColor: '#f3f3f4',
     borderRadius: radius.sm,
     height: 34,
     justifyContent: 'center',

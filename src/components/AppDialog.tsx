@@ -50,6 +50,7 @@ export function AppDialog({
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);
   const primaryTone = accent === 'ai' ? (danger ? 'danger' : 'ai') : (danger ? 'danger' : 'default');
   const secondaryTone = accent === 'ai' ? 'ai' : 'default';
+  const computedActionLayout = actionLayout !== 'stack' ? actionLayout : ((secondaryLabel && !tertiaryLabel) ? 'horizontal' : 'stack');
 
   return (
     <Modal animationType="fade" onRequestClose={dismissible ? onClose : undefined} transparent visible={visible}>
@@ -61,8 +62,8 @@ export function AppDialog({
             {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
           </View>
           {children ? <View style={styles.body}>{children}</View> : null}
-          <View style={[styles.actions, compactActions ? styles.compactActions : null, actionLayout === 'horizontal' ? styles.secondaryActionRow : null]}>
-            {actionLayout === 'horizontal' ? (
+          <View style={[styles.actions, compactActions ? styles.compactActions : null, computedActionLayout === 'horizontal' ? styles.secondaryActionRow : null]}>
+            {computedActionLayout === 'horizontal' ? (
               <>
                 {secondaryLabel ? (
                   <View style={styles.secondaryActionItem}>
@@ -88,7 +89,7 @@ export function AppDialog({
                 ) : (
                   <>
                     {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
-                    {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="ghost" /> : null}
+                    {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
                   </>
                 )}
               </>
@@ -169,3 +170,4 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
   },
 });
+

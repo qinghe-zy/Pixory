@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
   ScrollView,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -187,7 +188,8 @@ export function CreateGroupScreen({
         </View>
       </BlurView>
 
-      <ScrollView
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + 56, paddingBottom: insets.bottom + atelierSpacing.margin },
@@ -369,7 +371,8 @@ export function CreateGroupScreen({
             </Pressable>
           </View>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
