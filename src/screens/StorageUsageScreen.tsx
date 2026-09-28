@@ -178,7 +178,7 @@ export function StorageUsageScreen({
                     )}
                   </View>
                 </View>
-                <SegmentBar summary={summary} />
+                <SegmentBar storageItems={storageItems} totalBytes={summary.totalBytes} />
               </View>
 
               <View style={styles.storageList}>
@@ -270,30 +270,42 @@ function formatSignedBytes(bytes: number): string {
   return `${bytes > 0 ? '+' : '-'}${formatFileSize(Math.abs(bytes))}`;
 }
 
-function SegmentBar({ summary }: { summary: StorageUsageSummary }) {
-  const values = [
-    { key: 'original-assets', bytes: summary.originalBytes, color: '#6A98F0' },
-    { key: 'backup-export', bytes: summary.backupExportBytes, color: '#F4B183' },
-    { key: 'preview-cache', bytes: summary.previewBytes, color: '#82C785' },
-    { key: 'chat-history', bytes: summary.chatHistoryBytes, color: '#9E86E1' },
-    { key: 'temporary-cache', bytes: summary.temporaryBytes, color: '#B0B0B0' },
-  ];
-  const total = Math.max(1, summary.totalBytes);
+function SegmentBar({ storageItems, totalBytes }: { storageItems: StorageUsageSummaryItem[], totalBytes: number }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const activeItem = activeIndex !== null ? storageItems[activeIndex] : null;
 
   return (
-    <View style={styles.segmentTrack}>
-      {values.map((item) => (
-        <View
-          key={item.key}
-          style={[
-            styles.segment,
-            {
-              backgroundColor: item.color,
-              flexGrow: Math.max(0.4, item.bytes / total),
-            },
-          ]}
-        />
-      ))}
+    <View style={styles.segmentContainer}>
+      <View style={styles.segmentTrack}>
+        {storageItems.map((item, index) => {
+          if (item.bytes === 0) return null;
+          const isActive = activeIndex === index;
+          return (
+            <Pressable
+              key={item.key}
+              onPress={() => setActiveIndex(isActive ? null : index)}
+              style={[
+                styles.segment,
+                {
+                  backgroundColor: MACARON_COLORS[item.key] || '#cccccc',
+                  flex: Math.max(0.0001, item.bytes / Math.max(1, totalBytes)),
+                  height: isActive ? 16 : 10,
+                  borderWidth: isActive ? 1 : 0,
+                  borderColor: '#ffffff',
+                },
+              ]}
+            />
+          );
+        })}
+        {totalBytes === 0 && <View style={[styles.segment, { flex: 1, backgroundColor: colors.background.input, height: 10 }]} />}
+      </View>
+      {activeItem && (
+        <View style={styles.segmentTooltip}>
+          <View style={[styles.tooltipDot, { backgroundColor: MACARON_COLORS[activeItem.key] || '#cccccc' }]} />
+          <Text style={styles.tooltipLabel}>{activeItem.label}</Text>
+          <Text style={styles.tooltipBytes}>{formatFileSize(activeItem.bytes)}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -473,17 +485,51 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'right',
   },
+  segmentContainer: {
+    gap: spacing[3],
+  },
   segmentTrack: {
     backgroundColor: colors.background.input,
     borderRadius: radius.pill,
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 2,
-    height: 10,
+    height: 16,
     overflow: 'hidden',
     width: '100%',
   },
   segment: {
+    height: 10,
     minWidth: 4,
+  },
+  segmentTooltip: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    backgroundColor: '#ffffff',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+    borderRadius: radius.pill,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tooltipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tooltipLabel: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  tooltipBytes: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
   },
   storageList: {
       backgroundColor: '#ffffff',
