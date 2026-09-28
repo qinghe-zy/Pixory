@@ -20,6 +20,7 @@ import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlayb
 import { formatDuration } from '../utils/formatters';
 import { VideoShuffleSession } from '../media/videoShuffleSession';
 import { resolveVideoSwipe } from '../media/videoSwipePolicy';
+import { tracer } from '../media/videoPlayerTracer';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
 const CONTROL_HIDE_DELAY_MS = 5000;
@@ -386,10 +387,14 @@ export function VideoPlayerScreen({
     committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
     setLoadingCoverVideo(activeVideoSource);
+    tracer.log('cover:show', { videoId: activeVideoSource?.id, uri: sourceUri.slice(-40) });
+    tracer.log('replaceAsync:start', { videoId: activeVideoSource?.id, uri: sourceUri.slice(-40), loadVersion });
     void player.replaceAsync({ uri: sourceUri }).then(() => {
       if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
+        tracer.log('replaceAsync:done', { videoId: activeVideoSource?.id, stale: true });
         return;
       }
+      tracer.log('replaceAsync:done', { videoId: activeVideoSource?.id, stale: false });
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
       player.loop = Boolean(externalSource) || queue.length <= 1;
@@ -399,8 +404,10 @@ export function VideoPlayerScreen({
       }
       safePlayPlayer();
       setLoadingCoverVideo(null);
+      tracer.log('cover:clear', { videoId: activeVideoSource?.id, reason: 'replaceAsync' });
     }).catch((error) => {
       if (isActive) {
+        tracer.log('replaceAsync:error', { videoId: activeVideoSource?.id, msg: String(error) });
         setLoadingCoverVideo(null);
         showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
       }
@@ -1004,14 +1011,17 @@ export function VideoPlayerScreen({
       viewportHeight: surfaceHeight,
     });
     if (resolution.action === 'cancel') {
+      tracer.log('gesture:video-switch-cancel', { deltaY, velocityY });
       resetVideoSwitchDrag();
       return;
     }
     const nextVideo = resolution.direction === 1 ? nextSwitchVideo : previousSwitchVideo;
     if (!nextVideo) {
+      tracer.log('gesture:video-switch-cancel', { reason: 'no-target', direction: resolution.direction });
       resetVideoSwitchDrag();
       return;
     }
+    tracer.log('gesture:video-switch-commit', { direction: resolution.direction, deltaY, velocityY, toId: nextVideo.id });
     switchVideoWithTransition(nextVideo, resolution.direction as 1 | -1, getVideoSwitchHistoryMode(resolution.direction as 1 | -1));
   }
 
@@ -1054,28 +1064,49 @@ export function VideoPlayerScreen({
     setSpeedMenuVisible(false);
     setQueueVisible(false);
     setMoreVisible(false);
+    tracer.log('switch:start', { fromId: activeVideoId, toId: nextVideo.id, direction });
+
+    // --- Single-player approach ---
+    // 1. Exit: slide the current surface out in the swipe direction.
     const transitionHeight = Math.max(1, surfaceHeight);
-    // Three-slot approach: animate translateY to the target offset.
-    // The adjacent slot is already visible and follows the same translateY,
-    // so the next video slides in from below/above simultaneously.
-    Animated.spring(videoSwitchTranslateY, {
-      toValue: -direction * transitionHeight,
-      damping: 26,
-      mass: 0.9,
-      stiffness: 180,
+    Animated.timing(videoSwitchTranslateY, {
+      toValue: direction * -transitionHeight,
+      duration: VIDEO_SWITCH_EXIT_DURATION_MS,
       useNativeDriver: true,
-    }).start(({ finished }) => {
-      swipeSettlingRef.current = false;
-      if (!finished) {
-        // Interrupted by reverse gesture — don't commit the switch
-        return;
-      }
+    }).start(() => {
+      tracer.log('switch:exit-anim-done', { toId: nextVideo.id });
+      // 2. Commit the video switch immediately after the surface is off-screen.
       setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
-      videoSwitchTranslateY.setValue(0);
-      setIsVideoSwitchTransitioning(false);
-      resetHideTimer();
+      tracer.log('switch:committed', { toId: nextVideo.id });
+      // Reset to below/above the viewport (enter side).
+      videoSwitchTranslateY.setValue(direction * transitionHeight);
+      // 3. Enter: slide in from the opposite edge.
+      Animated.timing(videoSwitchTranslateY, {
+        toValue: 0,
+        duration: VIDEO_SWITCH_ENTER_DURATION_MS,
+        useNativeDriver: true,
+      }).start(() => {
+        tracer.log('switch:enter-anim-done', { toId: nextVideo.id });
+        swipeSettlingRef.current = false;
+        setIsVideoSwitchTransitioning(false);
+        resetHideTimer();
+      });
     });
+
+    // Safety unlock: if the animation chain is interrupted and never finishes,
+    // forcibly release the transition lock after a generous timeout.
+    const safetyTimeout = setTimeout(() => {
+      if (swipeSettlingRef.current) {
+        tracer.log('switch:safety-unlock', { toId: nextVideo.id });
+        swipeSettlingRef.current = false;
+        setIsVideoSwitchTransitioning(false);
+        videoSwitchTranslateY.setValue(0);
+        resetHideTimer();
+      }
+    }, VIDEO_SWITCH_EXIT_DURATION_MS + VIDEO_SWITCH_ENTER_DURATION_MS + 300);
+    // Store it in a ref so we can clear it if everything goes smoothly
+    (switchVideoWithTransition as unknown as { _safetyTimer?: ReturnType<typeof setTimeout> })._safetyTimer = safetyTimeout;
   }
 
   async function adjustBrightnessFromGesture(value: number) {
@@ -1459,7 +1490,15 @@ export function VideoPlayerScreen({
         <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
           <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
         </Pressable>
-        <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
+        <Pressable
+          onLongPress={__DEV__ ? () => {
+            const { Share } = require('react-native');
+            void Share.share({ title: 'VideoPlayer Trace Report', message: tracer.exportReport() });
+          } : undefined}
+          style={{ flex: 1, minWidth: 0 }}
+        >
+          <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
+        </Pressable>
         <Pressable
           accessibilityLabel="更多"
           onPress={() => {
