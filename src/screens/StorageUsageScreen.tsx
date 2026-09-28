@@ -288,7 +288,7 @@ function SegmentBar({ storageItems, totalBytes }: { storageItems: StorageUsageSu
                 styles.segment,
                 {
                   backgroundColor: MACARON_COLORS[item.key] || '#cccccc',
-                  flex: Math.max(0.0001, item.bytes / Math.max(1, totalBytes)),
+                  flex: Math.max(0.05, item.bytes / Math.max(1, totalBytes)),
                   height: isActive ? 16 : 10,
                   borderWidth: isActive ? 1 : 0,
                   borderColor: '#ffffff',
