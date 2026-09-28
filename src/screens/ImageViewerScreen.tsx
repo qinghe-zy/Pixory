@@ -251,7 +251,7 @@ export function ImageViewerScreen({
   const viewerProgress = images.length > 1 ? displayIndex / Math.max(1, images.length - 1) : 0;
   const filmstripSwitchTrackColor = filmstripSwitchProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['rgba(255,255,255,0.12)', colors.primary.weak],
+    outputRange: ['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.38)'],
   });
   const filmstripSwitchKnobTranslateX = filmstripSwitchProgress.interpolate({
     inputRange: [0, 1],
@@ -1204,8 +1204,8 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    borderRadius: radius.pill,
+    backgroundColor: 'rgba(20, 24, 30, 0.48)',
+    borderRadius: 4,
     height: 44,
     justifyContent: 'center',
     width: 44,
@@ -1256,7 +1256,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
   segmentPillActive: {
-    backgroundColor: colors.primary.weak,
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   segmentText: {
     ...typography.textStyles.micro,
@@ -1265,7 +1265,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   segmentTextActive: {
-    color: colors.primary.active,
+    color: '#FFFFFF',
   },
   readerSwitchRow: {
     alignItems: 'center',

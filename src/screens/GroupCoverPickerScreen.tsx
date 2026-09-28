@@ -72,15 +72,6 @@ export function GroupCoverPickerScreen({ ipId, groupId, space = 'normal', onBack
 
   return (
     <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Cover" onBack={onBack} scrollable title="选择分组封面">
-      <View style={styles.headerPanel}>
-        <View style={styles.iconWrap}>
-          <Ionicons color={colors.primary.active} name="folder-open-outline" size={18} />
-        </View>
-        <View style={styles.headerCopy}>
-          <Text numberOfLines={1} style={styles.headerTitle}>{group?.name ?? '当前分组'}</Text>
-          <Text style={styles.headerHint}>{ip?.name ? `${ip.name} · ` : ''}选择当前分组内的一张图片作为封面，原图不会被修改。</Text>
-        </View>
-      </View>
       <PrimaryButton label="使用系统默认封面" onPress={useDefaultCover} variant="outline" />
 
       <PageStateBlock

@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
-    borderRadius: componentTokens.iconButton.radius,
+    borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
     height: componentTokens.iconButton.size,
     justifyContent: 'center',

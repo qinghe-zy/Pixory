@@ -8,13 +8,13 @@ export const componentTokens = {
     height: metrics.searchHeight,
     horizontalPadding: 16,
     iconSize: 16,
-    radius: radius.pill,
+    radius: 4,
   },
   filterChip: {
     height: metrics.chipHeight,
     horizontalPadding: metrics.chipPaddingHorizontal,
     gap: 8,
-    radius: radius.pill,
+    radius: 4,
   },
   primaryButton: {
     height: metrics.bottomActionHeight,
@@ -24,7 +24,7 @@ export const componentTokens = {
   iconButton: {
     size: metrics.iconButtonSize,
     iconSize: 22,
-    radius: radius.md,
+    radius: 4,
   },
   ipCard: {
     radius: radius.lg,

@@ -193,7 +193,7 @@ export function StorageUsageScreen({
                       <Text style={styles.rowLabel}>{item.label}</Text>
                       <Text numberOfLines={1} style={styles.rowSubtitle}>{getItemSubtitle(summary, item)}</Text>
                     </View>
-                    <Text adjustsFontSizeToFit numberOfLines={1} style={styles.rowBytes}>{formatFileSize(item.bytes)}</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.rowBytes, { color: ({ 'original-assets': '#6A98F0', 'backup-export': '#F4B183', 'preview-cache': '#82C785', 'chat-history': '#9E86E1', 'temporary-cache': '#B0B0B0', 'trash': '#E57373' } as Record<string, string>)[item.key] || colors.text.body }]}>{formatFileSize(item.bytes)}</Text>
                     <Text style={styles.actionText}>{item.actionLabel}</Text>
                   </Pressable>
                 ))}
@@ -272,11 +272,11 @@ function formatSignedBytes(bytes: number): string {
 
 function SegmentBar({ summary }: { summary: StorageUsageSummary }) {
   const values = [
-    { key: 'original', bytes: summary.originalBytes, color: '#000000' },
-    { key: 'backup', bytes: summary.backupExportBytes, color: colors.semantic.warning },
-    { key: 'preview', bytes: summary.previewBytes, color: colors.semantic.success },
-    { key: 'chat', bytes: summary.chatHistoryBytes, color: '#9c27b0' },
-    { key: 'temporary', bytes: summary.temporaryBytes, color: colors.text.tertiary },
+    { key: 'original-assets', bytes: summary.originalBytes, color: '#6A98F0' },
+    { key: 'backup-export', bytes: summary.backupExportBytes, color: '#F4B183' },
+    { key: 'preview-cache', bytes: summary.previewBytes, color: '#82C785' },
+    { key: 'chat-history', bytes: summary.chatHistoryBytes, color: '#9E86E1' },
+    { key: 'temporary-cache', bytes: summary.temporaryBytes, color: '#B0B0B0' },
   ];
   const total = Math.max(1, summary.totalBytes);
 
