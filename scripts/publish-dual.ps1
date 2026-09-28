@@ -12,11 +12,24 @@ if (-not (Test-Path $externalNotes)) {
     throw "Release notes not found: $externalNotes"
 }
 
+$rawNotes = Get-Content $externalNotes -Raw
+$userVersionIndex = $rawNotes.IndexOf('## 用户版')
+if ($userVersionIndex -ge 0) {
+    $rawNotes = $rawNotes.Substring($userVersionIndex)
+    $rawNotes = $rawNotes -replace '## 用户版\r?\n+', ''
+    $rawNotes = $rawNotes -replace '使用非专业术语描述用户能感知的变化、收益、限制和升级注意事项。\r?\n+', ''
+    $rawNotes = $rawNotes -replace '(?m)^\s*[\r\n]', "`n"
+    $rawNotes = $rawNotes -replace '\n{3,}', "`n`n"
+    $rawNotes = $rawNotes.Trim()
+}
+$tempNotesPath = "$env:TEMP\Pixory_Clean_Notes_$($tag).md"
+Set-Content $tempNotesPath -Value $rawNotes
+
 Write-Host "==== 1. 推送及发版至 Legacy 仓库 (包含历史脏记录) ====" -ForegroundColor Cyan
 & git -C $repoRoot tag -a $tag -m "Pixory $tag" 2>$null
 & git -C $repoRoot push legacy local-work --no-verify
 & git -C $repoRoot push legacy $tag --no-verify -f 2>$null
-& gh release create $tag $apkPath --repo qinghe-zy/Pixory-legacy 2>$null --title "Pixory v$version" --notes-file $externalNotes
+& gh release create $tag $apkPath --repo qinghe-zy/Pixory-legacy 2>$null --title "Pixory v$version" --notes-file $tempNotesPath
 
 Write-Host "==== 2. 同步并准备纯净代码到新仓库 ====" -ForegroundColor Cyan
 & "$repoRoot\scripts\sync-clean-repo.ps1"
@@ -38,9 +51,10 @@ Write-Host "==== 3. 推送及发版至新仓库 (纯净代码) ====" -Foreground
 & git -C $cleanRepo push -f origin main
 & git -C $cleanRepo push -f origin $tag
 
-& gh release create $tag $apkPath --repo qinghe-zy/Pixory 2>$null --title "Pixory v$version" --notes-file $externalNotes
+& gh release create $tag $apkPath --repo qinghe-zy/Pixory 2>$null --title "Pixory v$version" --notes-file $tempNotesPath
 
 Write-Host "双仓库发布流程完成！" -ForegroundColor Green
+
 
 
 
