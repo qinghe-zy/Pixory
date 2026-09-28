@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { TextInput } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { PageStateBlock } from '../components/PageStateBlock';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ipRepository, runWithDatabaseSpace, settingsRepository, type IpRecord, type PixorySpace } from '../database';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import {
   createEncryptedAllPack,
@@ -21,7 +18,7 @@ import {
   type BackupResult,
   type EncryptedPackResult,
 } from '../services/backupService';
-import { formatDateTime, formatFileSize } from '../utils/formatters';
+import { formatDateTime } from '../utils/formatters';
 import { useToast } from '../components/AppToast';
 import { trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
 
@@ -56,6 +53,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   const [lastBackup, setLastBackup] = useState<BackupResultView | null>(null);
   const [lastEncryptedPack, setLastEncryptedPack] = useState<EncryptedPackResult | null>(null);
   const [personalSecret, setPersonalSecret] = useState('');
+  
   const { data, isLoading, errorMessage, reload } = useScreenLoad<BackupScreenData>(
     async () => {
       const [ips, lastBackupAt, backupExportDirectoryUri] = await runWithDatabaseSpace(space, (db) =>
@@ -76,6 +74,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
       initialData: { ips: [], lastBackupAt: null, backupExportDirectoryUri: null },
     }
   );
+  
   const ips = data?.ips ?? [];
   const defaultExportDirectoryUri = exportDirectoryOverrideUri !== undefined
     ? exportDirectoryOverrideUri
@@ -98,10 +97,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   async function handleChooseDefaultExportDirectory() {
-    if (isBackingUp || isExporting) {
-      return;
-    }
-
+    if (isBackingUp || isExporting) return;
     setIsExporting(true);
     try {
       await chooseDefaultExportDirectory();
@@ -114,10 +110,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   async function runEncryptedExport(task: () => Promise<EncryptedPackResult>, successMessage: string) {
-    if (isBackingUp || isExporting) {
-      return;
-    }
-
+    if (isBackingUp || isExporting) return;
     setIsBackingUp(true);
     try {
       const result = await trackPersonalTask(taskToken, task());
@@ -133,19 +126,14 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   async function handleEncryptedImport() {
-    if (space !== 'personal' || isBackingUp || isExporting) {
-      return;
-    }
-
+    if (space !== 'personal' || isBackingUp || isExporting) return;
     try {
       const pickResult = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
         multiple: false,
         type: ['application/octet-stream', '*/*'],
       });
-      if (pickResult.canceled || !pickResult.assets[0]?.uri) {
-        return;
-      }
+      if (pickResult.canceled || !pickResult.assets[0]?.uri) return;
       setIsBackingUp(true);
       const result = await trackPersonalTask(taskToken, importEncryptedPersonalPack({
         packageUri: pickResult.assets[0].uri,
@@ -169,10 +157,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   async function handleExportToSystemDirectory(backup: BackupResultView) {
-    if (isBackingUp || isExporting) {
-      return;
-    }
-
+    if (isBackingUp || isExporting) return;
     setIsExporting(true);
     try {
       const destinationDirUri = await getExportDirectoryForBackup();
@@ -195,10 +180,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   async function handleCreateFullBackup() {
-    if (isBackingUp || isExporting) {
-      return;
-    }
-
+    if (isBackingUp || isExporting) return;
     setIsBackingUp(true);
     try {
       const result = await createFullBackup('normal');
@@ -236,10 +218,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   async function handleCreateIpBackup(ip: IpRecord) {
-    if (isBackingUp || isExporting) {
-      return;
-    }
-
+    if (isBackingUp || isExporting) return;
     setActiveIpExportId(ip.id);
     setIsBackingUp(true);
     try {
@@ -280,370 +259,373 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
   }
 
   function renderBackupResultCard(backup: BackupResultView) {
-    const isIpBackup = backup.source === 'ip';
-
     return (
-      <View style={[styles.resultPanel, isIpBackup && styles.ipResultPanel]}>
-        <View style={styles.resultHeader}>
-          <View style={styles.resultIcon}>
-            <Ionicons color={colors.primary.default} name={backup.exportedDirUri ? 'checkmark-circle-outline' : 'folder-open-outline'} size={18} />
-          </View>
-          <View style={styles.resultHeaderCopy}>
-          <Text style={styles.resultTitle}>{backup.title}</Text>
-            <Text style={styles.resultHint}>
-              {backup.exportedDirUri ? '已复制到默认导出文件夹，可在文件管理器中查看。' : '已生成在 Pixory 私有目录，还没有复制到系统文件夹。'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.resultDivider} />
-        <Text style={styles.resultLabel}>生成时间</Text>
-        <Text style={styles.resultMeta}>{formatDateTime(backup.result.createdAt)}</Text>
-        <Text style={styles.resultLabel}>内容</Text>
-        <Text style={styles.resultMeta}>
-          SQLite + manifest + 原图 {backup.result.originalCount} · 缩略图 {backup.result.thumbnailCount} · {formatFileSize(backup.result.totalBytes)}
+      <View style={styles.resultPanel}>
+        <Text style={styles.resultTitle}>{backup.title}</Text>
+        <Text style={styles.resultHint}>
+          {backup.exportedDirUri ? '已复制到默认导出文件夹' : '已生成，尚未复制到系统文件夹'}
         </Text>
-        <Text style={styles.resultLabel}>App 内部备份位置</Text>
-        <Text selectable style={styles.resultPath}>{backup.result.backupDir}</Text>
-        <Text style={styles.resultHint}>这是 App 私有目录，系统文件管理器通常不能直接打开；需要选择系统文件夹后复制出去。</Text>
-        {backup.exportedDirUri ? (
-          <>
-            <Text style={styles.resultLabel}>系统导出位置</Text>
-            <Text selectable style={styles.resultPath}>{backup.exportedDirUri}</Text>
-            <Text style={styles.resultHint}>已复制 {backup.exportedFileCount ?? 0} 个文件。Android 可能显示为 content:// 地址，对应你刚才选择的文件夹。</Text>
-          </>
-        ) : null}
-        <PrimaryButton
-          disabled={isBackingUp || isExporting}
-          label={backup.exportedDirUri ? '再次导出到默认文件夹' : '导出到默认文件夹'}
-          loading={isExporting}
-          onPress={() => handleExportToSystemDirectory(backup)}
-          variant="outline"
-        />
+        <Text style={styles.resultLabel}>位置</Text>
+        <Text selectable style={styles.resultPath}>{backup.exportedDirUri || backup.result.backupDir}</Text>
+        <View style={styles.resultActionContainer}>
+          <Pressable
+            disabled={isBackingUp || isExporting}
+            onPress={() => handleExportToSystemDirectory(backup)}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed, (isBackingUp || isExporting) && styles.buttonDisabled]}
+          >
+            <Text style={styles.secondaryButtonText}>{backup.exportedDirUri ? '再次导出' : '导出到文件夹'}</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
 
   return (
     <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Backup" onBack={onBack} scrollable title="备份导出">
-      <View style={styles.safetyPanel}>
-        <Ionicons color={colors.semantic.success} name="shield-checkmark-outline" size={18} />
-        <View style={styles.safetyCopy}>
-          <Text style={styles.safetyTitle}>完整备份包含 SQLite、原图、缩略图和 manifest</Text>
-          <Text style={styles.safetyText}>
-            原图按原文件复制；缩略图是独立预览文件，不压缩、不重编码。普通备份不包含隐私系统数据。
-          </Text>
+      <View style={styles.container}>
+        
+        {/* Recent Backup Status Card */}
+        <View style={styles.recentBackupCard}>
+          <Text style={styles.recentBackupLabel}>最近备份</Text>
+          <Text style={styles.recentBackupValue}>{data?.lastBackupAt ? formatDateTime(data.lastBackupAt) : '还没有备份'}</Text>
         </View>
-      </View>
 
-      <View style={styles.statusPanel}>
-        <Text style={styles.statusLabel}>最近备份</Text>
-        <Text style={styles.statusValue}>{data?.lastBackupAt ? formatDateTime(data.lastBackupAt) : '还没有备份'}</Text>
-      </View>
-
-      <View style={styles.exportDirectoryPanel}>
-        <View style={styles.exportDirectoryHeader}>
-          <View style={styles.exportDirectoryIcon}>
-            <Ionicons color={colors.primary.default} name="folder-open-outline" size={18} />
+        {/* Default Export Folder Card */}
+        <View style={styles.exportFolderCard}>
+          <View style={styles.exportFolderHeader}>
+            <View style={styles.iconCircle}>
+              <Ionicons color="#1a1c1c" name="folder-outline" size={20} />
+            </View>
+            <View style={styles.exportFolderTextContainer}>
+              <Text style={styles.exportFolderTitle}>默认导出文件夹</Text>
+              {defaultExportDirectoryUri && (
+                <Text ellipsizeMode="middle" numberOfLines={1} style={styles.exportFolderValue}>
+                  {defaultExportDirectoryUri}
+                </Text>
+              )}
+            </View>
           </View>
-          <View style={styles.exportDirectoryCopy}>
-            <Text style={styles.exportDirectoryTitle}>默认导出文件夹</Text>
-            <Text selectable style={styles.exportDirectoryPath}>
-              {defaultExportDirectoryUri ?? '还没有选择；首次导出时会先让你选择。'}
-            </Text>
+          <View style={styles.exportFolderAction}>
+            <Pressable
+              disabled={isBackingUp || isExporting}
+              onPress={handleChooseDefaultExportDirectory}
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed, (isBackingUp || isExporting) && styles.buttonDisabled]}
+            >
+              <Text style={styles.secondaryButtonText}>选择默认文件夹</Text>
+            </Pressable>
           </View>
         </View>
-        <PrimaryButton
-          disabled={isBackingUp || isExporting}
-          label={defaultExportDirectoryUri ? '更改默认文件夹' : '选择默认文件夹'}
-          loading={isExporting && !isBackingUp}
-          onPress={handleChooseDefaultExportDirectory}
-          variant="outline"
-        />
-      </View>
 
-      {space === 'personal' ? (
-        <View style={styles.personalExportPanel}>
-          <Text style={styles.sectionTitle}>隐私导出</Text>
-          <Text style={styles.resultHint}>隐私数据只能从已解锁的隐私模式导出为加密 .pixorypack。</Text>
-          <TextInput
-            onChangeText={setPersonalSecret}
-            placeholder="再次输入 Personal System 密码"
-            placeholderTextColor={colors.text.placeholder}
-            secureTextEntry
-            style={styles.secretInput}
-            value={personalSecret}
-          />
-          <PrimaryButton
-            disabled={isBackingUp || !personalSecret.trim()}
-            label={isBackingUp ? '加密中' : '加密导出隐私 .pixorypack'}
-            loading={isBackingUp}
-            onPress={() => runEncryptedExport(() => createEncryptedPersonalPack(personalSecret, taskToken), '隐私加密包已生成')}
-          />
-          <PrimaryButton
-            disabled={isBackingUp || !personalSecret.trim()}
-            label="加密导出全部数据"
-            onPress={() => runEncryptedExport(() => createEncryptedAllPack(personalSecret, taskToken), '全部数据加密包已生成')}
-            variant="outline"
-          />
-          <PrimaryButton
-            disabled={isBackingUp || !personalSecret.trim()}
-            label="合并导入加密 .pixorypack"
-            onPress={handleEncryptedImport}
-            variant="ghost"
-          />
-        </View>
-      ) : (
-        <PrimaryButton
-          disabled={isBackingUp}
-          label={isBackingUp ? '备份中' : '一键完整备份'}
-          loading={isBackingUp}
-          onPress={handleCreateFullBackup}
-        />
-      )}
+        {space === 'personal' ? (
+          <View style={{ gap: 16 }}>
+            <TextInput
+              onChangeText={setPersonalSecret}
+              placeholder="再次输入 Personal System 密码"
+              placeholderTextColor="#767676"
+              secureTextEntry
+              style={styles.secretInput}
+              value={personalSecret}
+            />
+            <Pressable
+              disabled={isBackingUp || !personalSecret.trim()}
+              onPress={() => runEncryptedExport(() => createEncryptedPersonalPack(personalSecret, taskToken), '隐私加密包已生成')}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed, (isBackingUp || !personalSecret.trim()) && styles.buttonDisabled]}
+            >
+              <Text style={styles.primaryButtonText}>{isBackingUp ? '加密中...' : '加密导出隐私 .pixorypack'}</Text>
+            </Pressable>
+            <Pressable
+              disabled={isBackingUp || !personalSecret.trim()}
+              onPress={() => runEncryptedExport(() => createEncryptedAllPack(personalSecret, taskToken), '全部数据加密包已生成')}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed, (isBackingUp || !personalSecret.trim()) && styles.buttonDisabled]}
+            >
+              <Text style={styles.primaryButtonText}>加密导出全部数据</Text>
+            </Pressable>
+            <Pressable
+              disabled={isBackingUp || !personalSecret.trim()}
+              onPress={handleEncryptedImport}
+              style={({ pressed }) => [styles.secondaryButton, { alignSelf: 'center', width: '100%', height: 48 }, pressed && styles.buttonPressed, (isBackingUp || !personalSecret.trim()) && styles.buttonDisabled]}
+            >
+              <Text style={styles.secondaryButtonText}>合并导入加密 .pixorypack</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.primaryActionContainer}>
+            <Pressable
+              disabled={isBackingUp}
+              onPress={handleCreateFullBackup}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed, isBackingUp && styles.buttonDisabled]}
+            >
+              <Text style={styles.primaryButtonText}>{isBackingUp ? '备份中...' : '一键完整备份'}</Text>
+            </Pressable>
+          </View>
+        )}
 
-      {lastBackup?.source === 'full' ? renderBackupResultCard(lastBackup) : null}
+        {lastBackup?.source === 'full' ? renderBackupResultCard(lastBackup) : null}
 
-      {lastEncryptedPack ? (
-        <View style={styles.resultPanel}>
-          <Text style={styles.resultTitle}>最近加密包</Text>
-          <Text selectable style={styles.resultPath}>{lastEncryptedPack.packUri}</Text>
-          <Text style={styles.resultMeta}>单个加密 .pixorypack · AES-256</Text>
-        </View>
-      ) : null}
+        {lastEncryptedPack ? (
+          <View style={styles.resultPanel}>
+            <Text style={styles.resultTitle}>最近加密包</Text>
+            <Text selectable style={styles.resultPath}>{lastEncryptedPack.packUri}</Text>
+            <Text style={styles.resultHint}>单个加密 .pixorypack · AES-256</Text>
+          </View>
+        ) : null}
 
-      {space === 'normal' ? (
-        <PageStateBlock
-          emptyDescription="创建 IP 后，可以导出单个 IP 资产包。"
-          emptyIconName="archive-outline"
-          emptyTitle="没有可导出的 IP"
-          errorMessage={errorMessage}
-          isEmpty={!isLoading && ips.length === 0}
-          loading={isLoading}
-          loadingDescription="正在读取可导出的 IP。"
-          loadingTitle="读取备份信息"
-          onRetry={reload}
-        >
-          <View style={styles.ipList}>
-            <Text style={styles.sectionTitle}>导出单个 IP 资产包</Text>
-            <Text style={styles.sectionHint}>点选 IP 后会先生成本地资产包，再复制到默认导出文件夹；没有默认文件夹时会先让你选择。</Text>
-            {ips.map((ip) => (
-              <View key={ip.id} style={styles.ipExportItem}>
-                <Pressable
-                  disabled={isBackingUp || isExporting}
-                  onPress={() => handleCreateIpBackup(ip)}
-                  style={({ pressed }) => [
-                    styles.ipRow,
-                    (isBackingUp || isExporting) && styles.disabledRow,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.ipCopy}>
-                    <Text numberOfLines={1} style={styles.ipName}>{ip.name}</Text>
-                    <Text style={styles.ipMeta}>复制 SQLite、manifest、原图和缩略图到默认导出文件夹</Text>
-                  </View>
-                  <Ionicons
-                    color={colors.primary.default}
-                    name={activeIpExportId === ip.id || (isExporting && lastBackup?.ipId === ip.id) ? 'hourglass-outline' : 'download-outline'}
-                    size={18}
-                  />
-                </Pressable>
-                {lastBackup?.source === 'ip' && lastBackup.ipId === ip.id ? renderBackupResultCard(lastBackup) : null}
+        {space === 'normal' ? (
+          <PageStateBlock
+            emptyDescription="创建 IP 后，可以导出单个 IP 资产包。"
+            emptyIconName="archive-outline"
+            emptyTitle="没有可导出的 IP"
+            errorMessage={errorMessage}
+            isEmpty={!isLoading && ips.length === 0}
+            loading={isLoading}
+            loadingDescription="正在读取可导出的 IP。"
+            loadingTitle="读取备份信息"
+            onRetry={reload}
+          >
+            <View style={styles.ipSection}>
+              <View style={styles.ipSectionHeader}>
+                <Text style={styles.ipSectionTitle}>导出单个 IP 资产包</Text>
               </View>
-            ))}
-          </View>
-        </PageStateBlock>
-      ) : null}
+              <View style={styles.ipCardContainer}>
+                {ips.map((ip) => (
+                  <View key={ip.id}>
+                    <View style={styles.ipCard}>
+                      <View style={styles.ipCardTextContainer}>
+                        <Text numberOfLines={1} style={styles.ipCardTitle}>{ip.name}</Text>
+                      </View>
+                      <Pressable
+                        disabled={isBackingUp || isExporting}
+                        onPress={() => handleCreateIpBackup(ip)}
+                        style={({ pressed }) => [styles.iconButton, pressed && styles.buttonPressed, (isBackingUp || isExporting) && styles.buttonDisabled]}
+                      >
+                        <Ionicons
+                          color="#1a1c1c"
+                          name={activeIpExportId === ip.id || (isExporting && lastBackup?.ipId === ip.id) ? 'hourglass-outline' : 'download-outline'}
+                          size={20}
+                        />
+                      </Pressable>
+                    </View>
+                    {lastBackup?.source === 'ip' && lastBackup.ipId === ip.id ? renderBackupResultCard(lastBackup) : null}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </PageStateBlock>
+        ) : null}
+      </View>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  safetyPanel: {
+  container: {
+    backgroundColor: '#f9f9f9',
+    gap: 20,
+    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  recentBackupCard: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    elevation: 1,
     flexDirection: 'row',
-    gap: spacing[3],
-    padding: spacing[3],
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  safetyCopy: {
-    flex: 1,
-    gap: spacing[1],
-    minWidth: 0,
+  recentBackupLabel: {
+    color: '#5e5e5e',
+    fontSize: 13,
+    fontWeight: '400',
   },
-  safetyTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+  recentBackupValue: {
+    color: '#1a1c1c',
+    fontSize: 15,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
   },
-  safetyText: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+  exportFolderCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    elevation: 1,
+    gap: 4,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  statusPanel: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    padding: spacing[3],
-  },
-  statusLabel: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-  },
-  statusValue: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  exportDirectoryPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.listCardGap,
-    padding: spacing[3],
-  },
-  exportDirectoryHeader: {
-    alignItems: 'center',
+  exportFolderHeader: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: 12,
   },
-  exportDirectoryIcon: {
+  iconCircle: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
-    borderRadius: radius.md,
-    height: 38,
+    backgroundColor: '#f3f3f4',
+    borderRadius: 20,
+    height: 40,
     justifyContent: 'center',
-    width: 38,
+    width: 40,
   },
-  exportDirectoryCopy: {
+  exportFolderTextContainer: {
     flex: 1,
-    gap: rhythm.microGap,
+    gap: 4,
     minWidth: 0,
   },
-  exportDirectoryTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+  exportFolderTitle: {
+    color: '#1a1c1c',
+    fontSize: 15,
+    fontWeight: '600',
   },
-  exportDirectoryPath: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
+  exportFolderValue: {
+    color: '#767676',
+    fontSize: 13,
+    marginTop: 2,
   },
-  resultPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    padding: spacing[3],
+  exportFolderAction: {
+    alignItems: 'flex-end',
+    marginTop: 8,
   },
-  ipResultPanel: {
-    backgroundColor: colors.background.input,
-  },
-  resultHeader: {
+  secondaryButton: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[3],
-  },
-  resultIcon: {
-    alignItems: 'center',
-    backgroundColor: colors.background.tag,
-    borderRadius: radius.md,
+    backgroundColor: '#f3f3f4',
+    borderRadius: 4,
     height: 36,
     justifyContent: 'center',
-    width: 36,
+    paddingHorizontal: 20,
   },
-  resultHeaderCopy: {
+  secondaryButtonText: {
+    color: '#1a1c1c',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  primaryActionContainer: {
+    paddingTop: 4,
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    borderRadius: 4,
+    elevation: 1,
+    height: 48,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    width: '100%',
+  },
+  primaryButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  buttonPressed: {
+    transform: [{ translateY: 1 }],
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  ipSection: {
+    flexDirection: 'column',
+    gap: 12,
+    paddingTop: 12,
+  },
+  ipSectionHeader: {
+    flexDirection: 'column',
+    gap: 4,
+    paddingHorizontal: 4,
+  },
+  ipSectionTitle: {
+    color: '#1a1c1c',
+    fontSize: 20,
+    fontWeight: '500',
+  },
+  ipCardContainer: {
+    gap: 12,
+  },
+  ipCard: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    elevation: 1,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  ipCardTextContainer: {
     flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
   },
-  resultDivider: {
-    backgroundColor: colors.border.divider,
-    height: StyleSheet.hairlineWidth,
-    marginVertical: spacing[1],
+  ipCardTitle: {
+    color: '#1a1c1c',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  iconButton: {
+    alignItems: 'center',
+    backgroundColor: '#f3f3f4',
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  resultPanel: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e5e5e5',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 4,
+    marginTop: 8,
+    padding: 16,
   },
   resultTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+    color: '#1a1c1c',
+    fontSize: 15,
+    fontWeight: '600',
   },
   resultLabel: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
+    color: '#767676',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 8,
   },
   resultPath: {
-    ...typography.textStyles.micro,
-    color: colors.text.body,
-  },
-  resultMeta: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: '#1a1c1c',
+    fontSize: 11,
   },
   resultHint: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: '#767676',
+    fontSize: 11,
+    marginTop: 4,
   },
-  personalExportPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.listCardGap,
-    padding: spacing[3],
+  resultActionContainer: {
+    alignItems: 'flex-end',
+    marginTop: 12,
   },
   secretInput: {
-    ...typography.textStyles.body,
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    color: colors.text.title,
+    backgroundColor: '#ffffff',
+    borderColor: '#e5e5e5',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#1a1c1c',
+    fontSize: 15,
     minHeight: 44,
-    paddingHorizontal: spacing[3],
-  },
-  ipList: {
-    gap: rhythm.listCardGap,
-  },
-  sectionTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  sectionHint: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  ipExportItem: {
-    gap: rhythm.listCardGap,
-  },
-  ipRow: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[3],
-    minHeight: 58,
-    paddingHorizontal: spacing[3],
-  },
-  ipCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  ipName: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  ipMeta: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  pressed: {
-    opacity: 0.78,
-  },
-  disabledRow: {
-    opacity: 0.52,
+    paddingHorizontal: 12,
   },
 });
