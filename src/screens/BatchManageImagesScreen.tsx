@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View, Platform, StatusBar } from 'react-native';
+import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform, StatusBar } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -131,6 +132,7 @@ export function BatchManageImagesScreen({
   const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
   const [isAlbumDialogVisible, setIsAlbumDialogVisible] = useState(false);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const media = useMediaCursorCollection({
     formatError: (loadError) => `读取批量管理数据失败：${loadError instanceof Error ? loadError.message : '未知错误'}`,
     request: {
@@ -610,121 +612,190 @@ export function BatchManageImagesScreen({
     );
   }
 
-  const footer = (
-    <View style={styles.footerWrap}>
-      <View style={styles.footerHeader}>
-        <Text style={styles.footerTitle}>已选择 {selectedCount} 张</Text>
-        <Text style={styles.footerMeta}>当前已加载 {images.length} 张</Text>
+  const renderDock = () => (
+    <View style={styles.dockContainer}>
+      <View style={styles.dockBadge}>
+        <Text style={styles.dockBadgeText} numberOfLines={1}>
+          <Text style={styles.dockBadgeTextBold}>{selectedCount}</Text>/{images.length}
+        </Text>
       </View>
-      {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      {isGroupMode(mode) ? (
-        <View style={styles.footerInlineActions}>
-          <View style={styles.footerPrimaryAction}>
-            <PrimaryButton disabled={selectedCount === 0} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} />
-          </View>
-          <Pressable
-            disabled={isSubmitting}
-            onPress={() => resetInlineMode()}
-            style={({ pressed }) => [styles.footerCancelButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
-          >
-            <Ionicons color={colors.primary.default} name="close" size={17} />
-            <Text style={styles.footerCancelText}>取消</Text>
-          </Pressable>
-        </View>
-      ) : mode === 'add-tags' ? (
-        <View style={styles.footerInlineActions}>
-          <View style={styles.footerPrimaryAction}>
-            <PrimaryButton disabled={selectedCount === 0} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
-          </View>
-          <Pressable
-            disabled={isSubmitting}
-            onPress={() => resetInlineMode()}
-            style={({ pressed }) => [styles.footerCancelButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
-          >
-            <Ionicons color={colors.primary.default} name="close" size={17} />
-            <Text style={styles.footerCancelText}>取消</Text>
-          </Pressable>
-        </View>
-      ) : mode === 'apply-template' ? (
-        <View style={styles.footerInlineActions}>
-          <View style={styles.footerPrimaryAction}>
-            <Text style={styles.footerMeta}>选择模板会覆盖分组、补充标签与备注，并同步收藏状态。</Text>
-          </View>
-          <Pressable
-            disabled={isSubmitting}
-            onPress={() => resetInlineMode()}
-            style={({ pressed }) => [styles.footerCancelButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
-          >
-            <Ionicons color={colors.primary.default} name="close" size={17} />
-            <Text style={styles.footerCancelText}>取消</Text>
-          </Pressable>
+      <View style={styles.dockActions}>
+        <Pressable
+          disabled={selectedCount === 0 || isSubmitting}
+          onPress={() => setMode('add-group')}
+          style={({ pressed }) => [styles.dockButton, (selectedCount === 0 || isSubmitting) && styles.batchActionDisabled, pressed && styles.pressed]}
+        >
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth={1.6}>
+            <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </Svg>
+          <Text style={styles.dockButtonText} numberOfLines={1}>加入分组</Text>
+        </Pressable>
+        <Pressable
+          disabled={selectedCount === 0 || isSubmitting}
+          onPress={() => setMode('add-tags')}
+          style={({ pressed }) => [styles.dockButton, (selectedCount === 0 || isSubmitting) && styles.batchActionDisabled, pressed && styles.pressed]}
+        >
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth={1.6}>
+            <SvgPath strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </Svg>
+          <Text style={styles.dockButtonText} numberOfLines={1}>添加标签</Text>
+        </Pressable>
+        <Pressable
+          disabled={selectedCount === 0 || isSubmitting}
+          onPress={() => setMode('apply-template')}
+          style={({ pressed }) => [styles.dockButton, (selectedCount === 0 || isSubmitting) && styles.batchActionDisabled, pressed && styles.pressed]}
+        >
+          <Ionicons name="color-wand-outline" size={14} color="#374151" />
+          <Text style={styles.dockButtonText} numberOfLines={1}>套用模板</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setIsExpanded(true)}
+          style={({ pressed }) => [styles.dockMoreButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.dockMoreText}>更多</Text>
+          <Ionicons name="chevron-up" size={12} color="#FFFFFF" />
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  const footer = (
+    <View>
+      {(!isExpanded && mode === 'idle') ? (
+        <View style={{ paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }}>
+          {renderDock()}
         </View>
       ) : (
-        <View style={styles.batchActionGrid}>
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="swap-horizontal-outline"
-            label="替换分组"
-            onPress={() => {
-              setSelectedGroupId(groupId ?? null);
-              setMode('replace-group');
-            }}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="folder-open-outline"
-            label="加入分组"
-            onPress={() => {
-              setSelectedGroupId(groupId ?? null);
-              setMode('add-group');
-            }}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="remove-circle-outline"
-            label="移出分组"
-            onPress={() => {
-              setSelectedGroupId(groupId ?? null);
-              setMode('remove-group');
-            }}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="pricetags-outline"
-            label="添加标签"
-            onPress={() => setMode('add-tags')}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="color-wand-outline"
-            label="套用模板"
-            onPress={() => setMode('apply-template')}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="star-outline"
-            label="批量收藏"
-            onPress={() => handleFavoriteUpdate(true)}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="star-half-outline"
-            label="取消收藏"
-            onPress={() => handleFavoriteUpdate(false)}
-          />
-          <BatchActionButton
-            disabled={selectedCount === 0 || isSubmitting || isSavingToAlbum}
-            icon="download-outline"
-            label={isSavingToAlbum ? '保存中' : '保存相册'}
-            onPress={handleSaveToAlbum}
-          />
-          <BatchActionButton
-            danger
-            disabled={selectedCount === 0 || isSubmitting}
-            icon="trash-outline"
-            label="删除"
-            onPress={handleSoftDelete}
-          />
+        <View style={[styles.expandedSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+          <View style={styles.sheetHandleWrap}>
+            <View style={styles.sheetHandle} />
+          </View>
+          {mode === 'idle' ? (
+            <>
+              <View style={styles.sheetHeader}>
+                <View style={styles.sheetHeaderLeft}>
+                  <View style={styles.sheetHeaderDot} />
+                  <Text style={styles.sheetHeaderTitle}>批量素材管理</Text>
+                  <View style={styles.sheetHeaderBadge}>
+                    <Text style={styles.sheetHeaderBadgeText}>已选 {selectedCount} / {images.length} 项</Text>
+                  </View>
+                </View>
+                <View style={styles.sheetHeaderRight}>
+                  <Pressable onPress={() => setIsExpanded(false)} style={({ pressed }) => [styles.sheetIconBtn, pressed && styles.pressed]}>
+                    <Ionicons name="chevron-down" size={18} color="#6B7280" />
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>分类与整理 (ORGANIZE)</Text>
+                <View style={styles.grid2}>
+                  <SheetActionItem icon="folder-open-outline" label="加入分组" onPress={() => setMode('add-group')} disabled={selectedCount === 0} />
+                  <SheetActionItem icon="remove-circle-outline" label="移出分组" onPress={() => setMode('remove-group')} disabled={selectedCount === 0} />
+                  <SheetActionItem icon="swap-horizontal-outline" label="替换分组" onPress={() => setMode('replace-group')} disabled={selectedCount === 0} />
+                  <SheetActionItem icon="pricetags-outline" label="添加标签" onPress={() => setMode('add-tags')} disabled={selectedCount === 0} />
+                  <SheetActionItem icon="color-wand-outline" label="套用模板" onPress={() => setMode('apply-template')} disabled={selectedCount === 0} />
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>存储与流转 (EXPORT & STORAGE)</Text>
+                <View style={styles.grid3}>
+                  <SheetVerticalItem icon="star-outline" iconColor="#111111" label="批量收藏" onPress={() => handleFavoriteUpdate(true)} disabled={selectedCount === 0} />
+                  <SheetVerticalItem icon="star-half-outline" iconColor="#111111" label="取消收藏" onPress={() => handleFavoriteUpdate(false)} disabled={selectedCount === 0} />
+                  <SheetVerticalItem icon="download-outline" iconColor="#111111" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} disabled={selectedCount === 0 || isSavingToAlbum} />
+                </View>
+              </View>
+
+              <View style={styles.dangerSection}>
+                <Pressable style={styles.dangerBtn} disabled={selectedCount === 0} onPress={() => setIsDeleteDialogVisible(true)}>
+                  <Ionicons name="trash-outline" size={16} color="#E11D48" />
+                  <Text style={styles.dangerBtnText}>彻底删除</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <View style={styles.subModeContainer}>
+              <View style={styles.subModeHeader}>
+                <Pressable onPress={() => resetInlineMode()} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+                  <Ionicons name="chevron-back" size={20} color={colors.text.title} />
+                </Pressable>
+                <Text style={styles.subModeTitle}>{getGroupActionLabel(mode) || (mode === 'add-tags' ? '添加标签' : '套用模板')}</Text>
+                <View style={styles.headerSpacer} />
+              </View>
+              {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+              {isGroupMode(mode) ? (
+                <View style={styles.inlinePanel}>
+                  <LightFormSection title={getGroupActionLabel(mode)} hint="">
+                    <ScrollView style={styles.optionScroll} contentContainerStyle={styles.optionList}>
+                      {mode === 'replace-group' ? (
+                        <OptionSelectRow label="无分组" meta="保留在当前 IP" onPress={() => setSelectedGroupId(null)} selected={selectedGroupId == null} />
+                      ) : null}
+                      {groups.map((group) => (
+                        <OptionSelectRow
+                          key={group.id}
+                          label={group.name}
+                          meta={`${group.isPinned ? '已置顶 · ' : ''}${getGroupTypeLabel(group.type)}`}
+                          onPress={() => setSelectedGroupId(group.id)}
+                          selected={selectedGroupId === group.id}
+                        />
+                      ))}
+                      {mode !== 'remove-group' ? (
+                        <Pressable onPress={() => setIsCreateGroupDialogVisible(true)} style={({ pressed }) => [styles.createGroupRow, pressed && styles.pressed]}>
+                          <Ionicons color={colors.primary.default} name="add" size={18} />
+                          <View style={styles.createGroupCopy}>
+                            <Text style={styles.createGroupTitle}>新建分组</Text>
+                            <Text style={styles.createGroupMeta}>创建后自动选为目标分组</Text>
+                          </View>
+                        </Pressable>
+                      ) : null}
+                    </ScrollView>
+                  </LightFormSection>
+                  <View style={styles.subModeFooter}>
+                    <PrimaryButton disabled={selectedCount === 0 || isSubmitting} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} />
+                  </View>
+                </View>
+              ) : mode === 'add-tags' ? (
+                <View style={styles.inlinePanel}>
+                  <LightFormSection title="添加标签" hint="为选中的素材补充标签">
+                    <TagMultiSelectPanel 
+                      availableTags={tags} 
+                      selectedTagNames={draftTags} 
+                      onSelectedTagNamesChange={(tagNames) => { setDraftTags(tagNames); if(submitError) clearSubmitError(); }} 
+                      onInputChange={(value) => { setTagInput(value); if(submitError) clearSubmitError(); }} 
+                      inputValue={tagInput}
+                    />
+                  </LightFormSection>
+                  <View style={styles.subModeFooter}>
+                    <PrimaryButton disabled={selectedCount === 0 || isSubmitting} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
+                  </View>
+                </View>
+              ) : mode === 'apply-template' ? (
+                <View style={styles.inlinePanel}>
+                  <LightFormSection title="套用模板" hint="选择模板会覆盖分组、补充标签与备注，并同步收藏状态。">
+                    <ScrollView style={styles.optionScroll} contentContainerStyle={styles.optionList}>
+                      {importTemplates.map((template) => (
+                        <View key={template.key} style={styles.fillCell}>
+                          <Pressable
+                            disabled={isSubmitting}
+                            onPress={() => handleApplyTemplate(template)}
+                            style={({ pressed }) => [styles.templateChip, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
+                          >
+                            <Ionicons color={colors.primary.active} name="albums-outline" size={15} />
+                            <View style={styles.templateCopy}>
+                              <Text style={styles.templateTitle}>{template.name}</Text>
+                              <Text style={styles.templateMeta}>{template.tags.map(t => '#' + t).join(' ')}</Text>
+                            </View>
+                            <Ionicons color={colors.border.default} name="chevron-forward" size={16} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </LightFormSection>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -1090,6 +1161,30 @@ function getGroupModeHint(mode: BatchMode, selectedCount: number): string {
   return '把已选图片替换为一个目标分组，也可以改为无分组。';
 }
 
+function SheetActionItem({ disabled, icon, label, onPress }: { disabled?: boolean; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; }) {
+  return (
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.sheetActionItem, disabled && styles.batchActionDisabled, pressed && !disabled && styles.pressed]}>
+      <View style={styles.sheetActionIconBox}>
+        <Ionicons name={icon} size={20} color="#111111" />
+      </View>
+      <View style={styles.sheetActionCopy}>
+        <Text style={styles.sheetActionLabel}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function SheetVerticalItem({ disabled, icon, iconColor, label, onPress }: { disabled?: boolean; icon: keyof typeof Ionicons.glyphMap; iconColor: string; label: string; onPress: () => void; }) {
+  return (
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.sheetVerticalItem, disabled && styles.batchActionDisabled, pressed && !disabled && styles.pressed]}>
+      <View style={styles.sheetVerticalIconBox}>
+        <Ionicons name={icon} size={20} color={iconColor} />
+      </View>
+      <Text style={styles.sheetVerticalLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function BatchActionButton({
   icon,
   label,
@@ -1146,6 +1241,48 @@ function getFilenamePrefix(filename: string): string | null {
 }
 
 const styles = StyleSheet.create({
+  dockContainer: { backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 9999, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, marginHorizontal: 8, borderColor: 'rgba(0,0,0,0.1)', borderWidth: StyleSheet.hairlineWidth, minHeight: 56, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.12, shadowRadius: 40 }, android: { elevation: 12 } }), gap: 4 },
+  dockBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999, flexShrink: 1 },
+  dockBadgeText: { fontSize: 11, color: '#374151', fontWeight: '600', flexShrink: 1 },
+  dockBadgeTextBold: { color: '#000000', fontWeight: 'bold', fontSize: 13 },
+  dockActions: { flexDirection: 'row', alignItems: 'center', gap: 2, flexGrow: 1, flexShrink: 1, justifyContent: 'space-between' },
+  dockButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 8, borderRadius: 9999, flexShrink: 1 },
+  dockButtonText: { fontSize: 11, fontWeight: '500', color: '#374151', flexShrink: 1 },
+  dockMoreButton: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#111111', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999, flexShrink: 0 },
+  dockMoreText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  expandedSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderColor: '#E5E7EB', borderWidth: 1, borderBottomWidth: 0, paddingHorizontal: 20, paddingTop: 12, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.08, shadowRadius: 30 }, android: { elevation: 24 } }) },
+  sheetHandleWrap: { alignItems: 'center', paddingBottom: 12 },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB' },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  sheetHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sheetHeaderDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981' },
+  sheetHeaderTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  sheetHeaderBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999 },
+  sheetHeaderBadgeText: { fontSize: 11, fontWeight: '600', color: '#4B5563' },
+  sheetHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sheetIconBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', marginBottom: 12, letterSpacing: 0.5 },
+  grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
+  grid3: { flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
+  sheetActionItem: { width: '48%', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: '#F8F9FA', borderColor: '#F3F4F6', borderWidth: 1 },
+  sheetActionIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }, android: { elevation: 1 } }) },
+  sheetActionCopy: { flex: 1 },
+  sheetActionLabel: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
+  sheetVerticalItem: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 14, backgroundColor: '#F8F9FA', borderColor: '#F3F4F6', borderWidth: 1 },
+  sheetVerticalIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 8, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }, android: { elevation: 1 } }) },
+  sheetVerticalLabel: { fontSize: 12, fontWeight: '600', color: '#1F2937', textAlign: 'center' },
+  dangerSection: { marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6', alignItems: 'center' },
+  dangerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 9999 },
+  dangerBtnText: { color: '#E11D48', fontSize: 14, fontWeight: '600' },
+  subModeContainer: { paddingBottom: 16 },
+  subModeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginHorizontal: -8 },
+  subModeTitle: { fontSize: 16, fontWeight: 'bold', color: colors.text.title },
+  headerSpacer: { width: 40 },
+  inlinePanel: { gap: 16 },
+  subModeFooter: { paddingTop: 16 },
+  optionScroll: { maxHeight: 240 },
   host: {
     flex: 1,
   },
