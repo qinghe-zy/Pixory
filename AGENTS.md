@@ -28,6 +28,15 @@ Server-side AI infrastructure, AI gateways, prompt caching, semantic caching, pr
 - The UI must feel like a real polished mobile product, not an AI mockup.
 - Do not use scripts (e.g., Python, Node.js) to modify, patch, or edit the project's source code files. All code changes must be made directly using standard code editing tools.
 
+## 🚨 MANDATORY REPOSITORY SYNCHRONIZATION POLICY 🚨
+
+**CRITICAL RULE FOR ALL AI AGENTS:**
+- The local repository acts as the "Dirty Dev Lab". Agents are ENCOURAGED to commit frequently locally. Local commits CAN and SHOULD include process docs, `版本文档/`, AI scripts (`*.py`), `.codex`, `AGENTS.md`, `LOCAL_UPDATES_LOG.md`, etc.
+- **NEVER** push local branches (like `local-work`) to the new clean remote repository directly.
+- The "New Clean Repository" must ONLY contain absolute source code and necessary presentation docs (like `README.md` and website display files).
+- NO AI-related files (`.codex`, `.impeccable.md`, `AGENTS.md`, AI scratch scripts) and NO internal process docs (`版本文档/`, `LOCAL_UPDATES_LOG.md`, `task_plan.md`, `findings.md`) are allowed in the new clean repository. EVER.
+- When the user requests a "Push to the new repository" or "Version Release Push", agents MUST NOT run `git push origin` directly on the dev repo. Instead, agents MUST use the designated publish script (`scripts/sync-clean-repo.ps1`) to strictly filter and copy ONLY the clean source code into the separate clean repository folder (`../Pixory-Clean` by default), and then commit and push from that clean folder.
+
 ## Architecture Principles
 
 - Follow a component-driven architecture with high cohesion and low coupling.

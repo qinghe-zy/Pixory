@@ -1,4 +1,4 @@
-# Pixory 2.8.7.0 → 2.8.8 测试报告（Test Report）
+# Pixory 2.8.8.0 → 2.8.8 测试报告（Test Report）
 
 > 定位：记录发版前的量化质量结论、遗留缺陷和已知风险。
 > 本文件属于当前迭代的持续文档。每次本地提交和热更新都必须通过 scripts/version-document-workflow.ps1 -Action AppendUpdate 追加记录；需求冲突时，必须先修订本文档并在“变更记录”中标明替代关系。

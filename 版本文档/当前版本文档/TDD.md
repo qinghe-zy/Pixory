@@ -1,4 +1,4 @@
-# Pixory 2.8.7.0 → 2.8.8 技术设计文档（TDD）
+# Pixory 2.8.8.0 → 2.8.8 技术设计文档（TDD）
 
 > 定位：定义针对 PRD 的架构、实现、性能、安全和迁移方案。
 > 本文件属于当前迭代的持续文档。每次本地提交和热更新都必须通过 scripts/version-document-workflow.ps1 -Action AppendUpdate 追加记录；需求冲突时，必须先修订本文档并在“变更记录”中标明替代关系。
