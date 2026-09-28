@@ -3,7 +3,7 @@ import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
 
 import { colors, typography } from '../design/tokens';
 
-const BRAND_IMAGE = require('../../assets/splash-icon.png');
+const BRAND_IMAGE = require('../../icons/splash_foreground_compact.png');
 const DOT_COUNT = 7;
 const DOTS = Array.from({ length: DOT_COUNT }, (_, index) => index);
 
@@ -55,12 +55,12 @@ export function LoadingTransition({ title, description }: LoadingTransitionProps
                 {
                   backgroundColor: progress.interpolate({
                     inputRange,
-                    outputRange: outputRange.map((value) => (value > 0.8 ? '#8FA178' : '#E5E3DF')),
+                    outputRange: outputRange.map((value) => (value > 0.8 ? '#1A1C1C' : '#E2E2E2')),
                   }),
                   opacity: progress.interpolate({ inputRange, outputRange }),
                   transform: [
                     {
-                      scaleY: progress.interpolate({
+                      scale: progress.interpolate({
                         inputRange,
                         outputRange: outputRange.map((value) => 0.82 + value * 0.24),
                       }),
@@ -104,8 +104,8 @@ const styles = StyleSheet.create({
   },
   progressDot: {
     borderRadius: 999,
-    height: 14,
-    width: 8,
+    height: 6,
+    width: 6,
   },
   title: {
     ...typography.textStyles.emptyTitle,
