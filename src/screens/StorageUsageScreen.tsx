@@ -486,12 +486,9 @@ const styles = StyleSheet.create({
     minWidth: 4,
   },
   storageList: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
+      backgroundColor: '#ffffff',
+      marginHorizontal: -spacing[4],
+    },
   storageRow: {
     alignItems: 'center',
     borderBottomColor: colors.border.subtle,
@@ -654,7 +651,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000000',
-    borderRadius: 24, paddingHorizontal: 24, height: 48, gap: 4, minWidth: 200, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
+    borderRadius: 4, paddingHorizontal: 24, height: 48, gap: 4, minWidth: 200, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
   },
   smartCleanText: {
     ...typography.textStyles.bodyStrong,
@@ -667,5 +664,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
 
 

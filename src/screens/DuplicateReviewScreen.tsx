@@ -84,7 +84,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
       <View style={styles.contentStack}>
         <View style={styles.hero}>
           <View style={styles.heroIcon}>
-            <Ionicons color={colors.primary.active} name="copy-outline" size={20} />
+            <Ionicons color="#1a1c1c" name="copy-outline" size={20} />
           </View>
           <View style={styles.heroCopy}>
             <Text style={styles.heroTitle}>{activeTab === 'exact' ? '精确重复' : '相似图片'} {duplicateCount} 张</Text>
@@ -139,14 +139,14 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
                         {image.thumbnailFileUri ? (
                           <SecureImage contentFit="cover" space={space} style={styles.thumbImage} uri={image.thumbnailFileUri} />
                         ) : (
-                          <Ionicons color={colors.text.tertiary} name="image-outline" size={16} />
+                          <Ionicons color="#747878" name="image-outline" size={16} />
                         )}
                       </View>
                       <View style={styles.imageCopy}>
                         <Text numberOfLines={1} style={styles.filename}>{image.originalFilename}</Text>
                         <Text numberOfLines={1} style={styles.imageMeta}>{image.ipName} · {image.groupName ?? '未分组'} · {image.width} x {image.height} · {formatFileSize(image.fileSize)}</Text>
                       </View>
-                      <Ionicons color={selectedIds.includes(image.id) ? colors.primary.active : colors.text.tertiary} name={selectedIds.includes(image.id) ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
+                      <Ionicons color={selectedIds.includes(image.id) ? "#000000" : "#747878"} name={selectedIds.includes(image.id) ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
                     </Pressable>
                   ))}
                 </View>
@@ -173,8 +173,8 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: '#ffffff',
+    borderColor: '#e8e8e8',
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   },
   heroIcon: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
+    backgroundColor: '#f3f3f4',
     borderRadius: radius.md,
     height: 38,
     justifyContent: 'center',
@@ -196,14 +196,14 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     ...typography.textStyles.body,
-    color: colors.text.title,
+    color: '#1a1c1c',
     fontSize: 19,
     lineHeight: 24,
   },
   scanButton: {
     alignItems: 'center',
     backgroundColor: '#000000',
-    borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
+    borderRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
     flexDirection: 'row',
     gap: spacing[1],
     height: 48,
@@ -219,14 +219,14 @@ const styles = StyleSheet.create({
   },
   scanMessage: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: '#747878',
   },
   groupList: {
     gap: rhythm.screenSectionGap,
   },
   groupCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: '#ffffff',
+    borderColor: '#e8e8e8',
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.listCardGap,
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   },
   groupTitle: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+    color: '#1a1c1c',
   },
   imageList: {
     gap: rhythm.entryCardGap,
@@ -258,12 +258,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
   imageRowSelected: {
-    backgroundColor: colors.primary.weak,
+    backgroundColor: '#f3f3f4',
   },
   thumb: {
     alignItems: 'center',
     aspectRatio: 1,
-    backgroundColor: colors.background.empty,
+    backgroundColor: '#f9f9f9',
     borderRadius: radius.sm,
     justifyContent: 'center',
     overflow: 'hidden',
@@ -280,39 +280,33 @@ const styles = StyleSheet.create({
   },
   filename: {
     ...typography.textStyles.caption,
-    color: colors.text.title,
+    color: '#1a1c1c',
     fontWeight: '600',
   },
   imageMeta: {
     ...typography.textStyles.micro,
-    color: colors.text.secondary,
+    color: '#747878',
   },
   tabs: {
     flexDirection: 'row',
     gap: spacing[2],
   },
-  tabButton: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
+  tabButton: { alignItems: 'center', backgroundColor: '#ffffff', borderColor: '#e8e8e8', borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
     minHeight: 32,
     justifyContent: 'center',
   },
   tabButtonActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: '#f3f3f4',
+    borderColor: '#000000',
   },
   tabText: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: '#747878',
     fontWeight: '700',
   },
-  tabTextActive: {
-    color: colors.primary.active,
-  },
+  tabTextActive: { color: '#000000' },
   reviewActions: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -321,12 +315,12 @@ const styles = StyleSheet.create({
   },
   reviewActionMeta: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: '#747878',
   },
   deleteSelectedButton: {
     alignItems: 'center',
     backgroundColor: '#000000',
-    borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
+    borderRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
     justifyContent: 'center',
     height: 48,
     paddingHorizontal: 24,
@@ -338,7 +332,7 @@ const styles = StyleSheet.create({
   },
   keepButton: {
     backgroundColor: '#000000',
-    borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
+    borderRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
     height: 32,
     justifyContent: 'center',
     paddingHorizontal: 16,
@@ -352,5 +346,6 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
 
 

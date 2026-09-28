@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useContext } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
@@ -22,6 +22,7 @@ import type { PixorySpace } from '../database';
 import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 import { globalScrollState } from '../utils/scrollState';
+import { FloatingFooterContext } from '../components/AppScreen';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
@@ -78,6 +79,7 @@ export function AiHomeScreen({
   onStartChatWithRole,
 }: AiHomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const floatingFooterHeight = useContext(FloatingFooterContext);
   const primaryCardScale = useSharedValue(1);
   const primaryCardAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: primaryCardScale.value }],
@@ -246,7 +248,7 @@ export function AiHomeScreen({
       <AiLightScaffold
         backgroundColor="#f9f9f9"
         bodyStyle={styles.homeBody}
-        contentContainerStyle={styles.screenContent}
+        contentContainerStyle={[styles.screenContent, { paddingBottom: 0 }]}
         customTopPadding={0}
         errorMessage={errorMessage}
         headerDividerVisible={false}
@@ -261,7 +263,7 @@ export function AiHomeScreen({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top }]}
+          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top, paddingBottom: layout.pageBottomOffset + floatingFooterHeight }]}
         >
           {/* Start Chat Card + Role Rail */}
           <View style={styles.mainStack}>
