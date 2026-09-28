@@ -597,7 +597,7 @@ export function MeScreen({
                   style={[
                     styles.storageProgressSegment,
                     {
-                      backgroundColor: '#82C785',
+                      backgroundColor: '#B8DDB9',
                       width: `${(imageBytes / (imageBytes + videoBytes || 1)) * 100}%`,
                     },
                   ]}
@@ -606,7 +606,7 @@ export function MeScreen({
                   style={[
                     styles.storageProgressSegment,
                     {
-                      backgroundColor: '#9E86E1',
+                      backgroundColor: '#A8C8F0',
                       width: `${(videoBytes / (imageBytes + videoBytes || 1)) * 100}%`,
                     },
                   ]}
@@ -617,7 +617,7 @@ export function MeScreen({
                   <View
                     style={[
                       styles.storageLegendDot,
-                      { backgroundColor: '#82C785' },
+                      { backgroundColor: '#B8DDB9' },
                     ]}
                   />
                   <Text style={styles.storageLegendText}>图片原图</Text>
@@ -629,7 +629,7 @@ export function MeScreen({
                   <View
                     style={[
                       styles.storageLegendDot,
-                      { backgroundColor: '#9E86E1' },
+                      { backgroundColor: '#A8C8F0' },
                     ]}
                   />
                   <Text style={styles.storageLegendText}>视频存储</Text>
