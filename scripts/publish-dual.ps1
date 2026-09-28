@@ -33,7 +33,7 @@ Write-Host "==== 3. 推送及发版至新仓库 (纯净代码) ====" -Foreground
 
 & git -C $cleanRepo add -A
 & git -C $cleanRepo commit -m "chore: initial release v$version (clean)"
-& git -C $cleanRepo tag -a $tag -m "Pixory $tag Clean Release"
+& git -C $cleanRepo tag -a $tag -m "Pixory $tag Clean Release" -f
 
 & git -C $cleanRepo push -f origin main
 & git -C $cleanRepo push -f origin $tag
@@ -41,6 +41,7 @@ Write-Host "==== 3. 推送及发版至新仓库 (纯净代码) ====" -Foreground
 & gh release create $tag $apkPath --repo qinghe-zy/Pixory --title "Pixory v$version" --notes-file $externalNotes
 
 Write-Host "双仓库发布流程完成！" -ForegroundColor Green
+
 
 
 
