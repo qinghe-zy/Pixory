@@ -1075,22 +1075,27 @@ export function VideoPlayerScreen({
       useNativeDriver: true,
     }).start(() => {
       tracer.log('switch:exit-anim-done', { toId: nextVideo.id });
-      // 2. Commit the video switch immediately after the surface is off-screen.
+      // 2. Commit the video switch (triggers replaceAsync + loading cover).
       setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
       tracer.log('switch:committed', { toId: nextVideo.id });
-      // Reset to below/above the viewport (enter side).
-      videoSwitchTranslateY.setValue(direction * transitionHeight);
-      // 3. Enter: slide in from the opposite edge.
-      Animated.timing(videoSwitchTranslateY, {
-        toValue: 0,
-        duration: VIDEO_SWITCH_ENTER_DURATION_MS,
-        useNativeDriver: true,
-      }).start(() => {
-        tracer.log('switch:enter-anim-done', { toId: nextVideo.id });
-        swipeSettlingRef.current = false;
-        setIsVideoSwitchTransitioning(false);
-        resetHideTimer();
+      // Defer the enter animation until React has flushed the cover state to the native layer.
+      // Without this, the surface teleports to the entry side while the VideoView is still
+      // black (replaceAsync just started), causing a visible 1-2 frame black flash.
+      InteractionManager.runAfterInteractions(() => {
+        // Reset to below/above the viewport (enter side).
+        videoSwitchTranslateY.setValue(direction * transitionHeight);
+        // 3. Enter: slide in from the opposite edge.
+        Animated.timing(videoSwitchTranslateY, {
+          toValue: 0,
+          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
+          useNativeDriver: true,
+        }).start(() => {
+          tracer.log('switch:enter-anim-done', { toId: nextVideo.id });
+          swipeSettlingRef.current = false;
+          setIsVideoSwitchTransitioning(false);
+          resetHideTimer();
+        });
       });
     });
 
@@ -1491,10 +1496,10 @@ export function VideoPlayerScreen({
           <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
         </Pressable>
         <Pressable
-          onLongPress={__DEV__ ? () => {
+          onLongPress={() => {
             const { Share } = require('react-native');
             void Share.share({ title: 'VideoPlayer Trace Report', message: tracer.exportReport() });
-          } : undefined}
+          }}
           style={{ flex: 1, minWidth: 0 }}
         >
           <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
