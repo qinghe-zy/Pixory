@@ -4,10 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpListItem, type PixorySpace } from '../../database';
-import { aiLightColors } from './aiLightTheme';
-import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { copyAiRoleAvatarToAppStorage } from '../../services/fileStorageService';
-import { AiLightButton } from './AiLightButton';
 import { AiImageCropModal } from './AiImageCropModal';
 import { SecureImage } from '../SecureImage';
 
@@ -22,8 +19,8 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
   const [ips, setIps] = useState<IpListItem[]>([]);
   const [avatarIpId, setAvatarIpId] = useState<number | null>(null);
   const [avatarCandidates, setAvatarCandidates] = useState<ImageListItem[]>([]);
-  // 待裁剪的图片临时 URI（非 null 时弹出裁剪 Modal）
   const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
+  const [showIps, setShowIps] = useState(false);
 
   const loadIps = useCallback(async () => {
     try {
@@ -58,15 +55,11 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        // 不使用 allowsEditing：Android 多数厂商 ROM（MIUI / ColorOS / HyperOS 等）
-        // 的系统 CROP intent 会显示截取框但没有确认按钮，导致用户无法完成选图。
-        // 裁剪改为应用内 AiImageCropModal 完成。
         quality: 1,
       });
       if (result.canceled || !result.assets.length) {
         return;
       }
-      // 弹出应用内裁剪 Modal
       setCropSourceUri(result.assets[0].uri);
     } catch (error) {
       onError?.(error instanceof Error ? error : '头像选择失败');
@@ -89,21 +82,31 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
 
   return (
     <View style={styles.container}>
-      {/* 应用内裁剪 Modal */}
       <AiImageCropModal
         sourceUri={cropSourceUri}
         onConfirm={(uri) => void handleCropConfirm(uri)}
         onCancel={handleCropCancel}
       />
 
-      <View style={styles.inlineActions}>
-        <AiLightButton label="从相册选择" onPress={() => void pickAvatarFromAlbum()} variant="ghost" />
-        {avatarUri ? <AiLightButton label="清除头像" onPress={() => onAvatarChange(null)} variant="ghost" /> : null}
+      <View style={styles.pickerActionsRow}>
+        <Pressable onPress={() => void pickAvatarFromAlbum()} style={({ pressed }) => [styles.albumBtn, pressed && styles.pressed]}>
+          <Ionicons name="images-outline" size={16} color="#1a1c1c" />
+          <Text style={styles.albumBtnText}>从相册选择</Text>
+        </Pressable>
+
+        {ips.length > 0 && (
+          <View style={styles.ipActionRow}>
+            <Text style={styles.ipActionLabel}>从 IP 选择</Text>
+            <Pressable onPress={() => setShowIps(!showIps)} style={({ pressed }) => [styles.ipPickerButton, pressed && styles.pressed]}>
+              <Text style={styles.ipPickerButtonText}>{ips[0]?.name || '选择'}</Text>
+              <Ionicons name="options-outline" size={14} color="#1a1c1c" />
+            </Pressable>
+          </View>
+        )}
       </View>
 
-      {ips.length ? (
+      {showIps && ips.length > 0 && (
         <View style={styles.ipAvatarPicker}>
-          <Text style={styles.caption}>从 IP 选择</Text>
           <View style={styles.ipChipRow}>
             {ips.slice(0, 8).map((ip) => (
               <Pressable
@@ -139,69 +142,109 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
             <Text style={styles.caption}>该 IP 下暂无可用图片。</Text>
           )}
         </View>
-      ) : null}
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: rhythm.inlineGap,
+    gap: 8,
   },
-  inlineActions: {
+  pickerActionsRow: {
     flexDirection: 'row',
-    gap: spacing[2],
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  albumBtn: {
+    height: 32,
+    paddingHorizontal: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  albumBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  ipActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ipActionLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#444748',
+  },
+  ipPickerButton: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#e2e2e2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ipPickerButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1a1c1c',
+    letterSpacing: 0.66,
   },
   caption: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
+    fontSize: 11,
+    color: '#747878',
   },
   ipAvatarPicker: {
-    gap: rhythm.inlineGap,
+    gap: 12,
+    marginTop: 8,
   },
   ipChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: 8,
   },
   ipChip: {
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
+    backgroundColor: '#f9f9f9',
+    borderColor: '#e2e2e2',
+    borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
   ipChipActive: {
-    backgroundColor: aiLightColors.primarySoft,
-    borderColor: aiLightColors.primary,
+    backgroundColor: '#e8e8e8',
+    borderColor: '#000000',
   },
   ipChipText: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.ink,
+    fontSize: 11,
+    color: '#1a1c1c',
   },
   ipChipTextActive: {
-    color: aiLightColors.primaryActive,
+    color: '#000000',
     fontWeight: '700',
   },
   avatarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    gap: 4,
   },
   avatarGridScroll: {
-    maxHeight: metrics.minTouchSize * 4 + spacing[2] * 3,
+    maxHeight: 44 * 4 + 8 * 3,
   },
   avatarChoice: {
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
+    borderColor: '#e5e5e5',
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    width: metrics.minTouchSize,
-    height: metrics.minTouchSize,
+    width: 44,
+    height: 44,
   },
   avatarChoiceActive: {
-    borderColor: aiLightColors.primary,
+    borderColor: '#000000',
     borderWidth: 2,
   },
   avatarChoiceImage: {
