@@ -1,0 +1,96 @@
+{
+  "expo": {
+    "name": "pixory",
+    "slug": "pixory",
+    "version": "2.8.8.0",
+    "orientation": "portrait",
+    "icon": "./icons/02_\u53f3\u4e0a_\u84dd\u53d1\u5973\u5b69.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.pixory.app",
+      "versionCode": 2880,
+      "softwareKeyboardLayoutMode": "resize",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WRITE_SETTINGS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/pixory-favicon.png"
+    },
+    "runtimeVersion": "2.8.8.0",
+    "updates": {
+      "enabled": true,
+      "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#4a7bf7",
+          "image": "./icons/splash_foreground_compact.png",
+          "imageWidth": 192,
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pixory \u9700\u8981\u8bbf\u95ee\u76f8\u518c\u4ee5\u4fbf\u5bfc\u5165\u56fe\u7247\u548c\u9009\u62e9\u672c\u5730\u5934\u50cf\u3002",
+          "microphonePermission": "Pixory \u9700\u8981\u4f7f\u7528\u9ea6\u514b\u98ce\u4ee5\u8f6c\u5199\u8bed\u97f3\u8f93\u5165\u3002"
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Pixory \u9700\u8981\u8bbf\u95ee\u76f8\u518c\u4ee5\u4fbf\u4fdd\u5b58\u539f\u56fe\u3002",
+          "savePhotosPermission": "Pixory \u9700\u8981\u5199\u5165\u76f8\u518c\u4ee5\u4fbf\u4fdd\u5b58\u539f\u56fe\u3002",
+          "granularPermissions": [
+            "photo"
+          ]
+        }
+      ],
+      "expo-document-picker",
+      "expo-secure-store",
+      "expo-video",
+      "./plugins/withPixoryAndroidIntents"
+    ],
+    "extra": {
+      "updateCheck": {
+        "enabled": true,
+        "url": "https://mist01.com/update-version.json",
+        "githubLatestUrl": "https://api.github.com/repos/qinghe-zy/Pixory/releases/latest",
+        "fallbackDownloadUrl": "https://mist01.com/#download",
+        "timeoutMs": 5000
+      },
+      "announcement": {
+        "enabled": true,
+        "url": "https://mist01.com/announcement.json",
+        "timeoutMs": 5000
+      },
+      "eas": {
+        "projectId": "f9528887-4f8b-451d-a851-aa1a45e9abae"
+      }
+    },
+    "owner": "qinghe.zy"
+  }
+}
+
+

@@ -1,0 +1,46 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+
+function read(path) {
+  return fs.readFileSync(path, 'utf8');
+}
+
+test('AboutScreen keeps story intro separate and renders journal chapter state', () => {
+  const source = read('src/screens/AboutScreen.tsx');
+  assert.match(source, /故事开始/);
+  assert.match(source, /岁月有声/);
+  assert.match(source, /firstFootprints: false/);
+  assert.match(source, /FadeInDown\.duration/);
+  assert.match(source, /expandedCategoryIds/);
+  assert.match(source, /openAchievementId/);
+  assert.match(source, /markJournalAchievementRead/);
+});
+
+test('first light and first conversation are rendered only by the journey chapter', () => {
+  const source = read('src/screens/AboutScreen.tsx');
+  const chapterStart = source.indexOf('journal?.categories.map');
+  assert.ok(chapterStart >= 0);
+  assert.equal(source.slice(0, chapterStart).match(/第一份光影/g)?.length ?? 0, 0);
+  assert.equal(source.slice(0, chapterStart).match(/第一次对话/g)?.length ?? 0, 0);
+});
+
+test('AboutScreen stores expansion state per space so route returns preserve context', () => {
+  const source = read('src/screens/AboutScreen.tsx');
+  assert.match(source, /aboutJournalUiStateBySpace/);
+  assert.match(source, /getAboutJournalUiState\(space\)/);
+});
+
+test('journal achievement rows avoid decorative media and reserve the route column', () => {
+  const source = read('src/components/about/JournalAchievementRow.tsx');
+  assert.doesNotMatch(source, /🖼️|💬|Image|thumbnail/);
+  assert.match(source, /achievementRowAction/);
+  assert.match(source, /arrow-right/);
+  assert.match(source, /achievementRowDate/);
+});
+
+test('AboutScreen provides a back affordance with onBack handler', () => {
+  const source = read('src/screens/AboutScreen.tsx');
+  assert.match(source, /accessibilityLabel="返回"/);
+  assert.match(source, /onPress=\{onBack\}/);
+});

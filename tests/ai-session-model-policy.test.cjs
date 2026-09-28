@@ -1,0 +1,154 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const root = path.resolve(__dirname, '..');
+
+function read(file) {
+  return fs.readFileSync(path.join(root, file), 'utf8');
+}
+
+test('AI chat resolves the latest thread model instead of reusing message snapshots', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /type ResolvedThreadChatModel/);
+  assert.match(service, /resolveThreadChatModel/);
+  assert.match(service, /invalid_global_default/);
+  assert.match(service, /invalid_thread_model/);
+  assert.match(service, /thread\.providerId/);
+  assert.match(service, /thread\.modelId/);
+  assert.match(service, /regenerateAssistantMessage[\s\S]*findThreadById/);
+  assert.match(service, /rewriteUserMessage[\s\S]*findThreadById/);
+  assert.doesNotMatch(service, /const\s+modelId\s*=\s*message\.modelId/);
+  assert.doesNotMatch(service, /const\s+providerId\s*=\s*message\.providerId/);
+});
+
+test('AI session settings exposes current session model and follow-global option', () => {
+  const screen = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(screen, /当前会话模型/);
+  assert.match(screen, /仅在当前会话生效/);
+  assert.match(screen, /跟随全局默认/);
+  assert.match(screen, /保存本会话配置/);
+  assert.match(screen, /测试当前模型/);
+  assert.match(screen, /复用全局模型配置/);
+  assert.match(screen, /添加新模型/);
+  assert.match(screen, /添加并用于当前会话/);
+  assert.match(screen, /manualSessionModelDraft/);
+  assert.match(screen, /addThreadSessionManualModel/);
+  assert.match(screen, /verifyThreadSessionModelOverride/);
+  assert.match(screen, /persistCurrentSessionModelDraft/);
+  assert.match(screen, /sessionModelConfig\?\.providerId \?\? sessionModelConfig\?\.defaultProviderId/);
+  assert.match(screen, /sessionModelConfig\?\.modelId \?\? sessionModelConfig\?\.defaultModelId/);
+  assert.match(screen, /saveSessionModel\(null,\s*null\)/);
+  assert.match(screen, /updateAiThreadSessionConfig/);
+  assert.match(screen, /loadThreadSessionModelConfig/);
+});
+
+test('AI provider settings labels model selection as global default only', () => {
+  const screen = read('src/screens/AiProviderSettingsScreen.tsx');
+
+  assert.match(screen, /全局默认模型/);
+  assert.match(screen, /新创建会话的默认选择/);
+  assert.match(screen, /不会影响已有独立设置的会话/);
+});
+
+test('AI session model resolver documents invalid and partial-null cases', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /provider_default/);
+  assert.match(service, /global_default/);
+  assert.match(service, /thread_model/);
+  assert.match(service, /if\s*\(thread\.providerId\)/);
+  assert.match(service, /thread\.modelId\s*\?/);
+  assert.match(service, /supportsChat/);
+  assert.match(service, /thread\.modelId \? 'thread_model' : 'provider_default'/);
+});
+
+test('new AI chats follow global default unless a model is explicitly supplied', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /const shouldUseFixedModel = Boolean\(input\.providerId \|\| input\.modelId\)/);
+  assert.match(service, /providerId: shouldUseFixedModel && provider \? provider\.id : null/);
+  assert.match(service, /modelId: shouldUseFixedModel && model \? model\.modelId : null/);
+  assert.match(service, /createNormalThreadFromRoleCard[\s\S]*providerId: null/);
+  assert.match(service, /createNormalThreadFromRoleCard[\s\S]*modelId: null/);
+  assert.doesNotMatch(service, /providerId: provider\?\.id \?\? null/);
+  assert.doesNotMatch(service, /modelId: model\?\.modelId \?\? null/);
+});
+
+test('session model settings uses the same resolver as generation', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolveThreadChatModel\(space, thread\)/);
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolveThreadChatModel\(space, emptyThreadModelConfig\(space\)\)/);
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolvedModel\.status !== 'ready'/);
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*currentStatus[\s\S]*'invalid'/);
+});
+
+test('session model resolver falls back to another chat-capable provider model after a deleted default clears provider default bindings', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const repository = read('src/database/repositories/aiProviderRepository.ts');
+
+  assert.match(repository, /defaultChatModelId = CASE WHEN defaultChatModelId = \? THEN NULL ELSE defaultChatModelId END/);
+  assert.match(service, /const defaultMigration = migrateDeprecatedDeepSeekModel\(provider\.defaultChatModelId, effectiveBaseUrl\)/);
+  assert.match(service, /const effectiveDefaultModelId = defaultMigration\?\.modelId \?\? provider\.defaultChatModelId/);
+  assert.match(service, /if \(provider\.defaultChatModelId && !defaultModel && !explicitModel\)/);
+  assert.match(service, /const resolvedModel = explicitModel[\s\S]*defaultModel[\s\S]*models\.find/);
+  assert.match(service, /return resolveProviderModel\(provider, thread\.modelId, thread\.modelId \? 'thread_model' : 'provider_default'\)/);
+});
+
+test('current session manual model candidates do not replace the global default model', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const providerService = read('src/ai/aiProviderService.ts');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?(?=\nexport async function recordSuccessfulProviderModel)/)?.[0] ?? '';
+
+  assert.match(chat, /addThreadSessionManualModel/);
+  assert.match(chat, /saveManualChatModelCandidate/);
+  assert.match(candidateFunction, /manualModelRecord/);
+  assert.doesNotMatch(candidateFunction, /updateProviderDefaults/);
+  assert.match(sessionConfig, /addManualSessionModel[\s\S]*saveThreadSessionModelOverride/);
+  assert.doesNotMatch(sessionConfig, /addManualSessionModel[\s\S]*saveManualChatModel\(/);
+});
+
+test('session model list supports deleting stale provider models so current-thread options do not keep old gateway entries', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(chat, /export async function deleteProviderModel/);
+  assert.match(sessionConfig, /删除模型/);
+  assert.match(sessionConfig, /deleteProviderModel/);
+  assert.match(sessionConfig, /loadThreadSessionModelConfig/);
+});
+
+test('session model draft persistence is not blocked by the outer saving flag', () => {
+  const screen = read('src/screens/AiSessionConfigScreen.tsx');
+  const persistBody = screen.match(/async function persistCurrentSessionModelDraft\(\): Promise<boolean> \{[\s\S]*?\n  \}/)?.[0] ?? '';
+
+  assert.match(persistBody, /saveThreadSessionModelOverride/);
+  assert.doesNotMatch(persistBody, /savingModel/);
+  assert.match(screen, /async function saveCurrentSessionModelDraft\(\) \{[\s\S]*if \(savingModel\)/);
+  assert.match(screen, /async function testCurrentSessionModel\(\) \{[\s\S]*if \(!threadId \|\| savingModel\)/);
+});
+
+test('provider and session model settings support long-press multi-delete and same-provider cleanup', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const providerService = read('src/ai/aiProviderService.ts');
+  const providerScreen = read('src/screens/AiProviderSettingsScreen.tsx');
+  const sessionScreen = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(chat, /export async function deleteProviderModels/);
+  assert.match(chat, /export async function deleteProviderModelsByProvider/);
+  assert.match(providerService, /export async function deleteProviderModels\(/);
+  assert.match(providerService, /export async function deleteProviderModelsByProvider\(/);
+  assert.match(providerScreen, /selectedModelKeys/);
+  assert.match(providerScreen, /onLongPress/);
+  assert.match(providerScreen, /批量删除/);
+  assert.match(providerScreen, /删除同一来源/);
+  assert.match(sessionScreen, /selectedSessionModelKeys/);
+  assert.match(sessionScreen, /onLongPress/);
+  assert.match(sessionScreen, /批量删除/);
+  assert.match(sessionScreen, /删除同一来源/);
+});

@@ -1,0 +1,105 @@
+# Dependencies
+node_modules/
+
+# Expo and build output
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+/android/
+/ios/
+/output/builds/
+/output/release/
+/output/doc/
+
+# Native signing material and generated metadata
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# Metro, package managers, and runtime logs
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# Local agent, IDE, and worktree metadata
+.codex/
+.codex-*/
+.superpowers/
+.playwright-mcp/
+.worktrees/
+.local/
+.idea/
+.vscode/
+**/AGENTS.md
+**/agents.md
+**/.impeccable.md
+
+# Local environment and credentials
+.env*.local
+/credentials.json
+
+# Local release/version process documents and generated diagnostics
+/LOCAL_UPDATES_LOG.md
+/版本文档/
+/docs/superpowers/
+/docs/日志/
+/docs/**/drafts/
+/docs/**/internal/
+/docs/**/research/
+/docs/**/plans/
+/docs/**/specs/
+/docs/**/reports/
+/docs/**/analysis/
+/docs/**/diagnostics/
+/docs/**/logs/
+/docs/**/traces/
+/docs/**/snapshots/
+
+# Editable document exports and temporary report files
+/*.doc
+/*.docx
+/*.pdf
+/*.rtf
+/*.wps
+~$*.docx
+/*.tmp
+/*.bak
+**/generated-before.txt
+
+# TypeScript and test tooling output (test source files remain tracked)
+*.tsbuildinfo
+/coverage/
+/playwright-report/
+/test-results/
+/.nyc_output/
+/*.lcov
+/test_output.txt
+
+# Root-level one-off scripts and scratch files
+/*.py
+/*.sh
+/*.mjs
+/old_home.txt
+/server_new.js
+/temp_*
+/patch*.js
+/update-version.js
+/scripts/local/
+
+# Local planning notes
+/task_plan.md
+/findings.md
+/progress.md
+
+# OS metadata
+.DS_Store
+Thumbs.db
+

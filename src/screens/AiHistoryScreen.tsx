@@ -1,0 +1,828 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
+import { AppDialog } from '../components/AppDialog';
+import { AiLightChip } from '../components/ai/AiLightChip';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
+import { archiveAiThread, deleteAiThreads, listAiHistoryThreadPage, moveAiThreadsBetweenSpaces, permanentlyDeleteAiThreads, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
+import type { AiThreadHistoryFilter, AiThreadHistoryItem, AiThreadHistoryPageCursor } from '../database/repositories/aiThreadRepository';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
+import type { PixorySpace } from '../database';
+import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
+import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
+import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
+
+interface AiHistoryScreenProps {
+  space: PixorySpace;
+  onBack: () => void;
+  onOpenThread: (thread: AiThreadHistoryItem) => void;
+  forcedFilter?: AiThreadHistoryFilter;
+  titleSlot?: React.ReactNode;
+}
+
+const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'normal', label: '普通聊天' },
+  { key: 'ip', label: 'IP 聊天' },
+  { key: 'knowledge_base', label: '知识库' },
+  { key: 'customer_project', label: '项目' },
+  { key: 'archived', label: '回收站' },
+];
+const ARCHIVE_ACTION_WIDTH = 96;
+const ARCHIVE_SWIPE_THRESHOLD = 72;
+const HISTORY_PAGE_SIZE = 40;
+
+function historyGroupLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '更早';
+  }
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.floor((startOfToday - startOfDate) / (24 * 60 * 60 * 1000));
+  if (diffDays <= 0) {
+    return '今天';
+  }
+  if (diffDays === 1) {
+    return '昨天';
+  }
+  if (diffDays <= 7) {
+    return '过去 7 天';
+  }
+  if (diffDays <= 30) {
+    return '过去 30 天';
+  }
+  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
+}
+
+export function AiHistoryScreen({
+  space,
+  onBack,
+  onOpenThread,
+  forcedFilter,
+  titleSlot,
+}: AiHistoryScreenProps) {
+  const [filter, setFilter] = useState<AiThreadHistoryFilter>(forcedFilter ?? 'all');
+  const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<AiThreadHistoryPageCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
+  const [status, setStatus] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
+  const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [actionMenuState, setActionMenuState] = useState<{ thread: AiThreadHistoryItem; anchorX: number; anchorY: number } | null>(null);
+  const [deleteThread, setDeleteThread] = useState<AiThreadHistoryItem | null>(null);
+  const [moveThread, setMoveThread] = useState<AiThreadHistoryItem | null>(null);
+  const [swipedThreadId, setSwipedThreadId] = useState<string | null>(null);
+  const [personalPassword, setPersonalPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const swipeAnimatedValuesRef = useRef(new Map<string, Animated.Value>());
+  const historyRequestGenerationRef = useRef(0);
+  const historyPageRequestInFlightRef = useRef(false);
+  const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
+  const isSelecting = selectedIds.length > 0;
+  const selectionFooter = isSelecting ? (
+    <View style={styles.selectionFooter}>
+      <Text style={styles.selectionText}>已选 {selectedIds.length}</Text>
+      <View style={styles.selectionActions}>
+        {filter === 'archived' ? (
+          <Pressable accessibilityRole="button" onPress={() => void confirmRestoreSelected()} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
+            <Ionicons color={aiLightColors.primaryActive} name="arrow-undo-outline" size={18} />
+            <Text style={styles.selectionButtonText}>移出回收站</Text>
+          </Pressable>
+        ) : (
+          <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
+            <Ionicons color={aiLightColors.primaryActive} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
+            <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
+          </Pressable>
+        )}
+        <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
+          <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={18} />
+          <Text style={styles.dangerText}>{filter === 'archived' ? '永久删除' : '删除到回收站'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setSelectedIds([])} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+          <Ionicons color={aiLightColors.muted} name="close" size={18} />
+        </Pressable>
+      </View>
+    </View>
+  ) : undefined;
+
+  const reload = useCallback(async () => {
+    const generation = historyRequestGenerationRef.current + 1;
+    historyRequestGenerationRef.current = generation;
+    historyPageRequestInFlightRef.current = true;
+    setLoadingMore(false);
+    try {
+      const page = await listAiHistoryThreadPage({
+        filter,
+        limit: HISTORY_PAGE_SIZE,
+        searchText: debouncedSearchText,
+        space,
+      });
+      if (generation !== historyRequestGenerationRef.current) {
+        return;
+      }
+      setItems(page.items);
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+    } finally {
+      if (generation === historyRequestGenerationRef.current) {
+        historyPageRequestInFlightRef.current = false;
+      }
+    }
+  }, [debouncedSearchText, filter, space]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || historyPageRequestInFlightRef.current || !nextCursor) {
+      return;
+    }
+    const generation = historyRequestGenerationRef.current;
+    historyPageRequestInFlightRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await listAiHistoryThreadPage({
+        before: nextCursor,
+        filter,
+        limit: HISTORY_PAGE_SIZE,
+        searchText: debouncedSearchText,
+        space,
+      });
+      if (generation !== historyRequestGenerationRef.current) {
+        return;
+      }
+      setItems((current) => {
+        const existing = new Set(current.map((thread) => thread.id));
+        return [...current, ...page.items.filter((thread) => !existing.has(thread.id))];
+      });
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+    } finally {
+      if (generation === historyRequestGenerationRef.current) {
+        historyPageRequestInFlightRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [debouncedSearchText, filter, hasMore, nextCursor, space]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchText(searchText), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+    setPendingAction(null);
+    setPersonalPassword('');
+    setSwipedThreadId(null);
+    setActionMenuState(null);
+    setDeleteThread(null);
+    setMoveThread(null);
+  }, [filter, space]);
+
+  async function toggleArchive(thread: AiThreadHistoryItem) {
+    animateSwipe(thread.id, 0);
+    setSwipedThreadId(null);
+    if (thread.archivedAt) {
+      await unarchiveAiThread(space, thread.id);
+      setStatus('会话已移出回收站。');
+    } else {
+      await archiveAiThread(space, thread.id);
+      setStatus('会话已移入回收站。');
+    }
+    await reload();
+  }
+
+  function getSwipeAnimatedValue(threadId: string): Animated.Value {
+    let value = swipeAnimatedValuesRef.current.get(threadId);
+    if (!value) {
+      value = new Animated.Value(0);
+      swipeAnimatedValuesRef.current.set(threadId, value);
+    }
+    return value;
+  }
+
+  function animateSwipe(threadId: string, toValue: number) {
+    Animated.spring(getSwipeAnimatedValue(threadId), {
+      damping: 18,
+      stiffness: 180,
+      toValue,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function getThreadSwipeHandlers(thread: AiThreadHistoryItem) {
+    const swipeValue = getSwipeAnimatedValue(thread.id);
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 32 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2.5,
+      onPanResponderMove: (_event, gesture) => {
+        if (isSelecting) {
+          return;
+        }
+        const next = Math.max(-ARCHIVE_ACTION_WIDTH, Math.min(0, gesture.dx));
+        swipeValue.setValue(next);
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        if (gesture.dx <= -ARCHIVE_SWIPE_THRESHOLD) {
+          if (swipedThreadId && swipedThreadId !== thread.id) {
+            animateSwipe(swipedThreadId, 0);
+          }
+          setSwipedThreadId(thread.id);
+          animateSwipe(thread.id, -ARCHIVE_ACTION_WIDTH);
+          return;
+        }
+        setSwipedThreadId(null);
+        animateSwipe(thread.id, 0);
+      },
+      onPanResponderTerminate: () => {
+        animateSwipe(thread.id, swipedThreadId === thread.id ? -ARCHIVE_ACTION_WIDTH : 0);
+      },
+    }).panHandlers;
+  }
+
+  function toggleSelected(threadId: string) {
+    setSelectedIds((current) => current.includes(threadId) ? current.filter((id) => id !== threadId) : [...current, threadId]);
+  }
+
+  function handleRowPress(thread: AiThreadHistoryItem) {
+    if (isSelecting) {
+      toggleSelected(thread.id);
+      return;
+    }
+    if (swipedThreadId) {
+      animateSwipe(swipedThreadId, 0);
+      setSwipedThreadId(null);
+      return;
+    }
+    prefetchThreadMessages(space, thread.id);
+    onOpenThread(thread);
+  }
+
+  async function confirmDeleteSelected() {
+    const threadIds = deleteThread ? [deleteThread.id] : selectedIds;
+    setBusy(true);
+    try {
+      const count = await (filter === 'archived' ? permanentlyDeleteAiThreads(space, threadIds) : deleteAiThreads(space, threadIds));
+      setStatus(filter === 'archived' ? `已永久删除 ${count} 条。` : `已移入回收站 ${count} 条。`);
+      setSelectedIds([]);
+      setDeleteThread(null);
+      setPendingAction(null);
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : (filter === 'archived' ? '永久删除失败' : '移入回收站失败'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRestoreSelected(threadIds = selectedIds) {
+    setBusy(true);
+    try {
+      await Promise.all(threadIds.map((threadId) => unarchiveAiThread(space, threadId)));
+      const count = threadIds.length;
+      setStatus(`已移出回收站 ${count} 条。`);
+      setSelectedIds([]);
+      setActionMenuState(null);
+      setPendingAction(null);
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '移出回收站失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmMoveSelected() {
+    const threadIds = moveThread ? [moveThread.id] : selectedIds;
+    setBusy(true);
+    try {
+      const count = await moveAiThreadsBetweenSpaces({
+        personalPassword,
+        sourceSpace: space,
+        targetSpace,
+        threadIds,
+      });
+      setStatus(`已移动 ${count} 条。`);
+      setSelectedIds([]);
+      setMoveThread(null);
+      setPendingAction(null);
+      setPersonalPassword('');
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '移动失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRenameThread() {
+    if (!renameThread) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await renameAiThread(space, renameThread.id, renameValue);
+      setStatus('已重命名聊天。');
+      setRenameThread(null);
+      setRenameValue('');
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '重命名失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <AiLightScaffold
+        bodyStyle={styles.body}
+        footer={selectionFooter}
+        onBack={onBack}
+        subtitle={titleSlot ? undefined : spaceLabel}
+        title={titleSlot ? '' : '历史会话'}
+        titleSlot={titleSlot}
+      >
+
+        <View style={styles.searchBox}>
+          <Ionicons color={aiLightColors.mutedSoft} name="search-outline" size={16} />
+          <TextInput
+            onChangeText={setSearchText}
+            placeholder="搜索标题或最近消息"
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.primary}
+            style={styles.searchInput}
+            value={searchText}
+          />
+        </View>
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+
+        <FlatList
+          contentContainerStyle={[styles.list, styles.threadList]}
+          {...createScrollHandlers()}
+          data={items}
+          initialNumToRender={10}
+          keyExtractor={(thread) => thread.id}
+          ListEmptyComponent={(
+            <View style={styles.emptyState}>
+              <Text style={styles.title}>{searchText.trim() ? '没有找到匹配会话' : '没有历史会话'}</Text>
+              <Text style={styles.meta}>{searchText.trim() ? '换个关键词试试。' : '开始聊天后，最近会话会出现在这里。'}</Text>
+            </View>
+          )}
+          ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
+          maxToRenderPerBatch={10}
+          onEndReached={() => { void loadMore(); }}
+          onEndReachedThreshold={0.6}
+          renderItem={({ item: thread, index }) => {
+              const selected = selectedIds.includes(thread.id);
+              const swipeTranslateX = getSwipeAnimatedValue(thread.id);
+              const swipeActionProgress = Animated.multiply(swipeTranslateX, -1);
+              const actionTranslateX = swipeActionProgress.interpolate({
+                inputRange: [0, ARCHIVE_ACTION_WIDTH],
+                outputRange: [ARCHIVE_ACTION_WIDTH, 0],
+                extrapolate: 'clamp',
+              });
+              const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
+              const previousGroupLabel = index > 0 ? historyGroupLabel(items[index - 1].lastMessageAt ?? items[index - 1].updatedAt) : null;
+              return (
+                <View>
+                  {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
+                  <View style={styles.swipeWrap}>
+                    {!isSelecting ? (
+                      <Animated.View style={[styles.swipeActionClip, { transform: [{ translateX: actionTranslateX }] }]}>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => {
+                            void toggleArchive(thread);
+                          }}
+                          style={({ pressed }) => [styles.swipeActionSurface, pressed && styles.pressed]}
+                        >
+                          <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'trash-outline'} size={17} />
+                          <Text style={styles.archiveActionText}>{thread.archivedAt ? '移出' : '回收站'}</Text>
+                        </Pressable>
+                      </Animated.View>
+                    ) : null}
+                    <Animated.View
+                      {...getThreadSwipeHandlers(thread)}
+                      style={[
+                        styles.row,
+                        selected && styles.selectedRow,
+                        {
+                          transform: [{ translateX: swipeTranslateX }],
+                        },
+                      ]}
+                    >
+                      <View style={styles.rowContent}>
+                        <Pressable
+                          accessibilityRole="button"
+                          onLongPress={(e) => {
+                            if (globalScrollState.isScrolling) return;
+                            setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
+                          }}
+                          onPress={() => handleRowPress(thread)}
+                          style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                        >
+                          <View style={styles.iconWrap}>
+                            <Ionicons color={aiLightColors.primaryActive} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                          </View>
+                          <View style={styles.copy}>
+                            <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
+                            <Text numberOfLines={1} style={styles.meta}>
+                              {labelForContext(thread)} · 上次聊天 {formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                            </Text>
+                            {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
+                          </View>
+                        </Pressable>
+                        {!isSelecting ? (
+                          <Pressable
+                            accessibilityLabel="会话操作"
+                            accessibilityRole="button"
+                            onPress={(e) => setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY })}
+                            style={({ pressed }) => [styles.rowMenuButton, pressed && styles.pressed]}
+                          >
+                            <Ionicons color={aiLightColors.muted} name="ellipsis-horizontal" size={18} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </Animated.View>
+                  </View>
+                </View>
+              );
+          }}
+          style={styles.threadListViewport}
+          windowSize={7}
+        />
+      </AiLightScaffold>
+
+      <AppDialog
+        accent="ai"
+        danger
+        message={filter === 'archived'
+          ? `永久删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录，并删除这些会话专属的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。此操作不能撤销。`
+          : `将 ${deleteThread ? 1 : selectedIds.length} 条聊天记录移入回收站。聊天记录和会话资料会保留，之后可在回收站中恢复或永久删除。`}
+        onClose={() => {
+          if (!busy) {
+            setPendingAction(null);
+            setDeleteThread(null);
+          }
+        }}
+        onPrimary={() => void confirmDeleteSelected()}
+        primaryLabel={busy ? (filter === 'archived' ? '正在永久删除' : '正在移入') : (filter === 'archived' ? '永久删除' : '移入回收站')}
+        title={filter === 'archived' ? '永久删除聊天记录' : '移入回收站'}
+        visible={pendingAction === 'delete'}
+      />
+
+      <AppDialog
+        accent="ai"
+        message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${selectedIds.length} 条。移动会保留聊天、角色卡及头像、角色与线程记忆、附件、收藏和摘要；仍处于续聊导入回退窗口的会话，移动后会结束该回退窗口。IP/知识库绑定会话暂不支持跨空间移动。`}
+        onClose={() => {
+          if (!busy) {
+            setPendingAction(null);
+            setPersonalPassword('');
+          }
+        }}
+        onPrimary={() => void confirmMoveSelected()}
+        primaryDisabled={busy || (targetSpace === 'personal' && !personalPassword.trim())}
+        primaryLabel={busy ? '正在移动' : space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+        title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+        visible={pendingAction === 'move'}
+      >
+        {targetSpace === 'personal' ? (
+          <TextInput
+            editable={!busy}
+            onChangeText={setPersonalPassword}
+            placeholder="隐私密码"
+            placeholderTextColor={aiLightColors.mutedSoft}
+            secureTextEntry
+            selectionColor={aiLightColors.primary}
+            style={styles.passwordInput}
+            value={personalPassword}
+          />
+        ) : (
+          <Text style={{ color: aiLightColors.mutedReadable, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>
+        )}
+      </AppDialog>
+
+            <AnchoredContextMenu
+        actions={actionMenuState ? [
+          {
+            key: 'rename',
+            label: '重命名',
+            icon: 'create-outline',
+            onPress: () => {
+              setRenameThread(actionMenuState.thread);
+              setRenameValue(actionMenuState.thread.title);
+            },
+          },
+          {
+            key: 'select',
+            label: '多选',
+            icon: 'checkmark-circle-outline',
+            onPress: () => toggleSelected(actionMenuState.thread.id),
+          },
+          ...(actionMenuState.thread.archivedAt ? [{
+            key: 'restore',
+            label: '移出回收站',
+            icon: 'arrow-undo-outline' as const,
+            onPress: () => void confirmRestoreSelected([actionMenuState.thread.id]),
+          }] : []),
+          {
+            key: 'space',
+            label: space === 'normal' ? '移入隐私空间' : '移出隐私空间',
+            icon: space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline',
+            onPress: () => {
+              setMoveThread(actionMenuState.thread);
+              setPendingAction('move');
+            },
+          },
+          {
+            key: 'delete',
+            label: actionMenuState.thread.archivedAt ? '永久删除' : '移入回收站',
+            icon: 'trash-outline',
+            danger: true,
+            onPress: () => {
+              setDeleteThread(actionMenuState.thread);
+              setPendingAction('delete');
+            },
+          },
+        ] : []}
+        anchorX={actionMenuState?.anchorX ?? 0}
+        anchorY={actionMenuState?.anchorY ?? 0}
+        dismissAccessibilityLabel="关闭菜单"
+        onClose={() => setActionMenuState(null)}
+        visible={Boolean(actionMenuState)}
+      />
+
+      <AppDialog appearance="opaqueMonochrome" message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
+        onClose={() => {
+          if (!busy) {
+            setRenameThread(null);
+            setRenameValue('');
+          }
+        }}
+        onPrimary={() => void confirmRenameThread()}
+        primaryDisabled={busy || !renameValue.trim()}
+        primaryLabel={busy ? '正在保存' : '保存'}
+        title="重命名聊天"
+        visible={Boolean(renameThread)}
+      >
+        <TextInput
+          editable={!busy}
+          onChangeText={setRenameValue}
+          placeholder="聊天名称"
+          placeholderTextColor="#747878" selectionColor="#000000" style={styles.renameInput}
+          value={renameValue}
+        />
+      </AppDialog>
+    </>
+  );
+}
+
+function iconForContext(contextType: AiThreadHistoryItem['contextType']): keyof typeof Ionicons.glyphMap {
+  if (contextType === 'ip') {
+    return 'albums-outline';
+  }
+  if (contextType === 'knowledge_base') {
+    return 'library-outline';
+  }
+  return 'chatbubble-ellipses-outline';
+}
+
+function labelForContext(thread: AiThreadHistoryItem): string {
+  if (thread.contextType === 'ip') {
+    return 'IP 聊天';
+  }
+  if (thread.contextType === 'knowledge_base') {
+    return thread.knowledgeCategory === 'customer_project' ? '项目知识库' : '知识库';
+  }
+  return '普通聊天';
+}
+
+const styles = StyleSheet.create({
+  body: {
+    flex: 1,
+    gap: rhythm.listCardGap,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  status: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.primaryActive,
+  },
+  list: {
+    gap: rhythm.listCardGap,
+  },
+  threadList: {
+    flexGrow: 1,
+    paddingBottom: spacing[3],
+    paddingTop: rhythm.listCardGap,
+  },
+  threadListViewport: {
+    flex: 1,
+  },
+  loadingMore: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    paddingVertical: spacing[3],
+    textAlign: 'center',
+  },
+  searchBox: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+  },
+  searchInput: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    flex: 1,
+    paddingVertical: 0,
+  },
+  swipeWrap: {
+    overflow: 'hidden',
+  },
+  groupLabel: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontWeight: '700',
+    paddingBottom: spacing[1],
+    paddingHorizontal: spacing[1],
+  },
+  swipeActionClip: {
+    bottom: 0,
+    overflow: 'hidden',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: ARCHIVE_ACTION_WIDTH,
+  },
+  swipeActionSurface: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.primary,
+    borderRadius: radius.lg,
+    bottom: 0,
+    gap: 2,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: ARCHIVE_ACTION_WIDTH,
+  },
+  archiveActionText: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.onDark,
+    fontWeight: '600',
+  },
+  row: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    padding: spacing[3],
+  },
+  selectedRow: {
+    borderColor: aiLightColors.primary,
+  },
+  rowContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+  },
+  rowMain: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minWidth: 0,
+  },
+  rowMenuButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.pill,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  pressed: {
+    opacity: 0.78,
+  },
+  iconWrap: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  copy: {
+    flex: 1,
+    gap: rhythm.microGap,
+  },
+  title: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  meta: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  preview: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: spacing[4],
+  },
+  selectionFooter: {
+    gap: rhythm.cardContentGap,
+  },
+  selectionText: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  selectionActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  selectionButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    minHeight: 36,
+    paddingHorizontal: spacing[3],
+  },
+  selectionButtonText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.primaryActive,
+    fontWeight: '600',
+  },
+  dangerButton: {
+    backgroundColor: aiLightColors.card,
+  },
+  dangerText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.primaryActive,
+    fontWeight: '600',
+  },
+  iconAction: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.pill,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+
+  renameInput: {
+    ...typography.textStyles.body,
+    backgroundColor: '#ffffff',
+    borderColor: '#1a1c1c',
+    borderRadius: 4,
+    borderWidth: 1,
+    color: '#1a1c1c',
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  passwordInput: {
+    ...typography.textStyles.body,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: aiLightColors.ink,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+});
+
+
+
+
+

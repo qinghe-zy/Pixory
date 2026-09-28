@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Pixory - 交互式心智星盘 原型演示</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Noto+Serif+SC:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Noto Serif SC', serif; background-color: #FAF8F5; overflow: hidden; margin: 0; }
+    .font-serif-en { font-family: 'Cormorant Garamond', serif; }
+    
+    /* 3D 容器 */
+    .perspective-container { perspective: 1200px; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .preserve-3d { 
+      transform-style: preserve-3d; 
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); 
+      position: relative;
+      width: 600px; height: 600px;
+    }
+    
+    /* 轨道光环 */
+    .orbit-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(197, 168, 105, 0.25);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .ring-1 { width: 380px; height: 380px; border-style: dashed; animation: spin-slow 40s linear infinite; }
+    .ring-2 { width: 500px; height: 500px; border-color: rgba(57, 102, 95, 0.15); animation: spin-slow-reverse 60s linear infinite; }
+    .ring-3 { width: 260px; height: 260px; border: 1px solid rgba(168, 216, 207, 0.4); opacity: 0.5; }
+    
+    @keyframes spin-slow { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+    @keyframes spin-slow-reverse { 100% { transform: translate(-50%, -50%) rotate(-360deg); } }
+
+    /* 节点设计 */
+    .node-item {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 60px; height: 60px;
+      margin-top: -30px; margin-left: -30px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 20;
+    }
+    /* 悬浮时的磁吸放大效果 */
+    .node-item:hover { transform: scale(1.15) translateZ(30px); }
+
+    .node-dot {
+      width: 8px; height: 8px;
+      background-color: #39665F;
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(57,102,95,0.4);
+      transition: all 0.4s ease;
+      position: relative;
+    }
+    .node-dot::after {
+      content: '';
+      position: absolute; inset: -4px;
+      border-radius: 50%; border: 1px solid transparent;
+      transition: all 0.4s ease;
+    }
+    .node-item:hover .node-dot {
+      background-color: #C5A869;
+      box-shadow: 0 0 20px rgba(197,168,105,0.8);
+    }
+    .node-item:hover .node-dot::after {
+      border-color: #C5A869;
+      transform: scale(1.5);
+      opacity: 0;
+      animation: pulse-ring 1.5s infinite;
+    }
+    @keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }
+
+    .node-label {
+      position: absolute;
+      font-size: 12px;
+      color: #718780;
+      white-space: nowrap;
+      pointer-events: none;
+      transition: all 0.4s ease;
+      letter-spacing: 0.1em;
+    }
+    .node-item:hover .node-label {
+      color: #172B28;
+      font-weight: 600;
+      text-shadow: 0 0 10px rgba(255,255,255,0.8);
+      transform: translateY(-2px);
+    }
+
+    /* 6个节点的位置 (基于极坐标计算) */
+    .n1 { transform: translate(0px, -250px); }
+    .n1 .node-label { bottom: 35px; left: 50%; transform: translateX(-50%); }
+
+    .n2 { transform: translate(216.5px, -125px); }
+    .n2 .node-label { left: 35px; top: 50%; transform: translateY(-50%); }
+
+    .n3 { transform: translate(216.5px, 125px); }
+    .n3 .node-label { left: 35px; top: 50%; transform: translateY(-50%); }
+
+    .n4 { transform: translate(0px, 250px); }
+    .n4 .node-label { top: 35px; left: 50%; transform: translateX(-50%); }
+
+    .n5 { transform: translate(-216.5px, 125px); }
+    .n5 .node-label { right: 35px; top: 50%; transform: translateY(-50%); }
+
+    .n6 { transform: translate(-216.5px, -125px); }
+    .n6 .node-label { right: 35px; top: 50%; transform: translateY(-50%); }
+
+    /* 悬停时的特殊覆盖层，保证位置不冲突 */
+    .node-item:hover.n1 { transform: translate(0px, -250px) scale(1.15) translateZ(30px); }
+    .node-item:hover.n2 { transform: translate(216.5px, -125px) scale(1.15) translateZ(30px); }
+    .node-item:hover.n3 { transform: translate(216.5px, 125px) scale(1.15) translateZ(30px); }
+    .node-item:hover.n4 { transform: translate(0px, 250px) scale(1.15) translateZ(30px); }
+    .node-item:hover.n5 { transform: translate(-216.5px, 125px) scale(1.15) translateZ(30px); }
+    .node-item:hover.n6 { transform: translate(-216.5px, -125px) scale(1.15) translateZ(30px); }
+
+    /* 中央显影屏幕 */
+    .center-display {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) translateZ(40px);
+      width: 280px;
+      text-align: center;
+      z-index: 10;
+      pointer-events: none;
+      background: radial-gradient(circle, rgba(250,248,245,0.9) 0%, rgba(250,248,245,0) 80%);
+      padding: 30px;
+      border-radius: 50%;
+    }
+    
+    .data-title { font-size: 13px; color: #C5A869; letter-spacing: 0.3em; margin-bottom: 12px; transition: all 0.3s ease; text-transform: uppercase; }
+    .data-subtitle { font-size: 20px; color: #172B28; margin-bottom: 16px; transition: all 0.3s ease; }
+    .data-desc { font-size: 14px; color: #4A5D57; line-height: 1.8; transition: all 0.3s ease; font-weight: 300; }
+    
+    .text-hidden { opacity: 0; filter: blur(4px); transform: translateY(10px); }
+    .text-visible { opacity: 1; filter: blur(0); transform: translateY(0); }
+
+    /* 交互连线层 */
+    #svg-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+    .connect-line { stroke: #C5A869; stroke-width: 1.5; stroke-dasharray: 4 6; opacity: 0; transition: opacity 0.4s ease; }
+    .connect-line.active { opacity: 0.6; animation: dash-flow 1.5s linear infinite; }
+    @keyframes dash-flow { to { stroke-dashoffset: -10; } }
+
+    /* 背景修饰 */
+    .bg-aura {
+      position: absolute;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(168,216,207,0.15) 0%, transparent 60%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 指示文字 -->
+  <div class="fixed top-10 left-0 w-full text-center text-[#718780] font-serif tracking-widest text-sm pointer-events-none">
+    移动鼠标体验 3D 视差 · 悬停节点查看详情
+  </div>
+
+  <div class="perspective-container" id="tracker">
+    <div class="bg-aura"></div>
+    
+    <div class="preserve-3d" id="scene">
+      
+      <!-- 轨道层 -->
+      <div class="orbit-ring ring-1"></div>
+      <div class="orbit-ring ring-2"></div>
+      <div class="orbit-ring ring-3"></div>
+      
+      <!-- 中心数据显影层 -->
+      <div class="center-display" id="display">
+        <div class="data-title font-serif-en text-visible" id="d-num">AFFECTIVE COGNITION</div>
+        <div class="data-subtitle text-visible" id="d-title">交互式心智星盘</div>
+        <div class="data-desc text-visible" id="d-desc">将鼠标悬停在轨道周围的节点上，<br>剥离视觉噪音，探索底层架构细节。</div>
+      </div>
+
+      <!-- 光学连线层 -->
+      <svg id="svg-layer" viewBox="0 0 600 600">
+        <!-- 中心点是 300, 300 -->
+        <line x1="300" y1="300" x2="300" y2="300" class="connect-line" id="c-line" />
+      </svg>
+
+      <!-- 节点层 -->
+      <div class="node-item n1" data-num="01" data-title="Native Dual SQLite" data-desc="双轨物理隔离数据库，普通空间与私密空间采用独立文件与不同密钥锁闭，实现绝对结界。" data-x="300" data-y="50">
+        <div class="node-dot"></div>
+        <div class="node-label font-serif-en">01 / Cognitive Persistence</div>
+      </div>
+      <div class="node-item n2" data-num="02" data-title="100% Offline Seclusion" data-desc="零出站网络请求，退至后台0.1秒内执行内存覆零，确保私密对话无从窥伺。" data-x="516.5" data-y="175">
+        <div class="node-dot"></div>
+        <div class="node-label font-serif-en">02 / Telemetry & Privacy</div>
+      </div>
+      <div class="node-item n3" data-num="03" data-title="Bring Your Own Key" data-desc="自主持有模型密钥 (BYOK)，对话数据永不经过任何第三方代理服务器中转。" data-x="516.5" data-y="425">
+        <div class="node-dot"></div>
+        <div class="node-label font-serif-en">03 / Model Sovereignty</div>
+      </div>
+      <div class="node-item n4" data-num="04" data-title="Rupture & Repair" data-desc="引入四维微观心理动力学，AI 拥有自我边界，支持从破裂到真诚修复的深层羁绊演进。" data-x="300" data-y="550">
+        <div class="node-dot"></div>
+        <div class="node-label font-serif-en">04 / Affective Tensor</div>
+      </div>
+      <div class="node-item n5" data-num="05" data-title="CQRS 3-Lane Event" data-desc="读写分离的三车道架构，分离暂存情绪、确信事实与长程归档，保障万轮对话不降速。" data-x="83.5" data-y="425">
+        <div class="node-dot"></div>
+        <div class="node-label font-serif-en">05 / Memory Architecture</div>
+      </div>
+      <div class="node-item n6" data-num="06" data-title="Lossless 8K Archive" data-desc="原图无损存储，基于 SHA-256 与感知哈希进行去重与资产确权隔离，回归影像本质。" data-x="83.5" data-y="175">
+        <div class="node-dot"></div>
+        <div class="node-label font-serif-en">06 / Visual Preservation</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const tracker = document.getElementById('tracker');
+    const scene = document.getElementById('scene');
+    const nodes = document.querySelectorAll('.node-item');
+    
+    const dNum = document.getElementById('d-num');
+    const dTitle = document.getElementById('d-title');
+    const dDesc = document.getElementById('d-desc');
+    const cLine = document.getElementById('c-line');
+    
+    // 默认显示的文案
+    const defaultTexts = {
+      num: "AFFECTIVE COGNITION",
+      title: "交互式心智星盘",
+      desc: "将鼠标悬停在轨道周围的节点上，<br>剥离视觉噪音，探索底层架构细节。"
+    };
+
+    let hoverTimeout;
+
+    // 1. 3D 视差微动效果 (Parallax)
+    tracker.addEventListener('mousemove', (e) => {
+      const rect = tracker.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      // 限制最大旋转角度为 18 度，营造深邃的空间感
+      const rotateX = ((y - centerY) / centerY) * -18; 
+      const rotateY = ((x - centerX) / centerX) * 18;
+      
+      scene.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+    });
+    
+    tracker.addEventListener('mouseleave', () => {
+      // 鼠标移出容器时，平滑回正
+      scene.style.transform = `rotateX(0deg) rotateY(0deg)`;
+      resetDisplay();
+    });
+
+    // 2. 聚光灯显影交互 (Hover Spotlight)
+    nodes.forEach(node => {
+      node.addEventListener('mouseenter', () => {
+        clearTimeout(hoverTimeout);
+        
+        // 文字退场动画
+        setTextState(false);
+        
+        hoverTimeout = setTimeout(() => {
+          // 更新内容
+          dNum.innerText = node.getAttribute('data-num');
+          dTitle.innerText = node.getAttribute('data-title');
+          dDesc.innerText = node.getAttribute('data-desc');
+          
+          // 文字进场动画
+          setTextState(true);
+        }, 300);
+
+        // 激活光束连线
+        const tx = node.getAttribute('data-x');
+        const ty = node.getAttribute('data-y');
+        cLine.setAttribute('x2', tx);
+        cLine.setAttribute('y2', ty);
+        cLine.classList.add('active');
+      });
+
+      node.addEventListener('mouseleave', () => {
+        cLine.classList.remove('active');
+      });
+    });
+
+    function setTextState(isVisible) {
+      if (isVisible) {
+        dNum.classList.remove('text-hidden');
+        dTitle.classList.remove('text-hidden');
+        dDesc.classList.remove('text-hidden');
+        dNum.classList.add('text-visible');
+        dTitle.classList.add('text-visible');
+        dDesc.classList.add('text-visible');
+      } else {
+        dNum.classList.remove('text-visible');
+        dTitle.classList.remove('text-visible');
+        dDesc.classList.remove('text-visible');
+        dNum.classList.add('text-hidden');
+        dTitle.classList.add('text-hidden');
+        dDesc.classList.add('text-hidden');
+      }
+    }
+
+    function resetDisplay() {
+      clearTimeout(hoverTimeout);
+      setTextState(false);
+      setTimeout(() => {
+        dNum.innerText = defaultTexts.num;
+        dTitle.innerText = defaultTexts.title;
+        dDesc.innerHTML = defaultTexts.desc;
+        setTextState(true);
+      }, 300);
+    }
+  </script>
+</body>
+</html>

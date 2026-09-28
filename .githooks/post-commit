@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Local version documents are append-only evidence for private development.
+# The append happens after each local commit; the next local commit records it.
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+case "$branch" in
+  local-work|local/*) ;;
+  *) exit 0 ;;
+esac
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || exit 0)
+commit=$(git rev-parse HEAD 2>/dev/null || exit 0)
+powershell -NoProfile -ExecutionPolicy Bypass -File "$repo_root/scripts/version-document-workflow.ps1" \
+  -Action AppendUpdate -EventType LocalCommit -SourceCommit "$commit" 2>/dev/null || true

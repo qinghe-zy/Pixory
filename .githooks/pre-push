@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# Only the public main branch and release tags may leave this repository.
+remote_name=${1:-}
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+
+if [ "$remote_name" != "origin" ]; then
+  echo "拒绝推送：Pixory 只允许推送到 origin（GitHub）。" >&2
+  exit 1
+fi
+
+case "$branch" in
+  local-work|local/*)
+    if [ "${PIXORY_RELEASE_HANDOFF:-}" != "1" ]; then
+      echo "拒绝推送：$branch 是本地私有分支。仅允许由打包交接脚本临时放行公开提交。" >&2
+      exit 1
+    fi
+    ;;
+esac
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  case "$local_ref:$remote_ref" in
+    refs/heads/main:refs/heads/main)
+      if [ "$local_oid" != "0000000000000000000000000000000000000000" ]; then
+        forbidden_paths=$(git ls-tree -r --name-only "$local_oid" | grep -E '(^|/)(AGENTS\.md|\.codex(/|$)|\.impeccable\.md$|LOCAL_UPDATES_LOG\.md$|版本文档(/|$)|scripts/local(/|$)|\.local(/|$)|task_plan\.md$|findings\.md$|progress\.md$)' || true)
+        if [ -n "$forbidden_paths" ]; then
+          echo "拒绝推送：公开 main 包含本地私有文件：" >&2
+          printf '%s\n' "$forbidden_paths" >&2
+          exit 1
+        fi
+      fi
+      ;;
+    refs/tags/v*:refs/tags/v*)
+      ;;
+    '')
+      ;;
+    *)
+      echo "拒绝推送：只允许 main -> main 或版本标签 -> 同名标签。" >&2
+      exit 1
+      ;;
+  esac
+done
+
+exit 0

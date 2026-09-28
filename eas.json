@@ -1,0 +1,16 @@
+{
+  "cli": {
+    "version": ">= 18.9.1",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "release-apk": {
+      "distribution": "internal",
+      "credentialsSource": "local",
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}

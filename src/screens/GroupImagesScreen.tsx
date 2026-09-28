@@ -1,0 +1,803 @@
+import { Ionicons } from '@expo/vector-icons';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
+import { FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
+import { BlurView } from 'expo-blur';
+import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Header } from '../components/Header';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
+
+import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
+import { AssetDetailRow } from '../components/AssetDetailRow';
+import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
+import { PageStateBlock } from '../components/PageStateBlock';
+import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
+import { GallerySkeleton } from '../components/GallerySkeleton';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import { ThumbnailTile } from '../components/ThumbnailTile';
+import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
+import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
+import { getGroupTypeLabel } from '../constants/groups';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
+import { colors, componentTokens, layout, radius, rhythm, spacing, typography } from '../design/tokens';
+import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
+import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
+import { useAssetListPreferences } from '../services/assetListPreferences';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
+
+interface GroupImagesScreenProps {
+  ipId: number;
+  groupId: number;
+  space?: PixorySpace;
+  refreshToken: number;
+  onBack: () => void;
+  onImportImages: () => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail: (imageId: number) => void;
+  onStartBatchManagement: (imageId: number) => void;
+}
+
+type GroupResultFileSizeFilter = { label: string; minFileSize?: number; maxFileSize?: number };
+
+interface GroupResultFilterState {
+  favorite: boolean;
+  recentViewed: boolean;
+  similarDuplicate: boolean;
+  tagIds: number[];
+  untagged: boolean;
+  aspectRatio: ImageAspectRatioFilter | null;
+  aspectLabel: string | null;
+  size: GroupResultFileSizeFilter | null;
+}
+
+const EMPTY_GROUP_RESULT_FILTERS: GroupResultFilterState = {
+  aspectLabel: null,
+  aspectRatio: null,
+  favorite: false,
+  recentViewed: false,
+  similarDuplicate: false,
+  size: null,
+  tagIds: [],
+  untagged: false,
+};
+
+type GroupResultFilterDropdown = 'status' | 'tag' | 'size';
+const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
+
+export function GroupImagesScreen({
+  ipId,
+  groupId,
+  space = 'normal',
+  refreshToken,
+  onBack,
+  onImportImages,
+  onOpenImage,
+  onOpenImageDetail,
+  onStartBatchManagement,
+}: GroupImagesScreenProps) {
+  const [activeFilters, setActiveFilters] = useState<GroupResultFilterState>(EMPTY_GROUP_RESULT_FILTERS);
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
+  const scrollViewRef = useRef<FlatList<ImageListItem> | null>(null);
+  const { data, isLoading: isMetadataLoading, errorMessage: metadataErrorMessage, reload: reloadMetadata } = useScreenLoad<{
+    ip: IpRecord | null;
+    group: GroupRecord | null;
+    tags: TagUsageItem[];
+  }>(
+    async () => {
+      return runWithDatabaseSpace(space, async (db) => {
+      const [ip, group, tags] = await Promise.all([
+        ipRepository.findById(db, ipId),
+        groupRepository.findById(db, groupId),
+        tagRepository.findUsageOverviewByIpId(db, ipId),
+      ]);
+      return { ip, group, tags };
+      });
+    },
+    ['GroupImagesScreen', groupId, ipId, refreshToken, space],
+    {
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return `读取分组图片失败：${message}`;
+      },
+      initialData: { group: null, ip: null, tags: [] },
+      deferUntilInteractions: true,
+    }
+  );
+  const mediaRequest = {
+    aspectRatio: activeFilters.aspectRatio ?? undefined,
+    favoritesOnly: activeFilters.favorite || undefined,
+    groupId,
+    maxFileSize: activeFilters.size?.maxFileSize,
+    mediaType: hasImageOnlyFilter(activeFilters) ? 'image' as const : 'all' as const,
+    minFileSize: activeFilters.size?.minFileSize,
+    orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' as const : sortOrder,
+    recentlyViewedOnly: activeFilters.recentViewed || undefined,
+    tagIds: activeFilters.tagIds,
+    untaggedOnly: activeFilters.untagged || undefined,
+  };
+  const { data: similarIds, isLoading: isSimilarityLoading, errorMessage: similarityErrorMessage, reload: reloadSimilarity } = useScreenLoad<number[] | null>(
+    async () => activeFilters.similarDuplicate
+      ? runWithDatabaseSpace(space, (db) => imageRepository.findSimilarImageIds(db, mediaRequest))
+      : null,
+    [activeFilters, groupId, refreshToken, space],
+    { initialData: null, deferUntilInteractions: true }
+  );
+  const similarityKey = activeFilters.similarDuplicate
+    ? similarIds == null ? 'pending' : `ready:${similarIds.length}:${similarIds[0] ?? 0}:${similarIds[similarIds.length - 1] ?? 0}`
+    : 'off';
+  const media = useMediaCursorCollection({
+    formatError: (error) => `读取分组图片失败：${error instanceof Error ? error.message : '未知错误'}`,
+    request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
+    requestKey: JSON.stringify([space, groupId, refreshToken, activeFilters, sortOrder, similarityKey]),
+    space,
+  });
+
+  const ip = data?.ip ?? null;
+  const group = data?.group ?? null;
+  const images = media.items;
+  const selectableAssets = images;
+  const tags = data?.tags ?? [];
+  const isLoading = isMetadataLoading || media.isLoading || (activeFilters.similarDuplicate && isSimilarityLoading);
+  const errorMessage = metadataErrorMessage ?? similarityErrorMessage ?? media.errorMessage;
+  const reload = () => {
+    reloadMetadata();
+    reloadSimilarity();
+    media.reload();
+  };
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (activeFilters.favorite) labels.push('收藏');
+    if (activeFilters.untagged) labels.push('无标签');
+    if (activeFilters.recentViewed) labels.push('最近查看');
+    if (activeFilters.similarDuplicate) labels.push('相似图片');
+    if (activeFilters.tagIds.length > 0) labels.push(`标签 ${activeFilters.tagIds.length}`);
+    if (activeFilters.aspectLabel) labels.push(activeFilters.aspectLabel);
+    if (activeFilters.size) labels.push(activeFilters.size.label);
+    return labels;
+  }, [activeFilters, tags]);
+  const filterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
+  const hasActiveFilters = activeFilterLabels.length > 0;
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableAssets.map((image) => image.id), [selectableAssets]));
+  const swipeSelection = useSwipeGridSelection({
+    items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
+    selectedIds: multiSelect.selectedImageIds,
+    setSelectedIds: multiSelect.setSelectedImageIds,
+    scrollViewRef,
+    selectableMediaTypes: ['image', 'video'],
+  });
+
+    const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+  const scrollY = useSharedValue(0);
+  const scrollOffsetRef = useRef(0);
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [40, 60], [0, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [40, 60], [5, 0], Extrapolation.CLAMP);
+    return { opacity, transform: [{ translateY }] };
+  });
+  const heroStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(scrollY.value, [40, 60], [1, 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+  const handleScrollJS = (y: number) => {
+    const mockEvent = { nativeEvent: { contentOffset: { y } } } as any;
+    if (swipeSelection.onScroll) {
+      swipeSelection.onScroll(mockEvent);
+    }
+  };
+
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+      runOnJS(handleScrollJS)(event.contentOffset.y);
+    },
+  });
+
+  const swipeFilterDrawerPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (evt, gs) => {
+        return (
+          gs.dx < -6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (evt, gs) => {
+        if (
+          gs.dx < -10 ||
+          (gs.dx < -6 && gs.vx < -0.18)
+        ) {
+          setIsFilterDrawerOpen(true);
+        }
+      },
+    })
+  ).current;
+
+  const selectedAssets = useMemo(
+    () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableAssets, multiSelect.selectedImageIds]
+  );
+
+  function handleOpenImage(imageId: number) {
+    const asset = images.find((item) => item.id === imageId);
+    if (multiSelect.isSelectionMode) {
+      multiSelect.toggleSelection(imageId);
+      return;
+    }
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
+
+    onOpenImage(
+      imageId,
+      hasActiveFilters
+        ? {
+            type: 'media-query',
+            request: { ...mediaRequest, imageIds: activeFilters.similarDuplicate ? similarIds ?? [] : undefined },
+            label: `${group?.name ?? '分组'} · ${filterLabel}`,
+            space,
+            orderBy: sortOrder,
+          }
+        : { type: 'group', ipId, groupId, space, orderBy: sortOrder }
+    );
+  }
+
+  function handleImageLongPress(imageId: number) {
+    swipeSelection.beginSwipeSelection(imageId);
+  }
+
+  
+  const selectAllButton = multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+    <Pressable
+      disabled={selectableAssets.length === 0}
+      onPress={multiSelect.toggleSelectAll}
+      style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+    >
+      <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+    </Pressable>
+  ) : null;
+
+  const sortButton = (
+    <SortMenuButton
+      hasActiveFilters={hasActiveFilters}
+      onChange={setSortOrder}
+      onFilterPress={() => setIsFilterDrawerOpen(true)}
+      orderBy={sortOrder}
+    />
+  );
+
+  const compactRightAction = (
+    <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, compactHeaderStyle]} pointerEvents="box-none">
+      <Text style={{ ...typography.textStyles.bodyStrong, color: colors.text.title }}>
+        {media.totalCount ?? images.length} 张
+      </Text>
+      {selectAllButton}
+      {sortButton}
+    </Animated.View>
+  );
+
+  const footer = multiSelect.isSelectionMode ? (
+    <BatchImageOrganizePanel
+      currentGroupId={groupId}
+      onChanged={reload}
+      onClearSelection={multiSelect.clearSelection}
+      onDeleted={reload}
+      selectedImages={selectedAssets}
+      space={space}
+      totalCount={selectableAssets.length}
+    />
+  ) : undefined;
+
+  function toggleTagFilter(tagId: number) {
+    setActiveFilters((current) => ({
+      ...current,
+      tagIds: current.tagIds.includes(tagId) ? current.tagIds.filter((item) => item !== tagId) : [...current.tagIds, tagId],
+    }));
+  }
+
+  function toggleBooleanFilter(key: 'favorite' | 'untagged' | 'recentViewed') {
+    setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function toggleSimilarFilter() {
+    setActiveFilters((current) => ({ ...current, similarDuplicate: !current.similarDuplicate }));
+  }
+
+  function toggleAspectFilter(aspectRatio: ImageAspectRatioFilter, label: string) {
+    setActiveFilters((current) => ({
+      ...current,
+      aspectRatio: current.aspectRatio === aspectRatio ? null : aspectRatio,
+      aspectLabel: current.aspectRatio === aspectRatio ? null : label,
+    }));
+  }
+
+  function toggleSizeFilter(size: GroupResultFileSizeFilter) {
+    setActiveFilters((current) => ({ ...current, size: current.size?.label === size.label ? null : size }));
+  }
+
+  function clearFilterGroup(group: GroupResultFilterDropdown) {
+    if (group === 'status') {
+      setActiveFilters((current) => ({
+        ...current,
+        favorite: false,
+        recentViewed: false,
+        similarDuplicate: false,
+        untagged: false,
+      }));
+    } else if (group === 'tag') {
+      setActiveFilters((current) => ({ ...current, tagIds: [] }));
+    } else {
+      setActiveFilters((current) => ({ ...current, aspectRatio: null, aspectLabel: null, size: null }));
+    }
+  }
+
+  return (
+    <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
+    <ScreenScaffold
+      backgroundColor="#FFFFFF"
+      decorativeTitle="Gallery"
+      footer={footer}
+      footerNaked={true}
+      showHeader={false}
+      fullScreen={true}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
+    >
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FAFAFA', zIndex: 20 }} />
+      <GalleryCompactHeader
+        title={group ? group.name : '分组图片'}
+        count={media.totalCount ?? images.length}
+        space={space}
+        onBack={onBack}
+        animatedStyle={compactHeaderStyle}
+        rightActions={
+          <>
+            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+              <Pressable disabled={selectableAssets.length === 0} onPress={multiSelect.toggleSelectAll} style={galleryHeaderStyles.selectionModeTextButton}>
+                <Text style={galleryHeaderStyles.selectionModeText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              </Pressable>
+            ) : null}
+            <SortMenuButton compact={true} onChange={setSortOrder} orderBy={sortOrder} />
+            <Pressable style={galleryHeaderStyles.filterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+              <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+            </Pressable>
+            <Pressable onPress={onImportImages} style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#111827', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
+                <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+              <Text style={{ fontSize: 11, fontWeight: '500', color: '#FFFFFF', letterSpacing: 0.5 }}>导入</Text>
+            </Pressable>
+          </>
+        }
+      />
+
+      <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
+            <FilterOptionChip label="无标签" selected={activeFilters.untagged} onPress={() => toggleBooleanFilter('untagged')} />
+            <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
+          </View>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="相似图片" selected={activeFilters.similarDuplicate} onPress={toggleSimilarFilter} />
+          </View>
+        </View>
+
+        <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+          {tags.map((tag) => (
+            <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
+          ))}
+        </ScrollView>
+
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+            <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+            <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+            <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+          </View>
+          <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+            <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+          </View>
+        </View>
+      </AssetFilterDrawer>
+
+      <PageStateBlock
+        loadingComponent={<GallerySkeleton />}
+        emptyActionLabel={commonButtonCopy.importImages}
+        emptyDescription="导入图片后，可以在这里查看该分组下的素材"
+        emptyIconName="images-outline"
+        emptyTitle={commonEmptyStateCopy.noImagesTitle}
+        errorMessage={errorMessage}
+        isEmpty={!isLoading && images.length === 0}
+        loading={isLoading}
+        loadingDescription="本地分组图片索引读取完成后，这里会展示当前分组下的素材。"
+        loadingTitle="正在读取分组图片"
+        onEmptyAction={onImportImages}
+        onRetry={reload}
+      >
+        <VirtualizedAssetCollection
+          scrollOffsetRef={scrollOffsetRef}
+          headerComponent={
+            <GalleryNormalHeader
+              title={group ? group.name : '分组图片'}
+              count={media.totalCount ?? images.length}
+              animatedStyle={heroStyle}
+              topRightActions={
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable style={galleryHeaderStyles.advancedFilterButton} onPress={() => setIsFilterDrawerOpen(true)}>
+                    <FilterIcon color={hasActiveFilters ? '#111827' : '#4B5563'} />
+                    <Text style={[galleryHeaderStyles.advancedFilterText, hasActiveFilters && { color: '#111827', fontWeight: '600' }]}>
+                      {hasActiveFilters ? '已筛选' : '筛选'}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={onImportImages} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', height: 32, paddingHorizontal: 12, borderRadius: 16, gap: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
+                    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" color="#FFFFFF">
+                      <Path d="M12 4.5v15m7.5-7.5h-15" strokeLinecap="round" strokeLinejoin="round" />
+                    </Svg>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF', letterSpacing: 0.5 }}>导入</Text>
+                  </Pressable>
+                </View>
+              }
+              bottomContent={
+                <>
+                  <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={galleryHeaderStyles.densityToggle}>
+                      <Pressable onPress={() => setViewMode('grid')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'grid' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <GridIcon color={viewMode === 'grid' ? '#111827' : '#9CA3AF'} />
+                      </Pressable>
+                      <Pressable onPress={() => setViewMode('justified')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'justified' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <JustifiedIcon color={viewMode === 'justified' ? '#111827' : '#9CA3AF'} />
+                      </Pressable>
+                      <Pressable onPress={() => setViewMode('detail')} style={[galleryHeaderStyles.densityIconButton, viewMode === 'detail' ? galleryHeaderStyles.densityIconButtonActive : null]}>
+                         <Ionicons color={viewMode === 'detail' ? '#111827' : '#9CA3AF'} name="list-outline" size={14} />
+                      </Pressable>
+                    </View>
+                    
+                    {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Pressable onPress={() => { multiSelect.clearSelection(); }} style={galleryHeaderStyles.selectionModeTextButton}>
+                          <Text style={galleryHeaderStyles.selectionModeText}>完成</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable onPress={() => multiSelect.enterSelection(images[0]?.id ?? 0)} style={galleryHeaderStyles.selectionModeTextButton}>
+                        <Text style={galleryHeaderStyles.selectionModeText}>选择</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </>
+              }
+            />
+          }
+          images={images}
+          isLoadingMore={media.isLoadingMore}
+          listRef={scrollViewRef}
+          onEndReached={media.loadMore}
+          onItemMeasured={swipeSelection.registerMeasuredItemLayout}
+          onScroll={handleScroll}
+          panHandlers={swipeSelection.panHandlers}
+          renderAsset={(image, index, fillCell) => viewMode === 'detail' ? (
+              <AssetDetailRow
+                image={image}
+                onLongPress={handleImageLongPress}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+          ) : (
+              <ThumbnailTile
+                aspectRatio={viewMode === 'justified' ? 'auto' : componentTokens.thumbnail.squareAspectRatio}
+                containerStyle={fillCell ? styles.fillCell : undefined}
+                image={image}
+                index={index}
+                onLongPress={handleImageLongPress}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+          )}
+          viewMode={viewMode}
+        />
+      </PageStateBlock>
+    </ScreenScaffold>
+    </View>
+  );
+}
+
+function FilterMenuButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterMenuButton, active ? styles.filterMenuButtonActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={1} style={[styles.filterMenuText, active ? styles.filterMenuTextActive : null]}>{label}</Text>
+      <Ionicons color={active ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
+    </Pressable>
+  );
+}
+
+function FilterDrawer({ children, mode, onClear, title }: { children: ReactNode; mode: '多选' | '单选'; onClear: () => void; title: string }) {
+  return (
+    <View style={styles.filterDrawer}>
+      <View style={styles.filterDrawerHeader}>
+        <View style={styles.filterDrawerTitleRow}>
+          <Text style={styles.filterDrawerTitle}>{title}</Text>
+          <Text style={styles.filterDrawerMode}>{mode}</Text>
+        </View>
+        <Pressable onPress={onClear} style={({ pressed }) => [styles.drawerClearButton, pressed && styles.pressed]}>
+          <Text style={styles.drawerClearText}>清空本类</Text>
+        </Pressable>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function FilterOptionChip({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterOptionChip, selected ? styles.filterOptionChipActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={1} style={[styles.filterOptionText, selected ? styles.filterOptionTextActive : null]}>{label}</Text>
+      {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={14} /> : null}
+    </Pressable>
+  );
+}
+
+function FilterOptionRow({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterOptionRow, selected ? styles.filterOptionRowActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={2} style={[styles.filterOptionRowText, selected ? styles.filterOptionTextActive : null]}>{label}</Text>
+      <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
+    </Pressable>
+  );
+}
+
+function getGroupResultFilterTitle(filter: GroupResultFilterDropdown) {
+  if (filter === 'status') return '状态筛选';
+  if (filter === 'tag') return '标签筛选';
+  return '尺寸筛选';
+}
+
+function getGroupResultFilterMode(filter: GroupResultFilterDropdown): '多选' | '单选' {
+  return filter === 'size' ? '单选' : '多选';
+}
+
+function hasImageOnlyFilter(filters: GroupResultFilterState): boolean {
+  return Boolean(filters.aspectRatio || filters.similarDuplicate);
+}
+
+const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+  },
+  filterBarWrap: {
+    gap: rhythm.cardContentGap,
+    marginTop: rhythm.microGap,
+  },
+  filterBar: {
+    gap: rhythm.cardContentGap,
+    paddingRight: spacing[2],
+    paddingTop: spacing[1],
+  },
+  filterMenuButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  filterMenuButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  filterMenuText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '600',
+  },
+  filterMenuTextActive: {
+    color: colors.primary.active,
+  },
+  filterStatus: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+    paddingHorizontal: spacing[1],
+  },
+  filterDrawer: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    padding: spacing[3],
+  },
+  filterDrawerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.cardContentGap,
+    justifyContent: 'space-between',
+  },
+  filterDrawerTitleRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: rhythm.cardContentGap,
+    minWidth: 0,
+  },
+  filterDrawerTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
+  },
+  filterDrawerMode: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+  },
+  drawerClearButton: {
+    backgroundColor: colors.background.input,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 28,
+    paddingHorizontal: spacing[3],
+  },
+  drawerClearText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  drawerSections: {
+    gap: rhythm.cardContentGap,
+  },
+  drawerSectionTitle: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+    fontWeight: '700',
+  },
+  filterOptionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  filterOptionChip: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
+  },
+  filterOptionChipActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  filterOptionText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  filterOptionTextActive: {
+    color: colors.primary.active,
+  },
+  filterDrawerList: {
+    maxHeight: 250,
+  },
+  filterOptionRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.cardContentGap,
+    justifyContent: 'space-between',
+    marginBottom: rhythm.cardContentGap,
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  filterOptionRowActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  filterOptionRowText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    flex: 1,
+    fontWeight: '700',
+  },
+  clearFilterPill: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  clearFilterText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: rhythm.compactGridGap,
+  },
+  fillCell: {
+    width: '100%',
+  },
+  detailList: {
+    gap: rhythm.listCardGap,
+    marginTop: rhythm.microGap,
+  },
+  galleryHeading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: rhythm.microGap,
+  },
+  galleryTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.primary,
+  },
+  galleryActions: {
+    zIndex: 10,
+    elevation: 10,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.cardContentGap,
+  },
+  selectAllButton: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  selectAllText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  viewModeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  pressed: {
+    opacity: 0.78,
+  },
+});
+
+
+
+
+
