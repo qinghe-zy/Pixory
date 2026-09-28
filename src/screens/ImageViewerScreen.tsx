@@ -1204,11 +1204,13 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(20, 24, 30, 0.48)',
+    backgroundColor: 'rgba(20, 24, 30, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 4,
-    height: 44,
+    height: 32,
     justifyContent: 'center',
-    width: 44,
+    width: 32,
   },
   counter: {
     ...typography.textStyles.bodyStrong,
