@@ -271,7 +271,6 @@ export function VideoPlayerScreen({
       videoPreferencesLoadedRef.current = true;
       void ScreenOrientation.lockAsync(shouldUseLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
     });
-    void VolumeManager.showNativeVolumeUI({ enabled: false }).catch(() => undefined);
     return () => {
       isMounted = false;
       ScreenOrientation.removeOrientationChangeListener(orientationSubscription);
@@ -280,7 +279,6 @@ export function VideoPlayerScreen({
         gestureFeedbackTimerRef.current = null;
       }
       void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
-      void VolumeManager.showNativeVolumeUI({ enabled: true }).catch(() => undefined);
     };
   }, []);
 
@@ -2211,11 +2209,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
-    maxHeight: 238,
+    maxHeight: 250,
     padding: spacing[2],
     position: 'absolute',
     right: spacing[3],
-    width: '72%',
+    width: 260,
+    maxWidth: '80%',
   },
   queueTitle: {
     ...typography.textStyles.caption,
