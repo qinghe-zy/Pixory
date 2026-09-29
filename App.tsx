@@ -1469,6 +1469,7 @@ export default function App() {
   ) : null;
 
   const renderRouteContent = (currentRoute: AppRoute, routeIndex: number) => {
+  const isTop = routeIndex === routeStack.length - 1;
   let content;
 
   if (isPersonalRoute(currentRoute) && personalSessionState !== 'unlocked') {
@@ -1923,6 +1924,7 @@ export default function App() {
         onOpenRoleCard={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
         onOpenHistory={() => pushRoute({ name: 'global-search-history', space: currentRoute.space })}
         query={globalSearchQuery}
+        isTop={isTop}
       />
     );
   } else if (currentRoute.name === 'global-search-history') {

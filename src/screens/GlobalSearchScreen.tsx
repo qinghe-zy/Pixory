@@ -37,6 +37,7 @@ interface GlobalSearchScreenProps {
   onOpenThread?: (threadId: string, messageId?: string) => void;
   onOpenRoleCard?: (roleCardId: string) => void;
   onOpenHistory?: () => void;
+  isTop?: boolean;
 }
 
 const SEARCH_RESULT_LIMIT = 20;
@@ -59,6 +60,7 @@ export function GlobalSearchScreen({
   onOpenThread,
   onOpenRoleCard,
   onOpenHistory,
+  isTop,
 }: GlobalSearchScreenProps) {
   const insets = useSafeAreaInsets();
   const keyword = query.trim();
@@ -126,9 +128,11 @@ export function GlobalSearchScreen({
       }
     };
 
-    void fetchRecommendations();
+    if (isTop !== false) {
+      void fetchRecommendations();
+    }
     return () => { isMounted = false; };
-  }, ["GlobalSearchScreen", space]);
+  }, [space, isTop]);
 
   const handleRefreshTrending = () => {
     if (allRecommendedItems.length <= 8) return; 
@@ -227,11 +231,13 @@ export function GlobalSearchScreen({
 
   useEffect(() => {
     let isMounted = true;
-    void loadSearchHistory(space).then((nextHistory) => {
-      if (isMounted) setSearchHistory(nextHistory);
-    });
+    if (isTop !== false) {
+      void loadSearchHistory(space).then((nextHistory) => {
+        if (isMounted) setSearchHistory(nextHistory);
+      });
+    }
     return () => { isMounted = false; };
-  }, ["GlobalSearchScreen", space]);
+  }, [space, isTop]);
 
   useEffect(() => {
     if (!keyword) return;
