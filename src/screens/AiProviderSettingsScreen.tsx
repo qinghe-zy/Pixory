@@ -231,7 +231,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     await loadProviders();
   }
 
-  async function saveProviderDraft(): Promise<boolean> {
+  async function saveProviderDraft(silent = false): Promise<boolean> {
     if (!selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim())) {
       showToast({ message: selectedIsOtherProvider ? '请填写服务地址和 API key。' : '请填写 API key。', tone: 'warning' });
       return false;
@@ -264,7 +264,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         })
       );
       setApiDraft(apiKey);
-      showToast({ message: '已保存配置', tone: 'success' });
+      if (!silent) showToast({ message: '已保存配置', tone: 'success' });
       await loadProviders();
       return true;
     } catch (error) {
@@ -320,11 +320,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard) {
       return;
     }
-    const saved = await saveProviderDraft();
+    const saved = await saveProviderDraft(true);
     if (!saved) {
       return;
     }
 
+    showToast({ message: '正在测试...', tone: 'info' });
     try {
       await verifyCurrentProviderModel(selectedCard.provider.id, space);
       showToast({ message: '已验证', tone: 'success' });
@@ -339,11 +340,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard) {
       return;
     }
-    const saved = await saveProviderDraft();
+    const saved = await saveProviderDraft(true);
     if (!saved) {
       return;
     }
 
+    showToast({ message: '正在刷新中...', tone: 'info' });
     try {
       const result = await syncProviderModels(selectedCard.provider.id, space);
       showToast(
@@ -603,7 +605,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     >
       {usageOverview ? (() => {
         const usage = usageOverview;
-        const total = usage.totalTokens || 1;
+        const total = (usage.cachedInputTokens + usage.nonCachedInputTokens + usage.completionTokens) || 1;
         const cachedPct = (usage.cachedInputTokens / total) * 100;
         const nonCachedPct = (usage.nonCachedInputTokens / total) * 100;
         const outputPct = (usage.completionTokens / total) * 100;
