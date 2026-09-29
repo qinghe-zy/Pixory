@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
+import { useToast } from '../components/AppToast';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { loadAiUsageOverview } from '../ai/aiChatService';
@@ -105,7 +107,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [visibleKey, setVisibleKey] = useState(false);
   const [advancedVisible, setAdvancedVisible] = useState(false);
   const [selectedModelKeys, setSelectedModelKeys] = useState<string[]>([]);
-  const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
+  const { showToast } = useToast();
   const [usageOverview, setUsageOverview] = useState<AiUsageAggregate | null>(null);
   const [usageWindow, setUsageWindow] = useState<'7d' | '30d' | 'all'>('30d');
   const [selectedUsageBlock, setSelectedUsageBlock] = useState<'cached' | 'nonCached' | 'output' | null>(null);
@@ -224,28 +226,28 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     setEmbeddingBaseUrlDraft(nextCard?.provider.embeddingBaseUrl ?? '');
     setManualModelDraft('');
     setManualEmbeddingModelDraft('');
-    setStatus(null);
+    /* cleared toast */;
     await selectProvider(space, providerId);
     await loadProviders();
   }
 
   async function saveProviderDraft(): Promise<boolean> {
     if (!selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim())) {
-      setStatus({ message: selectedIsOtherProvider ? '请填写服务地址和 API key。' : '请填写 API key。', tone: 'warning' });
+      showToast({ message: selectedIsOtherProvider ? '请填写服务地址和 API key。' : '请填写 API key。', tone: 'warning' });
       return false;
     }
-    setStatus({ message: '正在保存模型账号设置...', tone: 'info' });
+    showToast({ message: '正在保存模型账号设置...', tone: 'info' });
     try {
       if (selectedIsOtherProvider) {
         let parsedBaseUrl: URL;
         try {
           parsedBaseUrl = new URL(baseUrlDraft.trim());
         } catch {
-          setStatus({ message: '服务地址格式不正确，请检查 Base URL。', tone: 'warning' });
+          showToast({ message: '服务地址格式不正确，请检查 Base URL。', tone: 'warning' });
           return false;
         }
         if (parsedBaseUrl.search || parsedBaseUrl.hash) {
-          setStatus({ message: 'Base URL 不能包含查询参数或片段，请只填写服务地址。', tone: 'warning' });
+          showToast({ message: 'Base URL 不能包含查询参数或片段，请只填写服务地址。', tone: 'warning' });
           return false;
         }
         await saveProviderBaseUrl(space, selectedCard.provider.id, baseUrlDraft);
@@ -262,11 +264,11 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         })
       );
       setApiDraft(apiKey);
-      setStatus({ message: '模型账号已保存。全局默认模型只影响后续新创建会话。', tone: 'success', title: '保存成功' });
+      showToast({ message: '模型账号已保存。全局默认模型只影响后续新创建会话。', tone: 'success' });
       await loadProviders();
       return true;
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
+      showToast({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
       return false;
     }
   }
@@ -274,18 +276,18 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   function importProviderConnection() {
     const result = parseProviderConnectionImport(connectionImportDraft);
     if (!result.ok) {
-      setStatus({ message: '未识别到有效的 url 和 key。', tone: 'warning', title: '导入失败' });
+      showToast({ message: '未识别到有效的 url 和 key。', tone: 'warning' });
       return;
     }
     setBaseUrlDraft(result.baseUrl);
     setApiDraft(result.apiKey);
     setVisibleKey(false);
     setBaseUrlHint(result.hasPath ? null : '该连接未包含 `/v1`，如果测试失败，优先尝试在末尾加 `/v1`。');
-    setStatus({ message: '已识别连接信息，请检查后先保存配置，再测试当前模型。', tone: 'success', title: '导入成功' });
+    showToast({ message: '已识别连接信息，请检查后先保存配置，再测试当前模型。', tone: 'success' });
   }
 
   async function selectModel(model: AiProviderModelRecord) {
-    setStatus({ message: '处理中', tone: 'info' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
       await runWithDatabaseSpace(space, (db) =>
@@ -296,21 +298,21 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         })
       );
       setModelSheetVisible(false);
-      setStatus({ message: `已选择 ${model.displayName}。`, tone: 'success', title: '模型已更新' });
+      showToast({ message: `已选择 ${model.displayName}。`, tone: 'success' });
       await loadProviders();
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '选择失败', tone: 'error' });
+      showToast({ message: error instanceof Error ? error.message : '选择失败', tone: 'error' });
     }
   }
 
   async function selectEmbeddingModel(model: AiProviderModelRecord) {
-    setStatus({ message: '处理中', tone: 'info' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultEmbeddingModelId: model.modelId });
-      setStatus({ message: `已选择 ${model.displayName} 作为默认 Embedding。`, tone: 'success', title: 'Embedding 已更新' });
+      showToast({ message: `已选择 ${model.displayName} 作为默认 Embedding。`, tone: 'success' });
       await loadProviders();
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '选择失败', tone: 'error' });
+      showToast({ message: error instanceof Error ? error.message : '选择失败', tone: 'error' });
     }
   }
 
@@ -322,12 +324,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    setStatus({ message: '处理中', tone: 'info', title: '测试当前模型' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       await verifyCurrentProviderModel(selectedCard.provider.id, space);
-      setStatus({ message: '已验证', tone: 'success' });
+      showToast({ message: '已验证', tone: 'success' });
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '测试失败', tone: 'error', title: '连接失败' });
+      showToast({ message: error instanceof Error ? error.message : '测试失败', tone: 'error' });
     } finally {
       await loadProviders();
     }
@@ -341,17 +343,17 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    setStatus({ message: '处理中', tone: 'info', title: '刷新模型列表' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       const result = await syncProviderModels(selectedCard.provider.id, space);
-      setStatus(
+      showToast(
         result.synced > 0
           ? { message: '刷新完成', tone: 'success' }
           : { message: '已应用内置模型', tone: 'warning' }
       );
       await loadProviders();
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '同步失败', tone: 'error' });
+      showToast({ message: error instanceof Error ? error.message : '同步失败', tone: 'error' });
     }
   }
 
@@ -359,14 +361,14 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualModelDraft.trim()) {
       return;
     }
-    setStatus({ message: '处理中', tone: 'info' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       await saveManualChatModel(space, selectedCard.provider.id, manualModelDraft);
       setManualModelDraft('');
-      setStatus({ message: `已保存自定义模型 ${manualModelDraft.trim()}。`, tone: 'success', title: '模型已保存' });
+      showToast({ message: `已保存自定义模型 ${manualModelDraft.trim()}。`, tone: 'success' });
       await loadProviders();
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
+      showToast({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
     }
   }
 
@@ -374,14 +376,14 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualEmbeddingModelDraft.trim()) {
       return;
     }
-    setStatus({ message: '处理中', tone: 'info' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       await saveManualEmbeddingModel(space, selectedCard.provider.id, manualEmbeddingModelDraft);
       setManualEmbeddingModelDraft('');
-      setStatus({ message: `已保存 Embedding 模型 ${manualEmbeddingModelDraft.trim()}。`, tone: 'success', title: 'Embedding 已保存' });
+      showToast({ message: `已保存 Embedding 模型 ${manualEmbeddingModelDraft.trim()}。`, tone: 'success' });
       await loadProviders();
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
+      showToast({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
     }
   }
 
@@ -409,13 +411,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              setStatus({ message: `正在删除 ${model.displayName}...`, tone: 'info', title: '删除模型' });
+              showToast({ message: `正在删除 ${model.displayName}...`, tone: 'info' });
               try {
                 await deleteProviderModel(space, model.providerId, model.modelId);
-                setStatus({ message: `${model.displayName} 已删除。`, tone: 'success', title: '模型已删除' });
+                showToast({ message: `${model.displayName} 已删除。`, tone: 'success' });
                 await loadProviders();
               } catch (error) {
-                setStatus({ message: error instanceof Error ? error.message : '删除模型失败', tone: 'error', title: '删除失败' });
+                showToast({ message: error instanceof Error ? error.message : '删除模型失败', tone: 'error' });
               }
             })();
           },
@@ -444,18 +446,18 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              setStatus({ message: `正在删除 ${models.length} 个模型...`, tone: 'info', title: '批量删除' });
+              showToast({ message: `正在删除 ${models.length} 个模型...`, tone: 'info' });
               try {
                 const deletedCount = await deleteProviderModels(space, models);
                 setSelectedModelKeys([]);
-                setStatus({
+                showToast({
                   message: deletedCount > 0 ? `已删除 ${deletedCount} 个模型。` : '没有可删除的模型。',
                   tone: deletedCount > 0 ? 'success' : 'warning',
-                  title: deletedCount > 0 ? '删除完成' : '未删除模型',
+
                 });
                 await loadProviders();
               } catch (error) {
-                setStatus({ message: error instanceof Error ? error.message : '批量删除失败', tone: 'error', title: '删除失败' });
+                showToast({ message: error instanceof Error ? error.message : '批量删除失败', tone: 'error' });
               }
             })();
           },
@@ -478,18 +480,18 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              setStatus({ message: '处理中', tone: 'info', title: '删除同一来源' });
+              showToast({ message: '处理中', tone: 'info' });
               try {
                 const deletedCount = await deleteProviderModelsByProvider(space, selectedModelProviderId);
                 setSelectedModelKeys([]);
-                setStatus({
+                showToast({
                   message: deletedCount > 0 ? `已删除该来源下 ${deletedCount} 个模型。` : '该来源下没有可删除模型。',
                   tone: deletedCount > 0 ? 'success' : 'warning',
-                  title: deletedCount > 0 ? '清理完成' : '未删除模型',
+
                 });
                 await loadProviders();
               } catch (error) {
-                setStatus({ message: error instanceof Error ? error.message : '删除同一来源失败', tone: 'error', title: '删除失败' });
+                showToast({ message: error instanceof Error ? error.message : '删除同一来源失败', tone: 'error' });
               }
             })();
           },
@@ -533,7 +535,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       memoryMaintenanceModelId: memoryMaintenanceModelDraft.trim(),
       memoryMaintenanceProviderId: selectedCard.provider.id,
     });
-    setStatus({ message: '记忆维护模型已保存。', tone: 'success', title: '设置已更新' });
+    showToast({ message: '记忆维护模型已保存。', tone: 'success' });
   }
 
   async function selectMemoryMaintenanceModel(model: AiProviderModelRecord) {
@@ -546,32 +548,32 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       memoryMaintenanceModelId: model.modelId,
       memoryMaintenanceProviderId: selectedCard.provider.id,
     });
-    setStatus({ message: `记忆维护模型已切换为 ${model.displayName}。`, tone: 'success', title: '设置已更新' });
+    showToast({ message: `记忆维护模型已切换为 ${model.displayName}。`, tone: 'success' });
   }
 
   async function handleSaveGlobalProfile() {
     setLoading(true);
-    setStatus({ message: '处理中', tone: 'info' });
+    showToast({ message: '处理中', tone: 'info' });
     try {
       const next = await updateUserProfile(space, globalProfileDraft.trim(), null, null);
       setGlobalProfileDraft(next.profileText);
       setGlobalProfileText(next.profileText);
-      setStatus({ message: '已保存', tone: 'success', title: '画像已更新' });
+      showToast({ message: '已保存', tone: 'success' });
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error', title: '保存失败' });
+      showToast({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
     } finally {
       setLoading(false);
     }
   }
 
   async function testSelectedMemoryMaintenanceModel() {
-    setStatus({ message: '处理中', tone: 'info', title: '测试记忆模型' });
+    showToast({ message: '处理中', tone: 'info' });
     const result = await testMemoryMaintenanceModel(space);
     setMaintenanceStatus(result);
-    setStatus({
+    showToast({
       message: result.statusText,
       tone: result.status === 'error' ? 'error' : result.status === 'local_fallback' ? 'warning' : 'success',
-      title: '记忆模型状态',
+
     });
   }
 
@@ -582,7 +584,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     }
     setVisibleKey(true);
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-    setStatus({ message: '请在上方配置 API Key', tone: 'info' });
+    showToast({ message: '请在上方配置 API Key', tone: 'info' });
   }
 
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -645,19 +647,19 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 {cachedPct > 0 && (
                   <Pressable 
                     onPress={() => setSelectedUsageBlock(selectedUsageBlock === 'cached' ? null : 'cached')}
-                    style={{ width: `${cachedPct}%`, height: selectedUsageBlock === 'cached' ? 14 : 8, backgroundColor: '#bfdbfe', borderWidth: selectedUsageBlock === 'cached' ? 2 : 0, borderColor: '#18181b', borderRadius: selectedUsageBlock === 'cached' ? 4 : 0, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }} 
+                    style={{ width: `${cachedPct}%`, height: selectedUsageBlock === 'cached' ? 14 : 8, backgroundColor: '#bfdbfe', borderRadius: selectedUsageBlock === 'cached' ? 4 : 0, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }} 
                   />
                 )}
                 {nonCachedPct > 0 && (
                   <Pressable 
                     onPress={() => setSelectedUsageBlock(selectedUsageBlock === 'nonCached' ? null : 'nonCached')}
-                    style={{ width: `${nonCachedPct}%`, height: selectedUsageBlock === 'nonCached' ? 14 : 8, backgroundColor: '#fbcfe8', borderWidth: selectedUsageBlock === 'nonCached' ? 2 : 0, borderColor: '#18181b', borderRadius: selectedUsageBlock === 'nonCached' ? 4 : 0, borderTopLeftRadius: cachedPct === 0 ? 4 : 0, borderBottomLeftRadius: cachedPct === 0 ? 4 : 0 }} 
+                    style={{ width: `${nonCachedPct}%`, height: selectedUsageBlock === 'nonCached' ? 14 : 8, backgroundColor: '#fbcfe8', borderRadius: selectedUsageBlock === 'nonCached' ? 4 : 0, borderTopLeftRadius: cachedPct === 0 ? 4 : 0, borderBottomLeftRadius: cachedPct === 0 ? 4 : 0 }} 
                   />
                 )}
                 {outputPct > 0 && (
                   <Pressable 
                     onPress={() => setSelectedUsageBlock(selectedUsageBlock === 'output' ? null : 'output')}
-                    style={{ width: `${outputPct}%`, height: selectedUsageBlock === 'output' ? 14 : 8, backgroundColor: '#bbf7d0', borderWidth: selectedUsageBlock === 'output' ? 2 : 0, borderColor: '#18181b', borderRadius: selectedUsageBlock === 'output' ? 4 : 0, borderTopRightRadius: 4, borderBottomRightRadius: 4 }} 
+                    style={{ width: `${outputPct}%`, height: selectedUsageBlock === 'output' ? 14 : 8, backgroundColor: '#bbf7d0', borderRadius: selectedUsageBlock === 'output' ? 4 : 0, borderTopRightRadius: 4, borderBottomRightRadius: 4 }} 
                   />
                 )}
               </View>
@@ -825,25 +827,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
       <View style={styles.section}>
         <View style={styles.card}>
-          {selectedCard?.provider.lastVerifyStatus ? (
-            <View style={[styles.rowItem, styles.rowBorder, { paddingVertical: 12 }]}>
-              <View style={styles.rowLeft}>
-                <View style={[styles.statusIconBox, selectedCard.provider.lastVerifyStatus === 'ready' ? styles.statusIconBoxSuccess : selectedCard.provider.lastVerifyStatus === 'failed' ? styles.statusIconBoxError : styles.statusIconBoxWarning]}>
-                  <Ionicons 
-                    name={selectedCard.provider.lastVerifyStatus === 'ready' ? 'checkmark' : selectedCard.provider.lastVerifyStatus === 'failed' ? 'close' : 'help'} 
-                    size={14} 
-                    color={selectedCard.provider.lastVerifyStatus === 'ready' ? '#10b981' : selectedCard.provider.lastVerifyStatus === 'failed' ? '#ef4444' : '#f59e0b'} 
-                  />
-                </View>
-                <View>
-                  <Text style={styles.rowTitle}>{selectedCard.provider.lastVerifyStatus === 'ready' ? '接口已验证' : selectedCard.provider.lastVerifyStatus === 'changed' ? '配置已变更' : selectedCard.provider.lastVerifyStatus === 'failed' ? '接口测试失败' : '接口未验证'}</Text>
-                  <Text style={[styles.rowSubtitle, selectedCard.provider.lastVerifyStatus === 'ready' && styles.rowSubtitleSuccess]}>
-                    {selectedCard.provider.lastVerifyStatus === 'ready' ? '测试通过' : '新创建会话将默认继承这些配置'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ) : null}
+
 
           <Pressable
             disabled={chatModels.length === 0}
@@ -1059,11 +1043,6 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         </View>
       </View>
 
-      {status ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-          <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} />
-        </View>
-      ) : null}
 
       <View style={styles.section}>
         <View style={styles.card}>
@@ -1148,7 +1127,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             </View>
           ) : null}
 
-          <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
+          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={120} style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
             <Text style={styles.rowTitle}>全局用户画像</Text>
             <TextInput
               multiline
@@ -1167,7 +1146,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             >
               <Text style={styles.grayFullBtnText}>保存全局画像</Text>
             </Pressable>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </View>
     </AiLightScaffold>
