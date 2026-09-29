@@ -108,6 +108,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [usageOverview, setUsageOverview] = useState<AiUsageAggregate | null>(null);
   const [usageWindow, setUsageWindow] = useState<'7d' | '30d' | 'all'>('30d');
+  const [selectedUsageBlock, setSelectedUsageBlock] = useState<'cached' | 'nonCached' | 'output' | null>(null);
 
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
@@ -284,7 +285,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   }
 
   async function selectModel(model: AiProviderModelRecord) {
-    setStatus({ message: '正在切换全局默认模型...', tone: 'info' });
+    setStatus({ message: '处理中', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
       await runWithDatabaseSpace(space, (db) =>
@@ -303,7 +304,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   }
 
   async function selectEmbeddingModel(model: AiProviderModelRecord) {
-    setStatus({ message: '正在切换默认 Embedding 模型...', tone: 'info' });
+    setStatus({ message: '处理中', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultEmbeddingModelId: model.modelId });
       setStatus({ message: `已选择 ${model.displayName} 作为默认 Embedding。`, tone: 'success', title: 'Embedding 已更新' });
@@ -321,10 +322,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    setStatus({ message: '正在验证 API key、模型和服务地址...', tone: 'info', title: '测试当前模型' });
+    setStatus({ message: '处理中', tone: 'info', title: '测试当前模型' });
     try {
       await verifyCurrentProviderModel(selectedCard.provider.id, space);
-      setStatus({ message: `${selectedCard.provider.displayName} 当前模型可用，可以开始对话。`, tone: 'success', title: '已验证' });
+      setStatus({ message: '已验证', tone: 'success' });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '测试失败', tone: 'error', title: '连接失败' });
     } finally {
@@ -340,13 +341,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    setStatus({ message: '正在从模型商读取模型列表...', tone: 'info', title: '刷新模型列表' });
+    setStatus({ message: '处理中', tone: 'info', title: '刷新模型列表' });
     try {
       const result = await syncProviderModels(selectedCard.provider.id, space);
       setStatus(
         result.synced > 0
-          ? { message: `已同步 ${result.synced} 个模型。`, tone: 'success', title: '刷新完成' }
-          : { message: `${result.message ? `${result.message} ` : ''}已使用 ${result.fallback} 个内置模型，当前模型不会被清空。`, tone: 'warning', title: '使用内置模型' }
+          ? { message: '刷新完成', tone: 'success' }
+          : { message: '已应用内置模型', tone: 'warning' }
       );
       await loadProviders();
     } catch (error) {
@@ -358,7 +359,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualModelDraft.trim()) {
       return;
     }
-    setStatus({ message: '正在保存自定义模型...', tone: 'info' });
+    setStatus({ message: '处理中', tone: 'info' });
     try {
       await saveManualChatModel(space, selectedCard.provider.id, manualModelDraft);
       setManualModelDraft('');
@@ -373,7 +374,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualEmbeddingModelDraft.trim()) {
       return;
     }
-    setStatus({ message: '正在保存 Embedding 模型...', tone: 'info' });
+    setStatus({ message: '处理中', tone: 'info' });
     try {
       await saveManualEmbeddingModel(space, selectedCard.provider.id, manualEmbeddingModelDraft);
       setManualEmbeddingModelDraft('');
@@ -477,7 +478,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              setStatus({ message: '正在清理同一来源模型...', tone: 'info', title: '删除同一来源' });
+              setStatus({ message: '处理中', tone: 'info', title: '删除同一来源' });
               try {
                 const deletedCount = await deleteProviderModelsByProvider(space, selectedModelProviderId);
                 setSelectedModelKeys([]);
@@ -550,21 +551,21 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
   async function handleSaveGlobalProfile() {
     setLoading(true);
-    setStatus({ message: '正在保存全局用户画像...', tone: 'info' });
+    setStatus({ message: '处理中', tone: 'info' });
     try {
       const next = await updateUserProfile(space, globalProfileDraft.trim(), null, null);
       setGlobalProfileDraft(next.profileText);
       setGlobalProfileText(next.profileText);
-      setStatus({ message: '全局用户画像已保存。', tone: 'success', title: '画像已更新' });
+      setStatus({ message: '已保存', tone: 'success', title: '画像已更新' });
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '保存全局用户画像失败', tone: 'error', title: '保存失败' });
+      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error', title: '保存失败' });
     } finally {
       setLoading(false);
     }
   }
 
   async function testSelectedMemoryMaintenanceModel() {
-    setStatus({ message: '正在测试记忆维护模型...', tone: 'info', title: '测试记忆模型' });
+    setStatus({ message: '处理中', tone: 'info', title: '测试记忆模型' });
     const result = await testMemoryMaintenanceModel(space);
     setMaintenanceStatus(result);
     setStatus({
@@ -581,7 +582,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     }
     setVisibleKey(true);
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-    setStatus({ message: '请在上方 API 输入框配置当前模型商 Key。API Key 仅保存在本机安全存储中。', tone: 'info' });
+    setStatus({ message: '请在上方配置 API Key', tone: 'info' });
   }
 
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -589,6 +590,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
   return (
     <AiLightScaffold
+      backgroundColor="#ffffff"
       contentContainerStyle={styles.pageContent}
       onBack={onBack}
       scrollable
@@ -639,17 +641,38 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 </View>
               </View>
 
-              <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#f4f4f5' }}>
-                {cachedPct > 0 && <View style={{ width: `${cachedPct}%`, backgroundColor: '#bfdbfe' }} />}
-                {nonCachedPct > 0 && <View style={{ width: `${nonCachedPct}%`, backgroundColor: '#fbcfe8' }} />}
-                {outputPct > 0 && <View style={{ width: `${outputPct}%`, backgroundColor: '#bbf7d0' }} />}
+              <View style={{ flexDirection: 'row', height: 16, alignItems: 'center', backgroundColor: 'transparent' }}>
+                {cachedPct > 0 && (
+                  <Pressable 
+                    onPress={() => setSelectedUsageBlock(selectedUsageBlock === 'cached' ? null : 'cached')}
+                    style={{ width: `${cachedPct}%`, height: selectedUsageBlock === 'cached' ? 14 : 8, backgroundColor: '#bfdbfe', borderWidth: selectedUsageBlock === 'cached' ? 2 : 0, borderColor: '#18181b', borderRadius: selectedUsageBlock === 'cached' ? 4 : 0, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }} 
+                  />
+                )}
+                {nonCachedPct > 0 && (
+                  <Pressable 
+                    onPress={() => setSelectedUsageBlock(selectedUsageBlock === 'nonCached' ? null : 'nonCached')}
+                    style={{ width: `${nonCachedPct}%`, height: selectedUsageBlock === 'nonCached' ? 14 : 8, backgroundColor: '#fbcfe8', borderWidth: selectedUsageBlock === 'nonCached' ? 2 : 0, borderColor: '#18181b', borderRadius: selectedUsageBlock === 'nonCached' ? 4 : 0, borderTopLeftRadius: cachedPct === 0 ? 4 : 0, borderBottomLeftRadius: cachedPct === 0 ? 4 : 0 }} 
+                  />
+                )}
+                {outputPct > 0 && (
+                  <Pressable 
+                    onPress={() => setSelectedUsageBlock(selectedUsageBlock === 'output' ? null : 'output')}
+                    style={{ width: `${outputPct}%`, height: selectedUsageBlock === 'output' ? 14 : 8, backgroundColor: '#bbf7d0', borderWidth: selectedUsageBlock === 'output' ? 2 : 0, borderColor: '#18181b', borderRadius: selectedUsageBlock === 'output' ? 4 : 0, borderTopRightRadius: 4, borderBottomRightRadius: 4 }} 
+                  />
+                )}
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: -6 }}>
                 <Text style={{ fontSize: 11, color: '#71717a' }}>
-                  总计 {formatTokens(usage.totalTokens)} Token
+                  {selectedUsageBlock === 'cached' && `缓存命中: ${formatTokens(usage.cachedInputTokens)} Token`}
+                  {selectedUsageBlock === 'nonCached' && `原始输入: ${formatTokens(usage.nonCachedInputTokens)} Token`}
+                  {selectedUsageBlock === 'output' && `模型输出: ${formatTokens(usage.completionTokens)} Token`}
+                  {!selectedUsageBlock && `总计 ${formatTokens(usage.totalTokens)} Token`}
                 </Text>
                 <Text style={{ fontSize: 11, color: '#71717a' }}>
-                  缓存命中 {Math.round((usage.cachedTokenRatio ?? 0) * 100)}%
+                  {selectedUsageBlock === 'cached' && `占比 ${Math.round(cachedPct)}%`}
+                  {selectedUsageBlock === 'nonCached' && `占比 ${Math.round(nonCachedPct)}%`}
+                  {selectedUsageBlock === 'output' && `占比 ${Math.round(outputPct)}%`}
+                  {!selectedUsageBlock && `缓存命中 ${Math.round((usage.cachedTokenRatio ?? 0) * 100)}%`}
                 </Text>
               </View>
             </View>
@@ -1154,15 +1177,14 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 const styles = StyleSheet.create({
   pageContent: {
     paddingBottom: 48,
+    backgroundColor: '#ffffff',
   },
   section: {
   },
   card: {
-    backgroundColor: '#ffffff',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.04)',
   },
   rowItem: {
     flexDirection: 'row',

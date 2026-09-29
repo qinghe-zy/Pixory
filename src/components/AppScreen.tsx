@@ -68,6 +68,7 @@ export function AppScreen({
       scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
       directionalLockEnabled
+      automaticallyAdjustKeyboardInsets
       contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
       style={styles.flex}
     >
