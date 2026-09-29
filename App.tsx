@@ -2034,6 +2034,7 @@ export default function App() {
   } else if (currentRoute.name === 'ai-chat') {
     content = (
       <AiChatScreen
+        isFocused={isTop}
         key={aiChatRouteKey(currentRoute, routeStack.length)}
         composerEntranceKey={currentRoute.routeKey}
         composerEntranceReason={currentRoute.composerEntranceReason ?? 'replace_current'}

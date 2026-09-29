@@ -837,6 +837,7 @@ interface AiChatScreenProps {
   includeIpDocuments?: boolean;
   modelRefreshKey?: number;
   threadId?: string;
+  isFocused?: boolean;
   searchTargetMessageId?: string;
   searchTargetKey?: string;
   searchTargetBranchScopes?: AiBranchScope[];
@@ -882,6 +883,7 @@ export function AiChatScreen({
   includeIpDocuments = false,
   modelRefreshKey,
   threadId,
+  isFocused,
   searchTargetMessageId,
   searchTargetKey,
   searchTargetBranchScopes,
@@ -4708,6 +4710,13 @@ export function AiChatScreen({
   useEffect(() => {
     void reloadParticipantAppearance(threadId ?? null);
   }, [reloadParticipantAppearance, threadId]);
+
+  useEffect(() => {
+    if (isFocused && activeThreadId) {
+      void reloadParticipantAppearance(activeThreadId);
+      void reloadThreadTitle(activeThreadId);
+    }
+  }, [isFocused, activeThreadId, reloadParticipantAppearance, reloadThreadTitle]);
 
   useEffect(() => {
     void reloadThreadTitle(threadId ?? null);
