@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
-import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { loadAiUsageOverview } from '../ai/aiChatService';
 import {
@@ -45,10 +44,8 @@ interface AiProviderSettingsScreenProps {
 
 type ProviderCard = Awaited<ReturnType<typeof listProviderCards>>[number];
 const MEMORY_MAINTENANCE_MODES: Array<{ value: MemoryMaintenanceMode; label: string }> = [
-  { value: 'auto', label: '自动' },
-  { value: 'follow_chat', label: '跟随聊天模型' },
-  { value: 'deepseek_flash', label: 'DeepSeek V4 Flash' },
-  { value: 'custom', label: '自定义' },
+  { value: 'follow_chat', label: '跟随当前对话' },
+  { value: 'custom', label: '独立指定模型' },
 ];
 
 const EMPTY_USAGE_OVERVIEW: AiUsageAggregate = {
@@ -79,48 +76,12 @@ function providerModelKey(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
 }
 
-function formatMaintenanceTestTime(value: string | null | undefined): string {
-  if (!value) {
-    return '';
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
 
-function isMaintenanceTestPassed(status: string | null | undefined): boolean {
-  return status === 'ready' || status === 'follow_chat';
-}
 
-function maintenanceBannerTone(status: ResolvedMemoryMaintenanceModel | null): FeedbackTone {
-  if (isMaintenanceTestPassed(status?.lastTestStatus)) {
-    return 'success';
-  }
-  if (status?.lastTestStatus === 'error') {
-    return 'error';
-  }
-  if (status?.status === 'local_fallback' || status?.status === 'error') {
-    return 'warning';
-  }
-  return 'info';
-}
 
-function maintenanceBannerTitle(status: ResolvedMemoryMaintenanceModel | null): string {
-  if (isMaintenanceTestPassed(status?.lastTestStatus)) {
-    return '链路测试通过';
-  }
-  if (status?.lastTestStatus === 'error') {
-    return '链路测试失败';
-  }
-  if (status?.status === 'local_fallback') {
-    return '未启用远程维护';
-  }
-  return '已保存，待测试';
-}
 
 export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsScreenProps) {
+  const scrollViewRef = useRef<ScrollView>(null);
   const [cards, setCards] = useState<ProviderCard[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [providerSheetVisible, setProviderSheetVisible] = useState(false);
@@ -133,11 +94,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [embeddingBaseUrlDraft, setEmbeddingBaseUrlDraft] = useState('');
   const [manualModelDraft, setManualModelDraft] = useState('');
   const [manualEmbeddingModelDraft, setManualEmbeddingModelDraft] = useState('');
-  const [memoryMaintenanceMode, setMemoryMaintenanceMode] = useState<MemoryMaintenanceMode>('auto');
+  const [memoryMaintenanceMode, setMemoryMaintenanceMode] = useState<MemoryMaintenanceMode>('follow_chat');
   const [memoryMaintenanceProviderId, setMemoryMaintenanceProviderId] = useState<string | null>(null);
   const [memoryMaintenanceModelDraft, setMemoryMaintenanceModelDraft] = useState('');
   const [maintenanceStatus, setMaintenanceStatus] = useState<ResolvedMemoryMaintenanceModel | null>(null);
   const [maintenanceInfoExpanded, setMaintenanceInfoExpanded] = useState(false);
+  const [memoryModelSheetVisible, setMemoryModelSheetVisible] = useState(false);
   const [globalProfileDraft, setGlobalProfileDraft] = useState('');
   const [globalProfileText, setGlobalProfileText] = useState('');
   const [visibleKey, setVisibleKey] = useState(false);
@@ -145,6 +107,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [selectedModelKeys, setSelectedModelKeys] = useState<string[]>([]);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [usageOverview, setUsageOverview] = useState<AiUsageAggregate | null>(null);
+  const [usageWindow, setUsageWindow] = useState<'7d' | '30d' | 'all'>('30d');
 
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
@@ -157,9 +120,6 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const selectedEmbeddingModel = embeddingModels.find((model) => model.modelId === selectedCard?.provider.defaultEmbeddingModelId) ?? null;
   const selectedModelProviderId = selectedModelKeys[0]?.split(':')[0] ?? selectedCard?.provider.id ?? null;
   const providerSelectionMode = selectedModelKeys.length > 0;
-  const maintenanceTone = maintenanceBannerTone(maintenanceStatus);
-  const maintenanceTestTime = formatMaintenanceTestTime(maintenanceStatus?.lastTestAt);
-  const maintenanceStatusMessage = maintenanceStatus?.lastTestMessage || maintenanceStatus?.statusText || '未配置远程维护模型，摘要压缩和画像维护不会调用远程模型';
 
   const loadGlobalProfile = useCallback(async () => {
     const globalProfile = await getUserProfile(space, null, null);
@@ -178,13 +138,22 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     setMaintenanceStatus(resolved);
   }, [space]);
 
+  const fetchUsage = useCallback(async (window: '7d' | '30d' | 'all') => {
+    try {
+      const usage = await loadAiUsageOverview(space, window);
+      setUsageOverview(usage);
+    } catch (e) {
+      // ignore
+    }
+  }, [space]);
+
   const loadProviders = useCallback(async () => {
     setLoading(true);
     try {
       const [nextCards, defaultProviderId, usage] = await Promise.all([
         listProviderCards(space),
         getDefaultChatProviderId(space),
-        loadAiUsageOverview(space, '30d'),
+        loadAiUsageOverview(space, usageWindow),
       ]);
       setCards(nextCards);
       setUsageOverview(usage);
@@ -549,7 +518,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     await saveMemoryMaintenancePatch({
       memoryMaintenanceMode: mode,
       memoryMaintenanceProviderId: mode === 'custom' ? memoryMaintenanceProviderId ?? selectedCard?.provider.id ?? null : memoryMaintenanceProviderId,
-      memoryMaintenanceModelId: mode === 'deepseek_flash' ? 'deepseek-v4-flash' : memoryMaintenanceModelDraft.trim() || null,
+      memoryMaintenanceModelId: memoryMaintenanceModelDraft.trim() || null,
     });
   }
 
@@ -564,6 +533,19 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       memoryMaintenanceProviderId: selectedCard.provider.id,
     });
     setStatus({ message: '记忆维护模型已保存。', tone: 'success', title: '设置已更新' });
+  }
+
+  async function selectMemoryMaintenanceModel(model: AiProviderModelRecord) {
+    if (!selectedCard) return;
+    setMemoryMaintenanceProviderId(selectedCard.provider.id);
+    setMemoryMaintenanceModelDraft(model.modelId);
+    setMemoryModelSheetVisible(false);
+    await saveMemoryMaintenancePatch({
+      memoryMaintenanceMode: 'custom',
+      memoryMaintenanceModelId: model.modelId,
+      memoryMaintenanceProviderId: selectedCard.provider.id,
+    });
+    setStatus({ message: `记忆维护模型已切换为 ${model.displayName}。`, tone: 'success', title: '设置已更新' });
   }
 
   async function handleSaveGlobalProfile() {
@@ -598,6 +580,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       await chooseProvider(providerId);
     }
     setVisibleKey(true);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     setStatus({ message: '请在上方 API 输入框配置当前模型商 Key。API Key 仅保存在本机安全存储中。', tone: 'info' });
   }
 
@@ -607,24 +590,74 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   return (
     <AiLightScaffold
       contentContainerStyle={styles.pageContent}
-      loading={loading}
       onBack={onBack}
       scrollable
+      scrollViewRef={scrollViewRef}
       subtitle={spaceLabel}
       title="全局默认模型"
     >
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>全应用 AI 用量</Text>
-          <Text style={styles.sectionSubtitle}>实时统计</Text>
-        </View>
-        <View style={[styles.card, { padding: 0, overflow: 'hidden' }]}>
-          <AiUsageSummary showRecent={false} usage={usageOverview ?? EMPTY_USAGE_OVERVIEW} />
-        </View>
-      </View>
+      {usageOverview ? (() => {
+        const usage = usageOverview;
+        const total = usage.totalTokens || 1;
+        const cachedPct = (usage.cachedInputTokens / total) * 100;
+        const nonCachedPct = (usage.nonCachedInputTokens / total) * 100;
+        const outputPct = (usage.completionTokens / total) * 100;
+        const formatTokens = (val: number) => {
+          if (val < 1000) return String(val);
+          if (val < 1000000) return (val / 1000).toFixed(1) + 'K';
+          return (val / 1000000).toFixed(1) + 'M';
+        };
+        return (
+          <View style={styles.section}>
+            <View style={[styles.card, { paddingVertical: 12 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={styles.rowTitle}>用量统计</Text>
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  {(['7d', '30d', 'all'] as const).map(opt => {
+                    const isSelected = usageWindow === opt;
+                    const label = opt === '7d' ? '7天' : opt === '30d' ? '30天' : '全部';
+                    return (
+                      <Pressable 
+                        key={opt}
+                        onPress={() => {
+                          setUsageWindow(opt);
+                          void fetchUsage(opt);
+                        }}
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          borderRadius: 4,
+                          backgroundColor: isSelected ? '#18181b' : '#f4f4f5',
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '500', color: isSelected ? '#ffffff' : '#71717a' }}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#f4f4f5' }}>
+                {cachedPct > 0 && <View style={{ width: `${cachedPct}%`, backgroundColor: '#bfdbfe' }} />}
+                {nonCachedPct > 0 && <View style={{ width: `${nonCachedPct}%`, backgroundColor: '#fbcfe8' }} />}
+                {outputPct > 0 && <View style={{ width: `${outputPct}%`, backgroundColor: '#bbf7d0' }} />}
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: -6 }}>
+                <Text style={{ fontSize: 11, color: '#71717a' }}>
+                  总计 {formatTokens(usage.totalTokens)} Token
+                </Text>
+                <Text style={{ fontSize: 11, color: '#71717a' }}>
+                  缓存命中 {Math.round((usage.cachedTokenRatio ?? 0) * 100)}%
+                </Text>
+              </View>
+            </View>
+          </View>
+        );
+      })() : null}
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>接口与连接配置</Text>
         <View style={styles.card}>
           <Pressable
             accessibilityRole="button"
@@ -768,7 +801,6 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>全局对话与向量模型</Text>
         <View style={styles.card}>
           {selectedCard?.provider.lastVerifyStatus ? (
             <View style={[styles.rowItem, styles.rowBorder, { paddingVertical: 12 }]}>
@@ -1011,50 +1043,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       ) : null}
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>后台智能与记忆模型</Text>
         <View style={styles.card}>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.rowTitle}>全局用户画像</Text>
-            <TextInput
-              multiline
-              onChangeText={setGlobalProfileDraft}
-              placeholder="例如：我希望默认回答简洁直接；我更喜欢中文交流。"
-              placeholderTextColor="#a1a1aa"
-              selectionColor="#2563eb"
-              style={[styles.input, styles.profileInput]}
-              textAlignVertical="top"
-              value={globalProfileDraft}
-            />
-            <Pressable
-              disabled={loading || globalProfileDraft === globalProfileText}
-              onPress={() => void handleSaveGlobalProfile()}
-              style={({ pressed }) => [styles.grayFullBtn, (loading || globalProfileDraft === globalProfileText) && styles.disabledBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.grayFullBtnText}>保存全局画像</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.maintenanceBanner}>
-            <View style={styles.maintenanceBannerIcon}>
-              <Text style={styles.maintenanceBannerIconText}>i</Text>
-            </View>
-            <Text style={styles.maintenanceBannerTitle}>{maintenanceBannerTitle(maintenanceStatus)}</Text>
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <View>
-              <Text style={styles.caption}>当前使用</Text>
-              <Text style={styles.monoValue}>
-                {maintenanceStatus ? `${maintenanceStatus.providerName} · ${maintenanceStatus.modelName}` : '本地 · 未启用远程维护'}
-              </Text>
-            </View>
-            <View style={{ marginTop: 8 }}>
-              <Text style={styles.caption}>配置状态</Text>
-              <Text style={styles.rowValueMono}>{maintenanceStatus?.statusText ?? '已保存配置，待确认链路可用'}</Text>
-            </View>
-          </View>
 
           <View style={styles.modeGrid}>
             {MEMORY_MAINTENANCE_MODES.map((mode) => (
@@ -1090,28 +1079,72 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
           {memoryMaintenanceMode === 'custom' ? (
             <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
-              <Text style={styles.fieldLabel}>自定义记忆模型 ID</Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setMemoryMaintenanceModelDraft}
-                  placeholder="deepseek-v4-flash"
-                  placeholderTextColor="#a1a1aa"
-                  selectionColor="#2563eb"
-                  style={[styles.input, styles.monoInput]}
-                  value={memoryMaintenanceModelDraft}
-                />
-                <Pressable
-                  disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()}
-                  onPress={() => void saveCustomMemoryMaintenanceModel()}
-                  style={({ pressed }) => [styles.saveBtn, (!selectedCard || !memoryMaintenanceModelDraft.trim()) && styles.disabledBtn, pressed && styles.pressed]}
-                >
-                  <Text style={styles.saveBtnText}>保存</Text>
-                </Pressable>
-              </View>
+              <Text style={styles.fieldLabel}>自定义记忆模型</Text>
+              
+              <Pressable
+                disabled={chatModels.length === 0}
+                onPress={() => setMemoryModelSheetVisible((current) => !current)}
+                style={({ pressed }) => [styles.rowItem, styles.rowBorder, chatModels.length === 0 && styles.disabledBtn, pressed && styles.pressed, { paddingVertical: 12, paddingBottom: 12 }]}
+              >
+                <View style={styles.rowLeft}>
+                  <View style={styles.iconBox2}>
+                    <Ionicons name="git-network-outline" size={14} color="#52525b" />
+                  </View>
+                  <Text style={styles.rowTitle}>选择模型</Text>
+                </View>
+                <View style={styles.rowRight}>
+                  <Text style={styles.rowValueMono}>
+                    {(chatModels.find(m => m.modelId === memoryMaintenanceModelDraft)?.displayName ?? memoryMaintenanceModelDraft) || '请选择模型'}
+                  </Text>
+                  <Ionicons name={memoryModelSheetVisible ? 'chevron-up' : 'chevron-down'} size={16} color="#a1a1aa" />
+                </View>
+              </Pressable>
+
+              {memoryModelSheetVisible ? (
+                <View style={styles.dropdownPanel}>
+                  {chatModels.map((model) => {
+                    const selected = model.modelId === memoryMaintenanceModelDraft;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        key={model.id}
+                        onPress={() => void selectMemoryMaintenanceModel(model)}
+                        style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
+                      >
+                        <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                        {selected ? (
+                          <View style={styles.checkBadge}>
+                            <Ionicons color="#fff" name="checkmark" size={10} />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
           ) : null}
+
+          <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
+            <Text style={styles.rowTitle}>全局用户画像</Text>
+            <TextInput
+              multiline
+              onChangeText={setGlobalProfileDraft}
+              placeholder="例如：我希望默认回答简洁直接；我更喜欢中文交流。"
+              placeholderTextColor="#a1a1aa"
+              selectionColor="#2563eb"
+              style={[styles.input, styles.profileInput]}
+              textAlignVertical="top"
+              value={globalProfileDraft}
+            />
+            <Pressable
+              disabled={globalProfileDraft === globalProfileText}
+              onPress={() => void handleSaveGlobalProfile()}
+              style={({ pressed }) => [styles.grayFullBtn, (globalProfileDraft === globalProfileText) && styles.disabledBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.grayFullBtnText}>保存全局画像</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </AiLightScaffold>
@@ -1123,40 +1156,13 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   section: {
-    gap: 10,
-    marginBottom: 24,
-    paddingHorizontal: 16,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#a1a1aa',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 10,
-    color: '#a1a1aa',
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
     padding: 16,
-    borderColor: 'rgba(0,0,0,0.05)',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 2,
     gap: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
   },
   rowItem: {
     flexDirection: 'row',
