@@ -111,13 +111,17 @@ export function AiComprehensiveRecordDrawer({
           useNativeDriver: true,
         }),
       ]), () => {
-        // 动画完成后测量设置按钮坐标，用于引导遮罩精准高亮
-        if (onSettingsButtonLayout && settingsButtonRef.current) {
-          settingsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-            if (width > 0 && height > 0) {
-              onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
-            }
-          });
+        // 动画完成后传递设置按钮坐标，用于引导遮罩精准高亮。
+        // 由于在动画容器中 measure 可能会偶发失败或返回 0，因此我们根据已知的常量和安全区精确计算绝对屏幕坐标：
+        if (onSettingsButtonLayout) {
+          const buttonWidth = 36;
+          const buttonHeight = 36;
+          // drawer.paddingHorizontal 是 spacing[5] (20)
+          const pageX = DRAWER_WIDTH - 20 - buttonWidth;
+          // drawer 的 paddingTop 是动态计算的：Math.max(insets.top + spacing[4], spacing[10])
+          const pageY = Math.max(insets.top + 16, 40);
+
+          onSettingsButtonLayout({ x: pageX, y: pageY, width: buttonWidth, height: buttonHeight, borderRadius: 18 });
         }
       });
     } else {
