@@ -2,8 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AiLightButton } from '../components/ai/AiLightButton';
-import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
