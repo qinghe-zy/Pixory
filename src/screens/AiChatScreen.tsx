@@ -372,8 +372,21 @@ function createOptimisticUserMessage(
   createdAt: string,
   branchRootMessageId: string | null,
   branchVersionIndex: number | null,
+  attachments?: AiComposerAttachment[],
 ): AiMessageWithCitations {
   return {
+    attachments: attachments?.map((attachment) => ({
+      createdAt,
+      documentId: null,
+      fileSize: attachment.size ?? null,
+      id: attachment.id,
+      kind: attachment.kind,
+      localUri: attachment.uri,
+      messageId: userMessageId,
+      mimeType: attachment.mimeType ?? null,
+      name: attachment.name,
+      threadId,
+    })),
     branchRootMessageId,
     branchVersionIndex,
     citations: [],
@@ -2681,6 +2694,7 @@ export function AiChatScreen({
     targetThreadId: string,
     generation: number,
     pendingUserMessage?: {
+      attachments?: AiComposerAttachment[];
       branchRootMessageId: string | null;
       branchVersionIndex: number | null;
       content: string;
@@ -2729,6 +2743,7 @@ export function AiChatScreen({
                 pendingUserMessage.createdAt,
                 pendingUserMessage.branchRootMessageId,
                 pendingUserMessage.branchVersionIndex,
+                pendingUserMessage.attachments,
               ),
             ];
           }
@@ -2836,6 +2851,7 @@ export function AiChatScreen({
   function beginStreamingRequest(
     targetThreadId: string,
     pendingUserMessage?: {
+      attachments?: AiComposerAttachment[];
       branchRootMessageId: string | null;
       branchVersionIndex: number | null;
       content: string;
@@ -3020,28 +3036,34 @@ export function AiChatScreen({
       (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
     );
     return mergedMessages.map((message) => {
-      if (message.status !== 'generating') {
-        return message;
-      }
       const currentIndex = messageIndexByIdRef.current.get(message.id);
       const currentMessage =
         currentIndex == null ? undefined : messagesRef.current[currentIndex];
+      let resolvedMessage = message;
+      if (currentMessage?.attachments && currentMessage.attachments.length > 0) {
+        if (!message.attachments || message.attachments.length < currentMessage.attachments.length) {
+          resolvedMessage = { ...message, attachments: currentMessage.attachments };
+        }
+      }
+      if (resolvedMessage.status !== 'generating') {
+        return resolvedMessage;
+      }
       if (!currentMessage || currentMessage.status !== 'generating') {
-        return message;
+        return resolvedMessage;
       }
       const currentContentLength =
         currentMessage.content.length +
         (currentMessage.reasoningText?.length ?? 0);
       const nextContentLength =
-        message.content.length + (message.reasoningText?.length ?? 0);
+        resolvedMessage.content.length + (resolvedMessage.reasoningText?.length ?? 0);
       if (
         currentContentLength === 0 ||
         nextContentLength >= currentContentLength
       ) {
-        return message;
+        return resolvedMessage;
       }
       return {
-        ...message,
+        ...resolvedMessage,
         citations: currentMessage.citations,
         content: currentMessage.content,
         reasoningText: currentMessage.reasoningText,
@@ -5827,15 +5849,14 @@ export function AiChatScreen({
       const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
       const streamRequest = beginStreamingRequest(
         targetThreadId,
-        replyTarget
-          ? undefined
-          : {
-              branchRootMessageId: activeBranch?.branchRootMessageId ?? null,
-              branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
-              content,
-              createdAt: sendPressedAt,
-              hasAttachments: attachments.length > 0,
-            },
+        {
+          attachments,
+          branchRootMessageId: activeBranch?.branchRootMessageId ?? null,
+          branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
+          content,
+          createdAt: sendPressedAt,
+          hasAttachments: attachments.length > 0,
+        },
       );
       streamGeneration = streamRequest.generation;
       const managedGeneration = replyTarget
