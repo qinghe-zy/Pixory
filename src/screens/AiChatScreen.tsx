@@ -7681,10 +7681,6 @@ export function AiChatScreen({
         onDeleteThread={(thread) => deleteRecentThread(thread)}
         onSettingsButtonLayout={(rect) => {
           setSettingsButtonRect(rect);
-          // 步骤 1 已展示完毕，设置按钮位置到手后进入步骤 2
-          if (guideStep === 1) {
-            setGuideStep(2);
-          }
         }}
       />
       {/* 新手引导遮罩层：完全独立，不影响现有逻辑 */}

@@ -113,9 +113,9 @@ export function AiComprehensiveRecordDrawer({
       ]), () => {
         // 动画完成后测量设置按钮坐标，用于引导遮罩精准高亮
         if (onSettingsButtonLayout && settingsButtonRef.current) {
-          settingsButtonRef.current.measureInWindow((x, y, width, height) => {
+          settingsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
             if (width > 0 && height > 0) {
-              onSettingsButtonLayout({ x, y, width, height, borderRadius: 18 });
+              onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
             }
           });
         }
