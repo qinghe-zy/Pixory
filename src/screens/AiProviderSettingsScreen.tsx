@@ -236,7 +236,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       showToast({ message: selectedIsOtherProvider ? '请填写服务地址和 API key。' : '请填写 API key。', tone: 'warning' });
       return false;
     }
-    showToast({ message: '正在保存模型账号设置...', tone: 'info' });
+
     try {
       if (selectedIsOtherProvider) {
         let parsedBaseUrl: URL;
@@ -264,7 +264,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         })
       );
       setApiDraft(apiKey);
-      showToast({ message: '模型账号已保存。全局默认模型只影响后续新创建会话。', tone: 'success' });
+      showToast({ message: '已保存配置', tone: 'success' });
       await loadProviders();
       return true;
     } catch (error) {
@@ -276,18 +276,18 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   function importProviderConnection() {
     const result = parseProviderConnectionImport(connectionImportDraft);
     if (!result.ok) {
-      showToast({ message: '未识别到有效的 url 和 key。', tone: 'warning' });
+      showToast({ message: '无效的连接', tone: 'warning' });
       return;
     }
     setBaseUrlDraft(result.baseUrl);
     setApiDraft(result.apiKey);
     setVisibleKey(false);
     setBaseUrlHint(result.hasPath ? null : '该连接未包含 `/v1`，如果测试失败，优先尝试在末尾加 `/v1`。');
-    showToast({ message: '已识别连接信息，请检查后先保存配置，再测试当前模型。', tone: 'success' });
+    showToast({ message: '已识别，请保存', tone: 'success' });
   }
 
   async function selectModel(model: AiProviderModelRecord) {
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
       await runWithDatabaseSpace(space, (db) =>
@@ -306,7 +306,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   }
 
   async function selectEmbeddingModel(model: AiProviderModelRecord) {
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultEmbeddingModelId: model.modelId });
       showToast({ message: `已选择 ${model.displayName} 作为默认 Embedding。`, tone: 'success' });
@@ -324,7 +324,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       await verifyCurrentProviderModel(selectedCard.provider.id, space);
       showToast({ message: '已验证', tone: 'success' });
@@ -343,7 +343,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       const result = await syncProviderModels(selectedCard.provider.id, space);
       showToast(
@@ -361,7 +361,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualModelDraft.trim()) {
       return;
     }
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       await saveManualChatModel(space, selectedCard.provider.id, manualModelDraft);
       setManualModelDraft('');
@@ -376,7 +376,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualEmbeddingModelDraft.trim()) {
       return;
     }
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       await saveManualEmbeddingModel(space, selectedCard.provider.id, manualEmbeddingModelDraft);
       setManualEmbeddingModelDraft('');
@@ -411,7 +411,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              showToast({ message: `正在删除 ${model.displayName}...`, tone: 'info' });
+
               try {
                 await deleteProviderModel(space, model.providerId, model.modelId);
                 showToast({ message: `${model.displayName} 已删除。`, tone: 'success' });
@@ -446,7 +446,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              showToast({ message: `正在删除 ${models.length} 个模型...`, tone: 'info' });
+
               try {
                 const deletedCount = await deleteProviderModels(space, models);
                 setSelectedModelKeys([]);
@@ -480,7 +480,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              showToast({ message: '处理中', tone: 'info' });
+
               try {
                 const deletedCount = await deleteProviderModelsByProvider(space, selectedModelProviderId);
                 setSelectedModelKeys([]);
@@ -553,7 +553,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
   async function handleSaveGlobalProfile() {
     setLoading(true);
-    showToast({ message: '处理中', tone: 'info' });
+
     try {
       const next = await updateUserProfile(space, globalProfileDraft.trim(), null, null);
       setGlobalProfileDraft(next.profileText);
@@ -567,7 +567,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   }
 
   async function testSelectedMemoryMaintenanceModel() {
-    showToast({ message: '处理中', tone: 'info' });
+
     const result = await testMemoryMaintenanceModel(space);
     setMaintenanceStatus(result);
     showToast({
@@ -591,6 +591,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const saveDisabled = !selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim());
 
   return (
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
     <AiLightScaffold
       backgroundColor="#ffffff"
       contentContainerStyle={styles.pageContent}
@@ -1127,7 +1128,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             </View>
           ) : null}
 
-          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={120} style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
+          <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
             <Text style={styles.rowTitle}>全局用户画像</Text>
             <TextInput
               multiline
@@ -1146,10 +1147,11 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             >
               <Text style={styles.grayFullBtnText}>保存全局画像</Text>
             </Pressable>
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </View>
     </AiLightScaffold>
+    </KeyboardAvoidingView>
   );
 }
 
