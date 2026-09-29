@@ -38,6 +38,11 @@ interface AiComprehensiveRecordDrawerProps {
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onRenameThread?: (thread: AiThreadHistoryItem, title: string) => Promise<void> | void;
   onDeleteThread?: (thread: AiThreadHistoryItem) => Promise<void> | void;
+  /**
+   * 可选：当设置按钮在屏幕上的位置可测量时回调，用于引导遮罩的精准高亮。
+   * 参数为按钮相对屏幕的 { x, y, width, height, borderRadius }。
+   */
+  onSettingsButtonLayout?: (rect: { x: number; y: number; width: number; height: number; borderRadius: number }) => void;
 }
 
 export function AiComprehensiveRecordDrawer({
@@ -53,6 +58,7 @@ export function AiComprehensiveRecordDrawer({
   onOpenThread,
   onRenameThread,
   onDeleteThread,
+  onSettingsButtonLayout,
 }: AiComprehensiveRecordDrawerProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
@@ -62,6 +68,9 @@ export function AiComprehensiveRecordDrawer({
   const [deleteThread, setDeleteThread] = useState<AiThreadHistoryItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
+
+  // ref 用于测量设置按钮的屏幕坐标，供引导遮罩精准高亮
+  const settingsButtonRef = useRef<View>(null);
 
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const scrimOpacity = useRef(new Animated.Value(0)).current;
@@ -101,7 +110,16 @@ export function AiComprehensiveRecordDrawer({
           duration: 200,
           useNativeDriver: true,
         }),
-      ]));
+      ]), () => {
+        // 动画完成后测量设置按钮坐标，用于引导遮罩精准高亮
+        if (onSettingsButtonLayout && settingsButtonRef.current) {
+          settingsButtonRef.current.measureInWindow((x, y, width, height) => {
+            if (width > 0 && height > 0) {
+              onSettingsButtonLayout({ x, y, width, height, borderRadius: 18 });
+            }
+          });
+        }
+      });
     } else {
       drawerTranslateX.setValue(0);
       startDrawerAnimation(Animated.parallel([
@@ -120,6 +138,7 @@ export function AiComprehensiveRecordDrawer({
       });
     }
   }, [visible]);
+
 
   // Swipe-left-to-close pan responder on the drawer panel
   const panResponder = useRef(
@@ -286,6 +305,7 @@ export function AiComprehensiveRecordDrawer({
           <View style={styles.brandRow}>
             <Text style={styles.brand}>Pixory AI</Text>
             <Pressable
+              ref={settingsButtonRef}
               accessibilityLabel="AI 设置"
               accessibilityRole="button"
               onPress={onOpenProviderSettings}

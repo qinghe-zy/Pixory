@@ -55,6 +55,8 @@ import {
   type AnchoredContextMenuAction,
 } from '../components/AnchoredContextMenu';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
+import { AiChatGuideOverlay, type AiChatGuideStep, type GuideHighlightRect } from "../components/ai/AiChatGuideOverlay";
+import { AiChatNoKeyBanner } from "../components/ai/AiChatNoKeyBanner";
 import { AiSessionConfigScreen } from "./AiSessionConfigScreen";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
@@ -1741,6 +1743,13 @@ export function AiChatScreen({
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
   const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
+  // ── 新手引导状态 ──
+  const [guideStep, setGuideStep] = useState<AiChatGuideStep | null>(null);
+  const [settingsButtonRect, setSettingsButtonRect] = useState<GuideHighlightRect | null>(null);
+  // 是否在首条 AI 回复后显示无 Key 提示（仅本 session 内）
+  const [showNoKeyBanner, setShowNoKeyBanner] = useState(false);
+  const noKeyBannerShownRef = useRef(false);
+
   const [searchHighlightMessageId, setSearchHighlightMessageId] = useState<
     string | null
   >(null);
@@ -4804,6 +4813,46 @@ export function AiChatScreen({
     void reloadRecentThreads();
   }, [recordDrawerVisible, reloadRecentThreads]);
 
+  // ── 新手引导：首次进入聊天页面时，检查是否已看过引导 ──
+  useEffect(() => {
+    if (!isFocused) return;
+    void runWithDatabaseSpace(space, async (db) => {
+      const seen = await settingsRepository.getAiChatGuideSeen(db);
+      if (!seen) {
+        // 延迟 600ms 等页面稳定后再自动展开左侧栏并启动引导
+        const timer = setTimeout(() => {
+          setRecordDrawerVisible(true);
+          // 步骤 1 在左侧栏展开后显示（设置按钮坐标测量完毕后自动进入步骤 2）
+          setGuideStep(1);
+        }, 600);
+        return () => clearTimeout(timer);
+      }
+    });
+  // 只在首次聚焦时运行一次
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── 无 Key 提示：引导已完成，但首条 AI 回复后仍未配置 Key ──
+  // 检测时机：generating 从 true 变为 false（流式回复完成）
+  useEffect(() => {
+    if (generating || noKeyBannerShownRef.current) return;
+    // 只在有 AI 回复后触发一次
+    const assistantMessages = messages.filter((m) => m.role === 'assistant');
+    if (assistantMessages.length === 0) return;
+    void runWithDatabaseSpace(space, async (db) => {
+      const seen = await settingsRepository.getAiChatGuideSeen(db);
+      if (!seen) return; // 还在引导流程中，不重叠显示
+      // 检查是否有任何 provider 已配置 Key
+      const { listProviderCards } = await import('../ai/aiProviderService');
+      const cards = await listProviderCards(space);
+      const hasAnyKey = cards.some((c) => c.hasApiKey);
+      if (!hasAnyKey) {
+        noKeyBannerShownRef.current = true;
+        setShowNoKeyBanner(true);
+      }
+    });
+  }, [generating, messages, space]);
+
   useEffect(() => {
     if (isLoadingEarlierRef.current) {
       const timeout = setTimeout(() => {
@@ -7328,6 +7377,16 @@ export function AiChatScreen({
             ) : null}
           </View>
 
+          {/* 无 Key 提示：首条 AI 回复后、用户尚未配置任何 API Key 时显示 */}
+          {showNoKeyBanner ? (
+            <AiChatNoKeyBanner
+              onOpenProviderSettings={() => {
+                setShowNoKeyBanner(false);
+                onOpenProviderSettings();
+              }}
+            />
+          ) : null}
+
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
               {dreamNotice && dreamNotice.type === 'manual_confirmation' ? (
@@ -7619,6 +7678,38 @@ export function AiChatScreen({
         }}
         onRenameThread={(thread, title) => renameRecentThread(thread, title)}
         onDeleteThread={(thread) => deleteRecentThread(thread)}
+        onSettingsButtonLayout={(rect) => {
+          setSettingsButtonRect(rect);
+          // 步骤 1 已展示完毕，设置按钮位置到手后进入步骤 2
+          if (guideStep === 1) {
+            setGuideStep(2);
+          }
+        }}
+      />
+      {/* 新手引导遮罩层：完全独立，不影响现有逻辑 */}
+      <AiChatGuideOverlay
+        settingsButtonRect={settingsButtonRect}
+        step={guideStep}
+        onNext={() => {
+          if (guideStep === 2) {
+            // 步骤 2 → 步骤 3：关左侧栏，展开右侧会话控制台
+            setRecordDrawerVisible(false);
+            setTimeout(() => {
+              setConfigDrawerVisible(true);
+              setGuideStep(3);
+            }, 300);
+          } else {
+            setGuideStep((s) => (s !== null && s < 3 ? ((s + 1) as AiChatGuideStep) : s));
+          }
+        }}
+        onDone={() => {
+          setGuideStep(null);
+          setConfigDrawerVisible(false);
+          // 持久化：以后不再触发引导
+          void runWithDatabaseSpace(space, (db) =>
+            settingsRepository.setAiChatGuideSeen(db, true)
+          );
+        }}
       />
       <AiReplyAssistModal
         bottomInset={insets.bottom}
