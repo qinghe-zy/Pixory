@@ -71,6 +71,7 @@ export function AiComprehensiveRecordDrawer({
 
   // ref 用于测量设置按钮的屏幕坐标，供引导遮罩精准高亮
   const settingsButtonRef = useRef<View>(null);
+  const settingsBtnLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const scrimOpacity = useRef(new Animated.Value(0)).current;
@@ -112,16 +113,16 @@ export function AiComprehensiveRecordDrawer({
         }),
       ]), () => {
         // 动画完成后传递设置按钮坐标，用于引导遮罩精准高亮。
-        // 由于在动画容器中 measure 可能会偶发失败或返回 0，因此我们根据已知的常量和安全区精确计算绝对屏幕坐标：
-        if (onSettingsButtonLayout) {
-          const buttonWidth = 36;
-          const buttonHeight = 36;
-          // drawer.paddingHorizontal 是 spacing[5] (20)
-          const pageX = DRAWER_WIDTH - 20 - buttonWidth;
+        // 由于直接 measure 经常失败，我们使用 onLayout 测得的精确相对坐标，加上已知的安全区和内边距，算出完美的绝对坐标：
+        if (onSettingsButtonLayout && settingsBtnLayoutRef.current) {
+          const { x, y, width, height } = settingsBtnLayoutRef.current;
+          // btnLayout 是相对于 brandRow 的坐标。
+          // brandRow 位于 drawer 内，drawer 的 paddingHorizontal 为 spacing[5] (20)。
+          const pageX = 20 + x;
           // drawer 的 paddingTop 是动态计算的：Math.max(insets.top + spacing[4], spacing[10])
-          const pageY = Math.max(insets.top + 16, 40);
+          const pageY = Math.max(insets.top + 16, 40) + y;
 
-          onSettingsButtonLayout({ x: pageX, y: pageY, width: buttonWidth, height: buttonHeight, borderRadius: 18 });
+          onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
         }
       });
     } else {
@@ -308,7 +309,13 @@ export function AiComprehensiveRecordDrawer({
           <View pointerEvents="none" style={styles.drawerHighlight} />
           <View style={styles.brandRow}>
             <Text style={styles.brand}>Pixory AI</Text>
-            <View ref={settingsButtonRef} collapsable={false}>
+            <View
+              ref={settingsButtonRef}
+              collapsable={false}
+              onLayout={(e) => {
+                settingsBtnLayoutRef.current = e.nativeEvent.layout;
+              }}
+            >
               <Pressable
                 accessibilityLabel="AI 设置"
                 accessibilityRole="button"
