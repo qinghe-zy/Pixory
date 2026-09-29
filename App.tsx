@@ -1195,6 +1195,7 @@ export default function App() {
 
   function refreshLibrary() {
     setLibraryRefreshToken((current) => current + 1);
+    setAiHomeRefreshToken((current) => current + 1);
   }
 
   function resetHome(filter: IpLibraryFilter = 'all') {

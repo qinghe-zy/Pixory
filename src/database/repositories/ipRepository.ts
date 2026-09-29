@@ -420,6 +420,44 @@ export const ipRepository = {
     return row ? mapIpDetailRow(row) : null;
   },
 
+  async findCoversByIds(
+    db: SQLiteDatabase,
+    ipIds: number[]
+  ): Promise<Map<number, { name: string; coverThumbnailFileUri: string | null }>> {
+    const validIds = [...new Set(ipIds.filter((id) => typeof id === 'number' && Number.isFinite(id)))];
+    if (validIds.length === 0) {
+      return new Map();
+    }
+    const placeholders = validIds.map(() => '?').join(',');
+    const rows = await db.getAllAsync<{ id: number; name: string; coverThumbnailFileUri: string | null }>(
+      `SELECT
+        ips.id,
+        ips.name,
+        COALESCE(
+          (
+            SELECT customCover.thumbnailFileUri
+            FROM image_assets AS customCover
+            WHERE customCover.id = ips.coverImageAssetId
+              AND customCover.ipId = ips.id
+              AND customCover.deletedAt IS NULL
+            LIMIT 1
+          ),
+          (
+            SELECT defaultCover.thumbnailFileUri
+            FROM image_assets AS defaultCover
+            WHERE defaultCover.ipId = ips.id
+              AND defaultCover.deletedAt IS NULL
+            ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
+            LIMIT 1
+          )
+        ) AS coverThumbnailFileUri
+      FROM ips
+      WHERE ips.id IN (${placeholders})`,
+      ...validIds
+    );
+    return new Map(rows.map((r) => [r.id, { name: r.name, coverThumbnailFileUri: r.coverThumbnailFileUri }]));
+  },
+
   async setCoverImage(db: SQLiteDatabase, ipId: number, imageAssetId: number): Promise<IpRecord | null> {
     const image = await db.getFirstAsync<{ id: number }>(
       'SELECT id FROM image_assets WHERE id = ? AND ipId = ? AND deletedAt IS NULL',

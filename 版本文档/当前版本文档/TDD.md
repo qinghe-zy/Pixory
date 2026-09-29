@@ -18,6 +18,7 @@
 | 2026-09-25 | 需求实现 | Local Commit | 修复分组整理页吸顶缩进时的抖动问题，并优化缩进态IP选择器至右侧显示（不挤占左侧） | 已完成 |
 
 | 2026-09-25 | 需求实现 | Local Commit | 实现整理页向上滚动时分组标签与IP选择栏进入单行缩进态 | UI 优化已完成 |
+| 2026-09-29 | 架构升级 | OTA | 引入 ipRepository.findCoversByIds 批量解析 IP 封面，并在 aiChatService / AiHomeScreen / AiSessionConfigScreen 实现 IP 徽标渲染与自定义头像优先规则 | 已完成 |
 
 
 | 时间 | 事件 | 来源提交/更新 | 变更 | 影响与知会 |

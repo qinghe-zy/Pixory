@@ -164,6 +164,7 @@ export function AiHomeScreen({
   }
 
   useEffect(() => {
+    if (!isActive) return;
     const startedAt = Date.now();
     const traceId = 'ai-home-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     recordDiagnosticEvent({ eventType: 'home_load_started', space, traceId, payload: { refresh: refreshToken ?? 0 } });
@@ -187,7 +188,7 @@ export function AiHomeScreen({
     return () => {
       isMounted = false;
     };
-  }, [space, refreshToken]);
+  }, [space, refreshToken, isActive]);
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -351,7 +352,14 @@ export function AiHomeScreen({
                     {index > 0 && <View style={{ position: "absolute", top: 0, left: 70, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: aiLightColors.hairline }} />}<ThreadAvatar thread={thread} space={space} />
                     <View style={styles.threadCopy}>
                       <View style={styles.threadTitleRow}>
-                        <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
+                        <View style={styles.threadTitleWrap}>
+                          <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
+                          {(thread.contextType === 'ip' || thread.boundIpId != null) ? (
+                            <View style={styles.ipBadge}>
+                              <Text style={styles.ipBadgeText}>IP</Text>
+                            </View>
+                          ) : null}
+                        </View>
                         <Text numberOfLines={1} style={styles.threadTime}>
                           {formatAiHomeFullMinute(thread.lastMessageAt ?? thread.updatedAt)}
                         </Text>
@@ -604,9 +612,18 @@ function labelForContext(thread: AiHomeThreadItem): string {
 
 function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: PixorySpace }) {
   if (thread.avatar.avatarEnabled && thread.avatar.avatarUri) {
-    return <SecureImage contentFit="cover" space={space} style={styles.threadAvatarImage} uri={thread.avatar.avatarUri} />;
+    return (
+      <SecureImage
+        contentFit="cover"
+        recyclingKey={`${space}:thread-avatar:${thread.id}:${thread.avatar.avatarUri}`}
+        space={space}
+        style={styles.threadAvatarImage}
+        uri={thread.avatar.avatarUri}
+      />
+    );
   }
-  const iconName = thread.contextType === 'ip' ? 'albums-outline' : thread.contextType === 'knowledge_base' ? 'library-outline' : 'chatbubble-ellipses-outline';
+  const isIp = thread.contextType === 'ip' || thread.boundIpId != null;
+  const iconName = isIp ? 'albums-outline' : thread.contextType === 'knowledge_base' ? 'library-outline' : 'chatbubble-ellipses-outline';
   return (
     <View style={styles.threadIcon}>
       <Ionicons color={aiLightColors.primaryActive} name={iconName} size={metrics.iconSizeMd} />
@@ -915,14 +932,39 @@ const styles = StyleSheet.create({
   threadTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: rhythm.inlineGap,
+  },
+  threadTitleWrap: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minWidth: 0,
   },
   threadTitle: {
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
-    flex: 1,
+    flexShrink: 1,
     fontSize: 15,
     lineHeight: 20,
+  },
+  ipBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+    borderRadius: 4,
+    flexShrink: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+  },
+  ipBadgeText: {
+    color: '#5B616E',
+    fontSize: 10,
+    fontWeight: '600',
+    includeFontPadding: false,
+    letterSpacing: 0.3,
+    lineHeight: 13,
   },
   threadDescription: {
     ...typography.textStyles.caption,

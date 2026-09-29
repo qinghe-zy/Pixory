@@ -202,6 +202,7 @@ export function AiSessionConfigScreen({
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
   const [avatarEnabled, setAvatarEnabled] = useState(true);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [customAvatar, setCustomAvatar] = useState(false);
   const [avatarPickerExpanded, setAvatarPickerExpanded] = useState(false);
   const [userAvatarEnabled, setUserAvatarEnabled] = useState(DEFAULT_AI_USER_AVATAR_ENABLED);
   const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
@@ -322,6 +323,7 @@ export function AiSessionConfigScreen({
     setRoleCardSummary(config.roleCardName ?? '默认角色');
     setAvatarEnabled(config.avatar.avatarEnabled);
     setAvatarUri(config.avatar.avatarUri);
+    setCustomAvatar(Boolean(config.avatar.customAvatar));
     setUserAvatarEnabled(config.userAvatarEnabled);
     setProfileAvatarUri(nextProfileAvatarUri);
     setProfileNickname(nextProfileNickname);
@@ -337,6 +339,7 @@ export function AiSessionConfigScreen({
       void updateAiThreadSessionConfig({
         avatarEnabled,
         avatarUri,
+        customAvatar,
         boundaryMode,
         deepMemoryEnabled,
         contextHistoryRoundLimit,
@@ -355,6 +358,7 @@ export function AiSessionConfigScreen({
   }, [
     avatarEnabled,
     avatarUri,
+    customAvatar,
     boundaryMode,
     deepMemoryEnabled,
     contextHistoryRoundLimit,
@@ -419,6 +423,7 @@ export function AiSessionConfigScreen({
         boundaryMode,
         avatarEnabled,
         avatarUri,
+        customAvatar,
         deepMemoryEnabled,
         replyPreference,
         roleInstructionWeight,
@@ -1135,7 +1140,7 @@ export function AiSessionConfigScreen({
                 <DrawerListRow icon="image-outline" title="角色头像" action={avatarUri ? <SecureImage uri={avatarUri} space={space} style={styles.drawerAvatarPreview} /> : null} hasChevron chevronIcon={avatarPickerExpanded ? 'chevron-up' : 'chevron-down'} onPress={() => setAvatarPickerExpanded(!avatarPickerExpanded)} />
                   {avatarPickerExpanded && (
                     <View style={styles.drawerAvatarPickerWrap}>
-                      <AiAvatarPicker avatarUri={avatarUri} onAvatarChange={(uri) => { setAvatarUri(uri); if (uri) { setAvatarEnabled(true); setUserAvatarEnabled(true); } }} space={space} />
+                      <AiAvatarPicker avatarUri={avatarUri} onAvatarChange={(uri) => { setAvatarUri(uri); setCustomAvatar(Boolean(uri)); if (uri) { setAvatarEnabled(true); setUserAvatarEnabled(true); } }} space={space} />
                     </View>
                   )}
                 <DrawerListRow icon="person-outline" title="显示头像" subtitle="统一控制双方头像显示" action={<AiSwitch value={avatarEnabled} onValueChange={(val) => { setAvatarEnabled(val); setUserAvatarEnabled(val); }} />} onPress={() => { setAvatarEnabled(!avatarEnabled); setUserAvatarEnabled(!avatarEnabled); }} />

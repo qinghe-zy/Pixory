@@ -68,3 +68,13 @@
 
 ### [2026-09-29 修复] 角色卡应用后立即刷新
 - 修复：修复了修改或导入角色卡后，由于路由未重新加载导致展示页界面未立即刷新的问题，现在保存应用后聊天会话外观会立刻同步更新。
+
+### [2026-09-29 OTA热更新] AI 工作台消息列表 IP 徽标与封面头像联动（支持自定义头像优先级）
+- **模块**: AI工作台、消息列表、会话配置
+- **改动**:
+  1. `src/database/repositories/ipRepository.ts`: 引入 `findCoversByIds(db, ipIds)` 批量查询有效 IP 封面（优先自定义封面，后备最新素材缩略图）。
+  2. `src/ai/aiChatService.ts`: 在 `listAiHomeThreads`、`searchGlobalThreads` 等列表中按 IP 会话动态注入 IP 封面；增加 `customAvatar` 标识，用户主动设置自定义头像时绝对优先，若清空/未设置时安全回退至 IP 封面。
+  3. `src/screens/AiHomeScreen.tsx`: 为 IP 会话标题右侧添加灰底 `ipBadge`（4px 圆角、#5B616E 细致文字），并在头像组件传递空间与 URI 动态 `recyclingKey`，同步监听 `isActive` 与全局刷新。
+  4. `App.tsx`: 在图库封面变更刷新链路中联动自增 `aiHomeRefreshToken`。
+  5. `src/screens/AiSessionConfigScreen.tsx`: 支持 `customAvatar` 状态跟踪与保存，区分用户主动自定义与回退。
+

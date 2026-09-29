@@ -173,6 +173,7 @@ import { emitAiThreadPresentationUpdated } from './aiThreadPresentationEvents';
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
   avatarUri: string | null;
+  customAvatar?: boolean;
 }
 
 export interface AiThreadMessageAppearanceConfig {
@@ -373,6 +374,7 @@ export interface UpdateAiThreadSessionConfigInput {
   avatarUri?: string | null;
   userAvatarEnabled?: boolean;
   deepMemoryEnabled?: boolean;
+  customAvatar?: boolean;
 }
 
 export interface ApplyRoleCardToThreadInput {
@@ -869,12 +871,15 @@ function validateReplyAssistSuggestions(mode: AiReplyAssistMode, suggestions: st
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
   const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
+  const avatarUri =
+    typeof snapshot.avatarUri === 'string' && snapshot.avatarUri.trim()
+      ? snapshot.avatarUri
+      : null;
+  const customAvatar = snapshot.customAvatar === true || (Boolean(avatarUri) && snapshot.customAvatar !== false);
   return {
     avatarEnabled: snapshot.avatarEnabled === true,
-    avatarUri:
-      typeof snapshot.avatarUri === 'string' && snapshot.avatarUri.trim()
-        ? snapshot.avatarUri
-        : null,
+    avatarUri,
+    customAvatar,
   };
 }
 
@@ -904,7 +909,7 @@ function parseThreadMessageAppearanceConfig(
 
 function patchThreadRoleSnapshot(
   roleSnapshotJson: string,
-  patch: Partial<AiThreadAvatarConfig & { userAvatarEnabled: boolean }>,
+  patch: Partial<AiThreadAvatarConfig & { userAvatarEnabled: boolean; customAvatar?: boolean }>,
 ): string {
   const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
   return JSON.stringify({ ...snapshot, ...patch });
@@ -3008,7 +3013,34 @@ export async function loadThreadMessageAppearanceConfig(
         userAvatarEnabled: DEFAULT_AI_USER_AVATAR_ENABLED,
       };
     }
-    return parseThreadMessageAppearanceConfig(thread.roleSnapshotJson);
+    const appearance = parseThreadMessageAppearanceConfig(thread.roleSnapshotJson);
+    const parsedAvatar = appearance.assistantAvatar;
+    const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
+
+    if (!userHasCustomAvatar) {
+      const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+      if (isIpThread && thread.boundIpId != null) {
+        const ipCovers = await ipRepository.findCoversByIds(db, [thread.boundIpId]);
+        const cover = ipCovers.get(thread.boundIpId);
+        if (cover?.coverThumbnailFileUri) {
+          appearance.assistantAvatar = {
+            avatarEnabled: true,
+            avatarUri: cover.coverThumbnailFileUri,
+            customAvatar: false,
+          };
+        }
+      } else if (thread.roleCardId && !parsedAvatar.avatarUri) {
+        const roleCard = await aiRoleCardRepository.findById(db, thread.roleCardId);
+        if (roleCard?.avatarUri) {
+          appearance.assistantAvatar = {
+            avatarEnabled: roleCard.avatarEnabled ?? true,
+            avatarUri: roleCard.avatarUri,
+            customAvatar: false,
+          };
+        }
+      }
+    }
+    return appearance;
   });
 }
 
@@ -3029,12 +3061,39 @@ export async function listAiHomeThreads(input: {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
+    const ipIds = threads
+      .map((thread) => thread.boundIpId)
+      .filter((id): id is number => typeof id === 'number');
+    const ipCoversById = await ipRepository.findCoversByIds(db, ipIds);
+
     return threads.map((thread) => {
       const roleCard = thread.roleCardId ? roleCardsById.get(thread.roleCardId) : null;
+      const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+      const ipCover = thread.boundIpId != null ? ipCoversById.get(thread.boundIpId) : null;
+      const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+      const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
+
+      let avatar = parsedAvatar;
+      if (!userHasCustomAvatar) {
+        if (isIpThread && ipCover?.coverThumbnailFileUri) {
+          avatar = {
+            avatarEnabled: true,
+            avatarUri: ipCover.coverThumbnailFileUri,
+            customAvatar: false,
+          };
+        } else if (roleCard && !avatar.avatarUri) {
+          avatar = {
+            avatarEnabled: roleCard.avatarEnabled ?? true,
+            avatarUri: roleCard.avatarUri,
+            customAvatar: false,
+          };
+        }
+      }
+
       return {
         ...thread,
-        avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
-        avatarAvailable: Boolean(roleCard),
+        avatar,
+        avatarAvailable: Boolean(roleCard || userHasCustomAvatar || (isIpThread && ipCover?.coverThumbnailFileUri)),
         roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
       };
     });
@@ -3051,6 +3110,10 @@ export async function searchGlobalThreads(input: {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', 1000, '');
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
+    const ipIds = threads
+      .map((thread) => thread.boundIpId)
+      .filter((id): id is number => typeof id === 'number');
+    const ipCoversById = await ipRepository.findCoversByIds(db, ipIds);
     const queryLower = input.query.toLowerCase();
     
     const results: AiHomeThreadItem[] = [];
@@ -3059,10 +3122,32 @@ export async function searchGlobalThreads(input: {
       const roleCardName = roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson);
       
       if (thread.title.toLowerCase().includes(queryLower) || (roleCardName && roleCardName.toLowerCase().includes(queryLower))) {
+        const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+        const ipCover = thread.boundIpId != null ? ipCoversById.get(thread.boundIpId) : null;
+        const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+        const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
+
+        let avatar = parsedAvatar;
+        if (!userHasCustomAvatar) {
+          if (isIpThread && ipCover?.coverThumbnailFileUri) {
+            avatar = {
+              avatarEnabled: true,
+              avatarUri: ipCover.coverThumbnailFileUri,
+              customAvatar: false,
+            };
+          } else if (roleCard && !avatar.avatarUri) {
+            avatar = {
+              avatarEnabled: roleCard.avatarEnabled ?? true,
+              avatarUri: roleCard.avatarUri,
+              customAvatar: false,
+            };
+          }
+        }
+
         results.push({
           ...thread,
-          avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
-          avatarAvailable: Boolean(roleCard),
+          avatar,
+          avatarAvailable: Boolean(roleCard || userHasCustomAvatar || (isIpThread && ipCover?.coverThumbnailFileUri)),
           roleCardName,
         });
       }
@@ -3088,6 +3173,7 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
     // Auto-sync role card if not separately configured
     const snapshot = parseThreadRoleSnapshot(thread.roleSnapshotJson);
     const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+    const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
     
     // If systemPrompt is exactly the original snapshot prompt, OR if it's completely empty, fallback to live role card prompt
     const isPromptUnmodified = thread.systemPrompt === (snapshot.prompt ?? getDefaultThreadSystemPrompt(thread.contextType));
@@ -3095,10 +3181,28 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       ? roleCard.prompt
       : thread.systemPrompt;
       
-    // If the thread has no avatar explicitly configured (or if it was cleared), fallback to the live role card's avatar
-    const effectiveAvatar = roleCard && !parsedAvatar.avatarUri
-      ? { avatarEnabled: roleCard.avatarEnabled ?? true, avatarUri: roleCard.avatarUri }
-      : parsedAvatar;
+    // If the thread has no avatar explicitly configured (or if it was cleared), fallback to the live IP cover or live role card avatar
+    let effectiveAvatar = parsedAvatar;
+    if (!userHasCustomAvatar) {
+      const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+      if (isIpThread && thread.boundIpId != null) {
+        const ipCovers = await ipRepository.findCoversByIds(db, [thread.boundIpId]);
+        const cover = ipCovers.get(thread.boundIpId);
+        if (cover?.coverThumbnailFileUri) {
+          effectiveAvatar = {
+            avatarEnabled: true,
+            avatarUri: cover.coverThumbnailFileUri,
+            customAvatar: false,
+          };
+        }
+      } else if (roleCard && !parsedAvatar.avatarUri) {
+        effectiveAvatar = {
+          avatarEnabled: roleCard.avatarEnabled ?? true,
+          avatarUri: roleCard.avatarUri,
+          customAvatar: false,
+        };
+      }
+    }
 
     return {
       thread: { ...thread, systemPrompt: effectiveSystemPrompt },
@@ -3331,13 +3435,20 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
       return null;
     }
     const roleSnapshotPatch: Partial<
-      AiThreadAvatarConfig & { userAvatarEnabled: boolean }
+      AiThreadAvatarConfig & { userAvatarEnabled: boolean; customAvatar?: boolean }
     > = {};
     if (input.avatarEnabled != null) {
       roleSnapshotPatch.avatarEnabled = input.avatarEnabled;
     }
+    if (input.customAvatar !== undefined) {
+      roleSnapshotPatch.customAvatar = input.customAvatar;
+    }
     if (input.avatarUri !== undefined) {
-      roleSnapshotPatch.avatarUri = input.avatarUri;
+      if (input.customAvatar === false) {
+        roleSnapshotPatch.avatarUri = null;
+      } else {
+        roleSnapshotPatch.avatarUri = input.avatarUri;
+      }
     }
     if (input.userAvatarEnabled != null) {
       roleSnapshotPatch.userAvatarEnabled = input.userAvatarEnabled;
