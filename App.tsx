@@ -2111,7 +2111,18 @@ export default function App() {
           })
         }
         onOpenImageSource={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
-        onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
+        onOpenIpSource={(ipId, locator) => {
+          const kind = typeof locator?.kind === 'string' ? locator.kind : undefined;
+          if (kind === 'groups') {
+            pushRoute({ name: 'group-overview', ipId, space: currentRoute.space });
+          } else if (kind === 'import_batches') {
+            pushRoute({ name: 'import-batch-history', ipId, space: currentRoute.space });
+          } else if (kind === 'filenames' || kind === 'tags') {
+            pushRoute({ name: 'all-images', ipId, space: currentRoute.space });
+          } else {
+            pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space });
+          }
+        }}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
         onThreadReady={(threadId) => updateCurrentAiChatRoute({ threadId }, currentRoute.routeKey)}
         onThreadTitleChange={(title) => updateCurrentAiChatRoute({ contextTitle: title }, currentRoute.routeKey)}

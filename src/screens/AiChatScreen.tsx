@@ -871,7 +871,7 @@ interface AiChatScreenProps {
     title: string,
     locator?: AiDocumentReaderLocator,
   ) => void;
-  onOpenIpSource: (ipId: number) => void;
+  onOpenIpSource: (ipId: number, locator?: Record<string, unknown>) => void;
   onOpenImageSource: (imageId: number) => void;
   onThreadReady?: (threadId: string) => void;
   onThreadTitleChange?: (title: string) => void;
@@ -6426,7 +6426,7 @@ export function AiChatScreen({
           ? citation.locator.ipId
           : Number(citation.sourceId);
       if (Number.isFinite(ipId)) {
-        onOpenIpSource(ipId);
+        onOpenIpSource(ipId, citation.locator);
       }
       return;
     }

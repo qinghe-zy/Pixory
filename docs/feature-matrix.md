@@ -113,7 +113,7 @@
 | 回复呈现计划与多正文气泡 | 规划/暂缓；当前保持单一思考区和连续正文渲染，不启用 `ResponsePresentationPlan`、多气泡拆分或模型输出格式约束。重新启动前需先完成输出协议、思考区布局、终态恢复和 Android 性能验收；历史研究资料已移入本地版本档案，不作为当前能力证据 | `AiChatScreen`, `src/ai/` |
 | Prompt | stable/dynamic layer、角色卡 frame、material rules、history window、current user request；发送前按当前分支和消息版本精确编译“已验证摘要 + 无重复桥接 + 最近完整轮次”，历史滑杆仅改变最近原文窗口，不会静默留下上下文空洞 | `promptBuilder`, `conversationCoverage`, `conversationCoverageService` |
 | Prompt/cache | stable prefix hash、retrieval hash、cache key、Anthropic breakpoint、禁止 diagnostics 污染 prompt/cache；稳定摘要参与 stable hash，角色观察/用户画像等自动变化内容处于 dynamic layer，避免污染可复用前缀；DeepSeek 官方 V4 及以上模型使用服务商原生前缀缓存并在流式请求中开启 usage 观测，不发送 OpenAI `prompt_cache_key`，其他 provider 策略保持原样 | `aiPromptCache`, `openAiCompatibleProvider` |
-| 首 token pipeline | fast-path classifier、normal skip retrieval、资料模糊引用 fail-closed、keyword/full retrieval 分层 | `aiChatFastPath`, `aiRetrievalService` |
+| 首 token pipeline | fast-path classifier、normal skip retrieval、资料模糊引用 fail-closed、keyword/full retrieval 分层、IP 资料引用按细分类型 (分组/导入记录/素材/基础资料) 精准跳转对应目标页面 | `aiChatFastPath`, `aiRetrievalService`, `AiChatScreen`, `App.tsx` |
 | 上下文预算 | 真实 model context window（无法读取时回退 512K）、会话级最近对话轮数滑杆（一问一答算一轮）、历史裁剪、保护 role/current request/retrieval/memory；token 估算使用等价的低分配单次 code-unit 扫描和前缀搜索，滑杆可在 5/20/30/50/100 等窗口间缩放，摘要缺失或因编辑/切分支失效时由本地原文桥或确定性临时摘要补齐，远程摘要只异步预热且不阻塞首 token | `aiContextBudget`, `aiContextSettings`, `AiContextSlider`, `conversationCoverageService` |
 | 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句；角色卡编辑和会话设置共用头像选择器，可从系统相册或当前空间的 IP 素材选择并复制到受管存储 | `sillyTavernRoleCardParser`, `aiRoleCardRepository`, `AiRoleCardEditorScreen`, `AiAvatarPicker` |
 | 角色卡导出 | SillyTavern PNG 导出、续聊 Markdown、系统人设/记忆/上下文分离 | `sillyTavernRoleCardExporter`, `aiRoleCardContinuityExport` |
