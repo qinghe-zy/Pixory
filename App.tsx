@@ -1973,7 +1973,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'trash') {
-    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} onOpenThread={(thread) => openAiChatRoute({ name: 'ai-chat', threadId: thread.id, space: thread.space })} />;
+    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} onOpenThread={(thread) => openAiChatRoute({ name: 'ai-chat', composerEntranceReason: 'open_thread', contextTitle: thread.title, contextType: thread.contextType, includeIpDocuments: thread.includeIpDocuments, ipId: thread.boundIpId ?? undefined, knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined, space: thread.space, threadId: thread.id })} onOpenImage={(imageId) => openImageViewer(imageId, { type: 'media-query', space: currentRoute.space, request: { deletedOnly: true } })} />;
   } else if (currentRoute.name === 'backup') {
     content = (
       <BackupScreen
@@ -2369,7 +2369,9 @@ export default function App() {
         <AppOtaUpdateFetchNotice isReady={isReady} />
         <View style={{ flex: 1 }}>
           {/* Always-mounted base layer: root tab pager stays alive under overlays */}
-          {rootTabContent}
+          <View style={StyleSheet.absoluteFill} pointerEvents={currentRoute.name === 'root' ? 'auto' : 'none'}>
+            {rootTabContent}
+          </View>
           
           {/* Overlays: stack of pushed screens sit on top via absoluteFill */}
           {routeStack.map((route, index) => {

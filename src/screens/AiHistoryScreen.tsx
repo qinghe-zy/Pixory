@@ -283,7 +283,10 @@ export function AiHistoryScreen({
   }
 
   function handleRowPress(thread: AiThreadHistoryItem) {
-    if (isSelecting) {
+    // In trash mode, single tap always opens the thread.
+    // Selection is controlled exclusively by long press; we must not block
+    // navigation with the isSelecting guard here.
+    if (isSelecting && !isTrashMode) {
       toggleSelected(thread.id);
       return;
     }
@@ -515,7 +518,7 @@ export function AiHistoryScreen({
     return (
       <>
         <ScreenScaffold
-          contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={selectionFooter} showHeader={false} fullScreen={true}
+          contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={selectionFooter} showHeader={false} fullScreen={true}
         >
           <GalleryCompactHeader
             title={titleSlot ? '' : '回收站'}
