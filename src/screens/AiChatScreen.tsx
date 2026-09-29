@@ -19,6 +19,7 @@ import {
   Easing,
   FlatList,
   InteractionManager,
+  Keyboard,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type NativeTouchEvent,
@@ -42,6 +43,10 @@ import {
   AiChatComposer,
   type AiComposerAttachment,
 } from "../components/ai/AiChatComposer";
+import {
+  AiIpImagePickerPanel,
+  type IpImageItem,
+} from "../components/ai/AiIpImagePickerPanel";
 import { AiChatErrorBanner } from "../components/ai/AiChatErrorBanner";
 import { DiaryChatCard } from '../components/ai/DiaryChatCard';
 import { DreamChatCard } from '../components/ai/DreamChatCard';
@@ -1210,6 +1215,35 @@ export function AiChatScreen({
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
     threadId ?? null,
   );
+  const [threadBoundIpId, setThreadBoundIpId] = useState<number | null>(
+    boundIpId ?? null,
+  );
+  const [isIpPickerOpen, setIsIpPickerOpen] = useState(false);
+  const effectiveIpId = boundIpId ?? threadBoundIpId;
+
+  useEffect(() => {
+    if (boundIpId != null) {
+      setThreadBoundIpId(boundIpId);
+      return;
+    }
+    if (!activeThreadId) {
+      setThreadBoundIpId(null);
+      return;
+    }
+    let active = true;
+    void runWithDatabaseSpace(space, (db) =>
+      aiThreadRepository.findThreadById(db, activeThreadId),
+    )
+      .then((thread) => {
+        if (active && thread?.boundIpId != null) {
+          setThreadBoundIpId(thread.boundIpId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [activeThreadId, boundIpId, space]);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
   const [diaryVersionsById, setDiaryVersionsById] = useState<
@@ -5262,6 +5296,38 @@ export function AiChatScreen({
     }
   }
 
+  const handleToggleIpImage = useCallback(
+    (asset: IpImageItem) => {
+      setPendingAttachments((current) => {
+        const existingIndex = current.findIndex(
+          (a) =>
+            a.kind === "image" &&
+            (a.uri === asset.uri || a.id === `ip-image-${asset.id}`),
+        );
+        if (existingIndex >= 0) {
+          return current.filter((_, idx) => idx !== existingIndex);
+        }
+        const newAttachment: AiComposerAttachment = {
+          id: `ip-image-${asset.id}`,
+          kind: "image",
+          mimeType: asset.mimeType ?? "image/jpeg",
+          name: asset.name || `image-${asset.id}.jpg`,
+          size: asset.size ?? null,
+          uri: asset.uri,
+        };
+        const nextAttachments = [...current, newAttachment];
+        const validation = validateAiChatAttachments(nextAttachments);
+        if (!validation.ok) {
+          setErrorMessage(validation.message);
+          return current;
+        }
+        setErrorMessage(null);
+        return nextAttachments;
+      });
+    },
+    [],
+  );
+
   async function pickChatDocuments() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -5732,6 +5798,7 @@ export function AiChatScreen({
       setComposerText("");
       void clearComposerDraft(draftThreadKey);
       setPendingAttachments([]);
+      setIsIpPickerOpen(false);
       setGenerating(true);
       setErrorMessage(null);
       scheduleIntentionalLatestJump(false);
@@ -7371,6 +7438,11 @@ export function AiChatScreen({
                 replyAssistDisabled={
                   generating || !canOpenReplyAssist(visibleMessages)
                 }
+                hasBoundIp={Boolean(effectiveIpId)}
+                onSelectIpImages={() => {
+                  Keyboard.dismiss();
+                  setIsIpPickerOpen((current) => !current);
+                }}
                 onSend={() => {
                   void handleSend();
                 }}
@@ -7392,6 +7464,18 @@ export function AiChatScreen({
                 voiceMode={voiceMode}
                 voiceState={voiceState}
               />
+              {effectiveIpId ? (
+                <AiIpImagePickerPanel
+                  ipId={effectiveIpId}
+                  onClose={() => setIsIpPickerOpen(false)}
+                  onToggleImage={handleToggleIpImage}
+                  selectedUris={pendingAttachments
+                    .filter((a) => a.kind === "image")
+                    .map((a) => a.uri)}
+                  space={space}
+                  visible={isIpPickerOpen}
+                />
+              ) : null}
               <Animated.View
                 pointerEvents="none"
                 style={[styles.composerRevealMask, { opacity: composerRevealMaskOpacity }]}

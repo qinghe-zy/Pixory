@@ -10,6 +10,7 @@ import { AiMessageTextSelectionModal } from './AiMessageTextSelectionModal';
 import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus';
 import { RhythmBars, MACARON_COLORS } from '../RhythmBars';
 import { AiActiveSpectrum } from './AiActiveSpectrum';
+import { AiComposerAttachmentBar } from './AiComposerAttachmentBar';
 
 export interface AiComposerAttachment {
   id: string;
@@ -39,6 +40,8 @@ interface AiChatComposerProps {
   voiceMode?: 'on_device' | 'system' | null;
   onAddImageAttachment: () => void;
   onAddDocumentAttachment: () => void;
+  hasBoundIp?: boolean;
+  onSelectIpImages?: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
   onFocus?: () => void;
@@ -85,6 +88,8 @@ export function AiChatComposer({
   voiceMode = null,
   onAddImageAttachment,
   onAddDocumentAttachment,
+  hasBoundIp = false,
+  onSelectIpImages,
   onChangeText,
   onFocus,
   onComposerHeightChange,
@@ -171,35 +176,10 @@ export function AiChatComposer({
         style={styles.composerShell}
       >
         {/* --- Attachment rail (inside the big card) --- */}
-        {attachments.length ? (
-          <View style={styles.attachmentRail}>
-            {attachments.map((attachment) => {
-              const size = formatAttachmentSize(attachment.size);
-              return (
-                <View key={attachment.id} style={styles.attachmentChip}>
-                  {attachment.kind === 'image' ? (
-                    <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
-                  ) : (
-                    <Ionicons color={aiLightColors.primary} name={getAttachmentIcon(attachment.kind)} size={16} />
-                  )}
-                  <View style={styles.attachmentCopy}>
-                    <Text numberOfLines={1} style={styles.attachmentName}>{attachment.name}</Text>
-                    {size ? <Text numberOfLines={1} style={styles.attachmentMeta}>{size}</Text> : null}
-                  </View>
-                  <Pressable
-                    accessibilityLabel={`移除附件 ${attachment.name}`}
-                    accessibilityRole="button"
-                    hitSlop={8}
-                    onPress={() => onRemoveAttachment?.(attachment.id)}
-                    style={({ pressed }) => [styles.attachmentRemove, pressed && styles.pressed]}
-                  >
-                    <Ionicons color={aiLightColors.muted} name="close" size={14} />
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
+        <AiComposerAttachmentBar
+          attachments={attachments}
+          onRemoveAttachment={onRemoveAttachment}
+        />
 
         {/* --- Text input area --- */}
         <View style={[styles.inputArea, { height: inputHeight }]}>
@@ -341,6 +321,24 @@ export function AiChatComposer({
             <View style={styles.addButtonWrap}>
               {attachmentPopoverVisible ? (
                 <View style={styles.attachmentPopover}>
+                  {hasBoundIp && onSelectIpImages ? (
+                    <Pressable
+                      accessibilityLabel="从IP选择图片"
+                      accessibilityRole="menuitem"
+                      disabled={generating}
+                      onPress={() => {
+                        setAttachmentPopoverVisible(false);
+                        onSelectIpImages();
+                      }}
+                      style={({ pressed }) => [
+                        styles.attachmentOptionRow,
+                        pressed && !generating && styles.attachmentOptionRowPressed,
+                      ]}
+                    >
+                      <Ionicons color={colors.text.primary} name="albums-outline" size={18} />
+                      <Text numberOfLines={1} style={styles.attachmentOptionLabel}>从IP选择图片</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     accessibilityLabel="上传图片"
                     accessibilityRole="menuitem"
@@ -351,6 +349,7 @@ export function AiChatComposer({
                     }}
                     style={({ pressed }) => [
                       styles.attachmentOptionRow,
+                      hasBoundIp && onSelectIpImages && styles.attachmentOptionDivider,
                       pressed && !generating && styles.attachmentOptionRowPressed,
                     ]}
                   >
@@ -559,7 +558,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: spacing[8] + 5,
     right: 0,
-    width: 136,
+    width: 156,
     zIndex: 100,
     elevation: 8,
     ...shadows.floating,
