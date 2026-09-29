@@ -3903,7 +3903,7 @@ export const aiThreadRepository = {
     }
   },
 
-  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number; sortDesc?: boolean }): Promise<{ items: (AiMessageRecord & { threadTitle: string })[], totalCount: number }> {
+  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number; sortDesc?: boolean }): Promise<{ items: (AiMessageRecord & { threadTitle: string; contentSnippet?: string })[], totalCount: number }> {
     const ftsQuery = buildFtsQuery(input.query);
     if (!ftsQuery || input.limit <= 0) {
       return { items: [], totalCount: 0 };
@@ -3924,7 +3924,7 @@ export const aiThreadRepository = {
         space,
         ...fallbackValues
       );
-      const items = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
+      const items = await db.getAllAsync<AiMessageRecord & { threadTitle: string; contentSnippet?: string }>(
         `SELECT candidate.*, t.title as threadTitle
          FROM ai_messages candidate
          JOIN ai_threads t ON t.id = candidate.threadId
@@ -3955,8 +3955,8 @@ export const aiThreadRepository = {
         ftsQuery,
         space
       );
-      const rows = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
-        `SELECT ai_messages.*, t.title as threadTitle
+      const rows = await db.getAllAsync<AiMessageRecord & { threadTitle: string; contentSnippet?: string }>(
+        `SELECT ai_messages.*, t.title as threadTitle, snippet(ai_message_fts, 3, '{{HL_START}}', '{{HL_END}}', '...', 40) as contentSnippet
          FROM ai_message_fts
          JOIN ai_messages ON ai_messages.id = ai_message_fts.id
          JOIN ai_threads t ON t.id = ai_messages.threadId

@@ -7,11 +7,14 @@ import { AppDialog } from '../components/AppDialog';
 import { AiLightChip } from '../components/ai/AiLightChip';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { archiveAiThread, deleteAiThreads, listAiHistoryThreadPage, moveAiThreadsBetweenSpaces, permanentlyDeleteAiThreads, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
+import { emptyAiTrash, archiveAiThread, deleteAiThreads, listAiHistoryThreadPage, moveAiThreadsBetweenSpaces, permanentlyDeleteAiThreads, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
 import type { AiThreadHistoryFilter, AiThreadHistoryItem, AiThreadHistoryPageCursor } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
+import Reanimated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
+import { GalleryNormalHeader, GalleryCompactHeader } from '../components/GalleryHeaders';
+import { ScreenScaffold } from '../components/ScreenScaffold';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
@@ -191,6 +194,30 @@ export function AiHistoryScreen({
     setMoveThread(null);
   }, [filter, space]);
 
+  const isTrashMode = forcedFilter === 'archived';
+
+  const scrollY = useSharedValue(0);
+  const scrollOffsetRef = useRef(0);
+  const compactHeaderStyle = useAnimatedStyle(() => {
+    return {
+      opacity: interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: interpolate(scrollY.value, [10, 30], [-5, 0], Extrapolation.CLAMP) }],
+    };
+  });
+
+  const handleScroll = useCallback((event: any) => {
+    const y = event.nativeEvent.contentOffset.y;
+    scrollY.value = y;
+    scrollOffsetRef.current = y;
+  }, [scrollY]);
+
+  async function handleEmptyTrash() {
+    if (!isTrashMode) return;
+    setPendingAction('delete');
+    setDeleteThread(null);
+    setSelectedIds(items.map(t => t.id));
+  }
+
   async function toggleArchive(thread: AiThreadHistoryItem) {
     animateSwipe(thread.id, 0);
     setSwipedThreadId(null);
@@ -344,17 +371,19 @@ export function AiHistoryScreen({
     }
   }
 
-  return (
-    <>
-      <AiLightScaffold
-        bodyStyle={styles.body}
-        footer={selectionFooter}
-        onBack={onBack}
-        subtitle={titleSlot ? undefined : spaceLabel}
-        title={titleSlot ? '' : '历史会话'}
-        titleSlot={titleSlot}
-      >
+  const trashRightAction = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      {items.length > 0 && (
+        <Pressable onPress={handleEmptyTrash} style={({ pressed }) => [{ paddingHorizontal: 12, height: 32, justifyContent: 'center', borderRadius: 999, backgroundColor: '#FEF2F2' }, pressed && { opacity: 0.7 }]}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#DC2626' }}>清空</Text>
+        </Pressable>
+      )}
+    </View>
+  );
 
+  const innerContent = (
+    <>
+      {!isTrashMode && (
         <View style={styles.searchBox}>
           <Ionicons color={aiLightColors.mutedSoft} name="search-outline" size={16} />
           <TextInput
@@ -366,11 +395,23 @@ export function AiHistoryScreen({
             value={searchText}
           />
         </View>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+      )}
+      {status ? <Text style={styles.status}>{status}</Text> : null}
 
-        <FlatList
-          contentContainerStyle={[styles.list, styles.threadList]}
-          {...createScrollHandlers()}
+      <Animated.FlatList
+        contentContainerStyle={[styles.list, styles.threadList, isTrashMode && { paddingTop: 0 }]}
+        {...createScrollHandlers()}
+        onScroll={isTrashMode ? handleScroll : undefined}
+        scrollEventThrottle={16}
+        ListHeaderComponent={isTrashMode ? (
+          <GalleryNormalHeader
+            title={titleSlot ? '' : '回收站'}
+            topLeftActions={titleSlot}
+            count={items.length}
+            countUnit="条记录"
+            topRightActions={trashRightAction}
+          />
+        ) : undefined}
           data={items}
           initialNumToRender={10}
           keyExtractor={(thread) => thread.id}
@@ -399,7 +440,7 @@ export function AiHistoryScreen({
                 <View>
                   {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
                   <View style={styles.swipeWrap}>
-                    {!isSelecting ? (
+                    {(!isSelecting && !isTrashMode) ? (
                       <Animated.View style={[styles.swipeActionClip, { transform: [{ translateX: actionTranslateX }] }]}>
                         <Pressable
                           accessibilityRole="button"
@@ -428,13 +469,17 @@ export function AiHistoryScreen({
                           accessibilityRole="button"
                           onLongPress={(e) => {
                             if (globalScrollState.isScrolling) return;
-                            setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
+                            if (isTrashMode) {
+                              toggleSelected(thread.id);
+                            } else {
+                              setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
+                            }
                           }}
                           onPress={() => handleRowPress(thread)}
                           style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                         >
                           <View style={styles.iconWrap}>
-                            <Ionicons color={aiLightColors.primaryActive} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                            <Ionicons color={selected ? aiLightColors.primaryActive : aiLightColors.muted} name={selected ? 'checkmark-circle' : (isSelecting ? 'ellipse-outline' : iconForContext(thread.contextType))} size={20} />
                           </View>
                           <View style={styles.copy}>
                             <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
@@ -444,7 +489,7 @@ export function AiHistoryScreen({
                             {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
                           </View>
                         </Pressable>
-                        {!isSelecting ? (
+                        {(!isSelecting && !isTrashMode) ? (
                           <Pressable
                             accessibilityLabel="会话操作"
                             accessibilityRole="button"
@@ -463,6 +508,55 @@ export function AiHistoryScreen({
           style={styles.threadListViewport}
           windowSize={7}
         />
+    </>
+  );
+
+  if (isTrashMode) {
+    return (
+      <>
+        <ScreenScaffold
+          contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={selectionFooter} showHeader={false} fullScreen={true}
+        >
+          <GalleryCompactHeader
+            title={titleSlot ? '' : '回收站'}
+            centerSlot={titleSlot}
+            count={items.length}
+            space={space}
+            animatedStyle={compactHeaderStyle}
+            rightActions={trashRightAction}
+          />
+          {innerContent}
+        </ScreenScaffold>
+        <AppDialog
+          accent="ai"
+          danger
+          message={"永久删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录，并删除这些会话专属的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。此操作不能撤销。"}
+          onClose={() => {
+            if (!busy) {
+              setPendingAction(null);
+              setDeleteThread(null);
+            }
+          }}
+          onPrimary={() => void confirmDeleteSelected()}
+          primaryLabel={busy ? '正在永久删除' : '永久删除'}
+          title="永久删除聊天记录"
+          visible={pendingAction === 'delete'}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <AiLightScaffold
+        bodyStyle={styles.body}
+        footer={selectionFooter}
+        onBack={onBack}
+        subtitle={titleSlot ? undefined : spaceLabel}
+        title={titleSlot ? '' : '历史会话'}
+        titleSlot={titleSlot}
+      >
+        {innerContent}
       </AiLightScaffold>
 
       <AppDialog
@@ -821,6 +915,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
 });
+
+
+
+
+
+
 
 
 

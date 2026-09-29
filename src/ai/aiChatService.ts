@@ -1829,9 +1829,6 @@ function scoreChatSearchMessage(message: AiMessageWithCitations, rawQuery: strin
   if (terms.length > 0 && terms.every((term) => normalizedContent.includes(term) || compactContent.includes(term.replace(/\s+/g, '')))) {
     return { matchKind: 'exact', rank: 1 };
   }
-  if (compactQuery.length >= 2 && compactQuery.split('').every((char) => compactContent.includes(char))) {
-    return { matchKind: 'fuzzy', rank: 2 };
-  }
   return null;
 }
 
@@ -1854,7 +1851,7 @@ function buildChatSearchSnippet(content: string, rawQuery: string, terms: string
   return `${prefix}${normalizedContent.slice(start, end)}${suffix}`;
 }
 
-function toChatSearchResult(message: AiMessageWithCitations, rawQuery: string, terms: string[], matchKind: AiChatSearchMatchKind): AiChatSearchResult {
+function toChatSearchResult(message: AiMessageWithCitations & { contentSnippet?: string }, rawQuery: string, terms: string[], matchKind: AiChatSearchMatchKind): AiChatSearchResult {
   return {
     content: message.content,
     createdAt: message.createdAt,
@@ -1862,7 +1859,7 @@ function toChatSearchResult(message: AiMessageWithCitations, rawQuery: string, t
     matchedTerms: terms,
     messageId: message.id,
     role: message.role,
-    snippet: buildChatSearchSnippet(message.content, rawQuery, terms),
+    snippet: message.contentSnippet || buildChatSearchSnippet(message.content, rawQuery, terms),
     versionIndex: message.versionIndex,
     versionTotal: message.versionTotal,
   };
@@ -2954,7 +2951,7 @@ export async function searchGlobalMessages(input: {
     globalTotalCount = totalCount;
     const messageIds = candidateRows.map((message) => message.id);
     const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
-    const candidates: (AiMessageWithCitations & { threadTitle: string })[] = candidateRows
+    const candidates: (AiMessageWithCitations & { threadTitle: string; contentSnippet?: string })[] = candidateRows
       .filter((message) => message.role !== 'system')
       .map((message) => ({
         ...message,
@@ -2968,7 +2965,7 @@ export async function searchGlobalMessages(input: {
         const score = scoreChatSearchMessage(message, input.query, terms);
         return score ? { message, ...score } : null;
       })
-      .filter((item): item is { message: AiMessageWithCitations & { threadTitle: string }; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
+      .filter((item): item is { message: AiMessageWithCitations & { threadTitle: string; contentSnippet?: string }; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
       .sort((left, right) => {
         const rankDiff = left.rank - right.rank;
         if (rankDiff !== 0) return rankDiff;
@@ -6732,4 +6729,14 @@ export async function listFavoriteAssistantMessagePage(input: {
     hasMore: rows.length > limit,
     cursor: last ? { createdAt: last.createdAt, id: last.id } : null,
   };
+}
+export async function emptyAiTrash(space: PixorySpace): Promise<number> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const archivedThreads = await db.getAllAsync<{ id: string }>('SELECT id FROM ai_threads WHERE space = ? AND archivedAt IS NOT NULL', space);
+    const threadIds = archivedThreads.map(r => r.id);
+    if (threadIds.length > 0) {
+      return aiThreadRepository.deleteThreads(db, threadIds);
+    }
+    return 0;
+  });
 }

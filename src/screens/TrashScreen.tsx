@@ -213,7 +213,8 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
 
   const headerComponent = (
     <GalleryNormalHeader
-      title="回收站"
+      title={titleSlot ? '' : '回收站'}
+      topLeftActions={titleSlot}
       count={trashCount}
       topRightActions={rightAction}
       middleContent={

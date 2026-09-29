@@ -127,7 +127,7 @@ export function RecentViewedScreen({
 
   return (
     <View style={styles.host}>
-      <ScreenScaffold contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
+      <ScreenScaffold contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }}
         backgroundColor="#FFFFFF"
         decorativeTitle="Recent"
         footer={footer}

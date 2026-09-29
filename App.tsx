@@ -1934,6 +1934,7 @@ export default function App() {
         onOpenThread={(threadId, messageId) => pushRoute({ name: 'ai-chat', threadId, space: currentRoute.space, searchTargetMessageId: messageId, searchTargetKey: messageId ? String(Date.now()) : undefined })}
         onOpenRoleCard={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
         onOpenHistory={() => pushRoute({ name: 'global-search-history', space: currentRoute.space })}
+        onOpenRoute={(routeName, params) => pushRoute({ name: routeName as any, ...params, space: currentRoute.space })}
         query={globalSearchQuery}
         isTop={isTop}
       />
@@ -1972,7 +1973,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'trash') {
-    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} />;
+    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} onOpenThread={(thread) => openAiChatRoute({ name: 'ai-chat', threadId: thread.id, space: thread.space })} />;
   } else if (currentRoute.name === 'backup') {
     content = (
       <BackupScreen
@@ -2658,6 +2659,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
 
 
 

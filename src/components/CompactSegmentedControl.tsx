@@ -22,6 +22,7 @@ export function CompactSegmentedControl<T extends string>({
         const selected = option.value === value;
         return (
           <Pressable
+            hitSlop={6}
             accessibilityLabel={`从${option.label}选择`}
             accessibilityRole="tab"
             accessibilityState={{ selected, disabled }}
@@ -62,7 +63,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   selectedOption: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: '#111827',
     borderColor: colors.border.default,
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -71,7 +72,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   selectedLabel: {
-    color: colors.primary.active,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   disabled: {
@@ -81,3 +82,4 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
 });
+

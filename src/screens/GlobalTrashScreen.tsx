@@ -11,6 +11,7 @@ interface GlobalTrashScreenProps {
   refreshToken?: number;
   space?: PixorySpace;
   storageMode?: boolean;
+  onOpenThread?: (thread: any) => void;
 }
 
 export function GlobalTrashScreen({
@@ -19,6 +20,7 @@ export function GlobalTrashScreen({
   refreshToken,
   space = 'normal',
   storageMode,
+  onOpenThread,
 }: GlobalTrashScreenProps) {
   const [tab, setTab] = useState<'ip' | 'chat'>('ip');
 
@@ -52,7 +54,7 @@ export function GlobalTrashScreen({
     <AiHistoryScreen
       forcedFilter="archived"
       onBack={onBack}
-      onOpenThread={() => {}} // In trash we typically don't open thread directly, or maybe we do?
+      onOpenThread={onOpenThread ?? (() => {})}
       space={space}
       titleSlot={titleSlot}
     />
@@ -62,7 +64,7 @@ export function GlobalTrashScreen({
 const styles = StyleSheet.create({
   titleSlot: {
     alignItems: 'center',
-    flex: 1,
+    
     justifyContent: 'center',
   },
 });
