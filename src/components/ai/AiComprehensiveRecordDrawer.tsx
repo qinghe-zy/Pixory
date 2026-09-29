@@ -100,14 +100,14 @@ export function AiComprehensiveRecordDrawer({
       startDrawerAnimation(Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
-          damping: 28,
-          stiffness: 260,
-          mass: 0.9,
+          damping: 30,
+          stiffness: 180, // 原本 260，调小使动画更慢
+          mass: 1,
           useNativeDriver: true,
         }),
         Animated.timing(scrimOpacity, {
           toValue: 1,
-          duration: 200,
+          duration: 350, // 原本 200，调长
           useNativeDriver: true,
         }),
       ]), () => {
@@ -304,15 +304,16 @@ export function AiComprehensiveRecordDrawer({
           <View pointerEvents="none" style={styles.drawerHighlight} />
           <View style={styles.brandRow}>
             <Text style={styles.brand}>Pixory AI</Text>
-            <Pressable
-              ref={settingsButtonRef}
-              accessibilityLabel="AI 设置"
-              accessibilityRole="button"
-              onPress={onOpenProviderSettings}
-              style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
-            >
-              <Ionicons color={aiLightColors.ink} name="settings-outline" size={18} />
-            </Pressable>
+            <View ref={settingsButtonRef} collapsable={false}>
+              <Pressable
+                accessibilityLabel="AI 设置"
+                accessibilityRole="button"
+                onPress={onOpenProviderSettings}
+                style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.ink} name="settings-outline" size={18} />
+              </Pressable>
+            </View>
           </View>
           <View style={styles.primaryActions}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />

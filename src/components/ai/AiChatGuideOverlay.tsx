@@ -128,74 +128,25 @@ export function AiChatGuideOverlay({
       pointerEvents="box-none"
       style={[styles.overlayRoot, { opacity: fadeAnim }]}
     >
-      {/* 整体可点击推进 */}
+      {/* 整体可点击推进，无黑色背景 */}
       <Pressable onPress={handlePress} style={StyleSheet.absoluteFill}>
+        {/* 高亮边框（如果有聚焦元素） */}
         {hasHighlight && rect ? (
-          // ── 步骤 2：四矩形拼合 + 镂空高亮 ──
-          <>
-            {/* 上 */}
-            <View
-              style={[
-                styles.scrim,
-                { top: 0, left: 0, right: 0, height: rect.y - HIGHLIGHT_PADDING },
-              ]}
-            />
-            {/* 下 */}
-            <View
-              style={[
-                styles.scrim,
-                {
-                  top: rect.y + rect.height + HIGHLIGHT_PADDING,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                },
-              ]}
-            />
-            {/* 左 */}
-            <View
-              style={[
-                styles.scrim,
-                {
-                  top: rect.y - HIGHLIGHT_PADDING,
-                  left: 0,
-                  width: rect.x - HIGHLIGHT_PADDING,
-                  height: rect.height + HIGHLIGHT_PADDING * 2,
-                },
-              ]}
-            />
-            {/* 右 */}
-            <View
-              style={[
-                styles.scrim,
-                {
-                  top: rect.y - HIGHLIGHT_PADDING,
-                  left: rect.x + rect.width + HIGHLIGHT_PADDING,
-                  right: 0,
-                  height: rect.height + HIGHLIGHT_PADDING * 2,
-                },
-              ]}
-            />
-            {/* 高亮边框（精准贴合按钮圆角） */}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.highlightBorder,
-                {
-                  top: rect.y - HIGHLIGHT_PADDING,
-                  left: rect.x - HIGHLIGHT_PADDING,
-                  width: rect.width + HIGHLIGHT_PADDING * 2,
-                  height: rect.height + HIGHLIGHT_PADDING * 2,
-                  // borderRadius 与按钮同步，再加 padding 保持比例
-                  borderRadius: (rect.borderRadius ?? 18) + HIGHLIGHT_PADDING,
-                },
-              ]}
-            />
-          </>
-        ) : (
-          // ── 步骤 1 / 3：全屏蒙层 ──
-          <View style={[styles.scrim, StyleSheet.absoluteFill]} />
-        )}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.highlightBorder,
+              {
+                top: rect.y - HIGHLIGHT_PADDING,
+                left: rect.x - HIGHLIGHT_PADDING,
+                width: rect.width + HIGHLIGHT_PADDING * 2,
+                height: rect.height + HIGHLIGHT_PADDING * 2,
+                // borderRadius 与按钮同步，再加 padding 保持比例
+                borderRadius: (rect.borderRadius ?? 18) + HIGHLIGHT_PADDING,
+              },
+            ]}
+          />
+        ) : null}
       </Pressable>
 
       {/* 气泡提示 */}
@@ -246,15 +197,16 @@ function GuideBubble({
     const { x, y, width, height } = highlightRect;
     positionStyle = {
       position: 'absolute' as const,
-      top: y + height + HIGHLIGHT_PADDING + 14,
-      // 气泡右边缘对齐按钮右边缘（再留一点内边距）
-      right: SCREEN_WIDTH - x - width - HIGHLIGHT_PADDING - 8,
-      maxWidth: 230,
+      // 在按钮正下方
+      top: y + height + HIGHLIGHT_PADDING + 12,
+      // 气泡中心对齐按钮中心
+      left: x + width / 2 - 100, // 假设气泡约200宽，向左偏移一半使其居中
+      width: 200,
     };
   } else if (step === 1) {
     positionStyle = {
       position: 'absolute' as const,
-      bottom: SCREEN_HEIGHT * 0.22,
+      bottom: SCREEN_HEIGHT * 0.25,
       left: 20,
       right: 20,
     };
@@ -262,7 +214,7 @@ function GuideBubble({
     // step === 3
     positionStyle = {
       position: 'absolute' as const,
-      bottom: SCREEN_HEIGHT * 0.20,
+      bottom: SCREEN_HEIGHT * 0.25,
       left: 20,
       right: 20,
     };

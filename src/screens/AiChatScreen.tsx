@@ -4817,16 +4817,17 @@ export function AiChatScreen({
   useEffect(() => {
     if (!isFocused) return;
     void runWithDatabaseSpace(space, async (db) => {
-      const seen = await settingsRepository.getAiChatGuideSeen(db);
-      if (!seen) {
-        // 延迟 600ms 等页面稳定后再自动展开左侧栏并启动引导
+      // FOR TESTING: 暂时无视已看过的标记，每次进入都弹出
+      // const seen = await settingsRepository.getAiChatGuideSeen(db);
+      // if (!seen) {
+        // 延迟 1000ms 等页面完全渲染和动画结束后再展开左侧栏，避免太快突兀
         const timer = setTimeout(() => {
           setRecordDrawerVisible(true);
           // 步骤 1 在左侧栏展开后显示（设置按钮坐标测量完毕后自动进入步骤 2）
           setGuideStep(1);
-        }, 600);
+        }, 1000);
         return () => clearTimeout(timer);
-      }
+      // }
     });
   // 只在首次聚焦时运行一次
   // eslint-disable-next-line react-hooks/exhaustive-deps
