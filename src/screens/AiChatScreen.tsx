@@ -4817,9 +4817,8 @@ export function AiChatScreen({
   useEffect(() => {
     if (!isFocused) return;
     void runWithDatabaseSpace(space, async (db) => {
-      // FOR TESTING: 暂时无视已看过的标记，每次进入都弹出
-      // const seen = await settingsRepository.getAiChatGuideSeen(db);
-      // if (!seen) {
+      const seen = await settingsRepository.getAiChatGuideSeen(db);
+      if (!seen) {
         // 延迟 1000ms 等页面完全渲染和动画结束后再展开左侧栏，避免太快突兀
         const timer = setTimeout(() => {
           setRecordDrawerVisible(true);
@@ -4827,7 +4826,7 @@ export function AiChatScreen({
           setGuideStep(1);
         }, 1000);
         return () => clearTimeout(timer);
-      // }
+      }
     });
   // 只在首次聚焦时运行一次
   // eslint-disable-next-line react-hooks/exhaustive-deps
