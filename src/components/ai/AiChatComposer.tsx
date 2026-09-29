@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 
-import { radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import type { AiModelIconBrand } from '../../ai/aiModelIconService';
 import { aiLightColors } from './aiLightTheme';
 import { AiModelIcon } from './AiModelIcon';
@@ -72,29 +72,6 @@ function formatAttachmentSize(size?: number | null): string | null {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
-function AttachmentOption({
-  accessibilityLabel,
-  disabled = false,
-  icon,
-  onPress,
-}: {
-  accessibilityLabel: string;
-  disabled?: boolean;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.attachmentOption, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
-    >
-      <Ionicons color={aiLightColors.ink} name={icon} size={spacing[5]} />
-    </Pressable>
-  );
-}
 
 export function AiChatComposer({
   value,
@@ -364,24 +341,39 @@ export function AiChatComposer({
             <View style={styles.addButtonWrap}>
               {attachmentPopoverVisible ? (
                 <View style={styles.attachmentPopover}>
-                  <AttachmentOption
+                  <Pressable
                     accessibilityLabel="上传图片"
+                    accessibilityRole="menuitem"
                     disabled={generating}
-                    icon="image-outline"
                     onPress={() => {
                       setAttachmentPopoverVisible(false);
                       onAddImageAttachment();
                     }}
-                  />
-                  <AttachmentOption
+                    style={({ pressed }) => [
+                      styles.attachmentOptionRow,
+                      pressed && !generating && styles.attachmentOptionRowPressed,
+                    ]}
+                  >
+                    <Ionicons color={colors.text.primary} name="image-outline" size={18} />
+                    <Text numberOfLines={1} style={styles.attachmentOptionLabel}>上传图片</Text>
+                  </Pressable>
+                  <Pressable
                     accessibilityLabel="上传文档"
+                    accessibilityRole="menuitem"
                     disabled={generating}
-                    icon="document-text-outline"
                     onPress={() => {
                       setAttachmentPopoverVisible(false);
                       onAddDocumentAttachment();
                     }}
-                  />
+                    style={({ pressed }) => [
+                      styles.attachmentOptionRow,
+                      styles.attachmentOptionDivider,
+                      pressed && !generating && styles.attachmentOptionRowPressed,
+                    ]}
+                  >
+                    <Ionicons color={colors.text.primary} name="document-text-outline" size={18} />
+                    <Text numberOfLines={1} style={styles.attachmentOptionLabel}>上传文档</Text>
+                  </Pressable>
                 </View>
               ) : null}
               <Pressable
@@ -554,30 +546,42 @@ const styles = StyleSheet.create({
   voiceButtonActive: {
     backgroundColor: aiLightColors.primarySoft,
   },
+
   addButtonWrap: {
     position: 'relative',
   },
   attachmentPopover: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.xl,
+    backgroundColor: '#FFFFFF',
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    bottom: spacing[10],
-    flexDirection: 'row',
-    gap: spacing[1],
-    padding: spacing[1],
+    overflow: 'hidden',
     position: 'absolute',
+    bottom: spacing[8] + 5,
     right: 0,
+    width: 136,
+    zIndex: 100,
+    elevation: 8,
     ...shadows.floating,
   },
-  attachmentOption: {
+  attachmentOptionRow: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.pill,
-    height: spacing[8],
-    justifyContent: 'center',
-    width: spacing[8],
+    flexDirection: 'row',
+    gap: spacing[3],
+    height: 44,
+    paddingHorizontal: spacing[4],
+  },
+  attachmentOptionRowPressed: {
+    backgroundColor: colors.background.soft,
+  },
+  attachmentOptionDivider: {
+    borderTopColor: colors.border.subtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  attachmentOptionLabel: {
+    ...typography.textStyles.body,
+    color: colors.text.primary,
+    fontSize: 14,
   },
   addButton: {
     alignItems: 'center',

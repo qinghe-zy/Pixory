@@ -1383,6 +1383,16 @@ export default function App() {
                 onImportIp={(ipId) => pushRoute({ name: 'import-images', ipId, space: activeSpace })}
                 onEditIp={(ipId) => pushRoute({ name: 'edit-ip', ipId, space: activeSpace })}
               onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
+              onStartChatWithIp={(ipId, ipName) =>
+                pushRoute({
+                  name: 'ai-chat',
+                  contextTitle: ipName,
+                  contextType: 'ip',
+                  includeIpDocuments: true,
+                  ipId,
+                  space: activeSpace,
+                })
+              }
               refreshKey={libraryRefreshToken}
               space={activeSpace}
             />

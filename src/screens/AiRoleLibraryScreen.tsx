@@ -140,14 +140,15 @@ export function AiRoleLibraryScreen({
         </View>
       ) : (
         <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconButtonSize} />
-          </View>
-          <Text style={styles.emptyTitle}>还没有角色</Text>
-          <Text style={styles.emptyText}>创建或导入角色卡后，可以在这里直接开聊。</Text>
+          <Text style={styles.title}>还没有角色</Text>
+          <Text style={styles.meta}>创建或导入角色卡后，可以在这里直接开聊。</Text>
           <View style={styles.emptyActions}>
-            <AiLightButton label="新建角色" onPress={onCreateRole} />
-            <AiLightButton label="导入角色卡" onPress={onImportRole} variant="outline" />
+            <Pressable accessibilityRole="button" onPress={onCreateRole} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
+              <Text style={styles.actionButtonText}>新建角色</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onImportRole} style={({ pressed }) => [styles.actionButton, styles.outlineButton, pressed && styles.pressed]}>
+              <Text style={[styles.actionButtonText, styles.outlineButtonText]}>导入角色卡</Text>
+            </Pressable>
           </View>
         </View>
       )}
@@ -187,30 +188,42 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    gap: rhythm.inlineGap,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[8],
+    padding: spacing[4],
   },
-  emptyIcon: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderRadius: radius.pill,
-    height: metrics.iconButtonSize * 1.4,
-    justifyContent: 'center',
-    width: metrics.iconButtonSize * 1.4,
-  },
-  emptyTitle: {
-    ...typography.textStyles.sectionTitle,
+  title: {
+    ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
   },
-  emptyText: {
-    ...typography.textStyles.body,
+  meta: {
+    ...typography.textStyles.caption,
     color: aiLightColors.muted,
     textAlign: 'center',
   },
   emptyActions: {
-    alignSelf: 'stretch',
+    flexDirection: 'row',
     gap: rhythm.inlineGap,
+    marginTop: spacing[2],
+  },
+  actionButton: {
+    backgroundColor: aiLightColors.ink,
+    borderRadius: radius.xs,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonText: {
+    ...typography.textStyles.caption,
+    fontWeight: '600',
+    color: aiLightColors.onDark,
+  },
+  outlineButton: {
+    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: aiLightColors.ink,
+  },
+  outlineButtonText: {
+    color: aiLightColors.ink,
   },
   selectionFooter: {
     backgroundColor: aiLightColors.surface,
