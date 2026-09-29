@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
@@ -615,25 +615,40 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       subtitle={spaceLabel}
       title="全局默认模型"
     >
-      <AiLightListGroup title="全应用 AI 用量">
-        <View style={styles.inlineConfigPadding}>
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>全应用 AI 用量</Text>
+          <Text style={styles.sectionSubtitle}>实时统计</Text>
+        </View>
+        <View style={[styles.card, { padding: 0, overflow: 'hidden' }]}>
           <AiUsageSummary showRecent={false} usage={usageOverview ?? EMPTY_USAGE_OVERVIEW} />
         </View>
-      </AiLightListGroup>
+      </View>
 
-      <AiLightListGroup title="接口与连接配置">
-        <AiLightListItem
-          icon="business-outline"
-          title="选择模型商"
-          value={selectedCard?.provider.displayName ?? '未选择'}
-          onPress={() => {
-            setProviderSheetVisible((current) => !current);
-            setModelSheetVisible(false);
-          }}
-          isLast={!providerSheetVisible && !selectedIsOtherProvider}
-        />
-        {providerSheetVisible ? (
-          <View style={styles.inlineConfigPadding}>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>接口与连接配置</Text>
+        <View style={styles.card}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setProviderSheetVisible((current) => !current);
+              setModelSheetVisible(false);
+            }}
+            style={({ pressed }) => [styles.rowItem, styles.rowBorder, pressed && styles.pressed]}
+          >
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox}>
+                <Ionicons name="business-outline" size={16} color="#3f3f46" />
+              </View>
+              <Text style={styles.rowLabel}>选择模型商</Text>
+            </View>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>{selectedCard?.provider.displayName ?? '未选择'}</Text>
+              <Ionicons name="chevron-forward" size={16} color="#a1a1aa" />
+            </View>
+          </Pressable>
+
+          {providerSheetVisible ? (
             <View style={styles.dropdownPanel}>
               {orderedCards.map((card) => {
                 const selected = card.provider.id === selectedCard?.provider.id;
@@ -647,56 +662,59 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                     style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
                   >
                     <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{card.provider.displayName}</Text>
-                    {selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
+                    {selected ? (
+                      <View style={styles.checkBadge}>
+                        <Ionicons color="#fff" name="checkmark" size={12} />
+                      </View>
+                    ) : null}
                   </Pressable>
                 );
               })}
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {selectedIsOtherProvider ? (
-          <View style={styles.inlineConfigPadding}>
-            <Text style={styles.fieldLabel}>基础地址 (Base URL)</Text>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setBaseUrlDraft}
-              placeholder="https://api.example.com/v1"
-              placeholderTextColor={aiLightColors.mutedSoft}
-              selectionColor={aiLightColors.primary}
-              style={styles.input}
-              value={baseUrlDraft}
-            />
-            {baseUrlHint ? <Text style={styles.caption}>{baseUrlHint}</Text> : null}
-          </View>
-        ) : null}
+          {selectedIsOtherProvider ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>基础地址 (Base URL)</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setBaseUrlDraft}
+                placeholder="https://api.example.com/v1"
+                placeholderTextColor="#a1a1aa"
+                selectionColor="#2563eb"
+                style={styles.input}
+                value={baseUrlDraft}
+              />
+            </View>
+          ) : null}
 
-        <View style={styles.inlineConfigPadding}>
-          <Text style={styles.fieldLabel}>API Key</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setApiDraft}
-              placeholder={selectedCard?.hasApiKey ? '已保存' : '输入 API Key'}
-              placeholderTextColor={aiLightColors.mutedSoft}
-              secureTextEntry={!visibleKey}
-              selectionColor={aiLightColors.primary}
-              style={styles.input}
-              value={apiDraft}
-            />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setVisibleKey((current) => !current)}
-              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-            >
-              <Ionicons color={aiLightColors.muted} name={visibleKey ? 'eye-off-outline' : 'eye-outline'} size={18} />
-            </Pressable>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>API Key</Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setApiDraft}
+                placeholder={selectedCard?.hasApiKey ? '已保存' : '输入 API Key'}
+                placeholderTextColor="#a1a1aa"
+                secureTextEntry={!visibleKey}
+                selectionColor="#2563eb"
+                style={[styles.input, styles.monoInput]}
+                value={apiDraft}
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setVisibleKey((current) => !current)}
+                style={({ pressed }) => [styles.inputIconBtn, pressed && styles.pressed]}
+              >
+                <Ionicons color="#a1a1aa" name={visibleKey ? 'eye-off-outline' : 'eye-outline'} size={16} />
+              </Pressable>
+            </View>
           </View>
           
           {selectedIsOtherProvider ? (
-            <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
+            <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>连接信息导入</Text>
               <TextInput
                 autoCapitalize="none"
@@ -704,56 +722,97 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 multiline
                 onChangeText={setConnectionImportDraft}
                 placeholder='{"_type":"newapi_channel_conn","key":"sk-...","url":"https://example.com"}'
-                placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.primary}
+                placeholderTextColor="#a1a1aa"
+                selectionColor="#2563eb"
                 style={[styles.input, styles.importInput]}
                 value={connectionImportDraft}
               />
-              <AiLightButton disabled={!connectionImportDraft.trim()} label="导入连接信息" onPress={importProviderConnection} variant="outline" />
+              <Pressable
+                disabled={!connectionImportDraft.trim()}
+                onPress={importProviderConnection}
+                style={({ pressed }) => [styles.outlineBtn, !connectionImportDraft.trim() && styles.disabledBtn, pressed && styles.pressed]}
+              >
+                <Text style={styles.outlineBtnText}>导入连接信息</Text>
+              </Pressable>
             </View>
           ) : null}
 
-          <View style={[styles.fieldGroup, { marginTop: spacing[4] }]}>
-            <AiLightButton disabled={saveDisabled} label="保存配置" onPress={() => void saveProviderDraft()} />
-            <View style={styles.inlineActions}>
-              <AiLightButton label="刷新模型列表" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
-              <AiLightButton disabled={saveDisabled} label="测试当前模型" onPress={() => void testSelectedProvider()} variant="outline" />
+          <View style={styles.actionGroup}>
+            <Pressable
+              disabled={saveDisabled}
+              onPress={() => void saveProviderDraft()}
+              style={({ pressed }) => [styles.primaryBtn, saveDisabled && styles.disabledBtn, pressed && styles.pressed]}
+            >
+              <Ionicons color="#d1d5db" name="checkmark" size={16} />
+              <Text style={styles.primaryBtnText}>保存配置</Text>
+            </Pressable>
+            
+            <View style={styles.secondaryActionRow}>
+              <Pressable
+                onPress={() => void syncSelectedProviderModels()}
+                style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
+              >
+                <Ionicons color="#9ca3af" name="refresh" size={14} />
+                <Text style={styles.secondaryBtnText}>刷新模型列表</Text>
+              </Pressable>
+              
+              <Pressable
+                disabled={saveDisabled}
+                onPress={() => void testSelectedProvider()}
+                style={({ pressed }) => [styles.secondaryBtn, saveDisabled && styles.disabledBtn, pressed && styles.pressed]}
+              >
+                <Ionicons color="#9ca3af" name="flash-outline" size={14} />
+                <Text style={styles.secondaryBtnText}>测试当前模型</Text>
+              </Pressable>
             </View>
           </View>
         </View>
-        <View style={styles.providerDisclosure}>
-          <Text style={styles.caption}>API Key 保存在受保护的本地存储中。</Text>
-          <Text style={styles.caption}>对话请求会发送给你选择的模型服务商。</Text>
-          <Text style={styles.caption}>“测试成功”只代表本次验证通过，不是模型永久可用保证。</Text>
-        </View>
-      </AiLightListGroup>
+      </View>
 
-      <AiLightListGroup footer="不会影响已有独立设置的会话。" title="全局对话与向量模型">
-        {selectedCard?.provider.lastVerifyStatus ? (
-          <AiLightListItem
-            icon={selectedCard.provider.lastVerifyStatus === 'ready' ? 'checkmark-circle-outline' : selectedCard.provider.lastVerifyStatus === 'failed' ? 'close-circle-outline' : 'help-circle-outline'}
-            iconBackgroundColor={selectedCard.provider.lastVerifyStatus === 'ready' ? '#E8F5E9' : selectedCard.provider.lastVerifyStatus === 'failed' ? '#FFECEB' : aiLightColors.canvas}
-            iconColor={selectedCard.provider.lastVerifyStatus === 'ready' ? '#4CAF50' : selectedCard.provider.lastVerifyStatus === 'failed' ? '#FF3B30' : aiLightColors.muted}
-            title={selectedCard.provider.lastVerifyStatus === 'ready' ? '接口已验证' : selectedCard.provider.lastVerifyStatus === 'changed' ? '配置已变更' : selectedCard.provider.lastVerifyStatus === 'failed' ? '接口测试失败' : '接口未验证'}
-            subtitle={selectedCard.provider.lastVerifyMessage || '新创建会话将默认继承这些配置'}
-            showChevron={false}
-          />
-        ) : null}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>全局对话与向量模型</Text>
+        <View style={styles.card}>
+          {selectedCard?.provider.lastVerifyStatus ? (
+            <View style={[styles.rowItem, styles.rowBorder, { paddingVertical: 12 }]}>
+              <View style={styles.rowLeft}>
+                <View style={[styles.statusIconBox, selectedCard.provider.lastVerifyStatus === 'ready' ? styles.statusIconBoxSuccess : selectedCard.provider.lastVerifyStatus === 'failed' ? styles.statusIconBoxError : styles.statusIconBoxWarning]}>
+                  <Ionicons 
+                    name={selectedCard.provider.lastVerifyStatus === 'ready' ? 'checkmark' : selectedCard.provider.lastVerifyStatus === 'failed' ? 'close' : 'help'} 
+                    size={14} 
+                    color={selectedCard.provider.lastVerifyStatus === 'ready' ? '#10b981' : selectedCard.provider.lastVerifyStatus === 'failed' ? '#ef4444' : '#f59e0b'} 
+                  />
+                </View>
+                <View>
+                  <Text style={styles.rowTitle}>{selectedCard.provider.lastVerifyStatus === 'ready' ? '接口已验证' : selectedCard.provider.lastVerifyStatus === 'changed' ? '配置已变更' : selectedCard.provider.lastVerifyStatus === 'failed' ? '接口测试失败' : '接口未验证'}</Text>
+                  <Text style={[styles.rowSubtitle, selectedCard.provider.lastVerifyStatus === 'ready' && styles.rowSubtitleSuccess]}>
+                    {selectedCard.provider.lastVerifyStatus === 'ready' ? '测试通过' : '新创建会话将默认继承这些配置'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
 
-        <AiLightListItem
-          icon="chatbubbles-outline"
-          title="全局对话模型"
-          subtitle="新创建会话的默认选择"
-          value={selectedModel?.displayName ?? (chatModels.length > 0 ? '未选择' : '暂无可用模型')}
-          disabled={chatModels.length === 0}
-          onPress={() => {
-            setModelSheetVisible((current) => !current);
-            setProviderSheetVisible(false);
-          }}
-          isLast={!modelSheetVisible && !(embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding)}
-        />
-        {modelSheetVisible ? (
-          <View style={styles.inlineConfigPadding}>
+          <Pressable
+            disabled={chatModels.length === 0}
+            onPress={() => {
+              setModelSheetVisible((current) => !current);
+              setProviderSheetVisible(false);
+            }}
+            style={({ pressed }) => [styles.rowItem, styles.rowBorder, chatModels.length === 0 && styles.disabledBtn, pressed && styles.pressed, { paddingVertical: 12 }]}
+          >
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox2}>
+                <Ionicons name="chatbubble-ellipses-outline" size={14} color="#52525b" />
+              </View>
+              <Text style={styles.rowTitle}>全局对话模型</Text>
+            </View>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValueMono}>{selectedModel?.displayName ?? (chatModels.length > 0 ? '未选择' : '暂无可用模型')}</Text>
+              <Ionicons name="chevron-forward" size={16} color="#a1a1aa" />
+            </View>
+          </Pressable>
+
+          {modelSheetVisible ? (
             <View style={styles.dropdownPanel}>
               {providerSelectionMode ? (
                 <View style={styles.batchActionRow}>
@@ -776,45 +835,57 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 const modelKey = providerModelKey(model.providerId, model.modelId);
                 const selectedForDelete = selectedModelKeys.includes(modelKey);
                 return (
-                  <View key={model.id} style={[styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      onLongPress={() => beginModelSelection(model)}
-                      onPress={() => {
-                        if (providerSelectionMode) {
-                          toggleSelectedModel(model);
-                          return;
-                        }
-                        void selectModel(model);
-                      }}
-                      style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
-                    >
-                      <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                      {selectedForDelete ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
-                    </Pressable>
-                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    key={model.id}
+                    onLongPress={() => beginModelSelection(model)}
+                    onPress={() => {
+                      if (providerSelectionMode) {
+                        toggleSelectedModel(model);
+                        return;
+                      }
+                      void selectModel(model);
+                    }}
+                    style={({ pressed }) => [styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                    {selectedForDelete ? <Ionicons color="#2563eb" name="checkmark-done-circle" size={18} /> : selected ? (
+                      <View style={styles.checkBadge}>
+                        <Ionicons color="#fff" name="checkmark" size={10} />
+                      </View>
+                    ) : null}
+                  </Pressable>
                 );
               })}
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
-          <>
-            <AiLightListItem
-              icon="layers-outline"
-              title="高级设置"
-              subtitle="向量模型 (Embedding) 与手动配置"
-              value={advancedVisible ? '收起' : '展开'}
-              onPress={() => setAdvancedVisible((current) => !current)}
-              isLast={!advancedVisible}
-            />
-            {advancedVisible ? (
-              <View style={styles.inlineConfigPadding}>
-                {embeddingModels.length > 0 ? (
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>默认 Embedding</Text>
-                    <View style={styles.inlineConfigPadding}>
+          {embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
+            <>
+              <Pressable
+                onPress={() => setAdvancedVisible((current) => !current)}
+                style={({ pressed }) => [styles.rowItem, !advancedVisible && { borderBottomWidth: 0, paddingBottom: 0 }, pressed && styles.pressed, { paddingVertical: 12 }]}
+              >
+                <View style={styles.rowLeft}>
+                  <View style={styles.iconBox2}>
+                    <Ionicons name="options-outline" size={14} color="#52525b" />
+                  </View>
+                  <View>
+                    <Text style={styles.rowTitle}>高级设置</Text>
+                    <Text style={styles.rowSubtitle}>向量模型 (Embedding) 与手动配置</Text>
+                  </View>
+                </View>
+                <View style={styles.rowRight}>
+                  <Text style={styles.rowValue}>{advancedVisible ? '收起' : '展开'}</Text>
+                  <Ionicons name={advancedVisible ? 'chevron-up' : 'chevron-down'} size={16} color="#a1a1aa" />
+                </View>
+              </Pressable>
+
+              {advancedVisible ? (
+                <View style={styles.advancedPanel}>
+                  {embeddingModels.length > 0 ? (
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>默认 Embedding</Text>
                       <View style={styles.dropdownPanel}>
                         {providerSelectionMode ? (
                           <View style={styles.batchActionRow}>
@@ -837,154 +908,156 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                           const modelKey = providerModelKey(model.providerId, model.modelId);
                           const selectedForDelete = selectedModelKeys.includes(modelKey);
                           return (
-                            <View key={model.id} style={[styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow]}>
-                              <Pressable
-                                accessibilityRole="button"
-                                onLongPress={() => beginModelSelection(model)}
-                                onPress={() => {
-                                  if (providerSelectionMode) {
-                                    toggleSelectedModel(model);
-                                    return;
-                                  }
-                                  void selectEmbeddingModel(model);
-                                }}
-                                style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
-                              >
-                                <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                                {selectedForDelete ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
-                              </Pressable>
-                            </View>
+                            <Pressable
+                              accessibilityRole="button"
+                              key={model.id}
+                              onLongPress={() => beginModelSelection(model)}
+                              onPress={() => {
+                                if (providerSelectionMode) {
+                                  toggleSelectedModel(model);
+                                  return;
+                                }
+                                void selectEmbeddingModel(model);
+                              }}
+                              style={({ pressed }) => [styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow, pressed && styles.pressed]}
+                            >
+                              <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                              {selectedForDelete ? <Ionicons color="#2563eb" name="checkmark-done-circle" size={18} /> : selected ? (
+                                <View style={styles.checkBadge}>
+                                  <Ionicons color="#fff" name="checkmark" size={10} />
+                                </View>
+                              ) : null}
+                            </Pressable>
                           );
                         })}
                       </View>
                     </View>
-                    <Text style={styles.caption}>{selectedEmbeddingModel ? `当前：${selectedEmbeddingModel.displayName}` : '选择后，材料会在导入后尝试生成本地向量索引。'}</Text>
-                  </View>
-                ) : null}
+                  ) : null}
 
-                {selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
-                  <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
-                    <Text style={styles.fieldLabel}>Embedding 接口</Text>
-                    <TextInput
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      onChangeText={setEmbeddingBaseUrlDraft}
-                      placeholder="默认复用上方服务地址"
-                      placeholderTextColor={aiLightColors.mutedSoft}
-                      selectionColor={aiLightColors.primary}
-                      style={styles.input}
-                      value={embeddingBaseUrlDraft}
-                    />
-                    <Text style={styles.caption}>留空时使用对话服务地址；只有向量检索和材料索引会调用这里。DeepSeek 官方接口暂未列出 Embedding，兼容网关可在这里填写 /embeddings 所在的基础地址。</Text>
-                  </View>
-                ) : null}
-
-                {selectedSupportsManualChatModel ? (
-                  <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
-                    <Text style={styles.fieldLabel}>手动添加对话模型</Text>
-                    <View style={styles.inputRow}>
+                  {selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>Embedding 接口</Text>
                       <TextInput
                         autoCapitalize="none"
                         autoCorrect={false}
-                        onChangeText={setManualModelDraft}
-                        placeholder="gpt-4o-mini"
-                        placeholderTextColor={aiLightColors.mutedSoft}
-                        selectionColor={aiLightColors.primary}
-                        style={styles.input}
-                        value={manualModelDraft}
+                        onChangeText={setEmbeddingBaseUrlDraft}
+                        placeholder="默认复用上方服务地址"
+                        placeholderTextColor="#a1a1aa"
+                        selectionColor="#2563eb"
+                        style={[styles.input, styles.monoInput]}
+                        value={embeddingBaseUrlDraft}
                       />
-                      <AiLightButton disabled={!manualModelDraft.trim()} label="保存" onPress={() => void saveManualModel()} style={{ width: undefined }} variant="outline" />
                     </View>
-                    <Text style={styles.caption}>中转站无法读取模型列表时手动配置。</Text>
-                  </View>
-                ) : null}
+                  ) : null}
 
-                {selectedSupportsManualEmbedding ? (
-                  <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
-                    <Text style={styles.fieldLabel}>自定义 Embedding 模型</Text>
-                    <View style={styles.inputRow}>
-                      <TextInput
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        onChangeText={setManualEmbeddingModelDraft}
-                        placeholder="text-embedding-3-small"
-                        placeholderTextColor={aiLightColors.mutedSoft}
-                        selectionColor={aiLightColors.primary}
-                        style={styles.input}
-                        value={manualEmbeddingModelDraft}
-                      />
-                      <AiLightButton disabled={!manualEmbeddingModelDraft.trim()} label="保存" onPress={() => void saveManualEmbeddingModelDraft()} style={{ width: undefined }} variant="outline" />
+                  {selectedSupportsManualChatModel ? (
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>手动添加对话模型</Text>
+                      <View style={styles.inputRow}>
+                        <TextInput
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          onChangeText={setManualModelDraft}
+                          placeholder="gpt-4o-mini"
+                          placeholderTextColor="#a1a1aa"
+                          selectionColor="#2563eb"
+                          style={[styles.input, styles.monoInput]}
+                          value={manualModelDraft}
+                        />
+                        <Pressable
+                          disabled={!manualModelDraft.trim()}
+                          onPress={() => void saveManualModel()}
+                          style={({ pressed }) => [styles.saveBtn, !manualModelDraft.trim() && styles.disabledBtn, pressed && styles.pressed]}
+                        >
+                          <Text style={styles.saveBtnText}>保存</Text>
+                        </Pressable>
+                      </View>
                     </View>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </>
-        ) : null}
-      </AiLightListGroup>
+                  ) : null}
 
-      {status ? <View style={{ paddingHorizontal: spacing[4], paddingBottom: spacing[4] }}><AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /></View> : null}
+                  {selectedSupportsManualEmbedding ? (
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>自定义 Embedding 模型</Text>
+                      <View style={styles.inputRow}>
+                        <TextInput
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          onChangeText={setManualEmbeddingModelDraft}
+                          placeholder="text-embedding-3-small"
+                          placeholderTextColor="#a1a1aa"
+                          selectionColor="#2563eb"
+                          style={[styles.input, styles.monoInput]}
+                          value={manualEmbeddingModelDraft}
+                        />
+                        <Pressable
+                          disabled={!manualEmbeddingModelDraft.trim()}
+                          onPress={() => void saveManualEmbeddingModelDraft()}
+                          style={({ pressed }) => [styles.saveBtn, !manualEmbeddingModelDraft.trim() && styles.disabledBtn, pressed && styles.pressed]}
+                        >
+                          <Text style={styles.saveBtnText}>保存</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </>
+          ) : null}
+        </View>
+      </View>
 
-      <AiLightListGroup title="后台智能与记忆模型">
-        <View style={styles.inlineConfigPadding}>
+      {status ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+          <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} />
+        </View>
+      ) : null}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>后台智能与记忆模型</Text>
+        <View style={styles.card}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.sectionTitle}>全局用户画像</Text>
-            <Text style={styles.caption}>跨会话生效，只适合放稳定、明确、全局都适用的用户偏好。会话内画像和当前 IP 画像仍在记忆看板里管理。</Text>
+            <Text style={styles.rowTitle}>全局用户画像</Text>
             <TextInput
               multiline
               onChangeText={setGlobalProfileDraft}
               placeholder="例如：我希望默认回答简洁直接；我更喜欢中文交流。"
-              placeholderTextColor={aiLightColors.mutedSoft}
-              selectionColor={aiLightColors.primary}
+              placeholderTextColor="#a1a1aa"
+              selectionColor="#2563eb"
               style={[styles.input, styles.profileInput]}
               textAlignVertical="top"
               value={globalProfileDraft}
             />
-            <View style={styles.inlineActions}>
-              <AiLightButton disabled={loading || globalProfileDraft === globalProfileText} label="保存全局画像" onPress={() => void handleSaveGlobalProfile()} variant="outline" />
-            </View>
-          </View>
-          <View style={styles.sectionDivider} />
-          <View style={styles.statusPanel}>
-            <View style={[
-              styles.maintenanceResultBanner,
-              maintenanceTone === 'success' && styles.maintenanceResultSuccess,
-              maintenanceTone === 'warning' && styles.maintenanceResultWarning,
-              maintenanceTone === 'error' && styles.maintenanceResultError,
-              maintenanceTone === 'info' && styles.maintenanceResultInfo,
-            ]}>
-              <Ionicons
-                color={maintenanceTone === 'success' ? aiLightColors.primary : maintenanceTone === 'info' ? aiLightColors.muted : aiLightColors.primaryActive}
-                name={maintenanceTone === 'success' ? 'checkmark-circle' : maintenanceTone === 'error' ? 'close-circle' : maintenanceTone === 'warning' ? 'alert-circle' : 'information-circle'}
-                size={18}
-              />
-              <View style={styles.maintenanceResultCopy}>
-                <Text style={styles.maintenanceResultTitle}>{maintenanceBannerTitle(maintenanceStatus)}</Text>
-                <Text style={styles.caption}>{maintenanceStatusMessage}</Text>
-                {maintenanceTestTime ? <Text style={styles.caption}>上次测试：{maintenanceTestTime}</Text> : null}
-              </View>
-            </View>
-            <Text style={styles.caption}>当前使用</Text>
-            <Text style={styles.statusValue}>
-              {maintenanceStatus ? `${maintenanceStatus.providerName} · ${maintenanceStatus.modelName}` : '本地 · 未启用远程维护'}
-            </Text>
-            <Text style={styles.caption}>配置状态</Text>
-            <Text style={styles.statusValue}>{maintenanceStatus?.statusText ?? '未配置远程维护模型，摘要压缩和画像维护不会调用远程模型'}</Text>
             <Pressable
-              accessibilityRole="button"
-              onPress={() => setMaintenanceInfoExpanded((current) => !current)}
-              style={({ pressed }) => [styles.infoToggle, pressed && styles.pressed]}
+              disabled={loading || globalProfileDraft === globalProfileText}
+              onPress={() => void handleSaveGlobalProfile()}
+              style={({ pressed }) => [styles.grayFullBtn, (loading || globalProfileDraft === globalProfileText) && styles.disabledBtn, pressed && styles.pressed]}
             >
-              <Text style={styles.caption}>远程维护只用于摘要和画像，Key 保存在本机。</Text>
-              <Ionicons color={aiLightColors.mutedSoft} name={maintenanceInfoExpanded ? 'chevron-up' : 'chevron-down'} size={16} />
+              <Text style={styles.grayFullBtnText}>保存全局画像</Text>
             </Pressable>
-            {maintenanceInfoExpanded ? (
-              <Text style={styles.caption}>
-                开启后，Pixory 会把需要整理的对话片段发送给你配置的模型服务商；未配置或测试失败时不会调用远程维护模型。API Key 仅保存在本机安全存储中。
-              </Text>
-            ) : null}
           </View>
-          
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.maintenanceBanner}>
+            <View style={styles.maintenanceBannerIcon}>
+              <Text style={styles.maintenanceBannerIconText}>i</Text>
+            </View>
+            <Text style={styles.maintenanceBannerTitle}>{maintenanceBannerTitle(maintenanceStatus)}</Text>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <View>
+              <Text style={styles.caption}>当前使用</Text>
+              <Text style={styles.monoValue}>
+                {maintenanceStatus ? `${maintenanceStatus.providerName} · ${maintenanceStatus.modelName}` : '本地 · 未启用远程维护'}
+              </Text>
+            </View>
+            <View style={{ marginTop: 8 }}>
+              <Text style={styles.caption}>配置状态</Text>
+              <Text style={styles.rowValueMono}>{maintenanceStatus?.statusText ?? '已保存配置，待确认链路可用'}</Text>
+            </View>
+          </View>
+
           <View style={styles.modeGrid}>
             {MEMORY_MAINTENANCE_MODES.map((mode) => (
               <Pressable
@@ -1001,298 +1074,449 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               </Pressable>
             ))}
           </View>
-          <Text style={styles.caption}>
-            {isMaintenanceTestPassed(maintenanceStatus?.lastTestStatus)
-              ? '测试通过后，摘要压缩和画像维护会使用该远程模型。'
-              : '保存 Key 或切换模型后，请点击“测试记忆模型”，通过后再视为配置成功。'}
-          </Text>
-          <View style={styles.inlineActions}>
-            <AiLightButton label="配置 Key" onPress={() => void focusMaintenanceProviderKey()} variant="outline" />
-            <AiLightButton label="测试连通性" onPress={() => void testSelectedMemoryMaintenanceModel()} />
+
+          <View style={styles.actionGroup}>
+            <Pressable
+              onPress={() => void focusMaintenanceProviderKey()}
+              style={({ pressed }) => [styles.grayFullBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.grayFullBtnText}>配置 Key</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void testSelectedMemoryMaintenanceModel()}
+              style={({ pressed }) => [styles.primaryBlueBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.primaryBlueBtnText}>测试连通性</Text>
+            </Pressable>
           </View>
 
-          <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
-            <Text style={styles.fieldLabel}>自定义记忆模型 ID</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setMemoryMaintenanceModelDraft}
-                placeholder="deepseek-v4-flash"
-                placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.primary}
-                style={styles.input}
-                value={memoryMaintenanceModelDraft}
-              />
-              <AiLightButton disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()} label="保存" onPress={() => void saveCustomMemoryMaintenanceModel()} style={{ width: undefined }} variant="outline" />
+          {memoryMaintenanceMode === 'custom' ? (
+            <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
+              <Text style={styles.fieldLabel}>自定义记忆模型 ID</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setMemoryMaintenanceModelDraft}
+                  placeholder="deepseek-v4-flash"
+                  placeholderTextColor="#a1a1aa"
+                  selectionColor="#2563eb"
+                  style={[styles.input, styles.monoInput]}
+                  value={memoryMaintenanceModelDraft}
+                />
+                <Pressable
+                  disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()}
+                  onPress={() => void saveCustomMemoryMaintenanceModel()}
+                  style={({ pressed }) => [styles.saveBtn, (!selectedCard || !memoryMaintenanceModelDraft.trim()) && styles.disabledBtn, pressed && styles.pressed]}
+                >
+                  <Text style={styles.saveBtnText}>保存</Text>
+                </Pressable>
+              </View>
             </View>
-            <Text style={styles.caption}>自定义模式复用当前选中的模型商和上方 API Key，不会保存第二份 Key。</Text>
-          </View>
+          ) : null}
         </View>
-      </AiLightListGroup>
+      </View>
     </AiLightScaffold>
   );
 }
 
 const styles = StyleSheet.create({
   pageContent: {
-    gap: rhythm.listCardGap,
+    paddingBottom: 48,
   },
-  selectBox: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+  section: {
+    gap: 10,
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  sectionHeaderRow: {
     flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: 44,
-    paddingHorizontal: spacing[3],
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
   },
-  activeSelectBox: {
-    borderColor: aiLightColors.primary,
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#a1a1aa',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 4,
   },
-  selectText: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
-    flex: 1,
+  sectionSubtitle: {
+    fontSize: 10,
+    color: '#a1a1aa',
   },
-  disabledSelect: {
-    opacity: 0.62,
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    borderColor: 'rgba(0,0,0,0.05)',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 2,
+    gap: 16,
   },
-  disabledSelectText: {
-    color: aiLightColors.mutedSoft,
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+  },
+  rowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#f4f4f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBox2: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: '#f4f4f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  rowLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#18181b',
+  },
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#18181b',
+  },
+  rowSubtitle: {
+    fontSize: 11,
+    color: '#a1a1aa',
+    marginTop: 2,
+  },
+  rowSubtitleSuccess: {
+    color: '#10b981',
+    fontWeight: '500',
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rowValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#71717a',
+  },
+  rowValueMono: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#52525b',
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
   dropdownPanel: {
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 6,
+    borderColor: 'rgba(0,0,0,0.03)',
+    borderWidth: 1,
+    gap: 2,
   },
   dropdownRow: {
-    alignItems: 'center',
     flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: 44,
-    paddingHorizontal: spacing[3],
-  },
-  dropdownSelectAction: {
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  selectedDropdownRow: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dropdownText: {
+    fontSize: 14,
+    color: '#3f3f46',
+  },
+  selectedDropdownText: {
+    color: '#2563eb',
+    fontWeight: '500',
+  },
+  checkBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldGroup: {
+    gap: 6,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#52525b',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#f4f4f6',
+    color: '#27272a',
+    fontSize: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    minHeight: 40,
+  },
+  monoInput: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+  },
+  inputIconBtn: {
+    position: 'absolute',
+    right: 10,
+    padding: 6,
+  },
+  importInput: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  profileInput: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  outlineBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+  },
+  outlineBtnText: {
+    fontSize: 12,
+    color: '#3f3f46',
+    fontWeight: '500',
+  },
+  actionGroup: {
+    gap: 8,
+    marginTop: 6,
+  },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#18181b',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  primaryBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  primaryBlueBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  primaryBlueBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  secondaryActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryBtn: {
     flex: 1,
     flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: 44,
-  },
-  dropdownDeleteAction: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[1],
-    marginLeft: spacing[2],
-    minHeight: 32,
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#ffffff',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
   },
-  dropdownDeleteText: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.primaryActive,
+  secondaryBtnText: {
+    fontSize: 12,
+    color: '#3f3f46',
+    fontWeight: '500',
+  },
+  grayFullBtn: {
+    backgroundColor: '#f0f1f4',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  grayFullBtnText: {
+    fontSize: 12,
+    color: '#3f3f46',
+    fontWeight: '500',
+  },
+  saveBtn: {
+    backgroundColor: '#f0f1f4',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    fontSize: 12,
+    color: '#3f3f46',
+    fontWeight: '500',
+  },
+  disabledBtn: {
+    opacity: 0.5,
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+  caption: {
+    fontSize: 11,
+    color: '#a1a1aa',
+  },
+  monoValue: {
+    fontSize: 12,
     fontWeight: '600',
+    color: '#18181b',
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    marginTop: 4,
+  },
+  statusIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusIconBoxSuccess: {
+    backgroundColor: '#d1fae5',
+  },
+  statusIconBoxError: {
+    backgroundColor: '#fee2e2',
+  },
+  statusIconBoxWarning: {
+    backgroundColor: '#fef3c7',
+  },
+  advancedPanel: {
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.04)',
+    gap: 16,
   },
   batchActionRow: {
-    borderBottomColor: aiLightColors.hairline,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
+    marginBottom: 4,
   },
   batchActionButtons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: 8,
   },
   batchActionButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#f4f4f5',
+  },
+  dropdownDeleteText: {
+    fontSize: 11,
+    color: '#ef4444',
+  },
+  maintenanceBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+  },
+  maintenanceBannerIcon: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#d4d4d8',
+    alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 30,
-    paddingHorizontal: spacing[3],
   },
-  selectedDropdownRow: {
-    backgroundColor: aiLightColors.card,
+  maintenanceBannerIconText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#52525b',
   },
-  dropdownText: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
-    flex: 1,
-  },
-  selectedDropdownText: {
-    color: aiLightColors.primaryActive,
+  maintenanceBannerTitle: {
+    fontSize: 12,
     fontWeight: '600',
-  },
-  fieldGroup: {
-    gap: rhythm.fieldContentGap,
-  },
-  inlineConfigPadding: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[4],
-    gap: rhythm.fieldContentGap,
-  },
-  providerDisclosure: {
-    gap: rhythm.microGap,
-    paddingBottom: spacing[4],
-    paddingHorizontal: spacing[4],
-  },
-  inlineActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
-  },
-  infoToggle: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    justifyContent: 'space-between',
-  },
-  sectionDivider: {
-    backgroundColor: aiLightColors.hairline,
-    height: StyleSheet.hairlineWidth,
-  },
-  advancedToggle: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 44,
-    paddingHorizontal: spacing[3],
-  },
-  advancedPanel: {
-    gap: rhythm.cardContentGap,
-  },
-  fieldLabel: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-  },
-  sectionTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-  },
-  statusPanel: {
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    padding: spacing[3],
-  },
-  maintenanceResultBanner: {
-    alignItems: 'flex-start',
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    marginBottom: spacing[1],
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-  },
-  maintenanceResultSuccess: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.primary,
-  },
-  maintenanceResultWarning: {
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.primaryActive,
-  },
-  maintenanceResultError: {
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.primaryActive,
-  },
-  maintenanceResultInfo: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-  },
-  maintenanceResultCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  maintenanceResultTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-  },
-  statusValue: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
+    color: '#27272a',
   },
   modeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    gap: 6,
+    marginTop: 4,
   },
   modeOption: {
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 34,
-    paddingHorizontal: spacing[3],
-    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f4f4f6',
   },
   selectedModeOption: {
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.primary,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
   },
   modeOptionText: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#52525b',
   },
   selectedModeOptionText: {
-    color: aiLightColors.primaryActive,
-  },
-  inputRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-  },
-  input: {
-    ...typography.textStyles.body,
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    color: aiLightColors.ink,
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-  },
-  importInput: {
-    minHeight: 88,
-    textAlignVertical: 'top',
-  },
-  profileInput: {
-    minHeight: 112,
-  },
-  iconButton: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  pressed: {
-    opacity: 0.78,
-  },
-  caption: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
+    color: '#2563eb',
   },
 });
