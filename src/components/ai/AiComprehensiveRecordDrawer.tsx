@@ -71,6 +71,7 @@ export function AiComprehensiveRecordDrawer({
 
   // ref 用于测量设置按钮的屏幕坐标，供引导遮罩精准高亮
   const settingsButtonRef = useRef<View>(null);
+  const overlayRef = useRef<View>(null);
   const settingsBtnLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
@@ -112,17 +113,27 @@ export function AiComprehensiveRecordDrawer({
           useNativeDriver: true,
         }),
       ]), () => {
-        // 动画完成后传递设置按钮坐标，用于引导遮罩精准高亮。
-        // 由于直接 measure 经常失败，我们使用 onLayout 测得的精确相对坐标，加上已知的安全区和内边距，算出完美的绝对坐标：
-        if (onSettingsButtonLayout && settingsBtnLayoutRef.current) {
-          const { x, y, width, height } = settingsBtnLayoutRef.current;
-          // btnLayout 是相对于 brandRow 的坐标。
-          // brandRow 位于 drawer 内，drawer 的 paddingHorizontal 为 spacing[5] (20)。
-          const pageX = 20 + x;
-          // drawer 的 paddingTop 是动态计算的：Math.max(insets.top + spacing[4], spacing[10])
-          const pageY = Math.max(insets.top + 16, 40) + y;
-
-          onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
+        // 使用双重 measureInWindow 获取绝对准确的相对坐标！
+        // 任何基于常量的推断都会被 React Native Android 的 padding/layout 各种怪异行为打破。
+        // 通过分别测算 overlay(根) 和 button，将两者的屏幕绝对坐标相减，得到 100% 精确的渲染偏移。
+        if (onSettingsButtonLayout && settingsButtonRef.current && overlayRef.current) {
+          const attemptMeasurement = (retries: number) => {
+            overlayRef.current?.measureInWindow((ox, oy) => {
+              settingsButtonRef.current?.measureInWindow((bx, by, width, height) => {
+                // 如果 measure 失败（Android 常见问题，尤其在动画刚结束时），重试
+                if ((bx === 0 && by === 0) || (ox === 0 && oy === 0) || width === 0) {
+                  if (retries > 0) {
+                    setTimeout(() => attemptMeasurement(retries - 1), 50);
+                  }
+                  return;
+                }
+                const pageX = bx - ox;
+                const pageY = by - oy;
+                onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
+              });
+            });
+          };
+          attemptMeasurement(10); // 最多重试 10 次，等待 500ms
         }
       });
     } else {
@@ -273,7 +284,7 @@ export function AiComprehensiveRecordDrawer({
 
   return (
     <>
-      <View pointerEvents="box-none" style={styles.overlay}>
+      <View ref={overlayRef} pointerEvents="box-none" style={styles.overlay} collapsable={false}>
         {/* Animated scrim */}
         <Animated.View
           pointerEvents="none"

@@ -248,8 +248,8 @@ function GuideBubble({
       position: 'absolute' as const,
       // 在按钮正下方
       top: y + height + HIGHLIGHT_PADDING + 12,
-      // 气泡右侧与按钮右侧稍微对齐，并保持安全边距
-      right: Math.max(10, SCREEN_WIDTH - (x + width) - 10),
+      // 直接固定右边距，避免受到容器宽度的影响
+      right: 20,
       width: 220,
     };
   } else if (step === 1) {
