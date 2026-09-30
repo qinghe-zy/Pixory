@@ -2,7 +2,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler, Switch } from 'react-native';
 import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,7 +14,7 @@ import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, settingsRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { SecureImage } from '../components/SecureImage';
 import {
@@ -392,6 +392,7 @@ export function GlobalSearchScreen({
                 {actions.length > 0 && (
                   <ActionSection
                     items={actions}
+                    space={space}
                     onOpenAction={(action) => {
                       if (onOpenRoute) onOpenRoute(action.route, action.routeParams);
                     }}
@@ -1730,15 +1731,35 @@ function GuessYouWantList({
   );
 }
 
-function ActionSection({ items, onOpenAction }: { items: MatchedAction[]; onOpenAction: (item: MatchedAction) => void }) {
+function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[]; onOpenAction: (item: MatchedAction) => void; space: PixorySpace }) {
+  const [systemAssistantEnabled, setSystemAssistantEnabled] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    void runWithDatabaseSpace(space, async (db) => {
+      const enabled = await settingsRepository.getSystemAssistantEnabled(db);
+      if (isMounted) {
+        setSystemAssistantEnabled(enabled);
+      }
+    });
+    return () => { isMounted = false; };
+  }, [space]);
+
+  const toggleSystemAssistant = async (value: boolean) => {
+    setSystemAssistantEnabled(value);
+    await runWithDatabaseSpace(space, async (db) => {
+      await settingsRepository.setSystemAssistantEnabled(db, value);
+    });
+  };
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="功能与入口" subtitle="ACTIONS · 快捷直达" />
       {items.map((item) => (
         <Pressable
           key={item.id}
-          style={({ pressed }) => [actionStyles.actionRow, pressed && actionStyles.actionRowPressed]}
-          onPress={() => onOpenAction(item)}
+          style={({ pressed }) => [actionStyles.actionRow, pressed && item.id !== 'system-assistant-toggle' && actionStyles.actionRowPressed]}
+          onPress={() => item.id !== 'system-assistant-toggle' && onOpenAction(item)}
         >
           <View style={actionStyles.actionIconBox}>
             <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
@@ -1751,7 +1772,16 @@ function ActionSection({ items, onOpenAction }: { items: MatchedAction[]; onOpen
             )}
           </View>
           
-          <Ionicons name="chevron-forward" size={16} color={htmlColors.onSurfaceVariant} />
+          {item.id === 'system-assistant-toggle' ? (
+            <Switch
+              value={systemAssistantEnabled}
+              onValueChange={toggleSystemAssistant}
+              trackColor={{ false: htmlColors.surfaceVariant, true: htmlColors.primary }}
+              thumbColor={htmlColors.surface}
+            />
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={htmlColors.onSurfaceVariant} />
+          )}
         </Pressable>
       ))}
     </View>

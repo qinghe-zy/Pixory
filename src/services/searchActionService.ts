@@ -163,6 +163,14 @@ export const GLOBAL_ACTIONS: SearchAction[] = [
     route: 'import-batch-history'
   },
 
+  {
+    id: 'system-assistant-toggle',
+    title: 'Pixory 系统管家',
+    icon: 'construct-outline',
+    aliases: ['pixory', '管家', '助手', '系统助手', '系统', '设置管家', '开启系统管家', '关闭系统管家', '官方', 'AI管家', '小助手'],
+    route: 'system-assistant-toggle'
+  },
+
   // 4. 帮助与支持
   {
     id: 'about',

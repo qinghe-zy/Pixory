@@ -495,7 +495,7 @@ function buildRichHtmlDocument(html: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>
-html,body{margin:0;padding:0;background:transparent;color:${aiLightColors.ink};font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;overflow:hidden;word-break:break-word;overflow-wrap:anywhere}
+html,body{margin:0;padding:0;background:transparent;color:${aiLightColors.ink};font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;overflow:visible;word-break:break-word;overflow-wrap:anywhere}
 *{box-sizing:border-box;max-width:100%}
 div,section,article,header,footer,main,p,blockquote,pre,ul,ol,li,table,thead,tbody,tr,th,td{max-width:100%}
 p{margin:0 0 0.65em}
@@ -1081,7 +1081,7 @@ const styles = StyleSheet.create({
     minWidth: spacing[4],
   },
   listText: {
-    flex: 1,
+    flexShrink: 1,
   },
   definitionList: {
     gap: rhythm.microGap,
@@ -1154,7 +1154,6 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     overflow: 'hidden',
     padding: spacing[2],
-    width: '100%',
   },
   codeHeader: {
     alignItems: 'center',
@@ -1187,7 +1186,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     maxWidth: '100%',
     overflow: 'hidden',
-    width: '100%',
   },
   tableRow: {
     flexDirection: 'row',

@@ -32,6 +32,22 @@ export async function compileConversationCoverage(
     ),
     aiThreadRepository.listSummarySegments(db, input.thread.id, input.branchScopes),
   ]);
+  if (input.thread.id === 'pixory-system-assistant') {
+    let startIndex = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      try {
+        const parsed = JSON.parse(messages[i].promptSnapshotJson || '{}');
+        if (parsed?.resetContext === true) {
+          startIndex = i;
+          break;
+        }
+      } catch (e) {}
+    }
+    if (startIndex > 0) {
+      messages.splice(0, startIndex);
+    }
+  }
+
   const compiled = buildConversationCoveragePlan({
     branchRouteHash,
     historyRoundLimit: input.historyRoundLimit,

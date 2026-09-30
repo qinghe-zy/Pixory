@@ -1068,7 +1068,7 @@ export const aiThreadRepository = {
       await db.runAsync('DELETE FROM ai_message_citations WHERE messageId IN (SELECT id FROM ai_messages WHERE threadId = ?)', threadId);
       await db.runAsync('DELETE FROM ai_message_versions WHERE originalMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?)', threadId);
       await db.runAsync('DELETE FROM ai_messages WHERE threadId = ?', threadId);
-      await db.runAsync('UPDATE ai_threads SET updatedAt = ?, snapshotMessageId = NULL, snapshotMessageText = NULL WHERE id = ?', createTimestamp(), threadId);
+      await db.runAsync('UPDATE ai_threads SET updatedAt = ?, lastMessagePreview = NULL, currentBranchRootMessageId = NULL, currentBranchVersionIndex = NULL, summary = NULL WHERE id = ?', createTimestamp(), threadId);
     });
   },
   async listBranchRouteMetadata(db: SQLiteDatabase, threadId: string): Promise<AiBranchRouteMetadataRecord[]> {

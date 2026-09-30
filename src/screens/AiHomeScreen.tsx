@@ -345,7 +345,6 @@ export function AiHomeScreen({
                     key={thread.id}
                     onLongPress={(e) => {
                       if (globalScrollState.isScrolling) return;
-                      if (thread.id === 'pixory-system-assistant') return;
                       setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
                     }}
                     onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}

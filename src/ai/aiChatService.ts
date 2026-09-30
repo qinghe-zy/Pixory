@@ -3105,14 +3105,23 @@ export async function listAiHomeThreads(input: {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
     
-    if (!threads.some(t => t.id === 'pixory-system-assistant')) {
-      const systemThread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
-      if (systemThread) {
-        threads.unshift({
-          ...systemThread,
-          knowledgeCategory: null,
-          lastMessageAt: systemThread.updatedAt,
-        });
+    const systemAssistantEnabled = await settingsRepository.getSystemAssistantEnabled(db);
+    
+    if (systemAssistantEnabled) {
+      if (!threads.some(t => t.id === 'pixory-system-assistant')) {
+        const systemThread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+        if (systemThread) {
+          threads.unshift({
+            ...systemThread,
+            knowledgeCategory: null,
+            lastMessageAt: systemThread.updatedAt,
+          });
+        }
+      }
+    } else {
+      const systemIndex = threads.findIndex(t => t.id === 'pixory-system-assistant');
+      if (systemIndex !== -1) {
+        threads.splice(systemIndex, 1);
       }
     }
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
@@ -6091,6 +6100,7 @@ export async function sendUserMessage(
       status: 'completed',
       content: input.content,
       completedAt: new Date().toISOString(),
+      promptSnapshotJson: input.resetContext ? JSON.stringify({ resetContext: true }) : undefined,
     });
     markGenerationMetric(generationMetrics, 'userMessagePersistEndAt');
     markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');

@@ -17,6 +17,7 @@ export const AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY = 'aiProviderPromptCacheTtlMs';
 export const DIAGNOSTICS_ENABLED_KEY = 'diagnosticsEnabled';
 export const DIAGNOSTICS_RETENTION_DAYS_KEY = 'diagnosticsRetentionDays';
 export const DIAGNOSTICS_MAX_EVENTS_KEY = 'diagnosticsMaxEvents';
+export const SYSTEM_ASSISTANT_ENABLED_KEY = 'systemAssistantEnabled';
 
 export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
 export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
@@ -436,6 +437,15 @@ export const settingsRepository = {
 
   async setAiChatGuideSeen(db: SQLiteDatabase, seen: boolean): Promise<void> {
     await this.setValue(db, AI_CHAT_GUIDE_SEEN_KEY, seen ? 'true' : 'false');
+  },
+
+  async getSystemAssistantEnabled(db: SQLiteDatabase): Promise<boolean> {
+    const value = await this.getValue(db, SYSTEM_ASSISTANT_ENABLED_KEY);
+    return value !== 'false';
+  },
+
+  async setSystemAssistantEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
+    await this.setValue(db, SYSTEM_ASSISTANT_ENABLED_KEY, enabled ? 'true' : 'false');
   },
 };
 

@@ -35,6 +35,7 @@ import {
   View,
   Modal,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -1011,7 +1012,9 @@ export function AiChatScreen({
           gs.dx < -DRAWER_SWIPE_RELEASE_DISTANCE ||
           (gs.dx < -DRAWER_SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18)
         ) {
-          setConfigDrawerVisible(true);
+          if (activeThreadIdRef.current !== 'pixory-system-assistant') {
+            setConfigDrawerVisible(true);
+          }
         }
       },
     }),
@@ -5281,6 +5284,7 @@ export function AiChatScreen({
   }
 
   async function handleOpenSessionConfig() {
+    if (activeThreadIdRef.current === 'pixory-system-assistant') return;
     try {
       const nextThreadId = await ensureThread();
       if (!nextThreadId || !screenMountedRef.current) {
@@ -7103,8 +7107,8 @@ export function AiChatScreen({
           >
             <AiMessageBubble
               assistantAvatar={{
-                avatarEnabled: participantAppearance.assistantAvatarEnabled,
-                avatarUri: participantAppearance.assistantAvatarUri,
+                avatarEnabled: isSystemAssistant ? true : participantAppearance.assistantAvatarEnabled,
+                avatarUri: isSystemAssistant ? Image.resolveAssetSource(require('../../icons/02_右上_蓝发女孩.png')).uri : participantAppearance.assistantAvatarUri,
               }}
               assistantDisplayName={participantAppearance.assistantName}
               editingMessageId={editingUserMessageId}

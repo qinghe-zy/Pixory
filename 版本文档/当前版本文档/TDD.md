@@ -42,3 +42,9 @@
 
 
 
+
+### 系统管家增强
+- 数据库新增 SYSTEM_ASSISTANT_ENABLED_KEY
+- 搜索模块新增 system-assistant-toggle 操作，在 GlobalSearchScreen.tsx 通过 Switch 渲染组件并交互
+- aiChatService.ts 的 listAiHomeThreads 在加载首页会话时判断开关隐藏系统管家
+- aiChatService.ts 处理 resetContext 并在数据库记录标记，conversationCoverageService 读取标记进行硬截断
