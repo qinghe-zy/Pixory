@@ -47,7 +47,7 @@ export function AiChatNoKeyBanner({ onOpenProviderSettings }: AiChatNoKeyBannerP
 
         {/* 说明 */}
         <Text style={styles.body}>
-          向右滑动可打开右侧会话控制台配置本次会话的模型，或点击下方按钮前往全局 AI 接口配置页面。
+          向右滑动打开左侧面板可进入全局设置，向左滑动打开右侧控制台可配置本次会话模型；你也可以直接点击下方按钮前往。
         </Text>
 
         {/* 黑白矩形按钮，4px 圆角 */}
