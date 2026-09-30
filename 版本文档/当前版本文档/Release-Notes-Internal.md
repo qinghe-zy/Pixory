@@ -84,3 +84,4 @@
 - **改动**: 
   1. 在 src/screens/HomeLibraryScreen.tsx 的 AnimatedFlatList 的 ListEmptyComponent 中，为 ctiveFilter === 'recent' 增加了对应的 HomeEmptyState 渲染。
   2. 修复了原来该状态下退退回 PageStateBlock (“空空如也”) 的不一致问题，与 “全部 IP” 和 “收藏” 的占位态组件保持设计语言一致。
+- 精简 \AiChatNoKeyBanner.tsx\ 内文案，移除指向右侧会话控制台的多余引导，直接让用户去左侧面板进行全局设置。
