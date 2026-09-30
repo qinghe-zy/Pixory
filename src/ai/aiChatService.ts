@@ -207,6 +207,7 @@ export interface SendUserMessageInput {
   attachments?: AiOutgoingAttachment[];
   branchRootMessageId?: string | null;
   branchVersionIndex?: number | null;
+  resetContext?: boolean;
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
@@ -2268,7 +2269,8 @@ async function buildPromptForThread(
   const chatMode = deriveAiChatMode(thread, thread.space);
   const generationMetrics = options?.generationMetrics ?? null;
   const fastPathContext = await runWithDatabaseSpace(thread.space, async (db) => {
-    const [threadMaterialCount, messageCount, roleCard] = await Promise.all([
+    const isSystemAssistant = thread.id === 'pixory-system-assistant';
+    const [threadMaterialCount, messageCount, roleCard, systemIps] = await Promise.all([
       aiKnowledgeRepository.countDocumentsByOwner(db, {
         ownerId: thread.id,
         ownerType: 'thread',
@@ -2276,16 +2278,62 @@ async function buildPromptForThread(
       }),
       aiThreadRepository.countCompletedNonSystemMessages(db, thread.id, branchScopes),
       thread.roleCardId ? aiRoleCardRepository.findById(db, thread.roleCardId) : Promise.resolve(null),
+      isSystemAssistant ? ipRepository.findAll(db) : Promise.resolve([]),
     ]);
     return {
       hasThreadMaterials: threadMaterialCount > 0,
       messageCount,
       roleCard,
+      systemIps,
     };
   });
   
   let effectiveSystemPrompt = thread.systemPrompt;
-  if (fastPathContext.roleCard) {
+  if (thread.id === 'pixory-system-assistant') {
+    const ipListStr = fastPathContext.systemIps.map(ip => `- [${ip.name}] (ID: ${ip.id})`).join('\n');
+    effectiveSystemPrompt = `你现在是 Pixory 应用的“系统级操作代理”，你的名字叫“Pixory”。你的唯一核心任务是：理解用户的指令，并精确地调用系统提供的 XML 标签来执行应用内操作。
+你不是普通的聊天机器人！请保持回复简短、专业、克制，不要和用户进行无意义的闲聊。
+
+【核心输出规则】
+1. 触发操作时，你必须严格使用下方提供的 XML 标签，且标签必须作为回复的**最后一部分**输出。
+2. 在 XML 标签之前，只能用 1-2 句话进行自然语言的简短回复（例如：“好的，正在为您准备界面。”）。不要有多余的解释和废话。
+3. **绝对不允许**自己发明或修改 XML 标签的格式，**绝对不允许**把 XML 标签放在 Markdown 代码块 (如 \`\`\`xml \`\`\`) 里面。
+4. 如果用户的意图与下方列出的系统操作无关，请简短地拒绝，并说明你只能执行页面跳转、管理IP、存储、回收站、隐私等系统操作。
+
+【可用操作与触发标签】
+操作 1：锁定隐私空间（当用户要求锁定、保护隐私、退出个人空间时）
+<system_action type="navigate" route="lock-personal-space" />
+
+操作 2：清理存储空间（当用户要求看空间、清理缓存、管理存储时）
+<system_action type="navigate" route="storage-usage" />
+
+操作 3：打开回收站（当用户要求查看垃圾桶、回收站、已删除内容时）
+<system_action type="navigate" route="trash" />
+
+操作 4：新建 IP（当用户明确表示要新建或创建一个IP或企划时）
+<system_action type="navigate" route="create-ip" />
+
+操作 5：修改当前会话标题（当用户要求修改聊天标题时）
+<system_action type="rename-thread" newTitle="用户指定的新标题" />
+
+操作 6：打开目标 IP 或导入素材到目标 IP
+前提：用户明确提到了目标 IP 的名称，且该名称在下方的系统中存在。
+如果用户要求打开或查看 IP：
+<system_action type="navigate" route="ip-detail" ipId="对应的IP_ID" />
+如果用户要求导入素材：
+<system_action type="navigate" route="import-images" ipId="对应的IP_ID" />
+
+操作 7：请求用户选择 IP (重要)
+前提：用户想要打开IP或导入素材，但没说具体是哪个IP，或者你无法确定目标IP是哪一个。
+<system_action type="select_ip" />
+
+【当前系统存在的 IP 列表】
+${ipListStr || '（当前系统暂无任何 IP）'}
+
+【严重警告】
+- 执行与 IP 相关的操作时，**必须对照**上面的【IP 列表】。如果不确定，必须输出 <system_action type="select_ip" /> 唤起界面让用户自己选。绝不允许伪造不存在的 IP_ID！
+- 严格按照要求的格式输出，不要和用户闲聊！`;
+  } else if (fastPathContext.roleCard) {
     const snapshot = parseThreadRoleSnapshot(thread.roleSnapshotJson);
     const isPromptUnmodified = thread.systemPrompt === (snapshot.prompt ?? getDefaultThreadSystemPrompt(thread.contextType));
     if (isPromptUnmodified || !thread.systemPrompt.trim()) {
@@ -3056,6 +3104,17 @@ export async function listAiHomeThreads(input: {
 }): Promise<AiHomeThreadItem[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
+    
+    if (!threads.some(t => t.id === 'pixory-system-assistant')) {
+      const systemThread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+      if (systemThread) {
+        threads.unshift({
+          ...systemThread,
+          knowledgeCategory: null,
+          lastMessageAt: systemThread.updatedAt,
+        });
+      }
+    }
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
     const ipIds = threads
@@ -3094,6 +3153,24 @@ export async function listAiHomeThreads(input: {
         roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
       };
     });
+  });
+}
+
+export async function ensureSystemAssistantThread(space: PixorySpace): Promise<void> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+    if (!thread) {
+      await aiThreadRepository.createThread(db, {
+        id: 'pixory-system-assistant',
+        space,
+        contextType: 'normal',
+        title: 'Pixory',
+        systemPrompt: '',
+        roleInstructionWeight: 'default',
+        replyPreference: 'auto',
+        isPinned: true
+      });
+    }
   });
 }
 
@@ -4340,6 +4417,7 @@ async function streamAssistantReply(input: {
   continuationInstruction?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
+  resetContext?: boolean;
   onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
@@ -4843,7 +4921,7 @@ async function streamAssistantReply(input: {
     });
     outgoingAttachments = preparedAttachments.providerAttachments;
     const attachmentPromptContext = preparedAttachments.promptContext;
-    const historyRoundLimit = normalizeAiContextSettings({
+    const historyRoundLimit = input.resetContext ? 0 : normalizeAiContextSettings({
       historyRoundLimit: input.thread.contextHistoryRoundLimit,
     }).historyRoundLimit;
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
@@ -6083,6 +6161,7 @@ export async function sendUserMessage(
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
+    resetContext: input.resetContext,
     signal: input.signal,
     space: input.space,
     thread: latestThread,

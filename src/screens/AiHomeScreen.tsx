@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useContext } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import { listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
+import { ensureSystemAssistantThread, listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
 import { AppDialog } from '../components/AppDialog';
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
@@ -171,7 +171,8 @@ export function AiHomeScreen({
     let isMounted = true;
     setErrorMessage(null);
     setLoadedThreads({ space, threads: getCachedHomeThreads(space) });
-    void listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space })
+    void ensureSystemAssistantThread(space)
+      .then(() => listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space }))
       .then((nextThreads) => {
         homeThreadCache[space] = nextThreads;
         if (isMounted) {
@@ -344,6 +345,7 @@ export function AiHomeScreen({
                     key={thread.id}
                     onLongPress={(e) => {
                       if (globalScrollState.isScrolling) return;
+                      if (thread.id === 'pixory-system-assistant') return;
                       setActionMenuState({ thread, anchorX: e.nativeEvent.pageX, anchorY: e.nativeEvent.pageY });
                     }}
                     onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
@@ -353,8 +355,14 @@ export function AiHomeScreen({
                     <View style={styles.threadCopy}>
                       <View style={styles.threadTitleRow}>
                         <View style={styles.threadTitleWrap}>
-                          <Text numberOfLines={1} style={styles.threadTitle}>{thread.title}</Text>
-                          {(thread.contextType === 'ip' || thread.boundIpId != null) ? (
+                          <Text numberOfLines={1} style={styles.threadTitle}>
+                            {thread.id === 'pixory-system-assistant' ? 'Pixory 系统管家' : thread.title}
+                          </Text>
+                          {thread.id === 'pixory-system-assistant' ? (
+                            <View style={[styles.ipBadge, { backgroundColor: 'rgba(0, 0, 0, 0.08)' }]}>
+                              <Text style={[styles.ipBadgeText, { color: '#4A5568' }]}>系统</Text>
+                            </View>
+                          ) : (thread.contextType === 'ip' || thread.boundIpId != null) ? (
                             <View style={styles.ipBadge}>
                               <Text style={styles.ipBadgeText}>IP</Text>
                             </View>
@@ -611,6 +619,14 @@ function labelForContext(thread: AiHomeThreadItem): string {
 }
 
 function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: PixorySpace }) {
+  if (thread.id === 'pixory-system-assistant') {
+    return (
+      <Image
+        source={require('../../assets/icon.png')}
+        style={styles.threadAvatarImage}
+      />
+    );
+  }
   if (thread.avatar.avatarEnabled && thread.avatar.avatarUri) {
     return (
       <SecureImage

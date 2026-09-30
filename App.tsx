@@ -2095,6 +2095,12 @@ export default function App() {
             closeDeletedAiThread(currentRoute.threadId);
           }
         }}
+        onNavigateToCreateIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
+        onNavigateToImportImages={(ipId) => pushRoute({ name: 'import-images', ipId, space: activeSpace })}
+        onNavigateToStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
+        onNavigateToTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
+        onNavigateToIpDetail={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
+        onNavigateToPersonalSpaceLock={() => { void lockPersonalSpace('manual'); }}
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onOpenDiary={(diaryId, versionId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId, versionId })}
         onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })}

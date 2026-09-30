@@ -57,7 +57,9 @@ import {
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import { AiChatGuideOverlay, type AiChatGuideStep, type GuideHighlightRect } from "../components/ai/AiChatGuideOverlay";
 import { AiChatNoKeyBanner } from "../components/ai/AiChatNoKeyBanner";
+import { SystemActionConfirmCard, SystemIpSelectCard } from "../components/ai/SystemActionCards";
 import { AiSessionConfigScreen } from "./AiSessionConfigScreen";
+import { ipRepository } from "../database/repositories/ipRepository";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
   aiLightColors,
@@ -880,6 +882,12 @@ interface AiChatScreenProps {
   onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
+  onNavigateToCreateIp?: () => void;
+  onNavigateToImportImages?: (ipId: number) => void;
+  onNavigateToStorageUsage?: () => void;
+  onNavigateToTrash?: () => void;
+  onNavigateToIpDetail?: (ipId: number) => void;
+  onNavigateToPersonalSpaceLock?: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (
     documentId: string,
@@ -922,6 +930,12 @@ export function AiChatScreen({
   onOpenDiary,
   onOpenDream,
   onNewChat,
+  onNavigateToCreateIp,
+  onNavigateToImportImages,
+  onNavigateToStorageUsage,
+  onNavigateToTrash,
+  onNavigateToIpDetail,
+  onNavigateToPersonalSpaceLock,
   onOpenThread,
   onOpenSource,
   onOpenIpSource,
@@ -930,6 +944,7 @@ export function AiChatScreen({
   onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
+  const isSystemAssistant = threadId === 'pixory-system-assistant';
 
   const initialBottomInsetRef = useRef(insets.bottom);
   const statusBarHeight =
@@ -953,6 +968,23 @@ export function AiChatScreen({
     undefined,
   );
   const selectedVersionByMessageIdRef = useRef<Record<string, number>>({});
+
+  const [nowForSystemTask, setNowForSystemTask] = useState(() => Date.now());
+  const [systemTaskContinuedTime, setSystemTaskContinuedTime] = useState<number>(0);
+  
+  useEffect(() => {
+    if (!isSystemAssistant) return;
+    const interval = setInterval(() => setNowForSystemTask(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, [isSystemAssistant]);
+
+  const [systemAssistantIps, setSystemAssistantIps] = useState<any[]>([]);
+  useEffect(() => {
+    if (!isSystemAssistant) return;
+    runWithDatabaseSpace(space, (db) => ipRepository.findAll(db))
+      .then(setSystemAssistantIps)
+      .catch(() => {});
+  }, [isSystemAssistant, space]);
 
   const spaceRef = useRef(space);
   spaceRef.current = space;
@@ -5942,6 +5974,7 @@ export function AiChatScreen({
               attachments,
               branchRootMessageId: activeBranch?.branchRootMessageId,
               branchVersionIndex: activeBranch?.branchVersionIndex,
+              resetContext: isSystemAssistant && visibleMessages.length > 0 && nowForSystemTask - new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > 10 * 60 * 1000 && new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > systemTaskContinuedTime,
               content,
               sendPressedAt,
               space,
@@ -7125,6 +7158,56 @@ export function AiChatScreen({
                 nickname: participantAppearance.userNickname,
               }}
             />
+            {(() => {
+              if (isSystemAssistant && message.role === 'assistant') {
+                const textToSearch = (generating && message.id === activeAssistantId)
+                  ? streamingTailStateRef.current.blocks.map(b => b.raw).join('')
+                  : message.content;
+                const match = textToSearch.match(/<system_action\s+([^>]*)\/>/);
+                if (match) {
+                  const params: Record<string, string> = {};
+                  const attrs = match[1].matchAll(/(\w+)="([^"]*)"/g);
+                  for (const m of attrs) {
+                    params[m[1]] = m[2];
+                  }
+                  
+                  if (params.type === 'navigate' && params.route === 'lock-personal-space') {
+                    return <SystemActionConfirmCard title="锁定隐私空间" description="是否确认锁定隐私空间？" onConfirm={() => onNavigateToPersonalSpaceLock?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'storage-usage') {
+                    return <SystemActionConfirmCard title="清理存储空间" description="是否确认前往清理存储空间？" onConfirm={() => onNavigateToStorageUsage?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'trash') {
+                    return <SystemActionConfirmCard title="打开回收站" description="是否确认打开回收站？" onConfirm={() => onNavigateToTrash?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'ip-detail' && params.ipId) {
+                    return <SystemActionConfirmCard title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
+                  }
+                  if (params.type === 'rename-thread') {
+                    return <SystemActionConfirmCard title={`重命名会话为: ${params.newTitle}`} onConfirm={async () => {
+                      if (activeThreadIdRef.current) {
+                        await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, activeThreadIdRef.current!, { title: params.newTitle }));
+                        // Just an optimistic feedback or ignore since it happens
+                      }
+                    }} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'create-ip') {
+                    return <SystemActionConfirmCard title="新建IP" description="确认进入新建IP页面？" onConfirm={() => onNavigateToCreateIp?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'import-images' && params.ipId) {
+                    return <SystemActionConfirmCard title="导入素材" description="确认进入导入素材页面？" onConfirm={() => onNavigateToImportImages?.(parseInt(params.ipId!, 10))} />;
+                  }
+                  if (params.type === 'select_ip') {
+                    return <SystemIpSelectCard ips={systemAssistantIps} onConfirm={(ipId) => {
+                      // Tell the system AI that the user selected this IP
+                      setComposerText(`我选择了IP: ${systemAssistantIps.find((i: any) => i.id === ipId)?.name}`);
+                      setTimeout(() => handleSend(), 100);
+                    }} />;
+                  }
+                }
+              }
+              return null;
+            })()}
           </View>
           {inlineMemoryCaptures.length > 0 ? (
             <View style={styles.inlineMemoryNotice}>
@@ -7249,17 +7332,19 @@ export function AiChatScreen({
             </View>
             {/* Right: session settings + new chat */}
             <View style={styles.headerSide}>
-              <Pressable
-                accessibilityLabel="会话设置"
-                accessibilityRole="button"
-                onPress={() => void handleOpenSessionConfig()}
-                style={({ pressed }) => [
-                  styles.iconBtn,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={22} />
-              </Pressable>
+              {!isSystemAssistant && (
+                <Pressable
+                  accessibilityLabel="会话设置"
+                  accessibilityRole="button"
+                  onPress={() => void handleOpenSessionConfig()}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={22} />
+                </Pressable>
+              )}
             </View>
           </View>
           {newChatFeedbackVisible ? (
@@ -7386,6 +7471,24 @@ export function AiChatScreen({
               }}
             />
           ) : null}
+
+          {/* System Task Ended Banner */}
+          {(() => {
+            if (!isSystemAssistant || visibleMessages.length === 0) return null;
+            const latestMsg = visibleMessages[visibleMessages.length - 1];
+            const latestTime = new Date(latestMsg.createdAt).getTime();
+            const isEnded = nowForSystemTask - latestTime > 10 * 60 * 1000 && latestTime > systemTaskContinuedTime;
+            if (!isEnded) return null;
+
+            return (
+              <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+                <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
+                <Pressable onPress={() => setSystemTaskContinuedTime(Date.now())} style={{ marginLeft: 8 }}>
+                  <Text style={{ color: aiLightColors.primaryActive, fontSize: 12 }}>[继续任务]</Text>
+                </Pressable>
+              </View>
+            );
+          })()}
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>

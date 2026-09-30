@@ -7,7 +7,7 @@ import { PERSONAL_DATABASE_NAME, resetDatabaseSpaceCache } from '../database';
 import { ensureAppDirectories, getExportsDir, getOriginalsDir, getTempDir, getThumbnailsDir } from './fileStorageService';
 
 export const PERSONAL_CREDENTIAL_KEY = 'pixory.personal.credential.v1';
-export const MAX_PERSONAL_UNLOCK_FAILURES = 5;
+export const MAX_PERSONAL_UNLOCK_FAILURES = 50;
 const PERSONAL_CREDENTIAL_VERSION = 4;
 const PERSONAL_LOCK_MS = 5 * 60 * 1000;
 

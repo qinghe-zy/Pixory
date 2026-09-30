@@ -2412,7 +2412,8 @@ export const aiThreadRepository = {
 
   async deleteThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
     let deletedCount = 0;
-    for (const threadId of threadIds) {
+    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant');
+    for (const threadId of safeThreadIds) {
       await db.runAsync('DELETE FROM ai_message_fts WHERE threadId = ?', threadId);
       await db.runAsync('DELETE FROM ai_message_version_fts WHERE threadId = ?', threadId);
       const memoryIds = await db.getAllAsync<{ id: string }>(
@@ -2442,7 +2443,8 @@ export const aiThreadRepository = {
   async softDeleteThreads(db: SQLiteDatabase, space: PixorySpace, threadIds: string[]): Promise<number> {
     const now = createTimestamp();
     let deletedCount = 0;
-    for (const threadId of threadIds) {
+    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant');
+    for (const threadId of safeThreadIds) {
       const result = await db.runAsync(
         `UPDATE ai_threads
          SET archivedAt = ?, updatedAt = ?

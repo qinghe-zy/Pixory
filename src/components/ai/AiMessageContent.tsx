@@ -758,6 +758,13 @@ export function AiMessageContent(props: AiMessageContentProps) {
   let { content } = props;
   const { trailingInline, streaming = false, variant = 'assistant' } = props;
 
+  if (content.includes('<system_action')) {
+    const match = content.match(/<system_action[^>]*?(?:\/>|>|$)/);
+    if (match) {
+      content = content.replace(match[0], '').trim();
+    }
+  }
+
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -54,6 +54,14 @@ export function SecurityUnlockModule({
     }
   };
 
+  const onUnlockAttemptRef = useRef(onUnlockAttempt);
+  const isErrorRef = useRef(isError);
+
+  useEffect(() => {
+    onUnlockAttemptRef.current = onUnlockAttempt;
+    isErrorRef.current = isError;
+  }, [onUnlockAttempt, isError]);
+
   const triggerBiometric = async () => {
     try {
       const result = await LocalAuthentication.authenticateAsync({
@@ -107,7 +115,10 @@ export function SecurityUnlockModule({
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
         const node = getNodeIndex(locationX, locationY);
@@ -156,11 +167,24 @@ export function SecurityUnlockModule({
         setCurrentPoint(null);
         if (activeNodesRef.current.length > 0) {
           const patternStr = activeNodesRef.current.join('');
-          onUnlockAttempt(patternStr);
+          onUnlockAttemptRef.current(patternStr);
         }
         // Don't clear immediately, wait for parent to handle error/success or delay
         setTimeout(() => {
-          if (!isError) {
+          if (!isErrorRef.current) {
+             setActiveNodes([]);
+             activeNodesRef.current = [];
+          }
+        }, 1000);
+      },
+      onPanResponderTerminate: () => {
+        setCurrentPoint(null);
+        if (activeNodesRef.current.length > 0) {
+          const patternStr = activeNodesRef.current.join('');
+          onUnlockAttemptRef.current(patternStr);
+        }
+        setTimeout(() => {
+          if (!isErrorRef.current) {
              setActiveNodes([]);
              activeNodesRef.current = [];
           }
