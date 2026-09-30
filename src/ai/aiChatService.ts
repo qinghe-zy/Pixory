@@ -3111,10 +3111,17 @@ export async function listAiHomeThreads(input: {
       if (!threads.some(t => t.id === 'pixory-system-assistant')) {
         const systemThread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
         if (systemThread) {
-          threads.unshift({
+          threads.push({
             ...systemThread,
             knowledgeCategory: null,
             lastMessageAt: systemThread.updatedAt,
+          });
+          threads.sort((a, b) => {
+            if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+            const ta = a.lastMessageAt ?? a.updatedAt;
+            const tb = b.lastMessageAt ?? b.updatedAt;
+            if (ta !== tb) return ta < tb ? 1 : -1;
+            return a.id < b.id ? 1 : -1;
           });
         }
       }

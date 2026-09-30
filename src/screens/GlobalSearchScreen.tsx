@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { searchGlobalMessages, searchGlobalThreads, type AiHomeThreadItem } from '../ai/aiChatService';
+import { searchGlobalMessages, searchGlobalThreads, loadThreadMessageAppearanceConfig, type AiHomeThreadItem, type AiThreadMessageAppearanceConfig } from '../ai/aiChatService';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AppDialog } from '../components/AppDialog';
@@ -1733,6 +1733,7 @@ function GuessYouWantList({
 
 function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[]; onOpenAction: (item: MatchedAction) => void; space: PixorySpace }) {
   const [systemAssistantEnabled, setSystemAssistantEnabled] = useState(true);
+  const [systemAssistantAppearance, setSystemAssistantAppearance] = useState<AiThreadMessageAppearanceConfig | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1742,8 +1743,17 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
         setSystemAssistantEnabled(enabled);
       }
     });
+
+    if (items.some((i) => i.id === 'system-assistant-toggle')) {
+      void loadThreadMessageAppearanceConfig(space, 'pixory-system-assistant').then((appearance) => {
+        if (isMounted) {
+          setSystemAssistantAppearance(appearance);
+        }
+      });
+    }
+
     return () => { isMounted = false; };
-  }, [space]);
+  }, [space, items]);
 
   const toggleSystemAssistant = async (value: boolean) => {
     setSystemAssistantEnabled(value);
@@ -1762,7 +1772,16 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
           onPress={() => item.id !== 'system-assistant-toggle' && onOpenAction(item)}
         >
           <View style={actionStyles.actionIconBox}>
-            <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
+            {item.id === 'system-assistant-toggle' && systemAssistantAppearance?.assistantAvatar?.avatarEnabled && systemAssistantAppearance.assistantAvatar.avatarUri ? (
+              <SecureImage
+                contentFit="cover"
+                space={space}
+                style={{ width: '100%', height: '100%', borderRadius: 12 }}
+                uri={systemAssistantAppearance.assistantAvatar.avatarUri}
+              />
+            ) : (
+              <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
+            )}
           </View>
           
           <View style={actionStyles.actionTextContent}>

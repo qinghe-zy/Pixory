@@ -2099,6 +2099,7 @@ export default function App() {
         onNavigateToImportImages={(ipId) => pushRoute({ name: 'import-images', ipId, space: activeSpace })}
         onNavigateToStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
         onNavigateToTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
+        onNavigateToGlobalRoute={(route, routeParams) => pushRoute({ name: route as any, space: activeSpace, ...routeParams })}
         onNavigateToIpDetail={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
         onNavigateToPersonalSpaceLock={() => { void lockPersonalSpace('manual'); }}
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}

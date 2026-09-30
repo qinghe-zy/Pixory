@@ -1,3 +1,4 @@
+import { GLOBAL_ACTIONS } from '../services/searchActionService';
 import { clearAiThreadMessages } from '../ai/aiChatService';
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -884,6 +885,7 @@ interface AiChatScreenProps {
   onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
+  onNavigateToGlobalRoute?: (route: string, params: Record<string, string>) => void;
   onNavigateToCreateIp?: () => void;
   onNavigateToImportImages?: (ipId: number) => void;
   onNavigateToStorageUsage?: () => void;
@@ -932,6 +934,7 @@ export function AiChatScreen({
   onOpenDiary,
   onOpenDream,
   onNewChat,
+  onNavigateToGlobalRoute,
   onNavigateToCreateIp,
   onNavigateToImportImages,
   onNavigateToStorageUsage,
@@ -7212,10 +7215,19 @@ export function AiChatScreen({
                     return <SystemActionConfirmCard title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
                   }
                   if (params.type === 'rename-thread') {
-                    return <SystemActionConfirmCard title={`重命名会话为: ${params.newTitle}`} onConfirm={async () => {
+                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} onConfirm={async () => {
                       if (activeThreadIdRef.current) {
-                        await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, activeThreadIdRef.current!, { title: params.newTitle }));
-                        // Just an optimistic feedback or ignore since it happens
+                        await runWithDatabaseSpace(space, async (db) => {
+                          const thread = await aiThreadRepository.findThreadById(db, activeThreadIdRef.current!);
+                          if (thread) {
+                            try {
+                              const snapshot = JSON.parse(thread.roleSnapshotJson);
+                              snapshot.name = params.newTitle;
+                              await aiThreadRepository.updateThread(db, activeThreadIdRef.current!, { roleSnapshotJson: JSON.stringify(snapshot) });
+                            } catch (e) {}
+                          }
+                        });
+                        void reloadParticipantAppearance(activeThreadIdRef.current);
                       }
                     }} />;
                   }
@@ -7224,6 +7236,12 @@ export function AiChatScreen({
                   }
                   if (params.type === 'navigate' && params.route === 'import-images' && params.ipId) {
                     return <SystemActionConfirmCard title="导入素材" description="确认进入导入素材页面？" onConfirm={() => onNavigateToImportImages?.(parseInt(params.ipId!, 10))} />;
+                  }
+                  if (params.type === 'navigate' && params.route) {
+                    const action = GLOBAL_ACTIONS.find(a => a.route === params.route);
+                    if (action) {
+                      return <SystemActionConfirmCard title={action.title} description={`确认进入${action.title}？`} onConfirm={() => onNavigateToGlobalRoute?.(action.route, params)} />;
+                    }
                   }
                   if (params.type === 'select_ip') {
                     return <SystemIpSelectCard ips={systemAssistantIps} onConfirm={(ipId) => {
@@ -8236,6 +8254,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+
+
+
+
 
 
 
