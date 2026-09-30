@@ -12,6 +12,7 @@ interface GlobalTrashScreenProps {
   space?: PixorySpace;
   storageMode?: boolean;
   onOpenThread?: (thread: any) => void;
+  onOpenImage?: (imageId: number) => void;
 }
 
 export function GlobalTrashScreen({
@@ -21,6 +22,7 @@ export function GlobalTrashScreen({
   space = 'normal',
   storageMode,
   onOpenThread,
+  onOpenImage,
 }: GlobalTrashScreenProps) {
   const [tab, setTab] = useState<'ip' | 'chat'>('ip');
 
@@ -46,6 +48,7 @@ export function GlobalTrashScreen({
         space={space}
         storageMode={storageMode}
         titleSlot={titleSlot}
+        onOpenImage={onOpenImage}
       />
     );
   }

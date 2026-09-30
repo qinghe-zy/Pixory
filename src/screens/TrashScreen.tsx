@@ -32,9 +32,10 @@ interface TrashScreenProps {
   onChanged: () => void;
   storageMode?: boolean;
   titleSlot?: React.ReactNode;
+  onOpenImage?: (imageId: number) => void;
 }
 
-export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMode = false, titleSlot }: TrashScreenProps) {
+export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMode = false, titleSlot, onOpenImage }: TrashScreenProps) {
   const { showToast } = useToast();
   const { viewMode, setViewMode } = useAssetListPreferences(space, 'createdAtDesc');
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
@@ -261,7 +262,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
   return (
     <>
       <ScreenScaffold
-        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
+        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
         <GalleryCompactHeader
           title={titleSlot ? '' : "回收站"}
           centerSlot={titleSlot}
@@ -313,7 +314,13 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
                 if (globalScrollState.isScrolling) return;
                 multiSelect.enterSelection(image.id);
               }}
-              onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
+              onPress={() => {
+                if (multiSelect.isSelectionMode) {
+                  multiSelect.toggleSelection(image.id);
+                } else if (onOpenImage) {
+                  onOpenImage(image.id);
+                }
+              }}
               style={({ pressed }) => [styles.itemCard, multiSelect.selectedImageIds.includes(image.id) ? styles.selectedItem : null, pressed && styles.pressed]}
             >
               <View style={styles.previewWrap}>
@@ -353,7 +360,13 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
               image={image}
               index={index}
               onLongPress={() => multiSelect.enterSelection(image.id)}
-              onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
+              onPress={() => {
+                if (multiSelect.isSelectionMode) {
+                  multiSelect.toggleSelection(image.id);
+                } else if (onOpenImage) {
+                  onOpenImage(image.id);
+                }
+              }}
               selected={multiSelect.selectedImageIds.includes(image.id)}
               isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
               space={space}
