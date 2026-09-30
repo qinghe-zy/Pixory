@@ -622,7 +622,7 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
   if (thread.id === 'pixory-system-assistant') {
     return (
       <Image
-        source={require('../../assets/icon.png')}
+        source={require('../../icons/02_右上_蓝发女孩.png')}
         style={styles.threadAvatarImage}
       />
     );
@@ -1000,6 +1000,8 @@ const styles = StyleSheet.create({
   },
 
 });
+
+
 
 
 
