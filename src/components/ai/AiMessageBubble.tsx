@@ -285,9 +285,9 @@ function AiMessageBubbleComponent({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
-  const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
+  const showAssistantAvatar = !isUser && showAvatar && (isSystemAssistant || assistantAvatar?.avatarEnabled);
   const showUserAvatarHeader = isUser && showUserAvatar && userProfile?.avatarEnabled;
-  const assistantHeaderVisible = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
+  const assistantHeaderVisible = !isUser && showAvatar && (isSystemAssistant || assistantAvatar?.avatarEnabled);
   const userHeaderVisible = isUser && showUserAvatar && userProfile?.avatarEnabled;
   const editing = editingMessageId === message.id;
   const actionPending = pendingActionMessageId === message.id;
@@ -913,4 +913,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+
 
