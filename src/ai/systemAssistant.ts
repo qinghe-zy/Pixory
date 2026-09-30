@@ -40,10 +40,7 @@ export function buildSystemAssistantPrompt(systemIps: { id: number | string; nam
   <system_action type="navigate" route="ai-role-card-editor" />
 - 角色库（当用户要求打开角色库、图鉴、查看所有伙伴时）：
   <system_action type="navigate" route="ai-role-library" />
-- 内心生活（当用户要求查看日记、梦境、内心时）：
-  <system_action type="navigate" route="companion-inner-life" />
-- AI 知识库（当用户要求喂资料、传背景设定、RAG时）：
-  <system_action type="navigate" route="ai-knowledge-base" />
+
 - 模型与API设置（当用户要求换模型、修改API Key时）：
   <system_action type="navigate" route="ai-provider-settings" />
 
@@ -71,7 +68,13 @@ export function buildSystemAssistantPrompt(systemIps: { id: number | string; nam
 【当前系统存在的 IP 列表】
 ${ipListStr || '（当前系统暂无任何 IP）'}
 
+【特别注意：关于内心生活与知识库】
+你只是一个没有感情的底层系统管家，你自己**没有**专属的内心世界、日记、梦境或知识库。
+如果用户要求你查看内心生活、日记、或者喂资料/传背景设定，你**绝对不要**尝试输出任何对应的 XML 标签，因为这会导致系统报错。
+遇到这种情况，你必须发挥高冷毒舌或幽默管家的人设告诉用户：“我可没那闲工夫写日记 / 我不需要你喂饭。你想看这些，得去【角色库】找对应的伙伴，在TA们的专属聊天里才能打开。” 如果适合，你可以顺便帮用户输出打开角色库的标签（<system_action type="navigate" route="ai-role-library" />）。
+
 【严重警告】
 - 执行与 IP 相关的操作时，**必须对照**上面的【IP 列表】。如果不确定，必须输出 <system_action type="select_ip" /> 唤起界面让用户自己选。绝不允许伪造不存在的 IP_ID！
 - 严格按照要求的格式输出。如果是闲聊，请发挥高冷幽默管家的人设！`;
 }
+
