@@ -13,6 +13,13 @@ interface SystemActionConfirmCardProps {
 }
 
 export function SystemActionConfirmCard({ title, description, onConfirm, onCancel, confirmLabel = '确认' }: SystemActionConfirmCardProps) {
+  const [isConfirmed, setIsConfirmed] = useState(false);
+
+  const handleConfirm = () => {
+    setIsConfirmed(true);
+    onConfirm();
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -23,7 +30,7 @@ export function SystemActionConfirmCard({ title, description, onConfirm, onCance
       </View>
       {description ? <Text style={styles.body}>{description}</Text> : null}
       <View style={styles.footer}>
-        {onCancel && (
+        {onCancel && !isConfirmed && (
           <Pressable 
             onPress={onCancel} 
             style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, pressed && styles.actionBtnPressed]}
@@ -32,10 +39,17 @@ export function SystemActionConfirmCard({ title, description, onConfirm, onCance
           </Pressable>
         )}
         <Pressable 
-          onPress={onConfirm} 
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
+          onPress={isConfirmed ? undefined : handleConfirm} 
+          style={({ pressed }) => [
+            styles.actionBtn, 
+            pressed && !isConfirmed && styles.actionBtnPressed,
+            isConfirmed && styles.confirmedBtn
+          ]}
+          disabled={isConfirmed}
         >
-          <Text style={styles.actionBtnText}>{confirmLabel}</Text>
+          <Text style={[styles.actionBtnText, isConfirmed && styles.confirmedBtnText]}>
+            {isConfirmed ? '已确认' : confirmLabel}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -50,6 +64,14 @@ interface SystemIpSelectCardProps {
 
 export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectCardProps) {
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+
+  const handleConfirm = () => {
+    if (selectedIpId) {
+      setIsConfirmed(true);
+      onConfirm(selectedIpId);
+    }
+  };
 
   return (
     <View style={styles.card}>
@@ -65,8 +87,9 @@ export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectC
         {ips.map((ip) => (
           <Pressable
             key={ip.id}
-            onPress={() => setSelectedIpId(ip.id)}
+            onPress={isConfirmed ? undefined : () => setSelectedIpId(ip.id)}
             style={[styles.ipPill, selectedIpId === ip.id && styles.ipPillSelected]}
+            disabled={isConfirmed}
           >
             <Text style={[styles.ipPillText, selectedIpId === ip.id && styles.ipPillTextSelected]}>
               {ip.name}
@@ -76,7 +99,7 @@ export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectC
       </ScrollView>
 
       <View style={styles.footer}>
-        {onCancel && (
+        {onCancel && !isConfirmed && (
           <Pressable 
             onPress={onCancel} 
             style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, pressed && styles.actionBtnPressed]}
@@ -85,15 +108,18 @@ export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectC
           </Pressable>
         )}
         <Pressable 
-          onPress={() => selectedIpId && onConfirm(selectedIpId)} 
+          onPress={isConfirmed ? undefined : handleConfirm} 
           style={({ pressed }) => [
             styles.actionBtn, 
-            !selectedIpId ? styles.buttonDisabled : null,
-            pressed && selectedIpId !== null ? styles.actionBtnPressed : null
+            !selectedIpId && !isConfirmed ? styles.buttonDisabled : null,
+            pressed && selectedIpId !== null && !isConfirmed ? styles.actionBtnPressed : null,
+            isConfirmed && styles.confirmedBtn
           ]}
-          disabled={!selectedIpId}
+          disabled={!selectedIpId || isConfirmed}
         >
-          <Text style={styles.actionBtnText}>确认</Text>
+          <Text style={[styles.actionBtnText, isConfirmed && styles.confirmedBtnText]}>
+            {isConfirmed ? '已确认' : '确认'}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -163,6 +189,13 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '500',
+  },
+  confirmedBtn: {
+    backgroundColor: '#f4f4f5',
+    borderColor: '#e4e4e7',
+  },
+  confirmedBtnText: {
+    color: '#a1a1aa',
   },
   cancelBtn: {
     backgroundColor: 'transparent',

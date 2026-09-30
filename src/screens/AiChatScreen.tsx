@@ -7215,7 +7215,8 @@ export function AiChatScreen({
                     return <SystemActionConfirmCard title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
                   }
                   if (params.type === 'rename-thread') {
-                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} onConfirm={async () => {
+                    const originalName = participantAppearance.assistantName || 'Pixory';
+                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} description={`原昵称: ${originalName}`} onConfirm={async () => {
                       if (activeThreadIdRef.current) {
                         await runWithDatabaseSpace(space, async (db) => {
                           const thread = await aiThreadRepository.findThreadById(db, activeThreadIdRef.current!);
