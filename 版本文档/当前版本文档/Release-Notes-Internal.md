@@ -78,3 +78,9 @@
   4. `App.tsx`: 在图库封面变更刷新链路中联动自增 `aiHomeRefreshToken`。
   5. `src/screens/AiSessionConfigScreen.tsx`: 支持 `customAvatar` 状态跟踪与保存，区分用户主动自定义与回退。
 
+
+### [2026-09-30 OTA热更新] 首页最近更新空状态样式统一
+- **模块**: 首页图库 (HomeLibraryScreen)
+- **改动**: 
+  1. 在 src/screens/HomeLibraryScreen.tsx 的 AnimatedFlatList 的 ListEmptyComponent 中，为 ctiveFilter === 'recent' 增加了对应的 HomeEmptyState 渲染。
+  2. 修复了原来该状态下退退回 PageStateBlock (“空空如也”) 的不一致问题，与 “全部 IP” 和 “收藏” 的占位态组件保持设计语言一致。
