@@ -5264,12 +5264,13 @@ export function AiChatScreen({
         text: '清空',
         style: 'destructive',
         onPress: () => {
-          if (!threadId) return;
+          const targetThreadId = activeThreadIdRef.current;
+            if (!targetThreadId) return;
           void (async () => {
             try {
-              await clearAiThreadMessages(space, threadId);
+              await clearAiThreadMessages(space, targetThreadId);
               setMessages([]);
-              await reloadMessages(threadId, true);
+              await reloadMessages(targetThreadId, true);
             } catch (e) {
               console.error(e);
             }
@@ -8231,6 +8232,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
 
 
 
