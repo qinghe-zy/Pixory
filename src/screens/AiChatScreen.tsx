@@ -7212,22 +7212,24 @@ export function AiChatScreen({
                   }
                   
                   if (params.type === 'navigate' && params.route === 'lock-personal-space') {
-                    return <SystemActionConfirmCard title="锁定隐私空间" description="是否确认锁定隐私空间？" onConfirm={() => onNavigateToPersonalSpaceLock?.()} />;
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="锁定隐私空间" description="是否确认锁定隐私空间？" onConfirm={() => onNavigateToPersonalSpaceLock?.()} />;
                   }
                   if (params.type === 'navigate' && params.route === 'storage-usage') {
-                    return <SystemActionConfirmCard title="清理存储空间" description="是否确认前往清理存储空间？" onConfirm={() => onNavigateToStorageUsage?.()} />;
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="清理存储空间" description="是否确认前往清理存储空间？" onConfirm={() => onNavigateToStorageUsage?.()} />;
                   }
                   if (params.type === 'navigate' && params.route === 'trash') {
-                    return <SystemActionConfirmCard title="打开回收站" description="是否确认打开回收站？" onConfirm={() => onNavigateToTrash?.()} />;
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="打开回收站" description="是否确认打开回收站？" onConfirm={() => onNavigateToTrash?.()} />;
                   }
                   if (params.type === 'navigate' && params.route === 'ip-detail' && params.ipId) {
-                    return <SystemActionConfirmCard title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
                   }
                   if (params.type === 'rename-thread') {
                     const originalName = participantAppearance.assistantName || 'Pixory';
-                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} description={`原昵称: ${originalName}`} onConfirm={async () => {
+                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} description={`原昵称: ${originalName}`} isConfirmed={params.confirmed === 'true'} onConfirm={async () => {
                       if (activeThreadIdRef.current) {
                         await runWithDatabaseSpace(space, async (db) => {
+                          const newContent = message.content.replace('<system_action ', '<system_action confirmed="true" ');
+                          await aiThreadRepository.updateMessage(db, message.id, { content: newContent });
                           const thread = await aiThreadRepository.findThreadById(db, activeThreadIdRef.current!);
                           if (thread) {
                             try {
@@ -7237,20 +7239,21 @@ export function AiChatScreen({
                             } catch (e) {}
                           }
                         });
+                        void reloadThreadTitle(activeThreadIdRef.current);
                         void reloadParticipantAppearance(activeThreadIdRef.current);
                       }
                     }} />;
                   }
                   if (params.type === 'navigate' && params.route === 'create-ip') {
-                    return <SystemActionConfirmCard title="新建IP" description="确认进入新建IP页面？" onConfirm={() => onNavigateToCreateIp?.()} />;
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="新建IP" description="确认进入新建IP页面？" onConfirm={() => onNavigateToCreateIp?.()} />;
                   }
                   if (params.type === 'navigate' && params.route === 'import-images' && params.ipId) {
-                    return <SystemActionConfirmCard title="导入素材" description="确认进入导入素材页面？" onConfirm={() => onNavigateToImportImages?.(parseInt(params.ipId!, 10))} />;
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="导入素材" description="确认进入导入素材页面？" onConfirm={() => onNavigateToImportImages?.(parseInt(params.ipId!, 10))} />;
                   }
                   if (params.type === 'navigate' && params.route) {
                     const action = GLOBAL_ACTIONS.find(a => a.route === params.route);
                     if (action) {
-                      return <SystemActionConfirmCard title={action.title} description={`确认进入${action.title}？`} onConfirm={() => onNavigateToGlobalRoute?.(action.route, params)} />;
+                      return <SystemActionConfirmCard disableLocalConfirmState={true} title={action.title} description={`确认进入${action.title}？`} onConfirm={() => onNavigateToGlobalRoute?.(action.route, params)} />;
                     }
                   }
                   if (params.type === 'select_ip') {
@@ -8264,6 +8267,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+
+
 
 
 

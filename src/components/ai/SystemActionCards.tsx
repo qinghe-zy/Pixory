@@ -10,13 +10,18 @@ interface SystemActionConfirmCardProps {
   onConfirm: () => void;
   onCancel?: () => void;
   confirmLabel?: string;
+  isConfirmed?: boolean;
+  disableLocalConfirmState?: boolean;
 }
 
-export function SystemActionConfirmCard({ title, description, onConfirm, onCancel, confirmLabel = '确认' }: SystemActionConfirmCardProps) {
-  const [isConfirmed, setIsConfirmed] = useState(false);
+export function SystemActionConfirmCard({ title, description, onConfirm, onCancel, confirmLabel = '确认', isConfirmed = false, disableLocalConfirmState = false }: SystemActionConfirmCardProps) {
+  const [localConfirmed, setLocalConfirmed] = useState(false);
+  const actuallyConfirmed = isConfirmed || localConfirmed;
 
   const handleConfirm = () => {
-    setIsConfirmed(true);
+    if (!disableLocalConfirmState) {
+      setLocalConfirmed(true);
+    }
     onConfirm();
   };
 
@@ -30,7 +35,7 @@ export function SystemActionConfirmCard({ title, description, onConfirm, onCance
       </View>
       {description ? <Text style={styles.body}>{description}</Text> : null}
       <View style={styles.footer}>
-        {onCancel && !isConfirmed && (
+        {onCancel && !actuallyConfirmed && (
           <Pressable 
             onPress={onCancel} 
             style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, pressed && styles.actionBtnPressed]}
@@ -39,16 +44,16 @@ export function SystemActionConfirmCard({ title, description, onConfirm, onCance
           </Pressable>
         )}
         <Pressable 
-          onPress={isConfirmed ? undefined : handleConfirm} 
+          onPress={actuallyConfirmed ? undefined : handleConfirm} 
           style={({ pressed }) => [
             styles.actionBtn, 
-            pressed && !isConfirmed && styles.actionBtnPressed,
-            isConfirmed && styles.confirmedBtn
+            pressed && !actuallyConfirmed && styles.actionBtnPressed,
+            actuallyConfirmed && styles.confirmedBtn
           ]}
-          disabled={isConfirmed}
+          disabled={actuallyConfirmed}
         >
-          <Text style={[styles.actionBtnText, isConfirmed && styles.confirmedBtnText]}>
-            {isConfirmed ? '已确认' : confirmLabel}
+          <Text style={[styles.actionBtnText, actuallyConfirmed && styles.confirmedBtnText]}>
+            {actuallyConfirmed ? '已确认' : confirmLabel}
           </Text>
         </Pressable>
       </View>

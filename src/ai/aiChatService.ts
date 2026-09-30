@@ -2313,6 +2313,9 @@ async function buildPromptForThread(
     try {
       const memoryBundle = await runWithDatabaseSpace(thread.space, async (db) => {
         const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+        if (thread.id === 'pixory-system-assistant') {
+          memorySettings.deepMemoryEnabled = false;
+        }
         if (generationMetrics) {
           markGenerationMetric(generationMetrics, 'historyLoadStartAt');
         }
@@ -4405,17 +4408,19 @@ async function streamAssistantReply(input: {
   onTimeout?: () => void;
   onUpdated?: () => void;
 }): Promise<void> {
-  await drainCurrentTurnMemory({
-    maxDurationMs: 20,
-    space: input.space,
-    threadId: input.thread.id,
-  }).catch(() => 0);
-  await stageExplicitMemoryIntentObservation({
-    messageContent: input.userMessage.content,
-    messageId: input.userMessage.id,
-    space: input.space,
-    thread: input.thread,
-  });
+  if (input.thread.id !== 'pixory-system-assistant') {
+    await drainCurrentTurnMemory({
+      maxDurationMs: 20,
+      space: input.space,
+      threadId: input.thread.id,
+    }).catch(() => 0);
+    await stageExplicitMemoryIntentObservation({
+      messageContent: input.userMessage.content,
+      messageId: input.userMessage.id,
+      space: input.space,
+      thread: input.thread,
+    });
+  }
   const mode = input.mode ?? 'replace';
   const messageDisplayKind: AiMessageDisplayKind | null =
     mode === 'followup' ? 'standalone_assistant' : null;
