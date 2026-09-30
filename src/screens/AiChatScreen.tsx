@@ -687,11 +687,7 @@ type VisibleMessageItem =
       showUserAvatar: boolean;
     }
   | {
-      type: "dateSeparator";
-      id: string;
-      label: string;
-      dateKey: string;
-    }
+      type: "dateSeparator"; id: string; label: string; dateKey: string; } | { type: "systemTaskEnded"; id: string; }
   | {
       type: "streamTailSpacer";
       id: string;
@@ -2257,7 +2253,29 @@ export function AiChatScreen({
       }
 
       const message = item.message;
+
+      let isTaskReset = false;
+
+      if (isSystemAssistant && message.promptSnapshotJson) {
+
+        try {
+
+          const parsed = JSON.parse(message.promptSnapshotJson);
+
+          if (parsed.resetContext) { isTaskReset = true; }
+
+        } catch(e) {}
+
+      }
+
+      if (isTaskReset) {
+
+        nextVisibleMessageItems.push({ type: 'systemTaskEnded', id: 'task-ended-' + message.id });
+
+      }
+
       const dateKey = beijingDiaryDate(message.createdAt);
+
       const startsNewDate = dateKey !== previousMessageDateKey;
       if (startsNewDate) {
         nextVisibleMessageItems.push({
@@ -6929,6 +6947,13 @@ export function AiChatScreen({
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
       }
+      if (item.type === "systemTaskEnded") {
+        return (
+          <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+            <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
+          </View>
+        );
+      }
       if (item.type === 'diary') {
         return (
           <DiaryChatCard
@@ -8267,6 +8292,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+
+
+
+
+
+
+
 
 
 
