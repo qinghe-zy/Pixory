@@ -2778,6 +2778,15 @@ export function AiChatScreen({
         setActiveAssistantId(assistantMessageId);
         setMessages((current) => {
           let nextMessages = current;
+          if (!pendingUserMessage) {
+            const branchPointId = userMessageId ?? assistantMessageId;
+            if (branchPointId) {
+              const branchIndex = nextMessages.findIndex((m) => m.id === branchPointId);
+              if (branchIndex !== -1) {
+                nextMessages = nextMessages.slice(0, branchIndex + 1);
+              }
+            }
+          }
           if (
             pendingUserMessage &&
             !nextMessages.some((message) => message.id === userMessageId)
