@@ -1,3 +1,4 @@
+import { clearAiThreadMessages } from '../ai/aiChatService';
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
@@ -5256,6 +5257,28 @@ export function AiChatScreen({
     return thread.id;
   }
 
+  async function handleClearSystemChat() {
+    Alert.alert('清空记录', '确定要清空与管家的聊天记录吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '清空',
+        style: 'destructive',
+        onPress: () => {
+          if (!threadId) return;
+          void (async () => {
+            try {
+              await clearAiThreadMessages(space, threadId);
+              setMessages([]);
+              await reloadMessages(threadId, true);
+            } catch (e) {
+              console.error(e);
+            }
+          })();
+        },
+      },
+    ]);
+  }
+
   async function handleOpenSessionConfig() {
     try {
       const nextThreadId = await ensureThread();
@@ -7332,7 +7355,7 @@ export function AiChatScreen({
             </View>
             {/* Right: session settings + new chat */}
             <View style={styles.headerSide}>
-              {!isSystemAssistant && (
+              {!isSystemAssistant ? (
                 <Pressable
                   accessibilityLabel="会话设置"
                   accessibilityRole="button"
@@ -7343,6 +7366,18 @@ export function AiChatScreen({
                   ]}
                 >
                   <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={22} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityLabel="清空聊天记录"
+                  accessibilityRole="button"
+                  onPress={() => void handleClearSystemChat()}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons color={aiLightColors.ink} name="trash-outline" size={22} />
                 </Pressable>
               )}
             </View>
@@ -8196,6 +8231,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+
+
+
+
+
+
+
+
+
 
 
 

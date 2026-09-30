@@ -1,3 +1,4 @@
+import { Image } from 'react-native';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import type { AiMessageAttachmentRecord } from '../../database/repositories/aiTh
 import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
 
 interface AiMessageBubbleProps {
+  isSystemAssistant?: boolean;
   message: AiMessageWithCitations;
   replyActionMode?: 'continue' | 'reply';
   assistantAvatar?: {
@@ -241,6 +243,7 @@ function AiMessageBubbleComponent({
   assistantBubbleEdge,
   assistantAvatar,
   assistantDisplayName = null,
+  isSystemAssistant = false,
   generating = false,
   message,
   replyActionMode = 'continue',
@@ -910,3 +913,4 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+

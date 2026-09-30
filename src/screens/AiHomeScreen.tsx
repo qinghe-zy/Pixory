@@ -474,7 +474,7 @@ export function AiHomeScreen({
         </AppDialog>
 
         <AnchoredContextMenu
-          actions={actionMenuState ? [
+          actions={actionMenuState ? (actionMenuState.thread.id === 'pixory-system-assistant' ? [{ key: 'pin', label: actionMenuState.thread.isPinned ? '取消置顶' : '置顶', icon: 'pin-outline', onPress: () => { void (async () => { if (busy) return; setBusy(true); try { await toggleAiThreadPin(space, actionMenuState.thread.id, !actionMenuState.thread.isPinned); await reloadThreads(); } catch (e) { console.error('Failed to pin thread:', e); } finally { setBusy(false); } })(); } }] as any : [
             {
               key: 'rename',
               label: '重命名',
@@ -522,7 +522,7 @@ export function AiHomeScreen({
                 setPendingAction('delete');
               },
             },
-          ] : []}
+          ]) : []}
           anchorX={actionMenuState?.anchorX ?? 0}
           anchorY={actionMenuState?.anchorY ?? 0}
           dismissAccessibilityLabel="关闭菜单"
@@ -1000,6 +1000,7 @@ const styles = StyleSheet.create({
   },
 
 });
+
 
 
 

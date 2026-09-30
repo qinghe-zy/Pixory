@@ -3165,11 +3165,14 @@ export async function ensureSystemAssistantThread(space: PixorySpace): Promise<v
         space,
         contextType: 'normal',
         title: 'Pixory',
+        titleStatus: 'custom',
         systemPrompt: '',
         roleInstructionWeight: 'default',
         replyPreference: 'auto',
-        isPinned: true
+        isPinned: false
       });
+    } else if (thread.titleStatus !== 'custom' || thread.title !== 'Pixory') {
+      await aiThreadRepository.updateThread(db, 'pixory-system-assistant', { titleStatus: 'custom', title: 'Pixory' });
     }
   });
 }
@@ -3590,6 +3593,10 @@ export async function toggleAiThreadPin(space: PixorySpace, threadId: string, is
 
 export async function unarchiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, threadId, { archivedAt: null }));
+}
+
+export async function clearAiThreadMessages(space: PixorySpace, threadId: string): Promise<void> {
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.clearThreadMessages(db, threadId));
 }
 
 export async function deleteAiThreads(space: PixorySpace, threadIds: string[]): Promise<number> {
@@ -6819,3 +6826,4 @@ export async function emptyAiTrash(space: PixorySpace): Promise<number> {
     return 0;
   });
 }
+

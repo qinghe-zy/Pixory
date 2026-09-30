@@ -1061,6 +1061,16 @@ const MESSAGE_LOOKUP_CHUNK_SIZE = 200;
 const BRANCH_LINEAGE_MAX_DEPTH = 1000;
 
 export const aiThreadRepository = {
+  async clearThreadMessages(db: SQLiteDatabase, threadId: string): Promise<void> {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM ai_message_fts WHERE threadId = ?', threadId);
+      await db.runAsync('DELETE FROM ai_message_version_fts WHERE threadId = ?', threadId);
+      await db.runAsync('DELETE FROM ai_message_citations WHERE messageId IN (SELECT id FROM ai_messages WHERE threadId = ?)', threadId);
+      await db.runAsync('DELETE FROM ai_message_versions WHERE originalMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?)', threadId);
+      await db.runAsync('DELETE FROM ai_messages WHERE threadId = ?', threadId);
+      await db.runAsync('UPDATE ai_threads SET updatedAt = ?, snapshotMessageId = NULL, snapshotMessageText = NULL WHERE id = ?', createTimestamp(), threadId);
+    });
+  },
   async listBranchRouteMetadata(db: SQLiteDatabase, threadId: string): Promise<AiBranchRouteMetadataRecord[]> {
     return db.getAllAsync<AiBranchRouteMetadataRecord>(
       `SELECT * FROM ai_branch_route_metadata
@@ -5756,6 +5766,10 @@ export const aiThreadRepository = {
 };
 
 export default aiThreadRepository;
+
+
+
+
 
 
 
