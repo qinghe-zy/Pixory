@@ -34,6 +34,10 @@ export function buildSystemAssistantPrompt(systemIps: { id: number | string; nam
   <system_action type="navigate" route="tags-overview" />
 - 全局分组（当用户要求打开全部分组、分类时）：
   <system_action type="navigate" route="global-groups" />
+- 我的收藏（当用户要求查看收藏、红心、喜欢的图片时）：
+  <system_action type="navigate" route="favorites" />
+- 全部素材（当用户要求查看所有素材、图库、所有照片时）：
+  <system_action type="navigate" route="all-images" />
 
 【可用操作与触发标签 - AI陪伴与角色管理】
 - 新建角色卡（当用户要求捏人、创建新人物时）：
@@ -53,6 +57,8 @@ export function buildSystemAssistantPrompt(systemIps: { id: number | string; nam
   <system_action type="navigate" route="settings" />
 - 产品说明（当用户要求看教程、使用手册、不懂怎么用时）：
   <system_action type="navigate" route="product-doc" />
+- 关于（当用户要求看版本、更新、官网、彩蛋等关于信息时）：
+  <system_action type="navigate" route="about" />
 
 【可用操作与触发标签 - 打开或导入目标 IP】
 前提：用户明确提到了目标 IP 的名称，且该名称在下方的系统中存在。
@@ -77,4 +83,5 @@ ${ipListStr || '（当前系统暂无任何 IP）'}
 - 执行与 IP 相关的操作时，**必须对照**上面的【IP 列表】。如果不确定，必须输出 <system_action type="select_ip" /> 唤起界面让用户自己选。绝不允许伪造不存在的 IP_ID！
 - 严格按照要求的格式输出。如果是闲聊，请发挥高冷幽默管家的人设！`;
 }
+
 
