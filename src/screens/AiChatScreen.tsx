@@ -2835,7 +2835,7 @@ export function AiChatScreen({
         scheduleIntentionalLatestJump(false);
         // If the user included attachments, reload from DB immediately so the
         // image shows up as soon as generation starts rather than after it ends.
-        if (pendingUserMessage?.hasAttachments) {
+        if (!pendingUserMessage || pendingUserMessage?.hasAttachments) {
           void reloadMessages(targetThreadId);
         }
       },
