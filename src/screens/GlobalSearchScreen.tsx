@@ -1733,7 +1733,6 @@ function GuessYouWantList({
 
 function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[]; onOpenAction: (item: MatchedAction) => void; space: PixorySpace }) {
   const [systemAssistantEnabled, setSystemAssistantEnabled] = useState(true);
-  const [systemAssistantAppearance, setSystemAssistantAppearance] = useState<AiThreadMessageAppearanceConfig | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1743,17 +1742,8 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
         setSystemAssistantEnabled(enabled);
       }
     });
-
-    if (items.some((i) => i.id === 'system-assistant-toggle')) {
-      void loadThreadMessageAppearanceConfig(space, 'pixory-system-assistant').then((appearance) => {
-        if (isMounted) {
-          setSystemAssistantAppearance(appearance);
-        }
-      });
-    }
-
     return () => { isMounted = false; };
-  }, [space, items]);
+  }, [space]);
 
   const toggleSystemAssistant = async (value: boolean) => {
     setSystemAssistantEnabled(value);
@@ -1772,12 +1762,11 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
           onPress={() => item.id !== 'system-assistant-toggle' && onOpenAction(item)}
         >
           <View style={actionStyles.actionIconBox}>
-            {item.id === 'system-assistant-toggle' && systemAssistantAppearance?.assistantAvatar?.avatarEnabled && systemAssistantAppearance.assistantAvatar.avatarUri ? (
-              <SecureImage
-                contentFit="cover"
-                space={space}
+            {item.id === 'system-assistant-toggle' ? (
+              <Image
+                source={require('../../icons/02_右上_蓝发女孩.png')}
                 style={{ width: '100%', height: '100%', borderRadius: 12 }}
-                uri={systemAssistantAppearance.assistantAvatar.avatarUri}
+                resizeMode="cover"
               />
             ) : (
               <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
