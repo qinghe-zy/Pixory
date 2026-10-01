@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-09-28（v2.8.9.0 纯白视觉重构与交互细节打磨）
+最后更新：2026-10-01（v2.8.9.0 纯白视觉重构与交互细节打磨）
 适用版本：Pixory 2.8.9.0
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -218,7 +218,7 @@
 | 相似重复 | image dHash/visual hash、Hamming distance 相似组 | `duplicateDetectionService`, `batchSelectionRules` |
 | 导入跳过 | exact duplicate 导入跳过、统计 skipped count | `imageImportService`, `DuplicateReviewScreen` |
 | 重复审查 | exact/similar tabs、多选、软删除 | `DuplicateReviewScreen` |
-| 回收站 | soft delete、恢复、清空、30 天过期清理 | `TrashScreen`, `trashService` |
+| 回收站 | soft delete、长按多选批量操作、恢复、清空、30 天过期清理 | `TrashScreen`, `trashService` |
 | 删除结果 | 数据库删除和文件删除结果分开记录 | `trashService` |
 
 ---

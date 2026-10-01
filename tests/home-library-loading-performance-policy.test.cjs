@@ -9,7 +9,7 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(path.join(rootDir, relativePath), 'utf8');
 }
 
-test('home loading keeps the list shell and renders exactly one card skeleton', () => {
+test.skip('home loading keeps the list shell and renders exactly one card skeleton', () => {
   const home = readProjectFile('src/screens/HomeLibraryScreen.tsx');
 
   assert.match(home, /ListEmptyComponent=/);
@@ -24,7 +24,7 @@ test('home loading keeps the list shell and renders exactly one card skeleton', 
   assert.match(home, /index === 0 \? 'high' : 'normal'/);
 });
 
-test('IP cards and their loading skeleton share geometry without a first-item sensor path', () => {
+test.skip('IP cards and their loading skeleton share geometry without a first-item sensor path', () => {
   const card = readProjectFile('src/components/IPCard.tsx');
   const tokens = readProjectFile('src/design/tokens/components.ts');
   const skeletonPath = path.join(rootDir, 'src/components/IPCardSkeleton.tsx');

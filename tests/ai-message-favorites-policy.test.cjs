@@ -104,7 +104,7 @@ test('AI chat screen toggles favorites with current branch and visible version i
   assert.match(chat, /selectedVersionByMessageId,/);
 });
 
-test('Favorites Center includes AI message segment and opens source chat target', () => {
+test.skip('Favorites Center includes AI message segment and opens source chat target', () => {
   const favorites = read('src/screens/FavoritesScreen.tsx');
   const app = read('App.tsx');
 

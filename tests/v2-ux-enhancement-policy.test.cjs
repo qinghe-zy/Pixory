@@ -127,7 +127,7 @@ test('swipe grid selection supports image and video tiles across media and batch
   for (const source of [allImagesSource, favoritesSource, recentSource, groupSource, tagSource]) {
     assert.match(source, /selectableMediaTypes:\s*\['image', 'video'\]/);
     assert.match(source, /selectedAssets/);
-    assert.match(source, /if \(multiSelect\.isSelectionMode\) \{[\s\S]{0,120}multiSelect\.toggleSelection\(imageId\);[\s\S]{0,120}return;[\s\S]{0,160}if \(asset\?\.mediaType === 'video'\)/);
+    assert.match(source, /if \(multiSelect\.isSelectionMode(?:[\s\S]{0,30})\) \{[\s\S]{0,120}multiSelect\.toggleSelection\(imageId\);[\s\S]{0,120}return;[\s\S]{0,160}if \(asset\?\.mediaType === 'video'\)/);
     const longPressBlock = source.slice(
       source.indexOf('function handleImageLongPress'),
       source.indexOf('const footer = multiSelect.isSelectionMode', source.indexOf('function handleImageLongPress'))

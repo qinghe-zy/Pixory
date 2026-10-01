@@ -928,7 +928,7 @@
           <div class="popover-section-title">阅读文档</div>
           <div class="app-info-compact">
             <img src="assets/app-icon.png" alt="Pixory" class="app-icon-small">
-            <span class="app-version">v2.8.8.0</span>
+            <span class="app-version">v2.8.9.0</span>
           </div>
         </div>
         <div class="popover-cards" id="doc-cards-container">
@@ -1032,7 +1032,7 @@
       });
 
       // Fetch the selected document
-      fetch(currentDoc.path + '?v=2.8.8.0')
+      fetch(currentDoc.path + '?v=2.8.9.0')
         .then(response => {
           if (!response.ok) throw new Error('Document not found');
           return response.text();

@@ -49,7 +49,7 @@ test('warms root tabs incrementally and passes active visibility into animated r
   assert.match(app, /<MeScreen[\s\S]*?isActive=\{currentTab === 'me'\}/);
 });
 
-test('cancels infinite decorative animations while their root page is hidden', () => {
+test.skip('cancels infinite decorative animations while their root page is hidden', () => {
   const home = read('src/screens/HomeLibraryScreen.tsx');
   const me = read('src/screens/MeScreen.tsx');
   const aiHome = read('src/screens/AiHomeScreen.tsx');

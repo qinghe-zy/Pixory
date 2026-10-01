@@ -21,9 +21,11 @@ $remoteApkFile = ""
 
 Copy-Item -Path "$repoRoot\README.md" -Destination "$docsDir\README.md" -Force
 $r = Get-Content "$docsDir\README.md" -Raw
-$r = $r -replace '(?m)^.*\[官网与下载\].*??
+$r = $r -replace '(?m)^.*\[官网与下载\].*?
+?
 ', ''
-$r = $r -replace '(?m)^.*官网下载区.*??
+$r = $r -replace '(?m)^.*官网下载区.*?
+?
 ', "1. 直接安装使用。
 "
 $r = $r -replace '\]\(docs/manual\.md\)', '](?doc=manual)'
@@ -48,10 +50,10 @@ if (Test-Path -LiteralPath $archive) {
 }
 
 tar -czf $archive -C $docsDir .
-scp -i $KeyPath $archive "$User@$Server`:$remoteArchive"
+scp -o StrictHostKeyChecking=no -i $KeyPath $archive "$User@$Server`:$remoteArchive"
 
 if ($ApkPath) {
-  scp -i $KeyPath $resolvedApkPath "$User@$Server`:$remoteApkTemp"
+  scp -o StrictHostKeyChecking=no -i $KeyPath $resolvedApkPath "$User@$Server`:$remoteApkTemp"
 }
 
 $remoteScript = @"
@@ -81,14 +83,13 @@ sudo chmod 644 '$remoteRoot/downloads/$remoteApkFile'
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($remoteRunner, ($remoteScript -replace "`r`n", "`n"), $utf8NoBom)
 
-scp -i $KeyPath $remoteRunner "$User@$Server`:$remoteRunnerPath"
-ssh -i $KeyPath "$User@$Server" "bash '$remoteRunnerPath'"
+scp -o StrictHostKeyChecking=no -i $KeyPath $remoteRunner "$User@$Server`:$remoteRunnerPath"
+ssh -o StrictHostKeyChecking=no -i $KeyPath "$User@$Server" "bash '$remoteRunnerPath'"
 
 Write-Host "Deployed docs to https://$HostName/"
 if ($ApkPath) {
   Write-Host "Deployed latest APK to https://$HostName/downloads/$remoteApkFile"
 }
-
 
 
 
