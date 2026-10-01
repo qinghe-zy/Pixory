@@ -1764,7 +1764,7 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
           <View style={actionStyles.actionIconBox}>
             {item.id === 'system-assistant-toggle' ? (
               <Image
-                source={require('../../icons/02_右上_蓝发女孩.png')}
+                source={require('../../icons/system_assistant_avatar.png')}
                 style={{ width: '100%', height: '100%', borderRadius: 12 }}
                 resizeMode="cover"
               />
