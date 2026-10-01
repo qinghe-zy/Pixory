@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState, useContext } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 
 import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
@@ -24,6 +25,7 @@ import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 import { globalScrollState } from '../utils/scrollState';
 import { FloatingFooterContext } from '../components/AppScreen';
+import { AI_SYSTEM_AVATAR_B64 } from '../utils/aiSystemAvatarBase64';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
@@ -622,8 +624,8 @@ function labelForContext(thread: AiHomeThreadItem): string {
 function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: PixorySpace }) {
   if (thread.id === 'pixory-system-assistant') {
     return (
-      <Image
-        source={AI_SYSTEM_AVATAR}
+      <ExpoImage
+        source={{ uri: AI_SYSTEM_AVATAR_B64 }}
         style={styles.threadAvatarImage}
       />
     );

@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler, Switch } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 
 import { useCallback } from 'react';
 import type { ReactNode } from 'react';
@@ -28,6 +29,7 @@ import {
 
 import { searchActions, getRandomRecommendedActions, type MatchedAction } from '../services/searchActionService';
 
+import { AI_SYSTEM_AVATAR_B64 } from '../utils/aiSystemAvatarBase64';
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
 
 interface GlobalSearchScreenProps {
@@ -1766,10 +1768,10 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
         >
           <View style={actionStyles.actionIconBox}>
             {item.id === 'system-assistant-toggle' ? (
-              <Image
-                source={AI_SYSTEM_AVATAR}
+              <ExpoImage
+                source={{ uri: AI_SYSTEM_AVATAR_B64 }}
                 style={{ width: '100%', height: '100%', borderRadius: 12 }}
-                resizeMode="cover"
+                contentFit="cover"
               />
             ) : (
               <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />

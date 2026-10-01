@@ -7149,6 +7149,7 @@ export function AiChatScreen({
             }
           >
             <AiMessageBubble
+              isSystemAssistant={isSystemAssistant}
               assistantAvatar={{
                 avatarEnabled: isSystemAssistant ? true : participantAppearance.assistantAvatarEnabled,
                 avatarUri: isSystemAssistant ? null : participantAppearance.assistantAvatarUri,
