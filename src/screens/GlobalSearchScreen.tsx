@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler, Switch } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+
 import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1764,10 +1764,10 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
         >
           <View style={actionStyles.actionIconBox}>
             {item.id === 'system-assistant-toggle' ? (
-              <ExpoImage
+              <Image
                 source={require('../../assets/app-icon.png')}
                 style={{ width: '100%', height: '100%', borderRadius: 12 }}
-                contentFit="cover"
+                resizeMode="cover"
               />
             ) : (
               <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />

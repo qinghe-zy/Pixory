@@ -2,7 +2,7 @@ import { Image } from 'react-native';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image as ExpoImage } from 'expo-image';
+
 
 import { setLatestAssistantBubbleContentWidth } from '../../ai/aiStreamingBubbleWidthRegistry';
 import { SecureImage } from '../SecureImage';
@@ -383,7 +383,7 @@ function AiMessageBubbleComponent({
             {showAssistantAvatar ? (
               <View style={styles.avatar}>
                 {isSystemAssistant ? (
-                  <ExpoImage source={require('../../../assets/app-icon.png')} style={styles.avatarImage} />
+                  <Image source={require('../../../assets/app-icon.png')} style={styles.avatarImage} />
                 ) : assistantAvatar?.avatarUri ? (
                   <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
                 ) : (
