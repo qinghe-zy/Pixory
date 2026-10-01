@@ -383,7 +383,7 @@ function AiMessageBubbleComponent({
             {showAssistantAvatar ? (
               <View style={styles.avatar}>
                 {isSystemAssistant ? (
-                  <Image source={require('../../../assets/app-icon.png')} style={styles.avatarImage} />
+                  <Image source={require('../../../assets/ai_system_avatar.png')} style={styles.avatarImage} />
                 ) : assistantAvatar?.avatarUri ? (
                   <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
                 ) : (
