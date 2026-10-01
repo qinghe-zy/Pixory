@@ -32,7 +32,10 @@ export async function compileConversationCoverage(
     ),
     aiThreadRepository.listSummarySegments(db, input.thread.id, input.branchScopes),
   ]);
-  if (input.thread.id === 'pixory-system-assistant') {
+  if (input.historyRoundLimit === 0) {
+    messages.length = 0;
+    summarySegments.length = 0;
+  } else if (input.thread.id === 'pixory-system-assistant') {
     let startIndex = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
       try {
