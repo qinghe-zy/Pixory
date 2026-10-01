@@ -28,6 +28,8 @@ import {
 
 import { searchActions, getRandomRecommendedActions, type MatchedAction } from '../services/searchActionService';
 
+const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
+
 interface GlobalSearchScreenProps {
   space?: PixorySpace;
   query: string;
@@ -1765,7 +1767,7 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
           <View style={actionStyles.actionIconBox}>
             {item.id === 'system-assistant-toggle' ? (
               <Image
-                source={require('../../assets/ai_system_avatar.png')}
+                source={AI_SYSTEM_AVATAR}
                 style={{ width: '100%', height: '100%', borderRadius: 12 }}
                 resizeMode="cover"
               />

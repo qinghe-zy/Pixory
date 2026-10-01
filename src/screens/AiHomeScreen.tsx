@@ -26,6 +26,7 @@ import { globalScrollState } from '../utils/scrollState';
 import { FloatingFooterContext } from '../components/AppScreen';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
+const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
 
 const HOME_THREAD_LIMIT = 30;
 const RECENT_CHAT_ROW_HEIGHT = 72;
@@ -622,7 +623,7 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
   if (thread.id === 'pixory-system-assistant') {
     return (
       <Image
-        source={require('../../assets/ai_system_avatar.png')}
+        source={AI_SYSTEM_AVATAR}
         style={styles.threadAvatarImage}
       />
     );
