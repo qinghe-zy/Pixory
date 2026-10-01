@@ -621,7 +621,7 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
   if (thread.id === 'pixory-system-assistant') {
     return (
       <Image
-        source={require('../../icons/02_右上_蓝发女孩.png')}
+        source={require('../../icons/system_assistant_avatar.png')}
         style={styles.threadAvatarImage}
       />
     );
