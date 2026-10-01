@@ -7543,6 +7543,24 @@ export function AiChatScreen({
                 onTouchMove={handleMessageTouchMove}
                 onTouchStart={handleMessageTouchStart}
                 renderItem={renderMessageItem}
+                ListHeaderComponent={
+                  (() => {
+                    if (!isSystemAssistant || visibleMessages.length === 0) return null;
+                    const latestMsg = visibleMessages[visibleMessages.length - 1];
+                    const latestTime = new Date(latestMsg.createdAt).getTime();
+                    const isEnded = nowForSystemTask - latestTime > 10 * 60 * 1000 && latestTime > systemTaskContinuedTime;
+                    if (!isEnded) return null;
+
+                    return (
+                      <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+                        <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
+                        <Pressable onPress={() => setSystemTaskContinuedTime(Date.now())} style={{ marginLeft: 8 }}>
+                          <Text style={{ color: aiLightColors.primaryActive, fontSize: 12 }}>[继续任务]</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })()
+                }
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
                 style={styles.messageScroller}
@@ -7575,22 +7593,7 @@ export function AiChatScreen({
           ) : null}
 
           {/* System Task Ended Banner */}
-          {(() => {
-            if (!isSystemAssistant || visibleMessages.length === 0) return null;
-            const latestMsg = visibleMessages[visibleMessages.length - 1];
-            const latestTime = new Date(latestMsg.createdAt).getTime();
-            const isEnded = nowForSystemTask - latestTime > 10 * 60 * 1000 && latestTime > systemTaskContinuedTime;
-            if (!isEnded) return null;
 
-            return (
-              <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
-                <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
-                <Pressable onPress={() => setSystemTaskContinuedTime(Date.now())} style={{ marginLeft: 8 }}>
-                  <Text style={{ color: aiLightColors.primaryActive, fontSize: 12 }}>[继续任务]</Text>
-                </Pressable>
-              </View>
-            );
-          })()}
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
