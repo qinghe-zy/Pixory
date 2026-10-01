@@ -380,6 +380,7 @@ function createOptimisticUserMessage(
   branchRootMessageId: string | null,
   branchVersionIndex: number | null,
   attachments?: AiComposerAttachment[],
+  resetContext?: boolean,
 ): AiMessageWithCitations {
   return {
     attachments: attachments?.map((attachment) => ({
@@ -407,7 +408,7 @@ function createOptimisticUserMessage(
     messageVersions: [],
     modelId: null,
     modelSnapshotJson: "",
-    promptSnapshotJson: "",
+    promptSnapshotJson: resetContext ? JSON.stringify({ resetContext: true }) : "",
     providerId: null,
     reasoningText: null,
     role: 'user',
@@ -2766,6 +2767,7 @@ export function AiChatScreen({
       content: string;
       createdAt: string;
       hasAttachments: boolean;
+      resetContext?: boolean;
     },
   ): AiGenerationSubscriber {
     return {
@@ -2819,6 +2821,7 @@ export function AiChatScreen({
                 pendingUserMessage.branchRootMessageId,
                 pendingUserMessage.branchVersionIndex,
                 pendingUserMessage.attachments,
+                pendingUserMessage.resetContext,
               ),
             ];
           }
@@ -2932,6 +2935,7 @@ export function AiChatScreen({
       content: string;
       createdAt: string;
       hasAttachments: boolean;
+      resetContext?: boolean;
     },
   ): {
     generation: number;
@@ -5986,6 +5990,7 @@ export function AiChatScreen({
         }
       }
       const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
+      const shouldResetContext = isSystemAssistant && visibleMessages.length > 0 && nowForSystemTask - new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > 10 * 60 * 1000 && new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > systemTaskContinuedTime;
       const streamRequest = beginStreamingRequest(
         targetThreadId,
         {
@@ -5995,6 +6000,7 @@ export function AiChatScreen({
           content,
           createdAt: sendPressedAt,
           hasAttachments: attachments.length > 0,
+          resetContext: shouldResetContext,
         },
       );
       streamGeneration = streamRequest.generation;
@@ -6032,7 +6038,7 @@ export function AiChatScreen({
               attachments,
               branchRootMessageId: activeBranch?.branchRootMessageId,
               branchVersionIndex: activeBranch?.branchVersionIndex,
-              resetContext: isSystemAssistant && visibleMessages.length > 0 && nowForSystemTask - new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > 10 * 60 * 1000 && new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > systemTaskContinuedTime,
+              resetContext: shouldResetContext,
               content,
               sendPressedAt,
               space,

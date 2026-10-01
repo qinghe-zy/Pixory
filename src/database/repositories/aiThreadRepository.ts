@@ -4967,11 +4967,17 @@ export const aiThreadRepository = {
   },
 
   async getThreadMemorySettings(db: SQLiteDatabase, threadId: string): Promise<AiThreadMemorySettingsRecord> {
+    if (threadId === 'pixory-system-assistant') {
+      return { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
+    }
     const row = await db.getFirstAsync<AiThreadMemorySettingsRow>('SELECT * FROM ai_thread_memory_settings WHERE threadId = ?', threadId);
     return row ? mapMemorySettingsRow(row) : { threadId, deepMemoryEnabled: true, updatedAt: createTimestamp() };
   },
 
   async updateThreadMemorySettings(db: SQLiteDatabase, threadId: string, deepMemoryEnabled: boolean): Promise<AiThreadMemorySettingsRecord> {
+    if (threadId === 'pixory-system-assistant') {
+      return { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
+    }
     const now = createTimestamp();
     await db.runAsync(
       `INSERT INTO ai_thread_memory_settings (threadId, deepMemoryEnabled, updatedAt)
