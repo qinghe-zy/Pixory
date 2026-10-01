@@ -7151,7 +7151,7 @@ export function AiChatScreen({
             <AiMessageBubble
               assistantAvatar={{
                 avatarEnabled: isSystemAssistant ? true : participantAppearance.assistantAvatarEnabled,
-                avatarUri: isSystemAssistant ? Image.resolveAssetSource(require('../../icons/02_右上_蓝发女孩.png')).uri : participantAppearance.assistantAvatarUri,
+                avatarUri: isSystemAssistant ? null : participantAppearance.assistantAvatarUri,
               }}
               assistantDisplayName={participantAppearance.assistantName}
               editingMessageId={editingUserMessageId}
