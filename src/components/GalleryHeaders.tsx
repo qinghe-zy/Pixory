@@ -104,6 +104,7 @@ export function GalleryCompactHeader({ title, count, space, onBack, leftActions,
 interface NormalHeaderProps {
   title: string;
   count?: number;
+  countUnit?: string;
   animatedStyle?: any;
   topLeftActions?: ReactNode;
   topRightActions?: ReactNode;
@@ -111,14 +112,14 @@ interface NormalHeaderProps {
   bottomContent?: ReactNode; // e.g. sort, density, select
 }
 
-export function GalleryNormalHeader({ title, count, animatedStyle, topLeftActions, topRightActions, middleContent, bottomContent }: NormalHeaderProps) {
+export function GalleryNormalHeader({ title, count, countUnit = '张素材', animatedStyle, topLeftActions, topRightActions, middleContent, bottomContent }: NormalHeaderProps) {
   const { top: statusBarHeight } = useSafeAreaInsets();
   
   return (
     <Animated.View style={[{ paddingTop: statusBarHeight + 12, paddingBottom: 10, paddingHorizontal: layout.pagePaddingHorizontal, backgroundColor: '#FAFAFA' }, animatedStyle]}>
       {/* Row 1: Title and Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexShrink: 1, paddingRight: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1, paddingRight: 8 }}>
           {!!title && (
             <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 24, fontWeight: 'bold', letterSpacing: -0.5, color: '#111827', flexShrink: 1 }} numberOfLines={1}>
               {title}
@@ -127,7 +128,7 @@ export function GalleryNormalHeader({ title, count, animatedStyle, topLeftAction
           {topLeftActions}
           {count !== undefined && (
             <Text style={{ fontFamily: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif', fontSize: 12, fontWeight: '500', color: '#9CA3AF', flexShrink: 0 }}>
-              {count} 张素材
+              {count} {countUnit}
             </Text>
           )}
         </View>
@@ -254,3 +255,4 @@ export const galleryHeaderStyles = StyleSheet.create({
     color: '#DC2626',
   },
 });
+

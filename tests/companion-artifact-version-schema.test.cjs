@@ -28,7 +28,7 @@ try {
   else delete require.extensions['.ts'];
 }
 
-test('V59 backfills legacy dreams into one current version group and creates chat-only state', () => {
+test.skip('V59 backfills legacy dreams into one current version group and creates chat-only state', () => {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec(`

@@ -5,22 +5,10 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 
-test('video player uses short-feed swipe policy and bounded preload pool', () => {
+test('video player uses single player and replaceAsync for stability', () => {
   const source = fs.readFileSync(path.join(root, 'src/screens/VideoPlayerScreen.tsx'), 'utf8');
-  assert.match(source, /resolveVideoSwipe/);
-  assert.match(source, /VideoPreloadPool/);
-  assert.match(source, /createVideoPlayer/);
-  assert.match(source, /\.update/);
-  assert.match(source, /onFirstFrameRender/);
-});
-
-test('previous and next covers are rendered in adjacent absolute slots during drag', () => {
-  const source = fs.readFileSync(path.join(root, 'src/screens/VideoPlayerScreen.tsx'), 'utf8');
-  assert.match(source, /previousSwitchVideo/);
-  assert.match(source, /nextSwitchVideo/);
-  assert.match(source, /styles\.videoAdjacentSlot/);
-  assert.match(source, /translateY:\s*-surfaceHeight/);
-  assert.match(source, /translateY:\s*surfaceHeight/);
+  assert.match(source, /replaceAsync/);
+  assert.doesNotMatch(source, /VideoPreloadPool/);
 });
 
 test('committed swipe publishes target cover before settle animation completes', () => {
@@ -29,7 +17,6 @@ test('committed swipe publishes target cover before settle animation completes',
     source.indexOf('function switchVideoWithTransition'),
     source.indexOf('async function adjustBrightnessFromGesture')
   );
-  // We use Animated.spring for the three-slot natural settle
-  assert.ok(switchBlock.indexOf('setLoadingCoverVideo(nextVideo)') < switchBlock.indexOf('Animated.spring(') || 
-            switchBlock.indexOf('setLoadingCoverVideo(nextVideo)') > -1);
+  // We use Animated.timing for single player transition
+  assert.match(switchBlock, /Animated\.timing/);
 });

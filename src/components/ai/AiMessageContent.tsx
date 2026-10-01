@@ -87,7 +87,7 @@ const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])/;
 const INLINE_TOKEN_PATTERN = /(<(?:span|font|kbd|sup|sub)[^>]*>[\s\S]*?<\/(?:span|font|kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\$[^$]+\$|\|\|[^|]+\|\||==[^=]+==|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
 const SAFE_INLINE_COLOR_PATTERN = /^(#[0-9A-F]{3}(?:[0-9A-F]{3})?|rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)|[a-z]+)$/i;
 const UNSAFE_COLOR_VALUE_PATTERN = /url|var|expression|calc|attr|;/i;
-const RICH_HTML_BLOCK_TAG_PATTERN = /<(address|article|aside|blockquote|canvas|dd|details|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|output|p|pre|section|style|summary|table|tbody|td|tfoot|th|thead|tr|ul)\b[\s\S]*?>/i;
+const RICH_HTML_BLOCK_TAG_PATTERN = /<\/?(address|article|aside|blockquote|canvas|dd|details|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|output|p|pre|section|style|summary|table|tbody|td|tfoot|th|thead|tr|ul)\b[\s\S]*?>/i;
 const RICH_HTML_INLINE_STYLE_PATTERN = /<(span|font|em|strong|b|i|u|s|mark|small)\b[^>]*(style|face|size)=/i;
 const RICH_HTML_LEGACY_FONT_PATTERN = /<font\b[^>]*(face|size)=/i;
 const RICH_HTML_STYLE_FEATURE_PATTERN = /\b(font-size|font-family|font-style|text-decoration|text-shadow|opacity|border|border-radius|padding|margin|letter-spacing|text-transform|display|white-space)\s*:|(?:linear-gradient|radial-gradient|repeating-linear-gradient)\s*\(/i;
@@ -495,8 +495,8 @@ function buildRichHtmlDocument(html: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <style>
-html,body{margin:0;padding:0;background:transparent;color:${aiLightColors.ink};font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;overflow:hidden;word-break:break-word;overflow-wrap:anywhere}
-*{box-sizing:border-box;max-width:100%}
+html,body{margin:0;padding:0;background:transparent;color:${aiLightColors.ink};font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;overflow:visible;word-break:break-word;overflow-wrap:anywhere}
+#pixory-rich-html-root{padding-bottom:4px} *{box-sizing:border-box;max-width:100%}
 div,section,article,header,footer,main,p,blockquote,pre,ul,ol,li,table,thead,tbody,tr,th,td{max-width:100%}
 p{margin:0 0 0.65em}
 table{border-collapse:collapse;display:table;width:100%}
@@ -757,6 +757,13 @@ function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
 export function AiMessageContent(props: AiMessageContentProps) {
   let { content } = props;
   const { trailingInline, streaming = false, variant = 'assistant' } = props;
+
+  if (content.includes('<system_action')) {
+    const match = content.match(/<system_action[^>]*?(?:\/>|>|$)/);
+    if (match) {
+      content = content.replace(match[0], '').trim();
+    }
+  }
 
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
@@ -1074,7 +1081,7 @@ const styles = StyleSheet.create({
     minWidth: spacing[4],
   },
   listText: {
-    flex: 1,
+    flexShrink: 1,
   },
   definitionList: {
     gap: rhythm.microGap,
@@ -1147,7 +1154,6 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     overflow: 'hidden',
     padding: spacing[2],
-    width: '100%',
   },
   codeHeader: {
     alignItems: 'center',
@@ -1180,7 +1186,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     maxWidth: '100%',
     overflow: 'hidden',
-    width: '100%',
   },
   tableRow: {
     flexDirection: 'row',

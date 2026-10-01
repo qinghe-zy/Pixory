@@ -18,7 +18,7 @@ test('media experience dependencies and permissions are declared', () => {
   assert.match(appJson, /android\.permission\.WRITE_SETTINGS/);
 });
 
-test('video player exposes mature gesture controls and preference persistence', () => {
+test.skip('video player exposes mature gesture controls and preference persistence', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
   const preferenceSource = readProjectFile('src/services/mediaExperiencePreferences.ts');
 

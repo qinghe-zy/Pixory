@@ -1,9 +1,9 @@
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$version = "2.8.8.0"
+$version = "2.8.9.0"
 $tag = "v$version"
-$apkPath = "$repoRoot\output\release\Pixory-v2.8.8.0.apk"
-$externalNotes = "$repoRoot\版本文档\当前版本文档\Release-Notes-External.md"
+$apkPath = "$repoRoot\output\release\Pixory-v2.8.9.0.apk"
+$externalNotes = "$repoRoot\版本文档\历史文档\v2.8.9.0\Release-Notes-External.md"
 
 if (-not (Test-Path $apkPath)) {
     throw "APK file not found: $apkPath"
@@ -64,4 +64,3 @@ Write-Host "双仓库发布流程完成！" -ForegroundColor Green
 
 Write-Host '==== 4. 自动部署至官网服务器 ====' -ForegroundColor Cyan
 .\scripts\deploy-docs-mist01.ps1 -ApkPath "output\release\Pixory-v$version.apk"
-

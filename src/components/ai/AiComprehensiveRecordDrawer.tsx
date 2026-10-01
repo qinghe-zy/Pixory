@@ -38,6 +38,11 @@ interface AiComprehensiveRecordDrawerProps {
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onRenameThread?: (thread: AiThreadHistoryItem, title: string) => Promise<void> | void;
   onDeleteThread?: (thread: AiThreadHistoryItem) => Promise<void> | void;
+  /**
+   * 可选：当设置按钮在屏幕上的位置可测量时回调，用于引导遮罩的精准高亮。
+   * 参数为按钮相对屏幕的 { x, y, width, height, borderRadius }。
+   */
+  onSettingsButtonLayout?: (rect: { x: number; y: number; width: number; height: number; borderRadius: number }) => void;
 }
 
 export function AiComprehensiveRecordDrawer({
@@ -53,6 +58,7 @@ export function AiComprehensiveRecordDrawer({
   onOpenThread,
   onRenameThread,
   onDeleteThread,
+  onSettingsButtonLayout,
 }: AiComprehensiveRecordDrawerProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
@@ -62,6 +68,11 @@ export function AiComprehensiveRecordDrawer({
   const [deleteThread, setDeleteThread] = useState<AiThreadHistoryItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
+
+  // ref 用于测量设置按钮的屏幕坐标，供引导遮罩精准高亮
+  const settingsButtonRef = useRef<View>(null);
+  const overlayRef = useRef<View>(null);
+  const settingsBtnLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const scrimOpacity = useRef(new Animated.Value(0)).current;
@@ -91,17 +102,40 @@ export function AiComprehensiveRecordDrawer({
       startDrawerAnimation(Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
-          damping: 28,
-          stiffness: 260,
-          mass: 0.9,
+          damping: 30,
+          stiffness: 180, // 原本 260，调小使动画更慢
+          mass: 1,
           useNativeDriver: true,
         }),
         Animated.timing(scrimOpacity, {
           toValue: 1,
-          duration: 200,
+          duration: 350, // 原本 200，调长
           useNativeDriver: true,
         }),
-      ]));
+      ]), () => {
+        // 使用双重 measureInWindow 获取绝对准确的相对坐标！
+        // 任何基于常量的推断都会被 React Native Android 的 padding/layout 各种怪异行为打破。
+        // 通过分别测算 overlay(根) 和 button，将两者的屏幕绝对坐标相减，得到 100% 精确的渲染偏移。
+        if (onSettingsButtonLayout && settingsButtonRef.current && overlayRef.current) {
+          const attemptMeasurement = (retries: number) => {
+            overlayRef.current?.measureInWindow((ox, oy) => {
+              settingsButtonRef.current?.measureInWindow((bx, by, width, height) => {
+                // 如果 measure 失败（Android 常见问题，尤其在动画刚结束时），重试
+                if ((bx === 0 && by === 0) || (ox === 0 && oy === 0) || width === 0) {
+                  if (retries > 0) {
+                    setTimeout(() => attemptMeasurement(retries - 1), 50);
+                  }
+                  return;
+                }
+                const pageX = bx - ox;
+                const pageY = by - oy;
+                onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
+              });
+            });
+          };
+          attemptMeasurement(10); // 最多重试 10 次，等待 500ms
+        }
+      });
     } else {
       drawerTranslateX.setValue(0);
       startDrawerAnimation(Animated.parallel([
@@ -120,6 +154,7 @@ export function AiComprehensiveRecordDrawer({
       });
     }
   }, [visible]);
+
 
   // Swipe-left-to-close pan responder on the drawer panel
   const panResponder = useRef(
@@ -249,7 +284,7 @@ export function AiComprehensiveRecordDrawer({
 
   return (
     <>
-      <View pointerEvents="box-none" style={styles.overlay}>
+      <View ref={overlayRef} pointerEvents="box-none" style={styles.overlay} collapsable={false}>
         {/* Animated scrim */}
         <Animated.View
           pointerEvents="none"
@@ -285,14 +320,22 @@ export function AiComprehensiveRecordDrawer({
           <View pointerEvents="none" style={styles.drawerHighlight} />
           <View style={styles.brandRow}>
             <Text style={styles.brand}>Pixory AI</Text>
-            <Pressable
-              accessibilityLabel="AI 设置"
-              accessibilityRole="button"
-              onPress={onOpenProviderSettings}
-              style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+            <View
+              ref={settingsButtonRef}
+              collapsable={false}
+              onLayout={(e) => {
+                settingsBtnLayoutRef.current = e.nativeEvent.layout;
+              }}
             >
-              <Ionicons color={aiLightColors.ink} name="settings-outline" size={18} />
-            </Pressable>
+              <Pressable
+                accessibilityLabel="AI 设置"
+                accessibilityRole="button"
+                onPress={onOpenProviderSettings}
+                style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.ink} name="settings-outline" size={18} />
+              </Pressable>
+            </View>
           </View>
           <View style={styles.primaryActions}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />

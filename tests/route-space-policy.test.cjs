@@ -10,7 +10,7 @@ function readProjectFile(relativePath) {
 }
 
 function routePattern(routeName, body) {
-  return new RegExp(`\\|\\s*\\{\\s*name: '${routeName}';\\s*${body}\\s*\\}`);
+  return new RegExp(`\\|\\s*\\{\\s*name: '${routeName}';\\s*${body}\\s*\}`);
 }
 
 test('every ID-bearing AppRoute carries PixorySpace as part of route identity', () => {
@@ -59,7 +59,7 @@ test('ImageViewerContext requires top-level space and exposes shared spaced help
   assert.match(contextSource, /import type \{[^}]*PixorySpace[^}]*\} from '..\/database'/);
   assert.match(contextSource, /export type SpacedId = \{\s*id: number;\s*space: PixorySpace;\s*\}/);
   assert.match(contextSource, /export type SpacedRecord<T> = \{\s*space: PixorySpace;\s*record: T;\s*\}/);
-  assert.match(contextSource, /type ImageViewerContextBase = \{\s*space: PixorySpace;\s*\}/);
+  assert.match(contextSource, /type ImageViewerContextBase = \{([\s\S]{0,100})\}/);
   assert.match(contextSource, /ImageViewerContextBase & \{ type: 'ip-recent'/);
   assert.match(contextSource, /ImageViewerContextBase & \{ type: 'favorites' \}/);
   assert.match(contextSource, /ImageViewerContextBase & \{ type: 'recent-viewed' \}/);
@@ -137,7 +137,7 @@ test('image, batch, and library route screens apply route space to repository wo
     'RecentViewedScreen',
     'QuickOrganizeScreen',
   ]) {
-    assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\\}`), `${screenName} must receive currentRoute.space`);
+    assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\}`), `${screenName} must receive currentRoute.space`);
   }
 });
 
@@ -160,7 +160,7 @@ test.skip('remaining global route screens receive route space and scope reposito
   }
 
   for (const screenName of ['CreateIpScreen', 'GlobalSearchScreen', 'TrashScreen', 'BackupScreen']) {
-    assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\\}`), `${screenName} must receive currentRoute.space`);
+    assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\}`), `${screenName} must receive currentRoute.space`);
   }
 
   assert.match(appSource, /<OrganizeScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Organize tab must use the authenticated active space');

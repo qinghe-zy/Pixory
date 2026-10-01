@@ -1,3 +1,5 @@
+import { GLOBAL_ACTIONS } from '../services/searchActionService';
+import { clearAiThreadMessages } from '../ai/aiChatService';
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
@@ -19,6 +21,7 @@ import {
   Easing,
   FlatList,
   InteractionManager,
+  Keyboard,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type NativeTouchEvent,
@@ -33,6 +36,7 @@ import {
   View,
   Modal,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -42,6 +46,10 @@ import {
   AiChatComposer,
   type AiComposerAttachment,
 } from "../components/ai/AiChatComposer";
+import {
+  AiIpImagePickerPanel,
+  type IpImageItem,
+} from "../components/ai/AiIpImagePickerPanel";
 import { AiChatErrorBanner } from "../components/ai/AiChatErrorBanner";
 import { DiaryChatCard } from '../components/ai/DiaryChatCard';
 import { DreamChatCard } from '../components/ai/DreamChatCard';
@@ -50,7 +58,11 @@ import {
   type AnchoredContextMenuAction,
 } from '../components/AnchoredContextMenu';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
+import { AiChatGuideOverlay, type AiChatGuideStep, type GuideHighlightRect } from "../components/ai/AiChatGuideOverlay";
+import { AiChatNoKeyBanner } from "../components/ai/AiChatNoKeyBanner";
+import { SystemActionConfirmCard, SystemIpSelectCard } from "../components/ai/SystemActionCards";
 import { AiSessionConfigScreen } from "./AiSessionConfigScreen";
+import { ipRepository } from "../database/repositories/ipRepository";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
   aiLightColors,
@@ -367,8 +379,22 @@ function createOptimisticUserMessage(
   createdAt: string,
   branchRootMessageId: string | null,
   branchVersionIndex: number | null,
+  attachments?: AiComposerAttachment[],
+  resetContext?: boolean,
 ): AiMessageWithCitations {
   return {
+    attachments: attachments?.map((attachment) => ({
+      createdAt,
+      documentId: null,
+      fileSize: attachment.size ?? null,
+      id: attachment.id,
+      kind: attachment.kind,
+      localUri: attachment.uri,
+      messageId: userMessageId,
+      mimeType: attachment.mimeType ?? null,
+      name: attachment.name,
+      threadId,
+    })),
     branchRootMessageId,
     branchVersionIndex,
     citations: [],
@@ -382,7 +408,7 @@ function createOptimisticUserMessage(
     messageVersions: [],
     modelId: null,
     modelSnapshotJson: "",
-    promptSnapshotJson: "",
+    promptSnapshotJson: resetContext ? JSON.stringify({ resetContext: true }) : "",
     providerId: null,
     reasoningText: null,
     role: 'user',
@@ -662,11 +688,7 @@ type VisibleMessageItem =
       showUserAvatar: boolean;
     }
   | {
-      type: "dateSeparator";
-      id: string;
-      label: string;
-      dateKey: string;
-    }
+      type: "dateSeparator"; id: string; label: string; dateKey: string; } | { type: "systemTaskEnded"; id: string; }
   | {
       type: "streamTailSpacer";
       id: string;
@@ -837,6 +859,7 @@ interface AiChatScreenProps {
   includeIpDocuments?: boolean;
   modelRefreshKey?: number;
   threadId?: string;
+  isFocused?: boolean;
   searchTargetMessageId?: string;
   searchTargetKey?: string;
   searchTargetBranchScopes?: AiBranchScope[];
@@ -859,13 +882,20 @@ interface AiChatScreenProps {
   onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
+  onNavigateToGlobalRoute?: (route: string, params: Record<string, string>) => void;
+  onNavigateToCreateIp?: () => void;
+  onNavigateToImportImages?: (ipId: number) => void;
+  onNavigateToStorageUsage?: () => void;
+  onNavigateToTrash?: () => void;
+  onNavigateToIpDetail?: (ipId: number) => void;
+  onNavigateToPersonalSpaceLock?: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (
     documentId: string,
     title: string,
     locator?: AiDocumentReaderLocator,
   ) => void;
-  onOpenIpSource: (ipId: number) => void;
+  onOpenIpSource: (ipId: number, locator?: Record<string, unknown>) => void;
   onOpenImageSource: (imageId: number) => void;
   onThreadReady?: (threadId: string) => void;
   onThreadTitleChange?: (title: string) => void;
@@ -882,6 +912,7 @@ export function AiChatScreen({
   includeIpDocuments = false,
   modelRefreshKey,
   threadId,
+  isFocused,
   searchTargetMessageId,
   searchTargetKey,
   searchTargetBranchScopes,
@@ -900,6 +931,13 @@ export function AiChatScreen({
   onOpenDiary,
   onOpenDream,
   onNewChat,
+  onNavigateToGlobalRoute,
+  onNavigateToCreateIp,
+  onNavigateToImportImages,
+  onNavigateToStorageUsage,
+  onNavigateToTrash,
+  onNavigateToIpDetail,
+  onNavigateToPersonalSpaceLock,
   onOpenThread,
   onOpenSource,
   onOpenIpSource,
@@ -908,6 +946,7 @@ export function AiChatScreen({
   onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
+  const isSystemAssistant = threadId === 'pixory-system-assistant';
 
   const initialBottomInsetRef = useRef(insets.bottom);
   const statusBarHeight =
@@ -931,6 +970,23 @@ export function AiChatScreen({
     undefined,
   );
   const selectedVersionByMessageIdRef = useRef<Record<string, number>>({});
+
+  const [nowForSystemTask, setNowForSystemTask] = useState(() => Date.now());
+  const [systemTaskContinuedTime, setSystemTaskContinuedTime] = useState<number>(0);
+  
+  useEffect(() => {
+    if (!isSystemAssistant) return;
+    const interval = setInterval(() => setNowForSystemTask(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, [isSystemAssistant]);
+
+  const [systemAssistantIps, setSystemAssistantIps] = useState<any[]>([]);
+  useEffect(() => {
+    if (!isSystemAssistant) return;
+    runWithDatabaseSpace(space, (db) => ipRepository.findAll(db))
+      .then(setSystemAssistantIps)
+      .catch(() => {});
+  }, [isSystemAssistant, space]);
 
   const spaceRef = useRef(space);
   spaceRef.current = space;
@@ -956,7 +1012,9 @@ export function AiChatScreen({
           gs.dx < -DRAWER_SWIPE_RELEASE_DISTANCE ||
           (gs.dx < -DRAWER_SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18)
         ) {
-          setConfigDrawerVisible(true);
+          if (activeThreadIdRef.current !== 'pixory-system-assistant') {
+            setConfigDrawerVisible(true);
+          }
         }
       },
     }),
@@ -1208,6 +1266,35 @@ export function AiChatScreen({
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
     threadId ?? null,
   );
+  const [threadBoundIpId, setThreadBoundIpId] = useState<number | null>(
+    boundIpId ?? null,
+  );
+  const [isIpPickerOpen, setIsIpPickerOpen] = useState(false);
+  const effectiveIpId = boundIpId ?? threadBoundIpId;
+
+  useEffect(() => {
+    if (boundIpId != null) {
+      setThreadBoundIpId(boundIpId);
+      return;
+    }
+    if (!activeThreadId) {
+      setThreadBoundIpId(null);
+      return;
+    }
+    let active = true;
+    void runWithDatabaseSpace(space, (db) =>
+      aiThreadRepository.findThreadById(db, activeThreadId),
+    )
+      .then((thread) => {
+        if (active && thread?.boundIpId != null) {
+          setThreadBoundIpId(thread.boundIpId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [activeThreadId, boundIpId, space]);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
   const [diaryVersionsById, setDiaryVersionsById] = useState<
@@ -1692,6 +1779,13 @@ export function AiChatScreen({
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
   const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
+  // ── 新手引导状态 ──
+  const [guideStep, setGuideStep] = useState<AiChatGuideStep | null>(null);
+  const [settingsButtonRect, setSettingsButtonRect] = useState<GuideHighlightRect | null>(null);
+  // 是否在首条 AI 回复后显示无 Key 提示（仅本 session 内）
+  const [showNoKeyBanner, setShowNoKeyBanner] = useState(false);
+  const noKeyBannerShownRef = useRef(false);
+
   const [searchHighlightMessageId, setSearchHighlightMessageId] = useState<
     string | null
   >(null);
@@ -2160,7 +2254,29 @@ export function AiChatScreen({
       }
 
       const message = item.message;
+
+      let isTaskReset = false;
+
+      if (isSystemAssistant && message.promptSnapshotJson) {
+
+        try {
+
+          const parsed = JSON.parse(message.promptSnapshotJson);
+
+          if (parsed.resetContext) { isTaskReset = true; }
+
+        } catch(e) {}
+
+      }
+
+      if (isTaskReset) {
+
+        nextVisibleMessageItems.push({ type: 'systemTaskEnded', id: 'task-ended-' + message.id });
+
+      }
+
       const dateKey = beijingDiaryDate(message.createdAt);
+
       const startsNewDate = dateKey !== previousMessageDateKey;
       if (startsNewDate) {
         nextVisibleMessageItems.push({
@@ -2645,11 +2761,13 @@ export function AiChatScreen({
     targetThreadId: string,
     generation: number,
     pendingUserMessage?: {
+      attachments?: AiComposerAttachment[];
       branchRootMessageId: string | null;
       branchVersionIndex: number | null;
       content: string;
       createdAt: string;
       hasAttachments: boolean;
+      resetContext?: boolean;
     },
   ): AiGenerationSubscriber {
     return {
@@ -2680,6 +2798,15 @@ export function AiChatScreen({
         setActiveAssistantId(assistantMessageId);
         setMessages((current) => {
           let nextMessages = current;
+          if (!pendingUserMessage) {
+            const branchPointId = userMessageId ?? assistantMessageId;
+            if (branchPointId) {
+              const branchIndex = nextMessages.findIndex((m) => m.id === branchPointId);
+              if (branchIndex !== -1) {
+                nextMessages = nextMessages.slice(0, branchIndex + 1);
+              }
+            }
+          }
           if (
             pendingUserMessage &&
             !nextMessages.some((message) => message.id === userMessageId)
@@ -2693,6 +2820,8 @@ export function AiChatScreen({
                 pendingUserMessage.createdAt,
                 pendingUserMessage.branchRootMessageId,
                 pendingUserMessage.branchVersionIndex,
+                pendingUserMessage.attachments,
+                pendingUserMessage.resetContext,
               ),
             ];
           }
@@ -2709,7 +2838,7 @@ export function AiChatScreen({
         scheduleIntentionalLatestJump(false);
         // If the user included attachments, reload from DB immediately so the
         // image shows up as soon as generation starts rather than after it ends.
-        if (pendingUserMessage?.hasAttachments) {
+        if (!pendingUserMessage || pendingUserMessage?.hasAttachments) {
           void reloadMessages(targetThreadId);
         }
       },
@@ -2800,11 +2929,13 @@ export function AiChatScreen({
   function beginStreamingRequest(
     targetThreadId: string,
     pendingUserMessage?: {
+      attachments?: AiComposerAttachment[];
       branchRootMessageId: string | null;
       branchVersionIndex: number | null;
       content: string;
       createdAt: string;
       hasAttachments: boolean;
+      resetContext?: boolean;
     },
   ): {
     generation: number;
@@ -2984,28 +3115,34 @@ export function AiChatScreen({
       (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
     );
     return mergedMessages.map((message) => {
-      if (message.status !== 'generating') {
-        return message;
-      }
       const currentIndex = messageIndexByIdRef.current.get(message.id);
       const currentMessage =
         currentIndex == null ? undefined : messagesRef.current[currentIndex];
+      let resolvedMessage = message;
+      if (currentMessage?.attachments && currentMessage.attachments.length > 0) {
+        if (!message.attachments || message.attachments.length < currentMessage.attachments.length) {
+          resolvedMessage = { ...message, attachments: currentMessage.attachments };
+        }
+      }
+      if (resolvedMessage.status !== 'generating') {
+        return resolvedMessage;
+      }
       if (!currentMessage || currentMessage.status !== 'generating') {
-        return message;
+        return resolvedMessage;
       }
       const currentContentLength =
         currentMessage.content.length +
         (currentMessage.reasoningText?.length ?? 0);
       const nextContentLength =
-        message.content.length + (message.reasoningText?.length ?? 0);
+        resolvedMessage.content.length + (resolvedMessage.reasoningText?.length ?? 0);
       if (
         currentContentLength === 0 ||
         nextContentLength >= currentContentLength
       ) {
-        return message;
+        return resolvedMessage;
       }
       return {
-        ...message,
+        ...resolvedMessage,
         citations: currentMessage.citations,
         content: currentMessage.content,
         reasoningText: currentMessage.reasoningText,
@@ -4710,6 +4847,13 @@ export function AiChatScreen({
   }, [reloadParticipantAppearance, threadId]);
 
   useEffect(() => {
+    if (isFocused && activeThreadId) {
+      void reloadParticipantAppearance(activeThreadId);
+      void reloadThreadTitle(activeThreadId);
+    }
+  }, [isFocused, activeThreadId, reloadParticipantAppearance, reloadThreadTitle]);
+
+  useEffect(() => {
     void reloadThreadTitle(threadId ?? null);
   }, [reloadThreadTitle, threadId]);
 
@@ -4738,6 +4882,46 @@ export function AiChatScreen({
     }
     void reloadRecentThreads();
   }, [recordDrawerVisible, reloadRecentThreads]);
+
+  // ── 新手引导：首次进入聊天页面时，检查是否已看过引导 ──
+  useEffect(() => {
+    if (!isFocused) return;
+    void runWithDatabaseSpace(space, async (db) => {
+      const seen = await settingsRepository.getAiChatGuideSeen(db);
+      if (!seen) {
+        // 延迟 1000ms 等页面完全渲染和动画结束后再展开左侧栏，避免太快突兀
+        const timer = setTimeout(() => {
+          setRecordDrawerVisible(true);
+          // 步骤 1 在左侧栏展开后显示（设置按钮坐标测量完毕后自动进入步骤 2）
+          setGuideStep(1);
+        }, 1000);
+        return () => clearTimeout(timer);
+      }
+    });
+  // 只在首次聚焦时运行一次
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── 无 Key 提示：引导已完成，但首条 AI 回复后仍未配置 Key ──
+  // 检测时机：generating 从 true 变为 false（流式回复完成）
+  useEffect(() => {
+    if (generating || noKeyBannerShownRef.current) return;
+    // 只在有 AI 回复后触发一次
+    const assistantMessages = messages.filter((m) => m.role === 'assistant');
+    if (assistantMessages.length === 0) return;
+    void runWithDatabaseSpace(space, async (db) => {
+      const seen = await settingsRepository.getAiChatGuideSeen(db);
+      if (!seen) return; // 还在引导流程中，不重叠显示
+      // 检查是否有任何 provider 已配置 Key
+      const { listProviderCards } = await import('../ai/aiProviderService');
+      const cards = await listProviderCards(space);
+      const hasAnyKey = cards.some((c) => c.hasApiKey);
+      if (!hasAnyKey) {
+        noKeyBannerShownRef.current = true;
+        setShowNoKeyBanner(true);
+      }
+    });
+  }, [generating, messages, space]);
 
   useEffect(() => {
     if (isLoadingEarlierRef.current) {
@@ -5110,7 +5294,31 @@ export function AiChatScreen({
     return thread.id;
   }
 
+  async function handleClearSystemChat() {
+    Alert.alert('清空记录', '确定要清空与管家的聊天记录吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '清空',
+        style: 'destructive',
+        onPress: () => {
+          const targetThreadId = activeThreadIdRef.current;
+            if (!targetThreadId) return;
+          void (async () => {
+            try {
+              await clearAiThreadMessages(space, targetThreadId);
+              setMessages([]);
+              await reloadMessages(targetThreadId, true);
+            } catch (e) {
+              console.error(e);
+            }
+          })();
+        },
+      },
+    ]);
+  }
+
   async function handleOpenSessionConfig() {
+    if (activeThreadIdRef.current === 'pixory-system-assistant') return;
     try {
       const nextThreadId = await ensureThread();
       if (!nextThreadId || !screenMountedRef.current) {
@@ -5252,6 +5460,38 @@ export function AiChatScreen({
       setErrorMessage(error instanceof Error ? error.message : "选择图片失败");
     }
   }
+
+  const handleToggleIpImage = useCallback(
+    (asset: IpImageItem) => {
+      setPendingAttachments((current) => {
+        const existingIndex = current.findIndex(
+          (a) =>
+            a.kind === "image" &&
+            (a.uri === asset.uri || a.id === `ip-image-${asset.id}`),
+        );
+        if (existingIndex >= 0) {
+          return current.filter((_, idx) => idx !== existingIndex);
+        }
+        const newAttachment: AiComposerAttachment = {
+          id: `ip-image-${asset.id}`,
+          kind: "image",
+          mimeType: asset.mimeType ?? "image/jpeg",
+          name: asset.name || `image-${asset.id}.jpg`,
+          size: asset.size ?? null,
+          uri: asset.uri,
+        };
+        const nextAttachments = [...current, newAttachment];
+        const validation = validateAiChatAttachments(nextAttachments);
+        if (!validation.ok) {
+          setErrorMessage(validation.message);
+          return current;
+        }
+        setErrorMessage(null);
+        return nextAttachments;
+      });
+    },
+    [],
+  );
 
   async function pickChatDocuments() {
     try {
@@ -5723,6 +5963,7 @@ export function AiChatScreen({
       setComposerText("");
       void clearComposerDraft(draftThreadKey);
       setPendingAttachments([]);
+      setIsIpPickerOpen(false);
       setGenerating(true);
       setErrorMessage(null);
       scheduleIntentionalLatestJump(false);
@@ -5749,17 +5990,18 @@ export function AiChatScreen({
         }
       }
       const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
+      const shouldResetContext = isSystemAssistant && visibleMessages.length > 0 && nowForSystemTask - new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > 10 * 60 * 1000 && new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > systemTaskContinuedTime;
       const streamRequest = beginStreamingRequest(
         targetThreadId,
-        replyTarget
-          ? undefined
-          : {
-              branchRootMessageId: activeBranch?.branchRootMessageId ?? null,
-              branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
-              content,
-              createdAt: sendPressedAt,
-              hasAttachments: attachments.length > 0,
-            },
+        {
+          attachments,
+          branchRootMessageId: activeBranch?.branchRootMessageId ?? null,
+          branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
+          content,
+          createdAt: sendPressedAt,
+          hasAttachments: attachments.length > 0,
+          resetContext: shouldResetContext,
+        },
       );
       streamGeneration = streamRequest.generation;
       const managedGeneration = replyTarget
@@ -5796,6 +6038,7 @@ export function AiChatScreen({
               attachments,
               branchRootMessageId: activeBranch?.branchRootMessageId,
               branchVersionIndex: activeBranch?.branchVersionIndex,
+              resetContext: shouldResetContext,
               content,
               sendPressedAt,
               space,
@@ -6350,7 +6593,7 @@ export function AiChatScreen({
           ? citation.locator.ipId
           : Number(citation.sourceId);
       if (Number.isFinite(ipId)) {
-        onOpenIpSource(ipId);
+        onOpenIpSource(ipId, citation.locator);
       }
       return;
     }
@@ -6710,6 +6953,13 @@ export function AiChatScreen({
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
       }
+      if (item.type === "systemTaskEnded") {
+        return (
+          <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+            <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
+          </View>
+        );
+      }
       if (item.type === 'diary') {
         return (
           <DiaryChatCard
@@ -6900,8 +7150,8 @@ export function AiChatScreen({
           >
             <AiMessageBubble
               assistantAvatar={{
-                avatarEnabled: participantAppearance.assistantAvatarEnabled,
-                avatarUri: participantAppearance.assistantAvatarUri,
+                avatarEnabled: isSystemAssistant ? true : participantAppearance.assistantAvatarEnabled,
+                avatarUri: isSystemAssistant ? Image.resolveAssetSource(require('../../icons/02_右上_蓝发女孩.png')).uri : participantAppearance.assistantAvatarUri,
               }}
               assistantDisplayName={participantAppearance.assistantName}
               editingMessageId={editingUserMessageId}
@@ -6979,6 +7229,75 @@ export function AiChatScreen({
                 nickname: participantAppearance.userNickname,
               }}
             />
+            {(() => {
+              if (isSystemAssistant && message.role === 'assistant') {
+                const textToSearch = (generating && message.id === activeAssistantId)
+                  ? streamingTailStateRef.current.blocks.map(b => b.raw).join('')
+                  : message.content;
+                const match = textToSearch.match(/<system_action\s+([^>]*)\/>/);
+                if (match) {
+                  const params: Record<string, string> = {};
+                  const attrs = match[1].matchAll(/(\w+)="([^"]*)"/g);
+                  for (const m of attrs) {
+                    params[m[1]] = m[2];
+                  }
+                  
+                  if (params.type === 'navigate' && params.route === 'lock-personal-space') {
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="锁定隐私空间" description="是否确认锁定隐私空间？" onConfirm={() => onNavigateToPersonalSpaceLock?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'storage-usage') {
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="清理存储空间" description="是否确认前往清理存储空间？" onConfirm={() => onNavigateToStorageUsage?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'trash') {
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="打开回收站" description="是否确认打开回收站？" onConfirm={() => onNavigateToTrash?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'ip-detail' && params.ipId) {
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
+                  }
+                  if (params.type === 'rename-thread') {
+                    const originalName = participantAppearance.assistantName || 'Pixory';
+                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} description={`原昵称: ${originalName}`} isConfirmed={params.confirmed === 'true'} onConfirm={async () => {
+                      if (activeThreadIdRef.current) {
+                        await runWithDatabaseSpace(space, async (db) => {
+                          const newContent = message.content.replace('<system_action ', '<system_action confirmed="true" ');
+                          await aiThreadRepository.updateMessage(db, message.id, { content: newContent });
+                          const thread = await aiThreadRepository.findThreadById(db, activeThreadIdRef.current!);
+                          if (thread) {
+                            try {
+                              const snapshot = JSON.parse(thread.roleSnapshotJson);
+                              snapshot.name = params.newTitle;
+                              await aiThreadRepository.updateThread(db, activeThreadIdRef.current!, { roleSnapshotJson: JSON.stringify(snapshot) });
+                            } catch (e) {}
+                          }
+                        });
+                        void reloadThreadTitle(activeThreadIdRef.current);
+                        void reloadParticipantAppearance(activeThreadIdRef.current);
+                      }
+                    }} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'create-ip') {
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="新建IP" description="确认进入新建IP页面？" onConfirm={() => onNavigateToCreateIp?.()} />;
+                  }
+                  if (params.type === 'navigate' && params.route === 'import-images' && params.ipId) {
+                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="导入素材" description="确认进入导入素材页面？" onConfirm={() => onNavigateToImportImages?.(parseInt(params.ipId!, 10))} />;
+                  }
+                  if (params.type === 'navigate' && params.route) {
+                    const action = GLOBAL_ACTIONS.find(a => a.route === params.route);
+                    if (action) {
+                      return <SystemActionConfirmCard disableLocalConfirmState={true} title={action.title} description={`确认进入${action.title}？`} onConfirm={() => onNavigateToGlobalRoute?.(action.route, params)} />;
+                    }
+                  }
+                  if (params.type === 'select_ip') {
+                    return <SystemIpSelectCard ips={systemAssistantIps} onConfirm={(ipId) => {
+                      // Tell the system AI that the user selected this IP
+                      setComposerText(`我选择了IP: ${systemAssistantIps.find((i: any) => i.id === ipId)?.name}`);
+                      setTimeout(() => handleSend(), 100);
+                    }} />;
+                  }
+                }
+              }
+              return null;
+            })()}
           </View>
           {inlineMemoryCaptures.length > 0 ? (
             <View style={styles.inlineMemoryNotice}>
@@ -7103,17 +7422,31 @@ export function AiChatScreen({
             </View>
             {/* Right: session settings + new chat */}
             <View style={styles.headerSide}>
-              <Pressable
-                accessibilityLabel="会话设置"
-                accessibilityRole="button"
-                onPress={() => void handleOpenSessionConfig()}
-                style={({ pressed }) => [
-                  styles.iconBtn,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={22} />
-              </Pressable>
+              {!isSystemAssistant ? (
+                <Pressable
+                  accessibilityLabel="会话设置"
+                  accessibilityRole="button"
+                  onPress={() => void handleOpenSessionConfig()}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={22} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityLabel="清空聊天记录"
+                  accessibilityRole="button"
+                  onPress={() => void handleClearSystemChat()}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons color={aiLightColors.ink} name="trash-outline" size={22} />
+                </Pressable>
+              )}
             </View>
           </View>
           {newChatFeedbackVisible ? (
@@ -7210,6 +7543,24 @@ export function AiChatScreen({
                 onTouchMove={handleMessageTouchMove}
                 onTouchStart={handleMessageTouchStart}
                 renderItem={renderMessageItem}
+                ListHeaderComponent={
+                  (() => {
+                    if (!isSystemAssistant || visibleMessages.length === 0) return null;
+                    const latestMsg = visibleMessages[visibleMessages.length - 1];
+                    const latestTime = new Date(latestMsg.createdAt).getTime();
+                    const isEnded = nowForSystemTask - latestTime > 10 * 60 * 1000 && latestTime > systemTaskContinuedTime;
+                    if (!isEnded) return null;
+
+                    return (
+                      <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+                        <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
+                        <Pressable onPress={() => setSystemTaskContinuedTime(Date.now())} style={{ marginLeft: 8 }}>
+                          <Text style={{ color: aiLightColors.primaryActive, fontSize: 12 }}>[继续任务]</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })()
+                }
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
                 style={styles.messageScroller}
@@ -7230,6 +7581,19 @@ export function AiChatScreen({
               </View>
             ) : null}
           </View>
+
+          {/* 无 Key 提示：首条 AI 回复后、用户尚未配置任何 API Key 时显示 */}
+          {showNoKeyBanner ? (
+            <AiChatNoKeyBanner
+              onOpenProviderSettings={() => {
+                setShowNoKeyBanner(false);
+                onOpenProviderSettings();
+              }}
+            />
+          ) : null}
+
+          {/* System Task Ended Banner */}
+
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
@@ -7362,6 +7726,11 @@ export function AiChatScreen({
                 replyAssistDisabled={
                   generating || !canOpenReplyAssist(visibleMessages)
                 }
+                hasBoundIp={Boolean(effectiveIpId)}
+                onSelectIpImages={() => {
+                  Keyboard.dismiss();
+                  setIsIpPickerOpen((current) => !current);
+                }}
                 onSend={() => {
                   void handleSend();
                 }}
@@ -7383,6 +7752,18 @@ export function AiChatScreen({
                 voiceMode={voiceMode}
                 voiceState={voiceState}
               />
+              {effectiveIpId ? (
+                <AiIpImagePickerPanel
+                  ipId={effectiveIpId}
+                  onClose={() => setIsIpPickerOpen(false)}
+                  onToggleImage={handleToggleIpImage}
+                  selectedUris={pendingAttachments
+                    .filter((a) => a.kind === "image")
+                    .map((a) => a.uri)}
+                  space={space}
+                  visible={isIpPickerOpen}
+                />
+              ) : null}
               <Animated.View
                 pointerEvents="none"
                 style={[styles.composerRevealMask, { opacity: composerRevealMaskOpacity }]}
@@ -7505,6 +7886,34 @@ export function AiChatScreen({
         }}
         onRenameThread={(thread, title) => renameRecentThread(thread, title)}
         onDeleteThread={(thread) => deleteRecentThread(thread)}
+        onSettingsButtonLayout={(rect) => {
+          setSettingsButtonRect(rect);
+        }}
+      />
+      {/* 新手引导遮罩层：完全独立，不影响现有逻辑 */}
+      <AiChatGuideOverlay
+        settingsButtonRect={settingsButtonRect}
+        step={guideStep}
+        onNext={() => {
+          if (guideStep === 2) {
+            // 步骤 2 → 步骤 3：关左侧栏，展开右侧会话控制台
+            setRecordDrawerVisible(false);
+            setTimeout(() => {
+              setConfigDrawerVisible(true);
+              setGuideStep(3);
+            }, 300);
+          } else {
+            setGuideStep((s) => (s !== null && s < 3 ? ((s + 1) as AiChatGuideStep) : s));
+          }
+        }}
+        onDone={() => {
+          setGuideStep(null);
+          setConfigDrawerVisible(false);
+          // 持久化：以后不再触发引导
+          void runWithDatabaseSpace(space, (db) =>
+            settingsRepository.setAiChatGuideSeen(db, true)
+          );
+        }}
       />
       <AiReplyAssistModal
         bottomInset={insets.bottom}
@@ -7892,6 +8301,34 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

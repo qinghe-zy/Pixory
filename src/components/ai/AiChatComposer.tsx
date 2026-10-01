@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 
-import { radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import type { AiModelIconBrand } from '../../ai/aiModelIconService';
 import { aiLightColors } from './aiLightTheme';
 import { AiModelIcon } from './AiModelIcon';
@@ -10,6 +10,7 @@ import { AiMessageTextSelectionModal } from './AiMessageTextSelectionModal';
 import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus';
 import { RhythmBars, MACARON_COLORS } from '../RhythmBars';
 import { AiActiveSpectrum } from './AiActiveSpectrum';
+import { AiComposerAttachmentBar } from './AiComposerAttachmentBar';
 
 export interface AiComposerAttachment {
   id: string;
@@ -39,6 +40,8 @@ interface AiChatComposerProps {
   voiceMode?: 'on_device' | 'system' | null;
   onAddImageAttachment: () => void;
   onAddDocumentAttachment: () => void;
+  hasBoundIp?: boolean;
+  onSelectIpImages?: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
   onFocus?: () => void;
@@ -72,29 +75,6 @@ function formatAttachmentSize(size?: number | null): string | null {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
-function AttachmentOption({
-  accessibilityLabel,
-  disabled = false,
-  icon,
-  onPress,
-}: {
-  accessibilityLabel: string;
-  disabled?: boolean;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.attachmentOption, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
-    >
-      <Ionicons color={aiLightColors.ink} name={icon} size={spacing[5]} />
-    </Pressable>
-  );
-}
 
 export function AiChatComposer({
   value,
@@ -108,6 +88,8 @@ export function AiChatComposer({
   voiceMode = null,
   onAddImageAttachment,
   onAddDocumentAttachment,
+  hasBoundIp = false,
+  onSelectIpImages,
   onChangeText,
   onFocus,
   onComposerHeightChange,
@@ -194,35 +176,10 @@ export function AiChatComposer({
         style={styles.composerShell}
       >
         {/* --- Attachment rail (inside the big card) --- */}
-        {attachments.length ? (
-          <View style={styles.attachmentRail}>
-            {attachments.map((attachment) => {
-              const size = formatAttachmentSize(attachment.size);
-              return (
-                <View key={attachment.id} style={styles.attachmentChip}>
-                  {attachment.kind === 'image' ? (
-                    <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
-                  ) : (
-                    <Ionicons color={aiLightColors.primary} name={getAttachmentIcon(attachment.kind)} size={16} />
-                  )}
-                  <View style={styles.attachmentCopy}>
-                    <Text numberOfLines={1} style={styles.attachmentName}>{attachment.name}</Text>
-                    {size ? <Text numberOfLines={1} style={styles.attachmentMeta}>{size}</Text> : null}
-                  </View>
-                  <Pressable
-                    accessibilityLabel={`移除附件 ${attachment.name}`}
-                    accessibilityRole="button"
-                    hitSlop={8}
-                    onPress={() => onRemoveAttachment?.(attachment.id)}
-                    style={({ pressed }) => [styles.attachmentRemove, pressed && styles.pressed]}
-                  >
-                    <Ionicons color={aiLightColors.muted} name="close" size={14} />
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
+        <AiComposerAttachmentBar
+          attachments={attachments}
+          onRemoveAttachment={onRemoveAttachment}
+        />
 
         {/* --- Text input area --- */}
         <View style={[styles.inputArea, { height: inputHeight }]}>
@@ -364,24 +321,58 @@ export function AiChatComposer({
             <View style={styles.addButtonWrap}>
               {attachmentPopoverVisible ? (
                 <View style={styles.attachmentPopover}>
-                  <AttachmentOption
+                  {hasBoundIp && onSelectIpImages ? (
+                    <Pressable
+                      accessibilityLabel="从IP选择图片"
+                      accessibilityRole="menuitem"
+                      disabled={generating}
+                      onPress={() => {
+                        setAttachmentPopoverVisible(false);
+                        onSelectIpImages();
+                      }}
+                      style={({ pressed }) => [
+                        styles.attachmentOptionRow,
+                        pressed && !generating && styles.attachmentOptionRowPressed,
+                      ]}
+                    >
+                      <Ionicons color={colors.text.primary} name="albums-outline" size={18} />
+                      <Text numberOfLines={1} style={styles.attachmentOptionLabel}>从IP选择图片</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
                     accessibilityLabel="上传图片"
+                    accessibilityRole="menuitem"
                     disabled={generating}
-                    icon="image-outline"
                     onPress={() => {
                       setAttachmentPopoverVisible(false);
                       onAddImageAttachment();
                     }}
-                  />
-                  <AttachmentOption
+                    style={({ pressed }) => [
+                      styles.attachmentOptionRow,
+                      hasBoundIp && onSelectIpImages && styles.attachmentOptionDivider,
+                      pressed && !generating && styles.attachmentOptionRowPressed,
+                    ]}
+                  >
+                    <Ionicons color={colors.text.primary} name="image-outline" size={18} />
+                    <Text numberOfLines={1} style={styles.attachmentOptionLabel}>上传图片</Text>
+                  </Pressable>
+                  <Pressable
                     accessibilityLabel="上传文档"
+                    accessibilityRole="menuitem"
                     disabled={generating}
-                    icon="document-text-outline"
                     onPress={() => {
                       setAttachmentPopoverVisible(false);
                       onAddDocumentAttachment();
                     }}
-                  />
+                    style={({ pressed }) => [
+                      styles.attachmentOptionRow,
+                      styles.attachmentOptionDivider,
+                      pressed && !generating && styles.attachmentOptionRowPressed,
+                    ]}
+                  >
+                    <Ionicons color={colors.text.primary} name="document-text-outline" size={18} />
+                    <Text numberOfLines={1} style={styles.attachmentOptionLabel}>上传文档</Text>
+                  </Pressable>
                 </View>
               ) : null}
               <Pressable
@@ -554,30 +545,42 @@ const styles = StyleSheet.create({
   voiceButtonActive: {
     backgroundColor: aiLightColors.primarySoft,
   },
+
   addButtonWrap: {
     position: 'relative',
   },
   attachmentPopover: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.xl,
+    backgroundColor: '#FFFFFF',
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    bottom: spacing[10],
-    flexDirection: 'row',
-    gap: spacing[1],
-    padding: spacing[1],
+    overflow: 'hidden',
     position: 'absolute',
+    bottom: spacing[8] + 5,
     right: 0,
+    width: 156,
+    zIndex: 100,
+    elevation: 8,
     ...shadows.floating,
   },
-  attachmentOption: {
+  attachmentOptionRow: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.pill,
-    height: spacing[8],
-    justifyContent: 'center',
-    width: spacing[8],
+    flexDirection: 'row',
+    gap: spacing[3],
+    height: 44,
+    paddingHorizontal: spacing[4],
+  },
+  attachmentOptionRowPressed: {
+    backgroundColor: colors.background.soft,
+  },
+  attachmentOptionDivider: {
+    borderTopColor: colors.border.subtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  attachmentOptionLabel: {
+    ...typography.textStyles.body,
+    color: colors.text.primary,
+    fontSize: 14,
   },
   addButton: {
     alignItems: 'center',

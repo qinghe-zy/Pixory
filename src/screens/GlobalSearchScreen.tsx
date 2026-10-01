@@ -2,19 +2,19 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import pinyinMatch from 'pinyin-match';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput, ScrollView, Image, BackHandler, Switch } from 'react-native';
 import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { searchGlobalMessages, searchGlobalThreads, type AiHomeThreadItem } from '../ai/aiChatService';
+import { searchGlobalMessages, searchGlobalThreads, loadThreadMessageAppearanceConfig, type AiHomeThreadItem, type AiThreadMessageAppearanceConfig } from '../ai/aiChatService';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ParallaxLightSweep } from '../components/ParallaxLightSweep';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, settingsRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { SecureImage } from '../components/SecureImage';
 import {
@@ -24,6 +24,8 @@ import {
   removeSearchHistoryItem,
   type SearchHistoryItem,
 } from '../services/searchHistoryService';
+
+import { searchActions, getRandomRecommendedActions, type MatchedAction } from '../services/searchActionService';
 
 interface GlobalSearchScreenProps {
   space?: PixorySpace;
@@ -37,6 +39,8 @@ interface GlobalSearchScreenProps {
   onOpenThread?: (threadId: string, messageId?: string) => void;
   onOpenRoleCard?: (roleCardId: string) => void;
   onOpenHistory?: () => void;
+  onOpenRoute?: (routeName: string, params?: any) => void;
+  isTop?: boolean;
 }
 
 const SEARCH_RESULT_LIMIT = 20;
@@ -44,7 +48,9 @@ const SEARCH_RESULT_LIMIT = 20;
 interface RecommendedItem {
   id: string;
   name: string;
-  type: 'IP' | '聊天' | '角色' | '分组' | '标签';
+  type: 'IP' | '聊天' | '角色' | '分组' | '标签' | '功能';
+  route?: string;
+  routeParams?: any;
 }
 
 export function GlobalSearchScreen({
@@ -59,6 +65,8 @@ export function GlobalSearchScreen({
   onOpenThread,
   onOpenRoleCard,
   onOpenHistory,
+  onOpenRoute,
+  isTop,
 }: GlobalSearchScreenProps) {
   const insets = useSafeAreaInsets();
   const keyword = query.trim();
@@ -75,6 +83,9 @@ export function GlobalSearchScreen({
   const [messageSortDesc, setMessageSortDesc] = useState(true);
 
   const handleBackPress = useCallback(() => {
+    if (isTop === false) {
+      return false;
+    }
     if (query && query.trim() !== '') {
       onChangeQuery('');
       return true;
@@ -85,7 +96,7 @@ export function GlobalSearchScreen({
     }
     onBack();
     return true;
-  }, [query, onChangeQuery, activeFilter, onBack]);
+  }, [isTop, query, onChangeQuery, activeFilter, onBack]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
@@ -116,6 +127,10 @@ export function GlobalSearchScreen({
         groupPage.items.forEach(g => items.push({ id: `group_${g.id}`, name: g.name, type: '分组' }));
         tagList.forEach(t => items.push({ id: `tag_${t.id}`, name: t.name, type: '标签' }));
         threads.items.forEach((t: AiHomeThreadItem) => items.push({ id: `thread_${t.id}`, name: t.title || 'Chat', type: '聊天' }));
+        
+        // Add random functions to "Guess You Like"
+        const randomActions = getRandomRecommendedActions(6);
+        randomActions.forEach(a => items.push({ id: `action_${a.id}`, name: a.title, type: '功能', route: a.route, routeParams: a.routeParams }));
 
         setAllRecommendedItems(items);
         
@@ -126,9 +141,11 @@ export function GlobalSearchScreen({
       }
     };
 
-    void fetchRecommendations();
+    if (isTop !== false) {
+      void fetchRecommendations();
+    }
     return () => { isMounted = false; };
-  }, ["GlobalSearchScreen", space]);
+  }, [space, isTop]);
 
   const handleRefreshTrending = () => {
     if (allRecommendedItems.length <= 8) return; 
@@ -137,20 +154,23 @@ export function GlobalSearchScreen({
   };
 
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
+    actions: MatchedAction[];
     ips: IpListItem[];
     groups: GlobalGroupListItem[];
     tags: TagUsageItem[];
     images: ImageListItem[];
     threads: AiHomeThreadItem[];
-    messages: { id: string; threadId: string; threadTitle: string; content: string; createdAt: string }[];
+    messages: { id: string; threadId: string; threadTitle: string; content: string; snippet?: string; createdAt: string }[];
     roles: AiRoleCardRecord[];
     resultKey: string;
-    counts: { ips: number; groups: number; tags: number; images: number; threads: number; messages: number; roles: number; all: number };
+    counts: { actions: number; ips: number; groups: number; tags: number; images: number; threads: number; messages: number; roles: number; all: number };
   }>(
     async () => {
       if (!debouncedKeyword) {
-        return { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey, counts: { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } };
+        return { actions: [], groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey, counts: { actions: 0, ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } };
       }
+
+      const actionsList = searchActions(debouncedKeyword);
 
       const [ipPage, groups, tagPage, imagePage, allRoles, threads, messagesRes] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findLibraryItemsPage(db, { searchText: debouncedKeyword, limit: activeFilter === 'ip' ? 1000 : SEARCH_RESULT_LIMIT }),
@@ -166,6 +186,7 @@ export function GlobalSearchScreen({
       const filteredRolesSlice = filteredRolesAll.slice(0, activeFilter === 'role' ? 1000 : SEARCH_RESULT_LIMIT);
 
       const counts = {
+        actions: actionsList.length,
         ips: ipPage.totalCount ?? ipPage.items.length,
         groups: groups.totalCount,
         tags: tagPage.totalCount ?? tagPage.items.length,
@@ -174,9 +195,10 @@ export function GlobalSearchScreen({
         threads: threads.totalCount,
         messages: messagesRes.totalCount,
       };
-      const totalCount = counts.ips + counts.groups + counts.tags + counts.images + counts.roles + counts.threads + counts.messages;
+      const totalCount = counts.actions + counts.ips + counts.groups + counts.tags + counts.images + counts.roles + counts.threads + counts.messages;
 
       return {
+        actions: actionsList,
         ips: ipPage.items,
         groups: groups.items,
         tags: tagPage.items,
@@ -188,6 +210,7 @@ export function GlobalSearchScreen({
           threadId: res.threadId,
           threadTitle: res.threadTitle || 'Chat',
           content: res.content,
+          snippet: res.snippet,
           createdAt: res.createdAt,
         })),
         resultKey,
@@ -200,12 +223,13 @@ export function GlobalSearchScreen({
         const message = error instanceof Error ? error.message : '未知错误';
         return `搜索失败：${message}`;
       },
-      initialData: { groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey: '', counts: { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } },
+      initialData: { actions: [], groups: [], images: [], ips: [], tags: [], threads: [], messages: [], roles: [], resultKey: '', counts: { actions: 0, ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 } },
         keepPreviousData: true,
     }
   );
 
   const isCurrentResult = data?.resultKey === resultKey && keyword === debouncedKeyword;
+  const actions = isCurrentResult ? data.actions : [];
   const ips = isCurrentResult ? data.ips : [];
   const groups = isCurrentResult ? data.groups : [];
   const tags = isCurrentResult ? data.tags : [];
@@ -214,7 +238,7 @@ export function GlobalSearchScreen({
   const threads = isCurrentResult ? data.threads : [];
   const messages = isCurrentResult ? data.messages : [];
 
-  const counts = isCurrentResult && data.counts ? data.counts : { ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 };
+  const counts = isCurrentResult && data.counts ? data.counts : { actions: 0, ips: 0, groups: 0, tags: 0, images: 0, threads: 0, messages: 0, roles: 0, all: 0 };
   const totalCount = counts.all;
   const isSearchLoading = Boolean(keyword) && (isLoading || !isCurrentResult);
   const isEmpty = !isSearchLoading && totalCount === 0;
@@ -227,11 +251,13 @@ export function GlobalSearchScreen({
 
   useEffect(() => {
     let isMounted = true;
-    void loadSearchHistory(space).then((nextHistory) => {
-      if (isMounted) setSearchHistory(nextHistory);
-    });
+    if (isTop !== false) {
+      void loadSearchHistory(space).then((nextHistory) => {
+        if (isMounted) setSearchHistory(nextHistory);
+      });
+    }
     return () => { isMounted = false; };
-  }, ["GlobalSearchScreen", space]);
+  }, [space, isTop]);
 
   useEffect(() => {
     if (!keyword) return;
@@ -348,7 +374,13 @@ export function GlobalSearchScreen({
                   <GuessYouWantList
                     items={displayRecommendedItems}
                     onRefresh={handleRefreshTrending}
-                    onUseItem={useHistoryItem}
+                    onItemPress={(item) => {
+                      if (item.type === '功能' && item.route && onOpenRoute) {
+                        onOpenRoute(item.route, item.routeParams);
+                      } else {
+                        useHistoryItem(item.name);
+                      }
+                    }}
                   />
                 )}
               </View>
@@ -356,6 +388,16 @@ export function GlobalSearchScreen({
               <View style={{ minHeight: 360 }} />
             ) : (
               <View style={protoStyles.content}>
+                {/* 0. Actions */}
+                {actions.length > 0 && (
+                  <ActionSection
+                    items={actions}
+                    space={space}
+                    onOpenAction={(action) => {
+                      if (onOpenRoute) onOpenRoute(action.route, action.routeParams);
+                    }}
+                  />
+                )}
                 {/* 1. IP */}
                 {(activeFilter === 'all' || activeFilter === 'ip') && ips.length > 0 && (
                   <IpSection items={ips} totalCount={counts.ips} onOpen={onOpenIp} query={debouncedKeyword} space={space} activeFilter={activeFilter} onViewMore={() => setActiveFilter('ip')} />
@@ -474,23 +516,25 @@ function SearchFilterRail({ counts, activeFilter, onSelectFilter }: { counts: an
 // --------------------------------------------------------
 // Highlight Text Utility
 // --------------------------------------------------------
-function HighlightedText({ text, keyword, style, highlightWrapperStyle }: { text: string; keyword?: string; style?: any; highlightWrapperStyle?: any }) {
-  if (!keyword || !text) return <Text style={style} numberOfLines={1}>{text}</Text>;
-  const lowerText = text.toLowerCase();
-  const lowerKeyword = keyword.toLowerCase();
-  const index = lowerText.indexOf(lowerKeyword);
-  if (index === -1) return <Text style={style} numberOfLines={1}>{text}</Text>;
+function HighlightedText({ text, keyword, style, highlightWrapperStyle, numberOfLines = 1 }: { text: string; keyword?: string; style?: any; highlightWrapperStyle?: any; numberOfLines?: number }) {
+  if (!keyword || !text) return <Text style={style} numberOfLines={numberOfLines}>{text}</Text>;
+  
+  const terms = [...new Set(keyword.split(/[\s,，。！？!?;；:：、"'“”‘’()\[\]{}<>]+/).map((t: string) => t.trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
+  if (terms.length === 0) return <Text style={style} numberOfLines={numberOfLines}>{text}</Text>;
 
-  const parts = text.split(new RegExp(`(${keyword})`, 'gi'));
+  const pattern = new RegExp(`(${terms.map((t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  const parts = text.split(pattern);
+
   return (
-    <Text style={style} numberOfLines={1}>
-      {parts.map((part, i) => 
-        part.toLowerCase() === lowerKeyword ? (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((part, i) => {
+        const isMatch = terms.some(t => part.toLowerCase() === t.toLowerCase());
+        return isMatch ? (
           <Text key={i} style={highlightWrapperStyle}>{part}</Text>
         ) : (
           part
-        )
-      )}
+        );
+      })}
     </Text>
   );
 }
@@ -737,6 +781,33 @@ function ThreadSection({ items, totalCount, onOpen, query, activeFilter, onViewM
   );
 }
 
+function FtsSnippetText({ snippet, style, highlightWrapperStyle }: { snippet: string; style?: any; highlightWrapperStyle?: any }) {
+  const parts = snippet.replace(/\n/g, ' ').split(/(\{\{HL_START\}\}|\{\{HL_END\}\})/g);
+  const elements = [];
+  let isHighlight = false;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part === '{{HL_START}}') {
+      isHighlight = true;
+    } else if (part === '{{HL_END}}') {
+      isHighlight = false;
+    } else if (part) {
+      elements.push(
+        isHighlight ? (
+          <Text key={i} style={highlightWrapperStyle}>{part}</Text>
+        ) : (
+          part
+        )
+      );
+    }
+  }
+  return (
+    <Text style={style} numberOfLines={2}>
+      {elements}
+    </Text>
+  );
+}
+
 function MessageSection({ items, totalCount, onOpen, query, activeFilter, sortDesc, onToggleSort, onViewMore }: any) {
   const isAllFilter = activeFilter === 'all';
   const displayItems = isAllFilter ? items.slice(0, 10) : items;
@@ -752,16 +823,30 @@ function MessageSection({ items, totalCount, onOpen, query, activeFilter, sortDe
       />
       <View style={protoStyles.messageList}>
         {displayItems.map((item: any) => {
-          const text = item.content;
-          const lowerText = text.toLowerCase();
-          const index = lowerText.indexOf(query.toLowerCase());
-          let snippet = text.replace(/\n/g, ' ');
-          if (index !== -1 && text.length > 40) {
-            let start = Math.max(0, index - 10);
-            let end = Math.min(text.length, index + query.length + 20);
-            snippet = text.substring(start, end).replace(/\n/g, ' ');
-            if (start > 0) snippet = '...' + snippet;
-            if (end < text.length) snippet = snippet + '...';
+          let snippetComponent;
+          if (item.contentSnippet && item.contentSnippet.includes('{{HL_START}}')) {
+            snippetComponent = <FtsSnippetText snippet={item.contentSnippet} style={protoStyles.messageText} highlightWrapperStyle={protoStyles.highlightBoxText} />;
+          } else {
+            const terms = query.split(/[\s,，。！？!?;；:：、"'“”‘’()\[\]{}<>]+/).map((t: string) => t.trim()).filter(Boolean);
+            if (terms.length === 0) terms.push(query.trim());
+            const text = item.content;
+            const lowerText = text.toLowerCase();
+            let firstIndex = -1;
+            for (const term of terms) {
+              const idx = lowerText.indexOf(term.toLowerCase());
+              if (idx !== -1 && (firstIndex === -1 || idx < firstIndex)) {
+                firstIndex = idx;
+              }
+            }
+            let snippet = text.replace(/\n/g, ' ');
+            if (firstIndex !== -1 && text.length > 40) {
+              let start = Math.max(0, firstIndex - 10);
+              let end = Math.min(text.length, firstIndex + 30);
+              snippet = text.substring(start, end).replace(/\n/g, ' ');
+              if (start > 0) snippet = '...' + snippet;
+              if (end < text.length) snippet = snippet + '...';
+            }
+            snippetComponent = <HighlightedText text={snippet} keyword={query} style={protoStyles.messageText} highlightWrapperStyle={protoStyles.highlightBoxText} />;
           }
 
           return (
@@ -779,7 +864,7 @@ function MessageSection({ items, totalCount, onOpen, query, activeFilter, sortDe
                 </View>
               </View>
               <View style={protoStyles.messageBubble}>
-                <HighlightedText text={snippet} keyword={query} style={protoStyles.messageText} highlightWrapperStyle={protoStyles.highlightBoxText} />
+                {snippetComponent}
               </View>
             </Pressable>
           );
@@ -1588,11 +1673,11 @@ function SearchHistoryList({
 function GuessYouWantList({
   items,
   onRefresh,
-  onUseItem,
+  onItemPress,
 }: {
   items: RecommendedItem[];
   onRefresh: () => void;
-  onUseItem: (value: string) => void;
+  onItemPress: (item: RecommendedItem) => void;
 }) {
   const getDotColor = (type: RecommendedItem['type']) => {
     switch (type) {
@@ -1601,6 +1686,7 @@ function GuessYouWantList({
       case '聊天': return htmlColors.outline;      
       case '标签': return htmlColors.outlineVariant; 
       case '分组': return htmlColors.error;        
+      case '功能': return htmlColors.secondary;
       default: return htmlColors.primary;
     }
   };
@@ -1624,7 +1710,7 @@ function GuessYouWantList({
           return (
             <View key={item.id} style={newStyles.gridItemWrapper}>
               <Pressable
-                onPress={() => onUseItem(item.name)}
+                onPress={() => onItemPress(item)}
                 style={({ pressed }) => [newStyles.suggestionItem, pressed && newStyles.pressed]}
               >
                 <View style={newStyles.itemLeft}>
@@ -1645,9 +1731,108 @@ function GuessYouWantList({
   );
 }
 
+function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[]; onOpenAction: (item: MatchedAction) => void; space: PixorySpace }) {
+  const [systemAssistantEnabled, setSystemAssistantEnabled] = useState(true);
 
+  useEffect(() => {
+    let isMounted = true;
+    void runWithDatabaseSpace(space, async (db) => {
+      const enabled = await settingsRepository.getSystemAssistantEnabled(db);
+      if (isMounted) {
+        setSystemAssistantEnabled(enabled);
+      }
+    });
+    return () => { isMounted = false; };
+  }, [space]);
 
+  const toggleSystemAssistant = async (value: boolean) => {
+    setSystemAssistantEnabled(value);
+    await runWithDatabaseSpace(space, async (db) => {
+      await settingsRepository.setSystemAssistantEnabled(db, value);
+    });
+  };
 
+  return (
+    <View style={protoStyles.sectionWrapper}>
+      <SectionHeader title="功能与入口" subtitle="ACTIONS · 快捷直达" />
+      {items.map((item) => (
+        <Pressable
+          key={item.id}
+          style={({ pressed }) => [actionStyles.actionRow, pressed && item.id !== 'system-assistant-toggle' && actionStyles.actionRowPressed]}
+          onPress={() => item.id !== 'system-assistant-toggle' && onOpenAction(item)}
+        >
+          <View style={actionStyles.actionIconBox}>
+            {item.id === 'system-assistant-toggle' ? (
+              <Image
+                source={require('../../icons/02_右上_蓝发女孩.png')}
+                style={{ width: '100%', height: '100%', borderRadius: 12 }}
+                resizeMode="cover"
+              />
+            ) : (
+              <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
+            )}
+          </View>
+          
+          <View style={actionStyles.actionTextContent}>
+            <Text style={actionStyles.actionTitle}>{item.title}</Text>
+            {item.matchedAlias && (
+              <Text style={actionStyles.actionMatchedSubtitle}>匹配: {item.matchedAlias}</Text>
+            )}
+          </View>
+          
+          {item.id === 'system-assistant-toggle' ? (
+            <Switch
+              value={systemAssistantEnabled}
+              onValueChange={toggleSystemAssistant}
+              trackColor={{ false: htmlColors.surfaceVariant, true: htmlColors.primary }}
+              thumbColor={htmlColors.surface}
+            />
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={htmlColors.onSurfaceVariant} />
+          )}
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+const actionStyles = StyleSheet.create({
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: htmlColors.surfaceContainerLow,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 8,
+  },
+  actionRowPressed: {
+    opacity: 0.8,
+    backgroundColor: htmlColors.surfaceContainer,
+  },
+  actionIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: htmlColors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  actionTextContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  actionTitle: {
+    fontSize: 16,
+    color: htmlColors.onSurface,
+    fontWeight: '500',
+  },
+  actionMatchedSubtitle: {
+    fontSize: 12,
+    color: htmlColors.primary,
+    marginTop: 2,
+  },
+});
 
 
 

@@ -478,6 +478,13 @@ export function HomeLibraryScreen({
               actionLabel="返回全部"
               onCreate={() => setActiveFilter('all')} 
             />
+          ) : isSearchOrFilterEmpty && activeFilter === 'recent' ? (
+            <HomeEmptyState 
+              title="暂无最近更新" 
+              description="你的库中暂时没有 IP 或最近没有任何更新记录。"
+              actionLabel="返回全部"
+              onCreate={() => setActiveFilter('all')} 
+            />
           ) : (
             <PageStateBlock
               emptyActionLabel={commonButtonCopy.createIp}

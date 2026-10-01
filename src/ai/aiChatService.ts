@@ -45,6 +45,7 @@ import {
   onContinuityImportConversationRoundCompleted,
   rollbackThreadContinuityImport as rollbackThreadContinuityImportService,
 } from './aiContinuityImportService';
+import { buildSystemAssistantPrompt } from './systemAssistant';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
 import { loadCurrentIpCitationSnippet, retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import {
@@ -173,6 +174,7 @@ import { emitAiThreadPresentationUpdated } from './aiThreadPresentationEvents';
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
   avatarUri: string | null;
+  customAvatar?: boolean;
 }
 
 export interface AiThreadMessageAppearanceConfig {
@@ -206,6 +208,7 @@ export interface SendUserMessageInput {
   attachments?: AiOutgoingAttachment[];
   branchRootMessageId?: string | null;
   branchVersionIndex?: number | null;
+  resetContext?: boolean;
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
@@ -373,6 +376,7 @@ export interface UpdateAiThreadSessionConfigInput {
   avatarUri?: string | null;
   userAvatarEnabled?: boolean;
   deepMemoryEnabled?: boolean;
+  customAvatar?: boolean;
 }
 
 export interface ApplyRoleCardToThreadInput {
@@ -869,12 +873,15 @@ function validateReplyAssistSuggestions(mode: AiReplyAssistMode, suggestions: st
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
   const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
+  const avatarUri =
+    typeof snapshot.avatarUri === 'string' && snapshot.avatarUri.trim()
+      ? snapshot.avatarUri
+      : null;
+  const customAvatar = snapshot.customAvatar === true || (Boolean(avatarUri) && snapshot.customAvatar !== false);
   return {
     avatarEnabled: snapshot.avatarEnabled === true,
-    avatarUri:
-      typeof snapshot.avatarUri === 'string' && snapshot.avatarUri.trim()
-        ? snapshot.avatarUri
-        : null,
+    avatarUri,
+    customAvatar,
   };
 }
 
@@ -904,7 +911,7 @@ function parseThreadMessageAppearanceConfig(
 
 function patchThreadRoleSnapshot(
   roleSnapshotJson: string,
-  patch: Partial<AiThreadAvatarConfig & { userAvatarEnabled: boolean }>,
+  patch: Partial<AiThreadAvatarConfig & { userAvatarEnabled: boolean; customAvatar?: boolean }>,
 ): string {
   const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
   return JSON.stringify({ ...snapshot, ...patch });
@@ -1824,9 +1831,6 @@ function scoreChatSearchMessage(message: AiMessageWithCitations, rawQuery: strin
   if (terms.length > 0 && terms.every((term) => normalizedContent.includes(term) || compactContent.includes(term.replace(/\s+/g, '')))) {
     return { matchKind: 'exact', rank: 1 };
   }
-  if (compactQuery.length >= 2 && compactQuery.split('').every((char) => compactContent.includes(char))) {
-    return { matchKind: 'fuzzy', rank: 2 };
-  }
   return null;
 }
 
@@ -1849,7 +1853,7 @@ function buildChatSearchSnippet(content: string, rawQuery: string, terms: string
   return `${prefix}${normalizedContent.slice(start, end)}${suffix}`;
 }
 
-function toChatSearchResult(message: AiMessageWithCitations, rawQuery: string, terms: string[], matchKind: AiChatSearchMatchKind): AiChatSearchResult {
+function toChatSearchResult(message: AiMessageWithCitations & { contentSnippet?: string }, rawQuery: string, terms: string[], matchKind: AiChatSearchMatchKind): AiChatSearchResult {
   return {
     content: message.content,
     createdAt: message.createdAt,
@@ -1857,7 +1861,7 @@ function toChatSearchResult(message: AiMessageWithCitations, rawQuery: string, t
     matchedTerms: terms,
     messageId: message.id,
     role: message.role,
-    snippet: buildChatSearchSnippet(message.content, rawQuery, terms),
+    snippet: message.contentSnippet || buildChatSearchSnippet(message.content, rawQuery, terms),
     versionIndex: message.versionIndex,
     versionTotal: message.versionTotal,
   };
@@ -2266,7 +2270,8 @@ async function buildPromptForThread(
   const chatMode = deriveAiChatMode(thread, thread.space);
   const generationMetrics = options?.generationMetrics ?? null;
   const fastPathContext = await runWithDatabaseSpace(thread.space, async (db) => {
-    const [threadMaterialCount, messageCount, roleCard] = await Promise.all([
+    const isSystemAssistant = thread.id === 'pixory-system-assistant';
+    const [threadMaterialCount, messageCount, roleCard, systemIps] = await Promise.all([
       aiKnowledgeRepository.countDocumentsByOwner(db, {
         ownerId: thread.id,
         ownerType: 'thread',
@@ -2274,16 +2279,20 @@ async function buildPromptForThread(
       }),
       aiThreadRepository.countCompletedNonSystemMessages(db, thread.id, branchScopes),
       thread.roleCardId ? aiRoleCardRepository.findById(db, thread.roleCardId) : Promise.resolve(null),
+      isSystemAssistant ? ipRepository.findAll(db) : Promise.resolve([]),
     ]);
     return {
       hasThreadMaterials: threadMaterialCount > 0,
       messageCount,
       roleCard,
+      systemIps,
     };
   });
   
   let effectiveSystemPrompt = thread.systemPrompt;
-  if (fastPathContext.roleCard) {
+  if (thread.id === 'pixory-system-assistant') {
+    effectiveSystemPrompt = buildSystemAssistantPrompt(fastPathContext.systemIps);
+  } else if (fastPathContext.roleCard) {
     const snapshot = parseThreadRoleSnapshot(thread.roleSnapshotJson);
     const isPromptUnmodified = thread.systemPrompt === (snapshot.prompt ?? getDefaultThreadSystemPrompt(thread.contextType));
     if (isPromptUnmodified || !thread.systemPrompt.trim()) {
@@ -2304,6 +2313,9 @@ async function buildPromptForThread(
     try {
       const memoryBundle = await runWithDatabaseSpace(thread.space, async (db) => {
         const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+        if (thread.id === 'pixory-system-assistant') {
+          memorySettings.deepMemoryEnabled = false;
+        }
         if (generationMetrics) {
           markGenerationMetric(generationMetrics, 'historyLoadStartAt');
         }
@@ -2949,7 +2961,7 @@ export async function searchGlobalMessages(input: {
     globalTotalCount = totalCount;
     const messageIds = candidateRows.map((message) => message.id);
     const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
-    const candidates: (AiMessageWithCitations & { threadTitle: string })[] = candidateRows
+    const candidates: (AiMessageWithCitations & { threadTitle: string; contentSnippet?: string })[] = candidateRows
       .filter((message) => message.role !== 'system')
       .map((message) => ({
         ...message,
@@ -2963,7 +2975,7 @@ export async function searchGlobalMessages(input: {
         const score = scoreChatSearchMessage(message, input.query, terms);
         return score ? { message, ...score } : null;
       })
-      .filter((item): item is { message: AiMessageWithCitations & { threadTitle: string }; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
+      .filter((item): item is { message: AiMessageWithCitations & { threadTitle: string; contentSnippet?: string }; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
       .sort((left, right) => {
         const rankDiff = left.rank - right.rank;
         if (rankDiff !== 0) return rankDiff;
@@ -3008,7 +3020,34 @@ export async function loadThreadMessageAppearanceConfig(
         userAvatarEnabled: DEFAULT_AI_USER_AVATAR_ENABLED,
       };
     }
-    return parseThreadMessageAppearanceConfig(thread.roleSnapshotJson);
+    const appearance = parseThreadMessageAppearanceConfig(thread.roleSnapshotJson);
+    const parsedAvatar = appearance.assistantAvatar;
+    const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
+
+    if (!userHasCustomAvatar) {
+      const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+      if (isIpThread && thread.boundIpId != null) {
+        const ipCovers = await ipRepository.findCoversByIds(db, [thread.boundIpId]);
+        const cover = ipCovers.get(thread.boundIpId);
+        if (cover?.coverThumbnailFileUri) {
+          appearance.assistantAvatar = {
+            avatarEnabled: true,
+            avatarUri: cover.coverThumbnailFileUri,
+            customAvatar: false,
+          };
+        }
+      } else if (thread.roleCardId && !parsedAvatar.avatarUri) {
+        const roleCard = await aiRoleCardRepository.findById(db, thread.roleCardId);
+        if (roleCard?.avatarUri) {
+          appearance.assistantAvatar = {
+            avatarEnabled: roleCard.avatarEnabled ?? true,
+            avatarUri: roleCard.avatarUri,
+            customAvatar: false,
+          };
+        }
+      }
+    }
+    return appearance;
   });
 }
 
@@ -3027,17 +3066,92 @@ export async function listAiHomeThreads(input: {
 }): Promise<AiHomeThreadItem[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
+    
+    const systemAssistantEnabled = await settingsRepository.getSystemAssistantEnabled(db);
+    
+    if (systemAssistantEnabled) {
+      if (!threads.some(t => t.id === 'pixory-system-assistant')) {
+        const systemThread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+        if (systemThread) {
+          threads.push({
+            ...systemThread,
+            knowledgeCategory: null,
+            lastMessageAt: systemThread.updatedAt,
+          });
+          threads.sort((a, b) => {
+            if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+            const ta = a.lastMessageAt ?? a.updatedAt;
+            const tb = b.lastMessageAt ?? b.updatedAt;
+            if (ta !== tb) return ta < tb ? 1 : -1;
+            return a.id < b.id ? 1 : -1;
+          });
+        }
+      }
+    } else {
+      const systemIndex = threads.findIndex(t => t.id === 'pixory-system-assistant');
+      if (systemIndex !== -1) {
+        threads.splice(systemIndex, 1);
+      }
+    }
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
+    const ipIds = threads
+      .map((thread) => thread.boundIpId)
+      .filter((id): id is number => typeof id === 'number');
+    const ipCoversById = await ipRepository.findCoversByIds(db, ipIds);
+
     return threads.map((thread) => {
       const roleCard = thread.roleCardId ? roleCardsById.get(thread.roleCardId) : null;
+      const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+      const ipCover = thread.boundIpId != null ? ipCoversById.get(thread.boundIpId) : null;
+      const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+      const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
+
+      let avatar = parsedAvatar;
+      if (!userHasCustomAvatar) {
+        if (isIpThread && ipCover?.coverThumbnailFileUri) {
+          avatar = {
+            avatarEnabled: true,
+            avatarUri: ipCover.coverThumbnailFileUri,
+            customAvatar: false,
+          };
+        } else if (roleCard && !avatar.avatarUri) {
+          avatar = {
+            avatarEnabled: roleCard.avatarEnabled ?? true,
+            avatarUri: roleCard.avatarUri,
+            customAvatar: false,
+          };
+        }
+      }
+
       return {
         ...thread,
-        avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
-        avatarAvailable: Boolean(roleCard),
+        avatar,
+        avatarAvailable: Boolean(roleCard || userHasCustomAvatar || (isIpThread && ipCover?.coverThumbnailFileUri)),
         roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
       };
     });
+  });
+}
+
+export async function ensureSystemAssistantThread(space: PixorySpace): Promise<void> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+    if (!thread) {
+      await aiThreadRepository.createThread(db, {
+        id: 'pixory-system-assistant',
+        space,
+        contextType: 'normal',
+        title: 'Pixory',
+        titleStatus: 'custom',
+        systemPrompt: '',
+        roleInstructionWeight: 'default',
+        replyPreference: 'auto',
+        isPinned: false
+      });
+    } else if (thread.titleStatus !== 'custom' || thread.title !== 'Pixory') {
+      await aiThreadRepository.updateThread(db, 'pixory-system-assistant', { titleStatus: 'custom', title: 'Pixory' });
+    }
   });
 }
 
@@ -3051,6 +3165,10 @@ export async function searchGlobalThreads(input: {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', 1000, '');
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
+    const ipIds = threads
+      .map((thread) => thread.boundIpId)
+      .filter((id): id is number => typeof id === 'number');
+    const ipCoversById = await ipRepository.findCoversByIds(db, ipIds);
     const queryLower = input.query.toLowerCase();
     
     const results: AiHomeThreadItem[] = [];
@@ -3059,10 +3177,32 @@ export async function searchGlobalThreads(input: {
       const roleCardName = roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson);
       
       if (thread.title.toLowerCase().includes(queryLower) || (roleCardName && roleCardName.toLowerCase().includes(queryLower))) {
+        const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+        const ipCover = thread.boundIpId != null ? ipCoversById.get(thread.boundIpId) : null;
+        const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+        const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
+
+        let avatar = parsedAvatar;
+        if (!userHasCustomAvatar) {
+          if (isIpThread && ipCover?.coverThumbnailFileUri) {
+            avatar = {
+              avatarEnabled: true,
+              avatarUri: ipCover.coverThumbnailFileUri,
+              customAvatar: false,
+            };
+          } else if (roleCard && !avatar.avatarUri) {
+            avatar = {
+              avatarEnabled: roleCard.avatarEnabled ?? true,
+              avatarUri: roleCard.avatarUri,
+              customAvatar: false,
+            };
+          }
+        }
+
         results.push({
           ...thread,
-          avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
-          avatarAvailable: Boolean(roleCard),
+          avatar,
+          avatarAvailable: Boolean(roleCard || userHasCustomAvatar || (isIpThread && ipCover?.coverThumbnailFileUri)),
           roleCardName,
         });
       }
@@ -3088,6 +3228,7 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
     // Auto-sync role card if not separately configured
     const snapshot = parseThreadRoleSnapshot(thread.roleSnapshotJson);
     const parsedAvatar = parseThreadAvatarConfig(thread.roleSnapshotJson);
+    const userHasCustomAvatar = Boolean(parsedAvatar.customAvatar && parsedAvatar.avatarUri);
     
     // If systemPrompt is exactly the original snapshot prompt, OR if it's completely empty, fallback to live role card prompt
     const isPromptUnmodified = thread.systemPrompt === (snapshot.prompt ?? getDefaultThreadSystemPrompt(thread.contextType));
@@ -3095,10 +3236,28 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       ? roleCard.prompt
       : thread.systemPrompt;
       
-    // If the thread has no avatar explicitly configured (or if it was cleared), fallback to the live role card's avatar
-    const effectiveAvatar = roleCard && !parsedAvatar.avatarUri
-      ? { avatarEnabled: roleCard.avatarEnabled ?? true, avatarUri: roleCard.avatarUri }
-      : parsedAvatar;
+    // If the thread has no avatar explicitly configured (or if it was cleared), fallback to the live IP cover or live role card avatar
+    let effectiveAvatar = parsedAvatar;
+    if (!userHasCustomAvatar) {
+      const isIpThread = thread.contextType === 'ip' || thread.boundIpId != null;
+      if (isIpThread && thread.boundIpId != null) {
+        const ipCovers = await ipRepository.findCoversByIds(db, [thread.boundIpId]);
+        const cover = ipCovers.get(thread.boundIpId);
+        if (cover?.coverThumbnailFileUri) {
+          effectiveAvatar = {
+            avatarEnabled: true,
+            avatarUri: cover.coverThumbnailFileUri,
+            customAvatar: false,
+          };
+        }
+      } else if (roleCard && !parsedAvatar.avatarUri) {
+        effectiveAvatar = {
+          avatarEnabled: roleCard.avatarEnabled ?? true,
+          avatarUri: roleCard.avatarUri,
+          customAvatar: false,
+        };
+      }
+    }
 
     return {
       thread: { ...thread, systemPrompt: effectiveSystemPrompt },
@@ -3331,13 +3490,20 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
       return null;
     }
     const roleSnapshotPatch: Partial<
-      AiThreadAvatarConfig & { userAvatarEnabled: boolean }
+      AiThreadAvatarConfig & { userAvatarEnabled: boolean; customAvatar?: boolean }
     > = {};
     if (input.avatarEnabled != null) {
       roleSnapshotPatch.avatarEnabled = input.avatarEnabled;
     }
+    if (input.customAvatar !== undefined) {
+      roleSnapshotPatch.customAvatar = input.customAvatar;
+    }
     if (input.avatarUri !== undefined) {
-      roleSnapshotPatch.avatarUri = input.avatarUri;
+      if (input.customAvatar === false) {
+        roleSnapshotPatch.avatarUri = null;
+      } else {
+        roleSnapshotPatch.avatarUri = input.avatarUri;
+      }
     }
     if (input.userAvatarEnabled != null) {
       roleSnapshotPatch.userAvatarEnabled = input.userAvatarEnabled;
@@ -3405,6 +3571,10 @@ export async function toggleAiThreadPin(space: PixorySpace, threadId: string, is
 
 export async function unarchiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, threadId, { archivedAt: null }));
+}
+
+export async function clearAiThreadMessages(space: PixorySpace, threadId: string): Promise<void> {
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.clearThreadMessages(db, threadId));
 }
 
 export async function deleteAiThreads(space: PixorySpace, threadIds: string[]): Promise<number> {
@@ -4232,22 +4402,25 @@ async function streamAssistantReply(input: {
   continuationInstruction?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
+  resetContext?: boolean;
   onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
 }): Promise<void> {
-  await drainCurrentTurnMemory({
-    maxDurationMs: 20,
-    space: input.space,
-    threadId: input.thread.id,
-  }).catch(() => 0);
-  await stageExplicitMemoryIntentObservation({
-    messageContent: input.userMessage.content,
-    messageId: input.userMessage.id,
-    space: input.space,
-    thread: input.thread,
-  });
+  if (input.thread.id !== 'pixory-system-assistant') {
+    await drainCurrentTurnMemory({
+      maxDurationMs: 20,
+      space: input.space,
+      threadId: input.thread.id,
+    }).catch(() => 0);
+    await stageExplicitMemoryIntentObservation({
+      messageContent: input.userMessage.content,
+      messageId: input.userMessage.id,
+      space: input.space,
+      thread: input.thread,
+    });
+  }
   const mode = input.mode ?? 'replace';
   const messageDisplayKind: AiMessageDisplayKind | null =
     mode === 'followup' ? 'standalone_assistant' : null;
@@ -4735,7 +4908,7 @@ async function streamAssistantReply(input: {
     });
     outgoingAttachments = preparedAttachments.providerAttachments;
     const attachmentPromptContext = preparedAttachments.promptContext;
-    const historyRoundLimit = normalizeAiContextSettings({
+    const historyRoundLimit = input.resetContext ? 0 : normalizeAiContextSettings({
       historyRoundLimit: input.thread.contextHistoryRoundLimit,
     }).historyRoundLimit;
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
@@ -5898,6 +6071,7 @@ export async function sendUserMessage(
       status: 'completed',
       content: input.content,
       completedAt: new Date().toISOString(),
+      promptSnapshotJson: input.resetContext ? JSON.stringify({ resetContext: true }) : undefined,
     });
     markGenerationMetric(generationMetrics, 'userMessagePersistEndAt');
     markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
@@ -5975,6 +6149,7 @@ export async function sendUserMessage(
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
+    resetContext: input.resetContext,
     signal: input.signal,
     space: input.space,
     thread: latestThread,
@@ -6622,3 +6797,14 @@ export async function listFavoriteAssistantMessagePage(input: {
     cursor: last ? { createdAt: last.createdAt, id: last.id } : null,
   };
 }
+export async function emptyAiTrash(space: PixorySpace): Promise<number> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const archivedThreads = await db.getAllAsync<{ id: string }>('SELECT id FROM ai_threads WHERE space = ? AND archivedAt IS NOT NULL', space);
+    const threadIds = archivedThreads.map(r => r.id);
+    if (threadIds.length > 0) {
+      return aiThreadRepository.deleteThreads(db, threadIds);
+    }
+    return 0;
+  });
+}
+

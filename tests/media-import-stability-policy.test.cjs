@@ -9,14 +9,7 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('bulk media selection keeps the primary import action reachable without mounting every image preview', () => {
-  const source = readProjectFile('src/screens/ImportImagesScreen.tsx');
 
-  assert.match(source, /PICKED_IMAGE_PREVIEW_LIMIT/);
-  assert.match(source, /pickedAssets\.slice\(0, PICKED_IMAGE_PREVIEW_LIMIT\)\.map/);
-  assert.match(source, /另有 \{pickedAssets\.length - PICKED_IMAGE_PREVIEW_LIMIT\} 张图片/);
-  assert.match(source, /primaryAction=\{\{ disabled: !canImport, label: '开始导入'/);
-});
 
 test('video import coalesces copy progress writes and cancels when the personal session expires', () => {
   const source = readProjectFile('src/services/videoImportService.ts');

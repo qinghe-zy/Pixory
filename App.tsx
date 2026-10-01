@@ -1195,6 +1195,7 @@ export default function App() {
 
   function refreshLibrary() {
     setLibraryRefreshToken((current) => current + 1);
+    setAiHomeRefreshToken((current) => current + 1);
   }
 
   function resetHome(filter: IpLibraryFilter = 'all') {
@@ -1383,6 +1384,16 @@ export default function App() {
                 onImportIp={(ipId) => pushRoute({ name: 'import-images', ipId, space: activeSpace })}
                 onEditIp={(ipId) => pushRoute({ name: 'edit-ip', ipId, space: activeSpace })}
               onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
+              onStartChatWithIp={(ipId, ipName) =>
+                pushRoute({
+                  name: 'ai-chat',
+                  contextTitle: ipName,
+                  contextType: 'ip',
+                  includeIpDocuments: true,
+                  ipId,
+                  space: activeSpace,
+                })
+              }
               refreshKey={libraryRefreshToken}
               space={activeSpace}
             />
@@ -1469,6 +1480,7 @@ export default function App() {
   ) : null;
 
   const renderRouteContent = (currentRoute: AppRoute, routeIndex: number) => {
+  const isTop = routeIndex === routeStack.length - 1;
   let content;
 
   if (isPersonalRoute(currentRoute) && personalSessionState !== 'unlocked') {
@@ -1922,7 +1934,9 @@ export default function App() {
         onOpenThread={(threadId, messageId) => pushRoute({ name: 'ai-chat', threadId, space: currentRoute.space, searchTargetMessageId: messageId, searchTargetKey: messageId ? String(Date.now()) : undefined })}
         onOpenRoleCard={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
         onOpenHistory={() => pushRoute({ name: 'global-search-history', space: currentRoute.space })}
+        onOpenRoute={(routeName, params) => pushRoute({ name: routeName as any, ...params, space: currentRoute.space })}
         query={globalSearchQuery}
+        isTop={isTop}
       />
     );
   } else if (currentRoute.name === 'global-search-history') {
@@ -1959,7 +1973,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'trash') {
-    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} />;
+    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} onOpenThread={(thread) => openAiChatRoute({ name: 'ai-chat', composerEntranceReason: 'open_thread', contextTitle: thread.title, contextType: thread.contextType, includeIpDocuments: thread.includeIpDocuments, ipId: thread.boundIpId ?? undefined, knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined, space: thread.space, threadId: thread.id })} onOpenImage={(imageId) => openImageViewer(imageId, { type: 'media-query', space: currentRoute.space, request: { deletedOnly: true } })} />;
   } else if (currentRoute.name === 'backup') {
     content = (
       <BackupScreen
@@ -2022,6 +2036,7 @@ export default function App() {
   } else if (currentRoute.name === 'ai-chat') {
     content = (
       <AiChatScreen
+        isFocused={isTop}
         key={aiChatRouteKey(currentRoute, routeStack.length)}
         composerEntranceKey={currentRoute.routeKey}
         composerEntranceReason={currentRoute.composerEntranceReason ?? 'replace_current'}
@@ -2080,6 +2095,13 @@ export default function App() {
             closeDeletedAiThread(currentRoute.threadId);
           }
         }}
+        onNavigateToCreateIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
+        onNavigateToImportImages={(ipId) => pushRoute({ name: 'import-images', ipId, space: activeSpace })}
+        onNavigateToStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
+        onNavigateToTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
+        onNavigateToGlobalRoute={(route, routeParams) => pushRoute({ name: route as any, space: activeSpace, ...routeParams })}
+        onNavigateToIpDetail={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
+        onNavigateToPersonalSpaceLock={() => { void lockPersonalSpace('manual'); }}
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onOpenDiary={(diaryId, versionId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId, versionId })}
         onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })}
@@ -2098,7 +2120,18 @@ export default function App() {
           })
         }
         onOpenImageSource={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
-        onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
+        onOpenIpSource={(ipId, locator) => {
+          const kind = typeof locator?.kind === 'string' ? locator.kind : undefined;
+          if (kind === 'groups') {
+            pushRoute({ name: 'group-overview', ipId, space: currentRoute.space });
+          } else if (kind === 'import_batches') {
+            pushRoute({ name: 'import-batch-history', ipId, space: currentRoute.space });
+          } else if (kind === 'filenames' || kind === 'tags') {
+            pushRoute({ name: 'all-images', ipId, space: currentRoute.space });
+          } else {
+            pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space });
+          }
+        }}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
         onThreadReady={(threadId) => updateCurrentAiChatRoute({ threadId }, currentRoute.routeKey)}
         onThreadTitleChange={(title) => updateCurrentAiChatRoute({ contextTitle: title }, currentRoute.routeKey)}
@@ -2343,7 +2376,9 @@ export default function App() {
         <AppOtaUpdateFetchNotice isReady={isReady} />
         <View style={{ flex: 1 }}>
           {/* Always-mounted base layer: root tab pager stays alive under overlays */}
-          {rootTabContent}
+          <View style={StyleSheet.absoluteFill} pointerEvents={currentRoute.name === 'root' ? 'auto' : 'none'}>
+            {rootTabContent}
+          </View>
           
           {/* Overlays: stack of pushed screens sit on top via absoluteFill */}
           {routeStack.map((route, index) => {
@@ -2633,6 +2668,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+
 
 
 

@@ -1,3 +1,4 @@
+import { Image } from 'react-native';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import type { AiMessageAttachmentRecord } from '../../database/repositories/aiTh
 import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
 
 interface AiMessageBubbleProps {
+  isSystemAssistant?: boolean;
   message: AiMessageWithCitations;
   replyActionMode?: 'continue' | 'reply';
   assistantAvatar?: {
@@ -241,6 +243,7 @@ function AiMessageBubbleComponent({
   assistantBubbleEdge,
   assistantAvatar,
   assistantDisplayName = null,
+  isSystemAssistant = false,
   generating = false,
   message,
   replyActionMode = 'continue',
@@ -282,9 +285,9 @@ function AiMessageBubbleComponent({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
-  const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
+  const showAssistantAvatar = !isUser && showAvatar && (isSystemAssistant || assistantAvatar?.avatarEnabled);
   const showUserAvatarHeader = isUser && showUserAvatar && userProfile?.avatarEnabled;
-  const assistantHeaderVisible = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
+  const assistantHeaderVisible = !isUser && showAvatar && (isSystemAssistant || assistantAvatar?.avatarEnabled);
   const userHeaderVisible = isUser && showUserAvatar && userProfile?.avatarEnabled;
   const editing = editingMessageId === message.id;
   const actionPending = pendingActionMessageId === message.id;
@@ -410,22 +413,21 @@ function AiMessageBubbleComponent({
         ) : null}
         {message.attachments && message.attachments.length > 0 ? (
           <View style={[styles.attachmentGalleryOuter, !isUser && styles.attachmentGalleryOuterAssistant]}>
-            {message.attachments.filter((a) => a.kind === 'image').map((attachment) => (
+            {message.attachments.map((attachment) => (
               <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
-                <SecureImage
-                  contentFit="cover"
-                  space={space}
-                  style={styles.attachmentImageOuter}
-                  uri={attachment.localUri}
-                />
-              </Pressable>
-            ))}
-            {message.attachments.filter((a) => a.kind === 'document').map((attachment) => (
-              <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
-                <View style={styles.attachmentDocumentOuter}>
-                  <Ionicons color={aiLightColors.ink} name="document-text-outline" size={24} />
-                  <Text numberOfLines={1} style={styles.attachmentDocumentTextOuter}>{attachment.name}</Text>
-                </View>
+                {attachment.kind === 'image' ? (
+                  <SecureImage
+                    contentFit="cover"
+                    space={space}
+                    style={styles.attachmentImageOuter}
+                    uri={attachment.localUri}
+                  />
+                ) : (
+                  <View style={styles.attachmentDocumentOuter}>
+                    <Ionicons color={aiLightColors.primaryActive} name="document-text-outline" size={32} />
+                    <Text numberOfLines={2} style={styles.attachmentDocumentTextOuter}>{attachment.name}</Text>
+                  </View>
+                )}
               </Pressable>
             ))}
           </View>
@@ -897,16 +899,20 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[2],
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-    minWidth: 160,
-    maxWidth: 260,
+    flexDirection: 'column',
+    height: 120,
+    justifyContent: 'center',
+    padding: spacing[2],
+    width: 120,
   },
   attachmentDocumentTextOuter: {
-    ...typography.textStyles.body,
+    ...typography.textStyles.caption,
     color: aiLightColors.ink,
-    flex: 1,
+    marginTop: spacing[1],
+    textAlign: 'center',
+    width: '100%',
   },
 });
+
+
+

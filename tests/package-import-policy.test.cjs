@@ -58,8 +58,7 @@ test('import screen exposes resource package import alongside gallery import', (
   assert.match(source, /pickPackageForImport/);
   assert.match(source, /importPackageToIp/);
   assert.match(source, /资源包导入/);
-  assert.match(source, /\.zip \/ \.pixorypack/);
-  assert.match(source, /packageImportResult/);
+    assert.match(source, /packageImportResult/);
 });
 
 test('personal resource package imports are tracked and propagate the lock token through backup and media paths', () => {

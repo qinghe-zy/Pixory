@@ -1,3 +1,4 @@
+import { applyPitchPreservingRate } from '../media/videoPlaybackRate';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as Brightness from 'expo-brightness';
@@ -193,7 +194,7 @@ export function VideoPlayerScreen({
 
   const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
-    instance.playbackRate = speed;
+    applyPitchPreservingRate(instance, speed);
     instance.loop = true;
   });
 
@@ -392,7 +393,7 @@ export function VideoPlayerScreen({
         return;
       }
       player.timeUpdateEventInterval = 0.25;
-      player.playbackRate = speed;
+      applyPitchPreservingRate(player, speed);
       player.loop = Boolean(externalSource) || queue.length <= 1;
       if (initialDisplayTime > 0) {
         player.currentTime = initialDisplayTime;
@@ -416,7 +417,7 @@ export function VideoPlayerScreen({
   }, [externalSource, player, queue.length]);
 
   useEffect(() => {
-    player.playbackRate = speed;
+    applyPitchPreservingRate(player, speed);
     if (videoPreferencesLoadedRef.current) {
       void saveVideoPlayerPreferences({ speed });
     }
@@ -833,20 +834,20 @@ export function VideoPlayerScreen({
     holdWasPlayingRef.current = isPlaying;
     setHoldSpeedVisible(true);
     const previousSpeed = player.playbackRate;
-    player.playbackRate = holdSpeed;
+    applyPitchPreservingRate(player, holdSpeed);
     safePlayPlayer();
     longPressTimerRef.current = setInterval(() => {
       currentTimeRef.current = player.currentTime;
       setCurrentTime(player.currentTime);
     }, 150);
     return () => {
-      player.playbackRate = previousSpeed;
+      applyPitchPreservingRate(player, previousSpeed);
       clearLongPressTimer();
     };
   }
 
   function finishHoldFastForward() {
-    player.playbackRate = speed;
+    applyPitchPreservingRate(player, speed);
     if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
       safePausePlayer();
     }

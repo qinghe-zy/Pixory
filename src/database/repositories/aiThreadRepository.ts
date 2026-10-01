@@ -1061,6 +1061,16 @@ const MESSAGE_LOOKUP_CHUNK_SIZE = 200;
 const BRANCH_LINEAGE_MAX_DEPTH = 1000;
 
 export const aiThreadRepository = {
+  async clearThreadMessages(db: SQLiteDatabase, threadId: string): Promise<void> {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM ai_message_fts WHERE threadId = ?', threadId);
+      await db.runAsync('DELETE FROM ai_message_version_fts WHERE threadId = ?', threadId);
+      await db.runAsync('DELETE FROM ai_message_citations WHERE messageId IN (SELECT id FROM ai_messages WHERE threadId = ?)', threadId);
+      await db.runAsync('DELETE FROM ai_message_versions WHERE originalMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?)', threadId);
+      await db.runAsync('DELETE FROM ai_messages WHERE threadId = ?', threadId);
+      await db.runAsync('UPDATE ai_threads SET updatedAt = ?, lastMessagePreview = NULL, currentBranchRootMessageId = NULL, currentBranchVersionIndex = NULL, summary = NULL WHERE id = ?', createTimestamp(), threadId);
+    });
+  },
   async listBranchRouteMetadata(db: SQLiteDatabase, threadId: string): Promise<AiBranchRouteMetadataRecord[]> {
     return db.getAllAsync<AiBranchRouteMetadataRecord>(
       `SELECT * FROM ai_branch_route_metadata
@@ -2412,7 +2422,8 @@ export const aiThreadRepository = {
 
   async deleteThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
     let deletedCount = 0;
-    for (const threadId of threadIds) {
+    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant');
+    for (const threadId of safeThreadIds) {
       await db.runAsync('DELETE FROM ai_message_fts WHERE threadId = ?', threadId);
       await db.runAsync('DELETE FROM ai_message_version_fts WHERE threadId = ?', threadId);
       const memoryIds = await db.getAllAsync<{ id: string }>(
@@ -2442,7 +2453,8 @@ export const aiThreadRepository = {
   async softDeleteThreads(db: SQLiteDatabase, space: PixorySpace, threadIds: string[]): Promise<number> {
     const now = createTimestamp();
     let deletedCount = 0;
-    for (const threadId of threadIds) {
+    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant');
+    for (const threadId of safeThreadIds) {
       const result = await db.runAsync(
         `UPDATE ai_threads
          SET archivedAt = ?, updatedAt = ?
@@ -3903,7 +3915,7 @@ export const aiThreadRepository = {
     }
   },
 
-  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number; sortDesc?: boolean }): Promise<{ items: (AiMessageRecord & { threadTitle: string })[], totalCount: number }> {
+  async searchGlobalCompletedMessageFts(db: SQLiteDatabase, space: PixorySpace, input: { query: string; limit: number; sortDesc?: boolean }): Promise<{ items: (AiMessageRecord & { threadTitle: string; contentSnippet?: string })[], totalCount: number }> {
     const ftsQuery = buildFtsQuery(input.query);
     if (!ftsQuery || input.limit <= 0) {
       return { items: [], totalCount: 0 };
@@ -3924,7 +3936,7 @@ export const aiThreadRepository = {
         space,
         ...fallbackValues
       );
-      const items = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
+      const items = await db.getAllAsync<AiMessageRecord & { threadTitle: string; contentSnippet?: string }>(
         `SELECT candidate.*, t.title as threadTitle
          FROM ai_messages candidate
          JOIN ai_threads t ON t.id = candidate.threadId
@@ -3955,8 +3967,8 @@ export const aiThreadRepository = {
         ftsQuery,
         space
       );
-      const rows = await db.getAllAsync<AiMessageRecord & { threadTitle: string }>(
-        `SELECT ai_messages.*, t.title as threadTitle
+      const rows = await db.getAllAsync<AiMessageRecord & { threadTitle: string; contentSnippet?: string }>(
+        `SELECT ai_messages.*, t.title as threadTitle, snippet(ai_message_fts, 3, '{{HL_START}}', '{{HL_END}}', '...', 40) as contentSnippet
          FROM ai_message_fts
          JOIN ai_messages ON ai_messages.id = ai_message_fts.id
          JOIN ai_threads t ON t.id = ai_messages.threadId
@@ -4955,11 +4967,17 @@ export const aiThreadRepository = {
   },
 
   async getThreadMemorySettings(db: SQLiteDatabase, threadId: string): Promise<AiThreadMemorySettingsRecord> {
+    if (threadId === 'pixory-system-assistant') {
+      return { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
+    }
     const row = await db.getFirstAsync<AiThreadMemorySettingsRow>('SELECT * FROM ai_thread_memory_settings WHERE threadId = ?', threadId);
     return row ? mapMemorySettingsRow(row) : { threadId, deepMemoryEnabled: true, updatedAt: createTimestamp() };
   },
 
   async updateThreadMemorySettings(db: SQLiteDatabase, threadId: string, deepMemoryEnabled: boolean): Promise<AiThreadMemorySettingsRecord> {
+    if (threadId === 'pixory-system-assistant') {
+      return { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
+    }
     const now = createTimestamp();
     await db.runAsync(
       `INSERT INTO ai_thread_memory_settings (threadId, deepMemoryEnabled, updatedAt)
@@ -5754,6 +5772,10 @@ export const aiThreadRepository = {
 };
 
 export default aiThreadRepository;
+
+
+
+
 
 
 

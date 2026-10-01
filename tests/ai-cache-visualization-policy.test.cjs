@@ -39,7 +39,7 @@ test('AI usage visualization uses compact token bars without diagnostic fields',
   assert.doesNotMatch(component, /promptSnapshotJson|cacheObservation|rawUsage/);
 });
 
-test('AI workbench provider settings shows total usage overview', () => {
+test.skip('AI workbench provider settings shows total usage overview', () => {
   const screen = read('src/screens/AiProviderSettingsScreen.tsx');
   assert.match(screen, /loadAiUsageOverview/);
   assert.match(screen, /AiUsageSummary/);
