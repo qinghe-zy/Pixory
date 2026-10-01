@@ -622,7 +622,7 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
   if (thread.id === 'pixory-system-assistant') {
     return (
       <Image
-        source={require('../../assets/app-icon.png')}
+        source={require('../../assets/ai_system_avatar.png')}
         style={styles.threadAvatarImage}
       />
     );
