@@ -1,6 +1,6 @@
 {
   "version": "2.8.9.0",
-  "versionCode": 2880,
+  "versionCode": 2890,
   "enabled": true,
   "forceUpdate": false,
   "minSupportVersion": "2.1.2",
@@ -12,7 +12,7 @@
     "🗑️ 高效整理：回收站新增长按多选，批量恢复更快捷"
   ],
   "latestVersion": "2.8.9.0",
-  "latestVersionCode": 2880,
+  "latestVersionCode": 2890,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 界面极简重构；2. 短视频滑动播放优化与历史记录修复；3. AI 聊天支持插入IP素材与系统管家隔离；4. 回收站支持长按多选。",
   "releaseNotes": "Pixory 2.8.9.0 正式版：极简界面重构、无缝短视频滑动浏览、AI 聊天特性增强及多项基础体验优化。"
