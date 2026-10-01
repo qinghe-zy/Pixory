@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState, useContext } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { ensureSystemAssistantThread, listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
@@ -620,8 +621,8 @@ function labelForContext(thread: AiHomeThreadItem): string {
 function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: PixorySpace }) {
   if (thread.id === 'pixory-system-assistant') {
     return (
-      <Image
-        source={require('../../icons/system_assistant_avatar.png')}
+      <ExpoImage
+        source={require('../../assets/app-icon.png')}
         style={styles.threadAvatarImage}
       />
     );

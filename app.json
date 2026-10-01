@@ -4,7 +4,7 @@
     "slug": "pixory",
     "version": "2.8.9.0",
     "orientation": "portrait",
-    "icon": "./icons/02_\u53f3\u4e0a_\u84dd\u53d1\u5973\u5b69.png",
+    "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
