@@ -103,3 +103,4 @@ yarn-error.*
 .DS_Store
 Thumbs.db
 
+/icons/icon_placeholder_*.png
