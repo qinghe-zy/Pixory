@@ -1,9 +1,9 @@
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$version = "2.8.9.0"
+$version = "2.8.9.1"
 $tag = "v$version"
-$apkPath = "$repoRoot\output\release\Pixory-v2.8.9.0.apk"
-$externalNotes = "$repoRoot\版本文档\历史文档\v2.8.9.0\Release-Notes-External.md"
+$apkPath = "$repoRoot\output\release\Pixory-v2.8.9.1.apk"
+$externalNotes = "$repoRoot\版本文档\历史文档\v2.8.9.1\Release-Notes-External.md"
 
 if (-not (Test-Path $apkPath)) {
     throw "APK file not found: $apkPath"
