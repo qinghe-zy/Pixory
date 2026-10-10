@@ -313,6 +313,7 @@ function AiMessageBubbleComponent({
     generating && !message.content.trim() && !thinkingActive;
   const shouldRenderThinking =
     !isUser &&
+    !isSystemAssistant &&
     (thinkingActive ||
       (hasReasoningText &&
         (thinkingExpected ||
@@ -594,6 +595,7 @@ function AiMessageBubbleComponent({
 function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMessageBubbleProps): boolean {
   return (
     previous.message === next.message &&
+    previous.isSystemAssistant === next.isSystemAssistant &&
     previous.replyActionMode === next.replyActionMode &&
     previous.assistantBubbleEdge === next.assistantBubbleEdge &&
     previous.space === next.space &&

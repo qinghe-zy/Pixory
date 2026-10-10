@@ -1,27 +1,62 @@
-import { applyPitchPreservingRate } from '../media/videoPlaybackRate';
-import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer } from 'expo-video';
-import * as Brightness from 'expo-brightness';
-import * as ScreenOrientation from 'expo-screen-orientation';
-import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, InteractionManager, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { VolumeManager } from 'react-native-volume-manager';
+import { applyPitchPreservingRate } from "../media/videoPlaybackRate";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { VideoView, useVideoPlayer } from "expo-video";
+import * as Brightness from "expo-brightness";
+import * as ScreenOrientation from "expo-screen-orientation";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  AppState,
+  InteractionManager,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type GestureResponderEvent,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { VolumeManager } from "react-native-volume-manager";
 
-import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
-import { AppDialog } from '../components/AppDialog';
-import { SecureImage } from '../components/SecureImage';
-import { globalViewState } from '../services/globalViewState';
-import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, type ImageDetailRecord, type ImageListItem, type IpListItem, type PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
-import { useToast } from '../components/AppToast';
-import { importVideosToIp, saveVideoToSystemAlbum, type PickedVideoAsset } from '../services/videoImportService';
-import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlaybackOrder } from '../services/mediaExperiencePreferences';
-import { formatDuration } from '../utils/formatters';
-import { VideoShuffleSession } from '../media/videoShuffleSession';
-import { resolveVideoSwipe } from '../media/videoSwipePolicy';
-
+import {
+  AppActionSheet,
+  type AppActionSheetItem,
+} from "../components/AppActionSheet";
+import { AppDialog } from "../components/AppDialog";
+import { SecureImage } from "../components/SecureImage";
+import { globalViewState } from "../services/globalViewState";
+import {
+  assetRepository,
+  imageRepository,
+  ipRepository,
+  runWithDatabaseSpace,
+  type ImageDetailRecord,
+  type ImageListItem,
+  type IpListItem,
+  type PixorySpace,
+} from "../database";
+import { colors, radius, spacing, typography } from "../design/tokens";
+import { useToast } from "../components/AppToast";
+import {
+  importVideosToIp,
+  saveVideoToSystemAlbum,
+  type PickedVideoAsset,
+} from "../services/videoImportService";
+import {
+  loadVideoPlayerPreferences,
+  saveVideoPlayerPreferences,
+  type VideoPlaybackOrder,
+} from "../services/mediaExperiencePreferences";
+import {
+  formatDuration,
+  formatFileSize,
+  formatImageDimensions,
+} from "../utils/formatters";
+import { VideoShuffleSession } from "../media/videoShuffleSession";
+import { resolveVideoSwipe } from "../media/videoSwipePolicy";
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
 const CONTROL_HIDE_DELAY_MS = 5000;
@@ -40,6 +75,10 @@ const VIDEO_SWITCH_EXIT_DURATION_MS = 170;
 const VIDEO_SWITCH_ENTER_DURATION_MS = 210;
 const VIDEO_SWITCH_CANCEL_DURATION_MS = 140;
 const COMPLETED_PLAYBACK_RESTART_THRESHOLD_MS = 1500;
+// Grace period before the loading cover appears. For local files the first
+// frame typically arrives within this window, so the cover never shows at all.
+// The cover only appears as a fallback for slower sources (large files, etc.).
+const COVER_SHOW_GRACE_MS = 800;
 const COMMITTED_SEEK_SETTLE_TIMEOUT_MS = 1400;
 const COMMITTED_SEEK_TOLERANCE_SECONDS = 0.35;
 const SURFACE_SEEK_SHORT_SECONDS = 30;
@@ -65,7 +104,13 @@ const SURFACE_SEEK_FINE_LIGHT_FACTOR = 0.6;
 const SURFACE_SEEK_FINE_MEDIUM_FACTOR = 0.35;
 const SURFACE_SEEK_FINE_HIGH_FACTOR = 0.15;
 
-type GestureFeedbackKind = 'seek-backward' | 'seek-forward' | 'brightness' | 'volume' | 'locked' | 'unlocked';
+type GestureFeedbackKind =
+  | "seek-backward"
+  | "seek-forward"
+  | "brightness"
+  | "volume"
+  | "locked"
+  | "unlocked";
 
 interface GestureFeedbackState {
   kind: GestureFeedbackKind;
@@ -79,51 +124,59 @@ interface VideoPlayerScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
+  onOpenDetail?: (videoId: number) => void;
 }
 
-type VideoSwitchHistoryMode = 'append' | 'back' | 'forward';
+type VideoSwitchHistoryMode = "append" | "back" | "forward";
 
-function getLandscapeStateFromOrientation(orientation: ScreenOrientation.Orientation): boolean | null {
-  if (orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT) {
+function getLandscapeStateFromOrientation(
+  orientation: ScreenOrientation.Orientation,
+): boolean | null {
+  if (
+    orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT ||
+    orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT
+  ) {
     return true;
   }
-  if (orientation === ScreenOrientation.Orientation.PORTRAIT_UP || orientation === ScreenOrientation.Orientation.PORTRAIT_DOWN) {
+  if (
+    orientation === ScreenOrientation.Orientation.PORTRAIT_UP ||
+    orientation === ScreenOrientation.Orientation.PORTRAIT_DOWN
+  ) {
     return false;
   }
   return null;
 }
 
-
-
-
-function resolveInitialPlaybackTimeSeconds(lastPlaybackPositionMs?: number | null, durationMs?: number | null): number {
-  if (!lastPlaybackPositionMs || lastPlaybackPositionMs <= 1000) {
-    return 0;
-  }
-  if (durationMs && durationMs > 0 && lastPlaybackPositionMs >= Math.max(1000, durationMs - COMPLETED_PLAYBACK_RESTART_THRESHOLD_MS)) {
-    return 0;
-  }
-  return lastPlaybackPositionMs / 1000;
+function resolveInitialPlaybackTimeSeconds(
+  lastPlaybackPositionMs?: number | null,
+  durationMs?: number | null,
+): number {
+  // Always play from the beginning per user request
+  return 0;
 }
 
 export function VideoPlayerScreen({
   videoId,
   externalSource,
-  space = 'normal',
+  space = "normal",
   refreshToken,
   onBack,
+  onOpenDetail,
 }: VideoPlayerScreenProps) {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const wasPlayingRef = useRef(false);
   const [activeVideoId, setActiveVideoId] = useState(videoId ?? 0);
   const [video, setVideo] = useState<ImageDetailRecord | null>(null);
   const [queue, setQueue] = useState<ImageListItem[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(false);
   const [speed, setSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(1);
   const [holdSpeed, setHoldSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(3);
-  const [playbackOrder, setPlaybackOrder] = useState<VideoPlaybackOrder>('sequence');
+  const [playbackOrder, setPlaybackOrder] =
+    useState<VideoPlaybackOrder>("sequence");
   const [controlsVisible, setControlsVisible] = useState(true);
   const [speedMenuVisible, setSpeedMenuVisible] = useState(false);
   const [queueVisible, setQueueVisible] = useState(false);
@@ -134,24 +187,37 @@ export function VideoPlayerScreen({
   const [scrubDisplayTime, setScrubDisplayTime] = useState(0);
   const [scrubGestureHint, setScrubGestureHint] = useState<string | null>(null);
   const [isPlayerLocked, setIsPlayerLocked] = useState(false);
-  const [gestureFeedback, setGestureFeedback] = useState<GestureFeedbackState | null>(null);
+  const [gestureFeedback, setGestureFeedback] =
+    useState<GestureFeedbackState | null>(null);
   const [brightnessOverlayOpacity, setBrightnessOverlayOpacity] = useState(0);
   const [ipPickerVisible, setIpPickerVisible] = useState(false);
   const [normalIps, setNormalIps] = useState<IpListItem[]>([]);
   const [newIpDialogVisible, setNewIpDialogVisible] = useState(false);
-  const [newIpName, setNewIpName] = useState('');
+  const [newIpName, setNewIpName] = useState("");
   const [isSavingToIp, setIsSavingToIp] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
-  const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] = useState(false);
-  const [switchPreviewVideo, setSwitchPreviewVideo] = useState<ImageListItem | null>(null);
-  const [loadingCoverVideo, setLoadingCoverVideo] = useState<ImageListItem | ImageDetailRecord | null>(null);
+  const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] =
+    useState(false);
+  const [switchPreviewVideo, setSwitchPreviewVideo] =
+    useState<ImageListItem | null>(null);
+  const [loadingCoverVideo, setLoadingCoverVideo] = useState<
+    ImageListItem | ImageDetailRecord | null
+  >(null);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
+  const [videoContentFit, setVideoContentFit] = useState<"contain" | "cover">(
+    "contain",
+  );
+  const drawerTranslateX = useRef(new Animated.Value(320)).current;
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const gestureFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const previewSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const pendingPreviewSeekTimeRef = useRef<number | null>(null);
   const lastPreviewSeekAtRef = useRef(0);
   const progressTrackRef = useRef<View>(null);
@@ -160,6 +226,9 @@ export function VideoPlayerScreen({
   const committedSeekTargetRef = useRef<number | null>(null);
   const committedSeekStartedAtRef = useRef(0);
   const sourceLoadVersionRef = useRef(0);
+  const coverOpacityAnim = useRef(new Animated.Value(1)).current;
+  const coverDismissVersionRef = useRef(0);
+  const coverShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentTimeRef = useRef(0);
   const currentPlaybackVideoIdRef = useRef<number | null>(null);
   const spaceRef = useRef(space);
@@ -171,8 +240,10 @@ export function VideoPlayerScreen({
   const isHoldingFastForwardRef = useRef(false);
   const scrubStartTimeRef = useRef(0);
   const verticalGestureStartValueRef = useRef(0);
-  const verticalGestureKindRef = useRef<'brightness' | 'volume' | null>(null);
-  const surfaceGestureModeRef = useRef<'pending' | 'scrub' | 'vertical' | 'video-switch' | 'hold' | null>(null);
+  const verticalGestureKindRef = useRef<"brightness" | "volume" | null>(null);
+  const surfaceGestureModeRef = useRef<
+    "pending" | "scrub" | "vertical" | "video-switch" | "hold" | null
+  >(null);
   const lastSurfaceTapAtRef = useRef(0);
   const lastSurfacePressLocationXRef = useRef(0);
   const queueVisibleRef = useRef(false);
@@ -182,13 +253,21 @@ export function VideoPlayerScreen({
   const floatingMenuTranslateY = useRef(new Animated.Value(10)).current;
   const videoSwitchTranslateY = useRef(new Animated.Value(0)).current;
   const shuffleSessionRef = useRef<VideoShuffleSession | null>(null);
-  const [previousSwitchVideo, setPreviousSwitchVideo] = useState<ImageListItem | null>(null);
-  const [nextSwitchVideo, setNextSwitchVideo] = useState<ImageListItem | null>(null);
+  const [previousSwitchVideo, setPreviousSwitchVideo] =
+    useState<ImageListItem | null>(null);
+  const [nextSwitchVideo, setNextSwitchVideo] = useState<ImageListItem | null>(
+    null,
+  );
   const swipeSettlingRef = useRef(false);
+  const isReplacingRef = useRef(false);
 
   const activeVideoSource = switchPreviewVideo ?? video;
-  const sourceUri = externalSource?.uri ?? activeVideoSource?.originalFileUri ?? null;
-  const sourceFileName = externalSource?.fileName ?? activeVideoSource?.originalFilename ?? 'video.mp4';
+  const sourceUri =
+    externalSource?.uri ?? activeVideoSource?.originalFileUri ?? null;
+  const sourceFileName =
+    externalSource?.fileName ??
+    activeVideoSource?.originalFilename ??
+    "video.mp4";
 
   const poolDirectionRef = useRef<1 | -1>(1);
 
@@ -214,7 +293,8 @@ export function VideoPlayerScreen({
   }, [controlsOpacity, controlsVisible]);
 
   useEffect(() => {
-    const isFloatingMenuVisible = speedMenuVisible || queueVisible || moreVisible;
+    const isFloatingMenuVisible =
+      speedMenuVisible || queueVisible || moreVisible;
     if (isFloatingMenuVisible) {
       floatingMenuTranslateY.setValue(10);
     }
@@ -232,7 +312,13 @@ export function VideoPlayerScreen({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [floatingMenuOpacity, floatingMenuTranslateY, moreVisible, queueVisible, speedMenuVisible]);
+  }, [
+    floatingMenuOpacity,
+    floatingMenuTranslateY,
+    moreVisible,
+    queueVisible,
+    speedMenuVisible,
+  ]);
 
   useEffect(() => {
     queueVisibleRef.current = queueVisible;
@@ -240,7 +326,14 @@ export function VideoPlayerScreen({
       setControlsVisible(true);
       clearHideTimer();
     }
-  }, [queueVisible]);
+    Animated.spring(drawerTranslateX, {
+      toValue: queueVisible ? 0 : 320,
+      useNativeDriver: true,
+      damping: 25,
+      mass: 0.8,
+      stiffness: 200,
+    }).start();
+  }, [queueVisible, drawerTranslateX]);
 
   useEffect(() => {
     let isMounted = true;
@@ -251,30 +344,46 @@ export function VideoPlayerScreen({
       }
     };
 
-    const orientationSubscription = ScreenOrientation.addOrientationChangeListener((event) => {
-      syncLandscapeState(event.orientationInfo.orientation);
-    });
+    const orientationSubscription =
+      ScreenOrientation.addOrientationChangeListener((event) => {
+        syncLandscapeState(event.orientationInfo.orientation);
+      });
 
     void loadVideoPlayerPreferences().then((preferences) => {
       if (!isMounted) {
         return;
       }
-      if (SPEED_OPTIONS.includes(preferences.speed as (typeof SPEED_OPTIONS)[number])) {
+      if (
+        SPEED_OPTIONS.includes(
+          preferences.speed as (typeof SPEED_OPTIONS)[number],
+        )
+      ) {
         setSpeed(preferences.speed as (typeof SPEED_OPTIONS)[number]);
       }
-      if (SPEED_OPTIONS.includes(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number])) {
+      if (
+        SPEED_OPTIONS.includes(
+          preferences.holdSpeed as (typeof SPEED_OPTIONS)[number],
+        )
+      ) {
         setHoldSpeed(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number]);
       }
-      setPlaybackOrder(preferences.playbackOrder === 'shuffle' ? 'shuffle' : 'sequence');
+      setPlaybackOrder(preferences.playbackOrder || "sequence");
       setIsPlayerLocked(preferences.lockedByDefault);
-      const shouldUseLandscape = preferences.orientationPreference === 'landscape';
+      const shouldUseLandscape =
+        preferences.orientationPreference === "landscape";
       setIsLandscape(shouldUseLandscape);
       videoPreferencesLoadedRef.current = true;
-      void ScreenOrientation.lockAsync(shouldUseLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+      void ScreenOrientation.lockAsync(
+        shouldUseLandscape
+          ? ScreenOrientation.OrientationLock.LANDSCAPE
+          : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      ).catch(() => undefined);
     });
     return () => {
       isMounted = false;
-      ScreenOrientation.removeOrientationChangeListener(orientationSubscription);
+      ScreenOrientation.removeOrientationChangeListener(
+        orientationSubscription,
+      );
       if (gestureFeedbackTimerRef.current) {
         clearTimeout(gestureFeedbackTimerRef.current);
         gestureFeedbackTimerRef.current = null;
@@ -309,25 +418,36 @@ export function VideoPlayerScreen({
     let isMounted = true;
 
     async function load() {
-      const detail = await runWithDatabaseSpace(space, (db) => assetRepository.findVideoDetailById(db, activeVideoId));
+      const detail = await runWithDatabaseSpace(space, (db) =>
+        assetRepository.findVideoDetailById(db, activeVideoId),
+      );
       if (!isMounted) {
         return;
       }
       if (!detail) {
-        showToast('没有找到这个视频');
+        showToast("没有找到这个视频");
         onBack();
         return;
       }
       setVideo(detail);
       currentPlaybackVideoIdRef.current = detail.id;
-      setSwitchPreviewVideo((current) => (current?.id === detail.id ? null : current));
-      const savedTime = resolveInitialPlaybackTimeSeconds(detail.lastPlaybackPositionMs, detail.durationMs);
+      setSwitchPreviewVideo((current) =>
+        current?.id === detail.id ? null : current,
+      );
+      const savedTime = resolveInitialPlaybackTimeSeconds(
+        detail.lastPlaybackPositionMs,
+        detail.durationMs,
+      );
       currentTimeRef.current = savedTime;
       setCurrentTime(savedTime);
-      const queueItems = await runWithDatabaseSpace(space, (db) => assetRepository.findQueueVideosByIpId(db, detail.ipId));
+      const queueItems = await runWithDatabaseSpace(space, (db) =>
+        assetRepository.findQueueVideosByIpId(db, detail.ipId),
+      );
       if (isMounted) {
         setQueue(queueItems);
-        void runWithDatabaseSpace(space, (db) => imageRepository.touchLastViewedAt(db, detail.id));
+        void runWithDatabaseSpace(space, (db) =>
+          imageRepository.touchLastViewedAt(db, detail.id),
+        );
       }
     }
 
@@ -345,9 +465,12 @@ export function VideoPlayerScreen({
       return;
     }
     const queueIds = queue.map((item) => item.id);
-    if (playbackOrder === 'shuffle') {
+    if (playbackOrder === "shuffle") {
       if (!shuffleSessionRef.current) {
-        shuffleSessionRef.current = new VideoShuffleSession({ queueIds, currentId: activeVideoId });
+        shuffleSessionRef.current = new VideoShuffleSession({
+          queueIds,
+          currentId: activeVideoId,
+        });
       } else {
         shuffleSessionRef.current.syncQueue(queueIds);
       }
@@ -367,8 +490,14 @@ export function VideoPlayerScreen({
     const nextVideo = getVideoByOffset(1);
     setPreviousSwitchVideo(prevVideo);
     setNextSwitchVideo(nextVideo);
-  }, [activeVideoId, currentIndex, externalSource, isLandscape, playbackOrder, queue]);
-
+  }, [
+    activeVideoId,
+    currentIndex,
+    externalSource,
+    isLandscape,
+    playbackOrder,
+    queue,
+  ]);
 
   useEffect(() => {
     if (!sourceUri) {
@@ -379,38 +508,81 @@ export function VideoPlayerScreen({
     sourceLoadVersionRef.current = loadVersion;
     safePausePlayer();
     const initialDisplayTime = !externalSource
-      ? resolveInitialPlaybackTimeSeconds(activeVideoSource?.lastPlaybackPositionMs, activeVideoSource?.durationMs)
+      ? resolveInitialPlaybackTimeSeconds(
+          activeVideoSource?.lastPlaybackPositionMs,
+          activeVideoSource?.durationMs,
+        )
       : 0;
     currentTimeRef.current = initialDisplayTime;
     setCurrentTime(initialDisplayTime);
     setDuration(0);
-    committedSeekTargetRef.current = initialDisplayTime > 0 ? initialDisplayTime : null;
+    committedSeekTargetRef.current = initialDisplayTime;
     committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
-    setLoadingCoverVideo(activeVideoSource);
-    void player.replaceAsync({ uri: sourceUri }).then(() => {
-      if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
-        return;
+    // Optimistic no-cover: for local files the first frame typically arrives
+    // within COVER_SHOW_GRACE_MS, so the cover never appears and there is no
+    // visible stutter. The cover shows only as a fallback for slower sources.
+    coverOpacityAnim.stopAnimation();
+    coverOpacityAnim.setValue(1);
+    coverDismissVersionRef.current += 1;
+    const showVersion = coverDismissVersionRef.current;
+    if (coverShowTimerRef.current) {
+      clearTimeout(coverShowTimerRef.current);
+    }
+    coverShowTimerRef.current = setTimeout(() => {
+      coverShowTimerRef.current = null;
+      if (coverDismissVersionRef.current === showVersion) {
+        setLoadingCoverVideo(activeVideoSource);
       }
-      player.timeUpdateEventInterval = 0.25;
-      applyPitchPreservingRate(player, speed);
-      player.loop = Boolean(externalSource) || queue.length <= 1;
-      if (initialDisplayTime > 0) {
-        player.currentTime = initialDisplayTime;
-        currentTimeRef.current = initialDisplayTime;
-      }
-      safePlayPlayer();
-      setLoadingCoverVideo(null);
-    }).catch((error) => {
-      if (isActive) {
-        setLoadingCoverVideo(null);
-        showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
-      }
-    });
+    }, COVER_SHOW_GRACE_MS);
+    isReplacingRef.current = true;
+    void player
+      .replaceAsync({ uri: sourceUri })
+      .then(() => {
+        isReplacingRef.current = false;
+        if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
+          return;
+        }
+        player.timeUpdateEventInterval = 0.25;
+        applyPitchPreservingRate(player, speed);
+        player.loop = Boolean(externalSource) || queue.length <= 1;
+        if (initialDisplayTime > 0) {
+          player.currentTime = initialDisplayTime;
+          currentTimeRef.current = initialDisplayTime;
+        }
+        safePlayPlayer();
+        // Cover (if it appeared) is dismissed by onFirstFrameRender.
+      })
+      .catch((error) => {
+        isReplacingRef.current = false;
+        if (isActive) {
+          if (coverShowTimerRef.current) {
+            clearTimeout(coverShowTimerRef.current);
+            coverShowTimerRef.current = null;
+          }
+          setLoadingCoverVideo(null);
+          showToast(
+            error instanceof Error
+              ? `视频加载失败：${error.message}`
+              : "视频加载失败",
+          );
+        }
+      });
     return () => {
       isActive = false;
+      if (coverShowTimerRef.current) {
+        clearTimeout(coverShowTimerRef.current);
+        coverShowTimerRef.current = null;
+      }
     };
-  }, [activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
+  }, [
+    activeVideoSource?.id,
+    externalSource,
+    player,
+    queue.length,
+    showToast,
+    sourceUri,
+  ]);
 
   useEffect(() => {
     player.loop = Boolean(externalSource) || queue.length <= 1;
@@ -436,7 +608,7 @@ export function VideoPlayerScreen({
   }, [playbackOrder]);
 
   useEffect(() => {
-    const timeSubscription = player.addListener('timeUpdate', (payload) => {
+    const timeSubscription = player.addListener("timeUpdate", (payload) => {
       if (isScrubbingRef.current) {
         return;
       }
@@ -445,15 +617,25 @@ export function VideoPlayerScreen({
       }
       currentTimeRef.current = payload.currentTime;
       setCurrentTime(payload.currentTime);
-      setDuration(Number.isFinite(player.duration) && player.duration > 0 ? player.duration : duration);
+      setDuration(
+        Number.isFinite(player.duration) && player.duration > 0
+          ? player.duration
+          : duration,
+      );
     });
-    const playingSubscription = player.addListener('playingChange', (payload) => {
-      setIsPlaying(payload.isPlaying);
-    });
-    const sourceSubscription = player.addListener('sourceLoad', (payload) => {
+    const playingSubscription = player.addListener(
+      "playingChange",
+      (payload) => {
+        setIsPlaying(payload.isPlaying);
+      },
+    );
+    const sourceSubscription = player.addListener("sourceLoad", (payload) => {
       setDuration(payload.duration);
     });
-    const playToEndSubscription = player.addListener('playToEnd', handlePlayToEnd);
+    const playToEndSubscription = player.addListener(
+      "playToEnd",
+      handlePlayToEnd,
+    );
 
     return () => {
       timeSubscription.remove();
@@ -461,7 +643,15 @@ export function VideoPlayerScreen({
       sourceSubscription.remove();
       playToEndSubscription.remove();
     };
-  }, [activeVideoId, currentIndex, duration, externalSource, playbackOrder, player, queue]);
+  }, [
+    activeVideoId,
+    currentIndex,
+    duration,
+    externalSource,
+    playbackOrder,
+    player,
+    queue,
+  ]);
 
   useEffect(() => {
     resetHideTimer();
@@ -470,9 +660,17 @@ export function VideoPlayerScreen({
       clearLongPressTimer();
       clearPreviewSeekTimer();
       safePausePlayer();
-      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+      void ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      ).catch(() => undefined);
       if (currentPlaybackVideoIdRef.current) {
-        void runWithDatabaseSpace(spaceRef.current, (db) => assetRepository.updatePlaybackPosition(db, currentPlaybackVideoIdRef.current as number, Math.round(currentTimeRef.current * 1000)));
+        void runWithDatabaseSpace(spaceRef.current, (db) =>
+          assetRepository.updatePlaybackPosition(
+            db,
+            currentPlaybackVideoIdRef.current as number,
+            Math.round(currentTimeRef.current * 1000),
+          ),
+        );
       }
     };
   }, []);
@@ -480,14 +678,29 @@ export function VideoPlayerScreen({
   useEffect(() => {
     const persistPlaybackPosition = () => {
       if (!externalSource && video) {
-        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
+        void runWithDatabaseSpace(space, (db) =>
+          assetRepository.updatePlaybackPosition(
+            db,
+            video.id,
+            Math.round(currentTimeRef.current * 1000),
+          ),
+        );
       }
     };
-    const interval = !externalSource && video ? setInterval(persistPlaybackPosition, PLAYBACK_PROGRESS_SAVE_INTERVAL_MS) : null;
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') {
+    const interval =
+      !externalSource && video
+        ? setInterval(
+            persistPlaybackPosition,
+            PLAYBACK_PROGRESS_SAVE_INTERVAL_MS,
+          )
+        : null;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") {
+        wasPlayingRef.current = isPlayingRef.current;
         safePausePlayer();
         persistPlaybackPosition();
+      } else if (wasPlayingRef.current) {
+        safePlayPlayer();
       }
     });
 
@@ -500,7 +713,8 @@ export function VideoPlayerScreen({
   }, [externalSource, player, space, video]);
 
   const displayTime = isScrubbing ? scrubDisplayTime : currentTime;
-  const progress = duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
+  const progress =
+    duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
   const floatingPanelAnimatedStyle = {
     opacity: floatingMenuOpacity,
     transform: [{ translateY: floatingMenuTranslateY }],
@@ -511,24 +725,39 @@ export function VideoPlayerScreen({
 
   const moreItems: AppActionSheetItem[] = useMemo(
     () => [
+      ...(externalSource
+        ? []
+        : [
+            {
+              key: "detail",
+              label: "视频详情",
+              icon: "information-circle-outline" as const,
+              onPress: () => {
+                setMoreVisible(false);
+                if (activeVideoId && onOpenDetail) {
+                  onOpenDetail(activeVideoId);
+                }
+              },
+            },
+          ]),
       {
-        key: 'save-local',
-        label: '保存本地',
-        icon: 'download-outline',
+        key: "save-local",
+        label: "保存本地",
+        icon: "download-outline",
         onPress: handleSaveLocal,
       },
       ...(externalSource
         ? [
             {
-              key: 'save-ip',
-              label: '保存到 IP',
-              icon: 'albums-outline' as const,
+              key: "save-ip",
+              label: "保存到 IP",
+              icon: "albums-outline" as const,
               onPress: openSaveToIp,
             },
           ]
         : []),
     ],
-    [externalSource, video]
+    [externalSource, video, isLandscape, activeVideoId, onOpenDetail],
   );
 
   const seekPanResponder = useMemo(
@@ -548,7 +777,7 @@ export function VideoPlayerScreen({
         onPanResponderRelease: commitScrub,
         onPanResponderTerminate: cancelScrub,
       }),
-    [duration, player, trackWidth]
+    [duration, player, trackWidth],
   );
 
   const surfacePanResponder = useMemo(
@@ -567,16 +796,16 @@ export function VideoPlayerScreen({
           );
         },
         onPanResponderGrant: (event) => {
-          surfaceGestureModeRef.current = 'pending';
+          surfaceGestureModeRef.current = "pending";
           lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
           if (isPlayerLocked || isVideoSwitchTransitioning) {
             return;
           }
           longPressTimerRef.current = setTimeout(() => {
-            if (surfaceGestureModeRef.current !== 'pending') {
+            if (surfaceGestureModeRef.current !== "pending") {
               return;
             }
-            surfaceGestureModeRef.current = 'hold';
+            surfaceGestureModeRef.current = "hold";
             startHoldFastForward();
           }, 260);
         },
@@ -586,49 +815,57 @@ export function VideoPlayerScreen({
           }
           const absDx = Math.abs(gestureState.dx);
           const absDy = Math.abs(gestureState.dy);
-          if (surfaceGestureModeRef.current === 'pending') {
-            const shouldScrub = absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy;
-            const shouldAdjustVertically = absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx;
+          if (surfaceGestureModeRef.current === "pending") {
+            const shouldScrub =
+              absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy;
+            const shouldAdjustVertically =
+              absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx;
             if (!shouldScrub && !shouldAdjustVertically) {
               return;
             }
             clearLongPressTimer();
             if (shouldAdjustVertically) {
-              if (shouldSwitchVideoFromCenterVerticalGesture(event.nativeEvent.locationX, absDx, absDy)) {
-                surfaceGestureModeRef.current = 'video-switch';
+              if (
+                shouldSwitchVideoFromCenterVerticalGesture(
+                  event.nativeEvent.locationX,
+                  absDx,
+                  absDy,
+                )
+              ) {
+                surfaceGestureModeRef.current = "video-switch";
                 updateVideoSwitchDrag(gestureState.dy);
                 return;
               }
               showControls();
-              surfaceGestureModeRef.current = 'vertical';
+              surfaceGestureModeRef.current = "vertical";
               void beginVerticalGesture(event);
               return;
             }
-            surfaceGestureModeRef.current = 'scrub';
-            beginScrub('surface');
+            surfaceGestureModeRef.current = "scrub";
+            beginScrub("surface");
             scrubStartTimeRef.current = currentTimeRef.current;
           }
           if (verticalGestureKindRef.current) {
             updateVerticalGesture(gestureState.dy);
             return;
           }
-          if (surfaceGestureModeRef.current === 'video-switch') {
+          if (surfaceGestureModeRef.current === "video-switch") {
             updateVideoSwitchDrag(gestureState.dy);
             return;
           }
-          if (surfaceGestureModeRef.current !== 'scrub') {
+          if (surfaceGestureModeRef.current !== "scrub") {
             return;
           }
           updateScrubFromSurfaceGesture(gestureState.dx, gestureState.dy);
         },
         onPanResponderRelease: (_event, gestureState) => {
-          if (surfaceGestureModeRef.current === 'pending') {
+          if (surfaceGestureModeRef.current === "pending") {
             surfaceGestureModeRef.current = null;
             clearLongPressTimer();
             handleSurfacePress();
             return;
           }
-          if (surfaceGestureModeRef.current === 'hold') {
+          if (surfaceGestureModeRef.current === "hold") {
             surfaceGestureModeRef.current = null;
             finishHoldFastForward();
             return;
@@ -638,7 +875,7 @@ export function VideoPlayerScreen({
             finishVerticalGesture();
             return;
           }
-          if (surfaceGestureModeRef.current === 'video-switch') {
+          if (surfaceGestureModeRef.current === "video-switch") {
             surfaceGestureModeRef.current = null;
             finishCenterVideoSwitchGesture(gestureState.dy, gestureState.vy);
             return;
@@ -647,7 +884,7 @@ export function VideoPlayerScreen({
           commitScrub();
         },
         onPanResponderTerminate: () => {
-          if (surfaceGestureModeRef.current === 'hold') {
+          if (surfaceGestureModeRef.current === "hold") {
             finishHoldFastForward();
             surfaceGestureModeRef.current = null;
             return;
@@ -657,12 +894,12 @@ export function VideoPlayerScreen({
             surfaceGestureModeRef.current = null;
             return;
           }
-          if (surfaceGestureModeRef.current === 'video-switch') {
+          if (surfaceGestureModeRef.current === "video-switch") {
             surfaceGestureModeRef.current = null;
             resetVideoSwitchDrag();
             return;
           }
-          if (surfaceGestureModeRef.current === 'scrub') {
+          if (surfaceGestureModeRef.current === "scrub") {
             cancelScrub();
           } else {
             clearLongPressTimer();
@@ -671,7 +908,23 @@ export function VideoPlayerScreen({
         },
         onShouldBlockNativeResponder: () => true,
       }),
-    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, isVideoSwitchTransitioning, playbackOrder, player, queue.length, speed, surfaceWidth, surfaceHeight]
+    [
+      activeVideoId,
+      currentIndex,
+      duration,
+      externalSource,
+      holdSpeed,
+      isLandscape,
+      isPlayerLocked,
+      isPlaying,
+      isVideoSwitchTransitioning,
+      playbackOrder,
+      player,
+      queue.length,
+      speed,
+      surfaceWidth,
+      surfaceHeight,
+    ],
   );
 
   async function handleSaveLocal() {
@@ -680,9 +933,9 @@ export function VideoPlayerScreen({
     }
     try {
       await saveVideoToSystemAlbum(sourceUri, sourceFileName);
-      showToast('已保存到系统视频目录');
+      showToast("已保存到系统视频目录");
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
+      const message = error instanceof Error ? error.message : "未知错误";
       showToast(`保存失败：${message}`);
     }
   }
@@ -691,7 +944,9 @@ export function VideoPlayerScreen({
     if (!externalSource) {
       return;
     }
-    const ips = await runWithDatabaseSpace('normal', (db) => ipRepository.findLibraryItems(db));
+    const ips = await runWithDatabaseSpace("normal", (db) =>
+      ipRepository.findLibraryItems(db),
+    );
     setNormalIps(ips);
     setIpPickerVisible(true);
   }
@@ -703,10 +958,10 @@ export function VideoPlayerScreen({
     setIsSavingToIp(true);
     try {
       await importExternalVideoToIp(ipId);
-      showToast('已保存到 IP');
+      showToast("已保存到 IP");
       setIpPickerVisible(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
+      const message = error instanceof Error ? error.message : "未知错误";
       showToast(`保存到 IP 失败：${message}`);
     } finally {
       setIsSavingToIp(false);
@@ -721,18 +976,22 @@ export function VideoPlayerScreen({
     setIsSavingToIp(true);
     let createdIpId: number | null = null;
     try {
-      const createdIp = await runWithDatabaseSpace('normal', (db) => ipRepository.create(db, { name: preparedName }));
+      const createdIp = await runWithDatabaseSpace("normal", (db) =>
+        ipRepository.create(db, { name: preparedName }),
+      );
       createdIpId = createdIp.id;
       await importExternalVideoToIp(createdIp.id);
       setNewIpDialogVisible(false);
-      setNewIpName('');
+      setNewIpName("");
       setIpPickerVisible(false);
-      showToast('已新建 IP 并保存');
+      showToast("已新建 IP 并保存");
     } catch (error) {
       if (createdIpId != null) {
-        await runWithDatabaseSpace('normal', (db) => db.runAsync('DELETE FROM ips WHERE id = ?', createdIpId)).catch(() => undefined);
+        await runWithDatabaseSpace("normal", (db) =>
+          db.runAsync("DELETE FROM ips WHERE id = ?", createdIpId),
+        ).catch(() => undefined);
       }
-      const message = error instanceof Error ? error.message : '未知错误';
+      const message = error instanceof Error ? error.message : "未知错误";
       showToast(`新建 IP 失败：${message}`);
     } finally {
       setIsSavingToIp(false);
@@ -741,13 +1000,13 @@ export function VideoPlayerScreen({
 
   async function importExternalVideoToIp(ipId: number) {
     if (!externalSource) {
-      throw new Error('外部视频不可用。');
+      throw new Error("外部视频不可用。");
     }
     await importVideosToIp({
-      space: 'normal',
+      space: "normal",
       ipId,
       pickedAssets: [externalSource],
-      title: '保存外部视频',
+      title: "保存外部视频",
     });
   }
 
@@ -760,7 +1019,7 @@ export function VideoPlayerScreen({
 
   function resetHideTimer() {
     clearHideTimer();
-    if (queueVisibleRef.current) {
+    if (queueVisibleRef.current || !isPlayingRef.current) {
       return;
     }
     hideTimerRef.current = setTimeout(() => {
@@ -819,13 +1078,17 @@ export function VideoPlayerScreen({
       player.play();
       setIsPlaying(true);
     } catch (error) {
-      showToast(error instanceof Error ? `播放失败：${error.message}` : '播放失败');
+      showToast(
+        error instanceof Error ? `播放失败：${error.message}` : "播放失败",
+      );
       setIsPlaying(false);
     }
   }
 
   function persistPlaybackPosition(videoId: number, positionMs: number) {
-    return runWithDatabaseSpace(spaceRef.current, (db) => assetRepository.updatePlaybackPosition(db, videoId, positionMs));
+    return runWithDatabaseSpace(spaceRef.current, (db) =>
+      assetRepository.updatePlaybackPosition(db, videoId, positionMs),
+    );
   }
 
   function startHoldFastForward() {
@@ -869,8 +1132,10 @@ export function VideoPlayerScreen({
       clearTimeout(gestureFeedbackTimerRef.current);
     }
     setGestureFeedback(nextFeedback);
-    if (nextFeedback.kind === 'brightness') {
-      setBrightnessOverlayOpacity(Math.max(0, Math.min(0.46, 0.46 - (nextFeedback.value ?? 0.5) * 0.36)));
+    if (nextFeedback.kind === "brightness") {
+      setBrightnessOverlayOpacity(
+        Math.max(0, Math.min(0.46, 0.46 - (nextFeedback.value ?? 0.5) * 0.36)),
+      );
     }
     gestureFeedbackTimerRef.current = setTimeout(() => {
       setGestureFeedback(null);
@@ -881,7 +1146,7 @@ export function VideoPlayerScreen({
 
   function handleSurfacePress() {
     if (isPlayerLocked) {
-      showGestureFeedback({ kind: 'locked', label: '播放器已锁定' });
+      showControls();
       return;
     }
     const now = Date.now();
@@ -889,15 +1154,21 @@ export function VideoPlayerScreen({
       lastSurfaceTapAtRef.current = 0;
       const locationX = lastSurfacePressLocationXRef.current;
       const leftBoundary = surfaceWidth / 3;
-      const rightBoundary = surfaceWidth * 2 / 3;
+      const rightBoundary = (surfaceWidth * 2) / 3;
       if (locationX < leftBoundary) {
         seekByOffset(-GESTURE_DOUBLE_TAP_SEEK_SECONDS);
-        showGestureFeedback({ kind: 'seek-backward', label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+        showGestureFeedback({
+          kind: "seek-backward",
+          label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s`,
+        });
         return;
       }
       if (locationX > rightBoundary) {
         seekByOffset(GESTURE_DOUBLE_TAP_SEEK_SECONDS);
-        showGestureFeedback({ kind: 'seek-forward', label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+        showGestureFeedback({
+          kind: "seek-forward",
+          label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s`,
+        });
         return;
       }
       togglePlay();
@@ -909,15 +1180,21 @@ export function VideoPlayerScreen({
 
   function handlePartitionDoubleTap(locationX: number) {
     const leftBoundary = surfaceWidth / 3;
-    const rightBoundary = surfaceWidth * 2 / 3;
+    const rightBoundary = (surfaceWidth * 2) / 3;
     if (locationX < leftBoundary) {
       seekByOffset(-GESTURE_DOUBLE_TAP_SEEK_SECONDS);
-      showGestureFeedback({ kind: 'seek-backward', label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+      showGestureFeedback({
+        kind: "seek-backward",
+        label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s`,
+      });
       return;
     }
     if (locationX > rightBoundary) {
       seekByOffset(GESTURE_DOUBLE_TAP_SEEK_SECONDS);
-      showGestureFeedback({ kind: 'seek-forward', label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+      showGestureFeedback({
+        kind: "seek-forward",
+        label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s`,
+      });
       return;
     }
     togglePlay();
@@ -941,23 +1218,40 @@ export function VideoPlayerScreen({
         showControls();
       }
       void saveVideoPlayerPreferences({ lockedByDefault: nextLocked });
-      showGestureFeedback({ kind: nextLocked ? 'locked' : 'unlocked', label: nextLocked ? '已锁定' : '已解锁' });
+      showGestureFeedback({
+        kind: nextLocked ? "locked" : "unlocked",
+        label: nextLocked ? "已锁定" : "已解锁",
+      });
       return nextLocked;
     });
   }
 
   async function beginVerticalGesture(event: GestureResponderEvent) {
     const isBrightnessGesture = event.nativeEvent.locationX < surfaceWidth / 2;
-    verticalGestureKindRef.current = isBrightnessGesture ? 'brightness' : 'volume';
+    verticalGestureKindRef.current = isBrightnessGesture
+      ? "brightness"
+      : "volume";
     if (isBrightnessGesture) {
-      const currentBrightness = await Brightness.getBrightnessAsync().catch(() => 0.5);
+      const currentBrightness = await Brightness.getBrightnessAsync().catch(
+        () => 0.5,
+      );
       verticalGestureStartValueRef.current = currentBrightness;
-      showGestureFeedback({ kind: 'brightness', label: '亮度', value: currentBrightness });
+      showGestureFeedback({
+        kind: "brightness",
+        label: "亮度",
+        value: currentBrightness,
+      });
       return;
     }
-    const currentVolume = await VolumeManager.getVolume().catch(() => ({ volume: 0.5 }));
+    const currentVolume = await VolumeManager.getVolume().catch(() => ({
+      volume: 0.5,
+    }));
     verticalGestureStartValueRef.current = currentVolume.volume;
-    showGestureFeedback({ kind: 'volume', label: '音量', value: currentVolume.volume });
+    showGestureFeedback({
+      kind: "volume",
+      label: "音量",
+      value: currentVolume.volume,
+    });
   }
 
   function updateVerticalGesture(deltaY: number) {
@@ -965,14 +1259,22 @@ export function VideoPlayerScreen({
     if (!gestureKind) {
       return;
     }
-    const nextValue = clamp01(verticalGestureStartValueRef.current - deltaY / Math.max(1, surfaceHeight * VERTICAL_GESTURE_FULL_HEIGHT_RATIO));
-    if (gestureKind === 'brightness') {
+    const nextValue = clamp01(
+      verticalGestureStartValueRef.current -
+        deltaY /
+          Math.max(1, surfaceHeight * VERTICAL_GESTURE_FULL_HEIGHT_RATIO),
+    );
+    if (gestureKind === "brightness") {
       void adjustBrightnessFromGesture(nextValue);
-      showGestureFeedback({ kind: 'brightness', label: '亮度', value: nextValue });
+      showGestureFeedback({
+        kind: "brightness",
+        label: "亮度",
+        value: nextValue,
+      });
       return;
     }
     void adjustVolumeFromGesture(nextValue);
-    showGestureFeedback({ kind: 'volume', label: '音量', value: nextValue });
+    showGestureFeedback({ kind: "volume", label: "音量", value: nextValue });
   }
 
   function finishVerticalGesture() {
@@ -982,19 +1284,32 @@ export function VideoPlayerScreen({
 
   function togglePlaybackOrder() {
     setPlaybackOrder((current) => {
-      const nextOrder: VideoPlaybackOrder = current === 'shuffle' ? 'sequence' : 'shuffle';
+      const nextOrder: VideoPlaybackOrder =
+        current === "sequence"
+          ? "shuffle"
+          : current === "shuffle"
+            ? "single"
+            : "sequence";
       showControls();
       return nextOrder;
     });
   }
 
-  function shouldSwitchVideoFromCenterVerticalGesture(locationX: number, absDx: number, absDy: number) {
+  function shouldSwitchVideoFromCenterVerticalGesture(
+    locationX: number,
+    absDx: number,
+    absDy: number,
+  ) {
     if (isLandscape || externalSource || queue.length <= 1) {
       return false;
     }
     const centerLeft = surfaceWidth * CENTER_VIDEO_SWITCH_LEFT_RATIO;
     const centerRight = surfaceWidth * CENTER_VIDEO_SWITCH_RIGHT_RATIO;
-    return locationX >= centerLeft && locationX <= centerRight && absDy > absDx * CENTER_VIDEO_SWITCH_DOMINANCE_RATIO;
+    return (
+      locationX >= centerLeft &&
+      locationX <= centerRight &&
+      absDy > absDx * CENTER_VIDEO_SWITCH_DOMINANCE_RATIO
+    );
   }
 
   function finishCenterVideoSwitchGesture(deltaY: number, velocityY?: number) {
@@ -1005,16 +1320,21 @@ export function VideoPlayerScreen({
       velocityY: velocityY ?? 0,
       viewportHeight: surfaceHeight,
     });
-    if (resolution.action === 'cancel') {
+    if (resolution.action === "cancel") {
       resetVideoSwitchDrag();
       return;
     }
-    const nextVideo = resolution.direction === 1 ? nextSwitchVideo : previousSwitchVideo;
+    const nextVideo =
+      resolution.direction === 1 ? nextSwitchVideo : previousSwitchVideo;
     if (!nextVideo) {
       resetVideoSwitchDrag();
       return;
     }
-    switchVideoWithTransition(nextVideo, resolution.direction as 1 | -1, getVideoSwitchHistoryMode(resolution.direction as 1 | -1));
+    switchVideoWithTransition(
+      nextVideo,
+      resolution.direction as 1 | -1,
+      getVideoSwitchHistoryMode(resolution.direction as 1 | -1),
+    );
   }
 
   function updateVideoSwitchDrag(deltaY: number) {
@@ -1026,7 +1346,9 @@ export function VideoPlayerScreen({
       });
     }
     const maxTranslate = Math.max(1, surfaceHeight);
-    videoSwitchTranslateY.setValue(Math.max(-maxTranslate, Math.min(maxTranslate, deltaY)));
+    videoSwitchTranslateY.setValue(
+      Math.max(-maxTranslate, Math.min(maxTranslate, deltaY)),
+    );
   }
 
   function resetVideoSwitchDrag() {
@@ -1045,7 +1367,11 @@ export function VideoPlayerScreen({
     });
   }
 
-  function switchVideoWithTransition(nextVideo: ImageListItem, direction: 1 | -1, historyMode: VideoSwitchHistoryMode = 'append') {
+  function switchVideoWithTransition(
+    nextVideo: ImageListItem,
+    direction: 1 | -1,
+    historyMode: VideoSwitchHistoryMode = "append",
+  ) {
     if (isVideoSwitchTransitioning && !swipeSettlingRef.current) {
       return;
     }
@@ -1057,48 +1383,55 @@ export function VideoPlayerScreen({
     setQueueVisible(false);
     setMoreVisible(false);
 
-    // --- Single-player approach ---
     // 1. Exit: slide the current surface out in the swipe direction.
+    // The adjacent cover (which sits at +/- surfaceHeight) will slide into the viewport.
     const transitionHeight = Math.max(1, surfaceHeight);
     Animated.timing(videoSwitchTranslateY, {
       toValue: direction * -transitionHeight,
       duration: VIDEO_SWITCH_EXIT_DURATION_MS,
       useNativeDriver: true,
     }).start(() => {
-      // 2. Commit the video switch (triggers replaceAsync + loading cover).
+      // 2. The adjacent cover is now perfectly covering the screen.
+      // We seamlessly swap the VideoView to screen pos 0 and load the new video.
+      
+      // Set the loading cover immediately.
+      coverOpacityAnim.setValue(1);
       setLoadingCoverVideo(nextVideo);
-      switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
-      // Defer the enter animation until React has flushed the cover state to the native layer.
-      // Without this, the surface teleports to the entry side while the VideoView is still
-      // black (replaceAsync just started), causing a visible 1-2 frame black flash.
-      InteractionManager.runAfterInteractions(() => {
-        // Reset to below/above the viewport (enter side).
-        videoSwitchTranslateY.setValue(direction * transitionHeight);
-        // 3. Enter: slide in from the opposite edge.
-        Animated.timing(videoSwitchTranslateY, {
-          toValue: 0,
-          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
-          useNativeDriver: true,
-        }).start(() => {
-          swipeSettlingRef.current = false;
-          setIsVideoSwitchTransitioning(false);
-          resetHideTimer();
+      safePausePlayer(); // instantly stop playing old audio during transition delay
+      
+      // Delay coordinate reset AND the actual switch to prevent React from 
+      // instantly changing the adjacent cover we just dragged in to the next-next cover.
+      // This prevents a rapid flash of the next-next video's cover during the 50ms mount window.
+      setTimeout(() => {
+        videoSwitchTranslateY.setValue(0);
+        switchVideo(nextVideo.id, nextVideo, {
+          historyMode,
+          pauseBeforeSwitch: false,
+          showControls: false,
         });
-      });
-    });
-
-    // Safety unlock: if the animation chain is interrupted and never finishes,
-    // forcibly release the transition lock after a generous timeout.
-    const safetyTimeout = setTimeout(() => {
-      if (swipeSettlingRef.current) {
         swipeSettlingRef.current = false;
         setIsVideoSwitchTransitioning(false);
-        videoSwitchTranslateY.setValue(0);
         resetHideTimer();
+      }, 50);
+    });
+
+    // Safety unlock: if the animation chain is interrupted
+    const safetyTimeout = setTimeout(
+      () => {
+        if (swipeSettlingRef.current) {
+          swipeSettlingRef.current = false;
+          setIsVideoSwitchTransitioning(false);
+          videoSwitchTranslateY.setValue(0);
+          resetHideTimer();
+        }
+      },
+      VIDEO_SWITCH_EXIT_DURATION_MS + 100,
+    );
+    (
+      switchVideoWithTransition as unknown as {
+        _safetyTimer?: ReturnType<typeof setTimeout>;
       }
-    }, VIDEO_SWITCH_EXIT_DURATION_MS + VIDEO_SWITCH_ENTER_DURATION_MS + 300);
-    // Store it in a ref so we can clear it if everything goes smoothly
-    (switchVideoWithTransition as unknown as { _safetyTimer?: ReturnType<typeof setTimeout> })._safetyTimer = safetyTimeout;
+    )._safetyTimer = safetyTimeout;
   }
 
   async function adjustBrightnessFromGesture(value: number) {
@@ -1106,7 +1439,11 @@ export function VideoPlayerScreen({
   }
 
   async function adjustVolumeFromGesture(value: number) {
-    await VolumeManager.setVolume(value, { type: 'music', showUI: false, playSound: false }).catch(() => undefined);
+    await VolumeManager.setVolume(value, {
+      type: "music",
+      showUI: false,
+      playSound: false,
+    }).catch(() => undefined);
   }
 
   function toggleControls() {
@@ -1124,7 +1461,11 @@ export function VideoPlayerScreen({
   }
 
   function getEffectiveDuration() {
-    return duration > 0 ? duration : Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
+    return duration > 0
+      ? duration
+      : Number.isFinite(player.duration) && player.duration > 0
+        ? player.duration
+        : 0;
   }
 
   function seekToTime(nextTime: number) {
@@ -1144,13 +1485,16 @@ export function VideoPlayerScreen({
       return false;
     }
 
-    const isSettled = Math.abs(nextTime - targetTime) <= COMMITTED_SEEK_TOLERANCE_SECONDS;
+    const isSettled =
+      Math.abs(nextTime - targetTime) <= COMMITTED_SEEK_TOLERANCE_SECONDS;
     if (isSettled) {
       committedSeekTargetRef.current = null;
       return false;
     }
 
-    const isStillSettling = Date.now() - committedSeekStartedAtRef.current < COMMITTED_SEEK_SETTLE_TIMEOUT_MS;
+    const isStillSettling =
+      Date.now() - committedSeekStartedAtRef.current <
+      COMMITTED_SEEK_SETTLE_TIMEOUT_MS;
     if (isStillSettling) {
       return true;
     }
@@ -1162,10 +1506,10 @@ export function VideoPlayerScreen({
     return true;
   }
 
-  function beginScrub(source: 'controls' | 'surface' = 'controls') {
+  function beginScrub(source: "controls" | "surface" = "controls") {
     clearHideTimer();
     clearLongPressTimer();
-    const isSurfaceSource = source === 'surface';
+    const isSurfaceSource = source === "surface";
     setIsSurfaceScrubbing(isSurfaceSource);
     if (isSurfaceSource) {
       setControlsVisible(false);
@@ -1182,7 +1526,9 @@ export function VideoPlayerScreen({
 
   function normalizeScrubTime(nextTime: number) {
     const effectiveDuration = getEffectiveDuration();
-    return effectiveDuration > 0 ? Math.min(effectiveDuration, Math.max(0, nextTime)) : 0;
+    return effectiveDuration > 0
+      ? Math.min(effectiveDuration, Math.max(0, nextTime))
+      : 0;
   }
 
   function schedulePreviewSeek(nextTime: number) {
@@ -1217,7 +1563,8 @@ export function VideoPlayerScreen({
     if (effectiveDuration <= 0 || measuredWidth <= 0) {
       return;
     }
-    const rawTargetTime = ((pageX - trackPageXRef.current) / measuredWidth) * effectiveDuration;
+    const rawTargetTime =
+      ((pageX - trackPageXRef.current) / measuredWidth) * effectiveDuration;
     setScrubGestureHint(getScrubBoundaryHint(rawTargetTime, effectiveDuration));
     updateScrubTime(rawTargetTime);
   }
@@ -1252,7 +1599,8 @@ export function VideoPlayerScreen({
     const secondsPerScreen = getSurfaceSeekSecondsPerScreen(effectiveDuration);
     const dragRatio = getDampedSurfaceDragRatio(deltaX / surfaceWidth);
     const fineTuneFactor = getSurfaceSeekFineTuneFactor(deltaY);
-    const rawTargetTime = scrubStartTimeRef.current + dragRatio * secondsPerScreen * fineTuneFactor;
+    const rawTargetTime =
+      scrubStartTimeRef.current + dragRatio * secondsPerScreen * fineTuneFactor;
     setScrubGestureHint(getScrubBoundaryHint(rawTargetTime, effectiveDuration));
     updateScrubTime(rawTargetTime);
   }
@@ -1276,7 +1624,10 @@ export function VideoPlayerScreen({
     }
     return Math.min(
       SURFACE_SEEK_SUPER_LONG_MAX_SECONDS_PER_SCREEN,
-      Math.max(SURFACE_SEEK_SUPER_LONG_MIN_SECONDS_PER_SCREEN, effectiveDuration * SURFACE_SEEK_SUPER_LONG_TARGET_RATIO),
+      Math.max(
+        SURFACE_SEEK_SUPER_LONG_MIN_SECONDS_PER_SCREEN,
+        effectiveDuration * SURFACE_SEEK_SUPER_LONG_TARGET_RATIO,
+      ),
     );
   }
 
@@ -1289,12 +1640,15 @@ export function VideoPlayerScreen({
     } else if (ratio <= SURFACE_SEEK_DAMPING_HIGH_RATIO) {
       dampedRatio =
         SURFACE_SEEK_DAMPING_LOW_RATIO * SURFACE_SEEK_DAMPING_LOW_FACTOR +
-        (ratio - SURFACE_SEEK_DAMPING_LOW_RATIO) * SURFACE_SEEK_DAMPING_MID_FACTOR;
+        (ratio - SURFACE_SEEK_DAMPING_LOW_RATIO) *
+          SURFACE_SEEK_DAMPING_MID_FACTOR;
     } else {
       dampedRatio =
         SURFACE_SEEK_DAMPING_LOW_RATIO * SURFACE_SEEK_DAMPING_LOW_FACTOR +
-        (SURFACE_SEEK_DAMPING_HIGH_RATIO - SURFACE_SEEK_DAMPING_LOW_RATIO) * SURFACE_SEEK_DAMPING_MID_FACTOR +
-        (ratio - SURFACE_SEEK_DAMPING_HIGH_RATIO) * SURFACE_SEEK_DAMPING_HIGH_FACTOR;
+        (SURFACE_SEEK_DAMPING_HIGH_RATIO - SURFACE_SEEK_DAMPING_LOW_RATIO) *
+          SURFACE_SEEK_DAMPING_MID_FACTOR +
+        (ratio - SURFACE_SEEK_DAMPING_HIGH_RATIO) *
+          SURFACE_SEEK_DAMPING_HIGH_FACTOR;
     }
     return direction * Math.min(1, dampedRatio);
   }
@@ -1312,12 +1666,15 @@ export function VideoPlayerScreen({
     return SURFACE_SEEK_FINE_HIGH_FACTOR;
   }
 
-  function getScrubBoundaryHint(rawTargetTime: number, effectiveDuration: number) {
+  function getScrubBoundaryHint(
+    rawTargetTime: number,
+    effectiveDuration: number,
+  ) {
     if (rawTargetTime < 0) {
-      return '已到开头';
+      return "已到开头";
     }
     if (rawTargetTime > effectiveDuration) {
-      return '已到结尾';
+      return "已到结尾";
     }
     return null;
   }
@@ -1348,23 +1705,43 @@ export function VideoPlayerScreen({
   async function toggleOrientation() {
     try {
       if (isLandscape) {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        await ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.PORTRAIT_UP,
+        );
         setIsLandscape(false);
-        void saveVideoPlayerPreferences({ orientationPreference: 'portrait' });
+        void saveVideoPlayerPreferences({ orientationPreference: "portrait" });
       } else {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        await ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.LANDSCAPE,
+        );
         setIsLandscape(true);
-        void saveVideoPlayerPreferences({ orientationPreference: 'landscape' });
+        void saveVideoPlayerPreferences({ orientationPreference: "landscape" });
       }
       showControls();
     } catch {
-      showToast('横竖屏切换失败');
+      showToast("横竖屏切换失败");
     }
   }
 
-  function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { historyMode?: VideoSwitchHistoryMode; pauseBeforeSwitch?: boolean; showControls?: boolean }) {
+  function switchVideo(
+    nextVideoId: number,
+    nextVideo?: ImageListItem,
+    options?: {
+      historyMode?: VideoSwitchHistoryMode;
+      pauseBeforeSwitch?: boolean;
+      showControls?: boolean;
+    },
+  ) {
     if (!externalSource && video) {
-      void persistPlaybackPosition(video.id, Math.round(currentTimeRef.current * 1000));
+      const positionMs = Math.round(currentTimeRef.current * 1000);
+      void persistPlaybackPosition(video.id, positionMs);
+      setQueue((prevQueue) =>
+        prevQueue.map((item) =>
+          item.id === video.id
+            ? { ...item, lastPlaybackPositionMs: positionMs }
+            : item,
+        ),
+      );
     }
     if (options?.pauseBeforeSwitch !== false) {
       safePausePlayer();
@@ -1373,7 +1750,10 @@ export function VideoPlayerScreen({
     const session = shuffleSessionRef.current;
     if (session) {
       session.setPrevious(activeVideoId);
-      if (options?.historyMode !== 'back' && options?.historyMode !== 'forward') {
+      if (
+        options?.historyMode !== "back" &&
+        options?.historyMode !== "forward"
+      ) {
         // If the next video matches what peekNext returned, commitNext to advance.
         // Otherwise it's a queue tap — just markPlayed.
         if (session.peekNext() === nextVideoId) {
@@ -1385,12 +1765,18 @@ export function VideoPlayerScreen({
     }
     setSwitchPreviewVideo(nextVideo ?? null);
     setActiveVideoId(nextVideoId);
-    if (options?.historyMode === 'back') {
+    if (options?.historyMode === "back") {
       historyCursorRef.current = Math.max(0, historyCursorRef.current - 1);
-    } else if (options?.historyMode === 'forward') {
-      historyCursorRef.current = Math.min(historyRef.current.length - 1, historyCursorRef.current + 1);
+    } else if (options?.historyMode === "forward") {
+      historyCursorRef.current = Math.min(
+        historyRef.current.length - 1,
+        historyCursorRef.current + 1,
+      );
     } else {
-      historyRef.current = historyRef.current.slice(0, historyCursorRef.current + 1);
+      historyRef.current = historyRef.current.slice(
+        0,
+        historyCursorRef.current + 1,
+      );
       historyRef.current.push(nextVideoId);
       historyCursorRef.current++;
     }
@@ -1417,7 +1803,9 @@ export function VideoPlayerScreen({
       return null;
     }
     const nextId = session.peekNext();
-    return nextId != null ? queue.find((item) => item.id === nextId) ?? null : null;
+    return nextId != null
+      ? (queue.find((item) => item.id === nextId) ?? null)
+      : null;
   }
 
   function getPreviousWatchedVideo() {
@@ -1437,7 +1825,7 @@ export function VideoPlayerScreen({
   }
 
   function getVideoByOffset(offset: 1 | -1) {
-    if (playbackOrder === 'shuffle') {
+    if (playbackOrder === "shuffle") {
       if (offset === -1) {
         return getPreviousWatchedVideo();
       } else {
@@ -1449,30 +1837,53 @@ export function VideoPlayerScreen({
   }
 
   function getVideoSwitchHistoryMode(offset: 1 | -1): VideoSwitchHistoryMode {
-    if (playbackOrder === 'shuffle') {
-      if (offset === -1) return 'back';
-      if (offset === 1 && getForwardWatchedVideo()) return 'forward';
+    if (playbackOrder === "shuffle") {
+      if (offset === -1) return "back";
+      if (offset === 1 && getForwardWatchedVideo()) return "forward";
     }
-    return 'append';
+    return "append";
   }
 
   function switchVideoByOffset(offset: 1 | -1) {
     const nextVideo = getVideoByOffset(offset);
     if (nextVideo) {
-      switchVideo(nextVideo.id, nextVideo, { historyMode: getVideoSwitchHistoryMode(offset) });
+      switchVideo(nextVideo.id, nextVideo, {
+        historyMode: getVideoSwitchHistoryMode(offset),
+      });
     }
   }
 
   function handlePlayToEnd() {
-    if (externalSource || queue.length <= 1) {
+    if (externalSource || queue.length <= 1 || isReplacingRef.current) {
+      return;
+    }
+    // Reject ghost playToEnd events from the previous video
+    if (player.duration > 0 && player.currentTime < player.duration - 1) {
       return;
     }
     if (currentPlaybackVideoIdRef.current) {
       currentTimeRef.current = 0;
       setCurrentTime(0);
-      void persistPlaybackPosition(currentPlaybackVideoIdRef.current, 0);
+      const finishedId = currentPlaybackVideoIdRef.current;
+      void persistPlaybackPosition(finishedId, 0);
+      setQueue((prevQueue) =>
+        prevQueue.map((item) =>
+          item.id === finishedId
+            ? { ...item, lastPlaybackPositionMs: 0 }
+            : item,
+        ),
+      );
     }
-    const nextVideo = playbackOrder === 'shuffle' ? getShuffleNextVideo() : getSequenceVideoByOffset(1);
+
+    if (playbackOrder === "single") {
+      player.replay();
+      return;
+    }
+
+    const nextVideo =
+      playbackOrder === "shuffle"
+        ? getShuffleNextVideo()
+        : getSequenceVideoByOffset(1);
     if (nextVideo) {
       switchVideo(nextVideo.id, nextVideo, { showControls: false });
     }
@@ -1487,29 +1898,72 @@ export function VideoPlayerScreen({
 
   const topBarNode = useMemo(
     () => (
-      <View style={[styles.topBar, isLandscape ? styles.landscapeTopBar : null, { paddingTop: insets.top + spacing[2] }]}>
-        <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
-          <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
-        </Pressable>
-        <Pressable
-          style={{ flex: 1, minWidth: 0 }}
-        >
-          <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="更多"
-          onPress={() => {
-            setMoreVisible((current) => !current);
-            showControls();
-          }}
-          style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}
-        >
-          <Ionicons color={colors.text.inverse} name="ellipsis-vertical" size={22} />
-        </Pressable>
+      <View
+        style={[
+          styles.topBar,
+          isLandscape ? styles.landscapeTopBar : null,
+          { paddingTop: insets.top + spacing[2] },
+        ]}
+      >
+        <View style={styles.topLeft}>
+          <Pressable
+            accessibilityLabel="返回"
+            onPress={handleBack}
+            style={({ pressed }) => [
+              styles.hudButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <MaterialIcons color="#fff" name="chevron-left" size={28} />
+          </Pressable>
+          <View style={styles.topTitleGroup}>
+            <Text numberOfLines={1} style={styles.playerTitle}>
+              {title}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.topRight}>
+          <Pressable
+            accessibilityLabel="更多"
+            onPress={() => {
+              setMoreVisible((current) => !current);
+              showControls();
+            }}
+            style={({ pressed }) => [
+              styles.hudButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <MaterialIcons color="#fff" name="more-vert" size={24} />
+          </Pressable>
+        </View>
       </View>
     ),
-    [insets.top, isLandscape, title]
+    [insets.top, isLandscape, title],
   );
+
+  const displayQueue = useMemo(() => {
+    if (playbackOrder === "shuffle" && shuffleSessionRef.current) {
+      const session = shuffleSessionRef.current;
+      const playedIds = Array.from(session.getPlayedIds());
+      const playedItems = playedIds
+        .map((id) => queue.find((item) => item.id === id))
+        .filter(Boolean) as ImageListItem[];
+      const candidateItems = session["candidates"]
+        .map((id) => queue.find((item) => item.id === id))
+        .filter(Boolean) as ImageListItem[];
+
+      const combined = [...playedItems, ...candidateItems];
+      if (activeVideoId && !combined.find((v) => v.id === activeVideoId)) {
+        const currentItem = queue.find((item) => item.id === activeVideoId);
+        if (currentItem) {
+          combined.splice(playedItems.length, 0, currentItem);
+        }
+      }
+      return combined;
+    }
+    return queue;
+  }, [queue, playbackOrder, activeVideoId]);
 
   return (
     <View style={styles.shell}>
@@ -1521,24 +1975,120 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
+        {/* Previous video cover — sits one screen above, visible only during manual drag */}
+        {previousSwitchVideo && surfaceHeight > 1 && (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: -surfaceHeight,
+              left: 0,
+              right: 0,
+              height: surfaceHeight,
+              backgroundColor: "#050607",
+              opacity: videoSwitchTranslateY.interpolate({
+                inputRange: [-1, -0.01, 0, 0.01, 1],
+                outputRange: [1, 1, 0, 1, 1],
+                extrapolate: "clamp",
+              }),
+            }}
+          >
+            {(previousSwitchVideo.coverThumbnailFileUri ??
+              previousSwitchVideo.thumbnailFileUri) ? (
+              <SecureImage
+                contentFit={videoContentFit}
+                space={space}
+                style={styles.videoAdjacentCoverImage}
+                uri={
+                  (previousSwitchVideo.coverThumbnailFileUri ??
+                    previousSwitchVideo.thumbnailFileUri) as string
+                }
+              />
+            ) : (
+              <View style={styles.videoAdjacentPlaceholder} />
+            )}
+          </Animated.View>
+        )}
+        {/* Next video cover — sits one screen below, visible only during manual drag */}
+        {nextSwitchVideo && surfaceHeight > 1 && (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: surfaceHeight,
+              left: 0,
+              right: 0,
+              height: surfaceHeight,
+              backgroundColor: "#050607",
+              opacity: videoSwitchTranslateY.interpolate({
+                inputRange: [-1, -0.01, 0, 0.01, 1],
+                outputRange: [1, 1, 0, 1, 1],
+                extrapolate: "clamp",
+              }),
+            }}
+          >
+            {(nextSwitchVideo.coverThumbnailFileUri ??
+              nextSwitchVideo.thumbnailFileUri) ? (
+              <SecureImage
+                contentFit={videoContentFit}
+                space={space}
+                style={styles.videoAdjacentCoverImage}
+                uri={
+                  (nextSwitchVideo.coverThumbnailFileUri ??
+                    nextSwitchVideo.thumbnailFileUri) as string
+                }
+              />
+            ) : (
+              <View style={styles.videoAdjacentPlaceholder} />
+            )}
+          </Animated.View>
+        )}
         <VideoView
           allowsPictureInPicture={false}
-          contentFit="contain"
+          contentFit={videoContentFit}
           fullscreenOptions={{ enable: false }}
           nativeControls={false}
+          onFirstFrameRender={() => {
+            // Cancel pending cover-show: for fast local files, the first frame
+            // arrives before the grace period expires, so the cover never shows.
+            if (coverShowTimerRef.current) {
+              clearTimeout(coverShowTimerRef.current);
+              coverShowTimerRef.current = null;
+            }
+            // If the cover is already showing (slow source or resumed after
+            // background), fade it out smoothly. Version guard protects against
+            // stale callbacks from a previous source or a quality-track change.
+            const dismissVersion = coverDismissVersionRef.current;
+            Animated.timing(coverOpacityAnim, {
+              toValue: 0,
+              duration: 180,
+              useNativeDriver: true,
+            }).start(({ finished }) => {
+              if (finished && coverDismissVersionRef.current === dismissVersion) {
+                setLoadingCoverVideo(null);
+              }
+            });
+          }}
           player={player}
           startsPictureInPictureAutomatically={false}
           style={styles.videoView}
         />
-        {loadingCoverVideo?.coverThumbnailFileUri ?? loadingCoverVideo?.thumbnailFileUri ? (
-          <View pointerEvents="none" style={styles.videoLoadingCover}>
+        {(loadingCoverVideo?.coverThumbnailFileUri ??
+        loadingCoverVideo?.thumbnailFileUri) ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.videoLoadingCover, { opacity: coverOpacityAnim }]}
+          >
             <SecureImage
-              contentFit="contain"
+              contentFit={videoContentFit}
               space={space}
               style={styles.videoLoadingCoverImage}
-              uri={(loadingCoverVideo.coverThumbnailFileUri ?? loadingCoverVideo.thumbnailFileUri) as string}
+              uri={
+                (loadingCoverVideo.coverThumbnailFileUri ??
+                  loadingCoverVideo.thumbnailFileUri) as string
+              }
             />
-          </View>
+          </Animated.View>
         ) : null}
         <View
           {...surfacePanResponder.panHandlers}
@@ -1546,15 +2096,34 @@ export function VideoPlayerScreen({
         />
       </Animated.View>
 
-      {brightnessOverlayOpacity > 0 ? <View pointerEvents="none" style={[styles.brightnessOverlay, { opacity: brightnessOverlayOpacity }]} /> : null}
+      {brightnessOverlayOpacity > 0 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.brightnessOverlay,
+            { opacity: brightnessOverlayOpacity },
+          ]}
+        />
+      ) : null}
 
       {gestureFeedback ? (
         <View pointerEvents="none" style={styles.gestureFeedback}>
-          <Ionicons color={colors.text.inverse} name={getGestureFeedbackIcon(gestureFeedback.kind)} size={24} />
-          <Text style={styles.gestureFeedbackText}>{gestureFeedback.label}</Text>
+          <Ionicons
+            color={colors.text.inverse}
+            name={getGestureFeedbackIcon(gestureFeedback.kind)}
+            size={24}
+          />
+          <Text style={styles.gestureFeedbackText}>
+            {gestureFeedback.label}
+          </Text>
           {gestureFeedback.value != null ? (
             <View style={styles.gestureFeedbackBar}>
-              <View style={[styles.gestureFeedbackFill, { width: `${Math.round(gestureFeedback.value * 100)}%` }]} />
+              <View
+                style={[
+                  styles.gestureFeedbackFill,
+                  { width: `${Math.round(gestureFeedback.value * 100)}%` },
+                ]}
+              />
             </View>
           ) : null}
         </View>
@@ -1562,185 +2131,517 @@ export function VideoPlayerScreen({
 
       {isSurfaceScrubbing && isScrubbing ? (
         <View pointerEvents="none" style={styles.surfaceScrubOverlay}>
-          <Text style={styles.surfaceScrubTime}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+          <Text style={styles.surfaceScrubTime}>
+            {formatDuration(displayTime * 1000)} /{" "}
+            {formatDuration(duration * 1000)}
+          </Text>
           <View style={styles.surfaceScrubTrack}>
-            <View style={[styles.surfaceScrubFill, { width: `${progress * 100}%` }]} />
+            <View
+              style={[styles.surfaceScrubFill, { width: `${progress * 100}%` }]}
+            />
           </View>
-          <Text style={styles.surfaceScrubMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
+          <Text style={styles.surfaceScrubMeta}>
+            {formatScrubMeta(
+              displayTime - scrubStartTimeRef.current,
+              scrubGestureHint,
+            )}
+          </Text>
         </View>
       ) : null}
 
-      {holdSpeedVisible ? (
-        <View style={[styles.holdSpeedFloatingBadge, { bottom: insets.bottom + 118 }]}>
-          <Ionicons color={colors.primary.hover} name="play-forward" size={13} />
-          <Text style={styles.holdSpeedBadgeText}>{holdSpeed}x 快进</Text>
-        </View>
-      ) : null}
+      <Animated.View
+        pointerEvents={controlsVisible && !isPlayerLocked ? "box-none" : "none"}
+        style={[styles.controlsLayer, { opacity: controlsOpacity }]}
+      >
+        {!isPlayerLocked && (
+          <>
+            {topBarNode}
 
-      <Animated.View pointerEvents={controlsVisible && !isPlayerLocked ? 'box-none' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
-        {topBarNode}
+            {moreVisible ? (
+              <>
+                <Pressable
+                  accessibilityLabel="关闭视频操作菜单"
+                  onPress={() => setMoreVisible(false)}
+                  style={styles.menuDismissLayer}
+                />
+                <Animated.View
+                  style={[
+                    styles.moreMenu,
+                    { top: insets.top + 58, right: spacing[3] },
+                    floatingPanelAnimatedStyle,
+                  ]}
+                >
+                  {moreItems.map((item) => (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={item.key}
+                      onPress={() => {
+                        setMoreVisible(false);
+                        item.onPress();
+                      }}
+                      style={({ pressed }) => [
+                        styles.moreMenuRow,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      {item.icon ? (
+                        <Ionicons
+                          color={colors.text.inverse}
+                          name={item.icon}
+                          size={17}
+                        />
+                      ) : null}
+                      <Text style={styles.moreMenuText}>{item.label}</Text>
+                    </Pressable>
+                  ))}
+                </Animated.View>
+              </>
+            ) : null}
 
-          {moreVisible ? (
-            <>
-              <Pressable accessibilityLabel="关闭视频操作菜单" onPress={() => setMoreVisible(false)} style={styles.menuDismissLayer} />
-              <Animated.View style={[styles.moreMenu, { top: insets.top + 58, right: spacing[3] }, floatingPanelAnimatedStyle]}>
-                {moreItems.map((item) => (
-                  <Pressable
-                    accessibilityRole="button"
-                    key={item.key}
-                    onPress={() => {
-                      setMoreVisible(false);
-                      item.onPress();
-                    }}
-                    style={({ pressed }) => [styles.moreMenuRow, pressed && styles.pressed]}
-                  >
-                    {item.icon ? <Ionicons color={colors.text.inverse} name={item.icon} size={17} /> : null}
-                    <Text style={styles.moreMenuText}>{item.label}</Text>
-                  </Pressable>
-                ))}
+            {speedMenuVisible ? (
+              <Animated.View
+                style={[
+                  styles.speedPanel,
+                  { bottom: insets.bottom + (isLandscape ? 88 : 116) },
+                  floatingPanelAnimatedStyle,
+                ]}
+              >
+                <View style={styles.speedGroup}>
+                  <View style={styles.speedGroupHeader}>
+                    <Text style={styles.speedTitle}>播放速度</Text>
+                    <Text style={styles.speedTitleSub}>SPEED RATE</Text>
+                  </View>
+                  <View style={styles.speedGrid}>
+                    {SPEED_OPTIONS.map((option) => (
+                      <Pressable
+                        key={option}
+                        onPress={() => {
+                          setSpeed(option);
+                          setSpeedMenuVisible(false);
+                          showControls();
+                        }}
+                        style={[
+                          styles.speedChip,
+                          speed === option ? styles.speedChipActive : null,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.speedChipText,
+                            speed === option ? styles.speedChipTextActive : null,
+                          ]}
+                        >
+                          {option}x
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.speedGroupLast}>
+                  <View style={styles.speedGroupHeader}>
+                    <Text style={styles.speedTitle}>长按快进</Text>
+                    <Text style={styles.speedTitleSub}>LONG PRESS</Text>
+                  </View>
+                  <View style={styles.longPressGrid}>
+                    {SPEED_OPTIONS.filter((option) => option >= 1).map(
+                      (option) => (
+                        <Pressable
+                          key={option}
+                          onPress={() => setHoldSpeed(option)}
+                          style={[
+                            styles.longPressChip,
+                            holdSpeed === option ? styles.longPressChipActive : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.longPressChipText,
+                              holdSpeed === option
+                                ? styles.longPressChipTextActive
+                                : null,
+                            ]}
+                          >
+                            {option}x
+                          </Text>
+                        </Pressable>
+                      ),
+                    )}
+                  </View>
+                </View>
               </Animated.View>
-            </>
-          ) : null}
+            ) : null}
 
-          {queueVisible ? (
-            <Animated.View style={[styles.queuePanel, { bottom: insets.bottom + 152 }, floatingPanelAnimatedStyle]}>
-              <Text style={styles.queueTitle}>待播放</Text>
-              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={styles.queueScroll} contentContainerStyle={styles.queueScrollContent}>
-                {queue.map((item) => (
-                  <Pressable key={item.id} onPress={() => switchVideo(item.id, item)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
-                    <View style={styles.queueCover}>
-                      {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
-                        <SecureImage contentFit="cover" space={space} style={styles.queueCoverImage} uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string} />
-                      ) : (
-                        <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
-                      )}
-                    </View>
-                    <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
-                    {item.id === activeVideoId ? <Text style={styles.queueNowPlaying}>当前视频</Text> : null}
-                    <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
+            {queueVisible && (
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => setQueueVisible(false)}
+              />
+            )}
+            <View
+              pointerEvents={queueVisible ? "none" : "box-none"}
+              style={[
+                styles.bottomBar,
+                isLandscape ? styles.landscapeBottomBar : null,
+                {
+                  paddingBottom:
+                    insets.bottom + (isLandscape ? spacing[1] : spacing[3]),
+                },
+              ]}
+            >
+              <View style={styles.scrubberTouchzone}>
+                <View style={styles.scrubberHeader}>
+                  <View style={styles.scrubberHeaderLeft}>
+                    <Text style={styles.tcCurrent}>
+                      {formatDuration(displayTime * 1000)}
+                    </Text>
+                    <Text style={styles.tcSlash}>/</Text>
+                    <Text style={styles.tcTotal}>
+                      {formatDuration(duration * 1000)}
+                    </Text>
+                  </View>
+                  <View style={styles.scrubberHeaderCenter}>
+                    {holdSpeedVisible ? (
+                      <View style={styles.centerBadgeRow}>
+                        <Ionicons
+                          color={colors.primary.hover}
+                          name="play-forward"
+                          size={13}
+                        />
+                        <Text style={styles.holdSpeedBadgeText}>
+                          {holdSpeed}x 快进
+                        </Text>
+                      </View>
+                    ) : isScrubbing ? (
+                      <View style={styles.centerBadgeRow}>
+                        <Text style={styles.scrubBubbleTimeInline}>
+                          {formatDuration(displayTime * 1000)}
+                        </Text>
+                        <Text style={styles.scrubBubbleMetaInline}>
+                          {formatScrubMeta(
+                            displayTime - scrubStartTimeRef.current,
+                            scrubGestureHint,
+                          )}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.tcRemaining}>
+                    -{formatDuration((duration - displayTime) * 1000)}
+                  </Text>
+                </View>
+                <View
+                  {...seekPanResponder.panHandlers}
+                  ref={progressTrackRef}
+                  onLayout={(event) =>
+                    handleProgressTrackLayout(event.nativeEvent.layout.width)
+                  }
+                  style={styles.progressHitArea}
+                >
+                  <View style={styles.progressTrackBg}>
+                    <View
+                      style={[styles.progressTrackBuffer, { width: "84%" }]}
+                    />
+                    <View
+                      style={[
+                        styles.progressTrackFill,
+                        { width: `${progress * 100}%` },
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.progressKnobWrap,
+                      { left: `${progress * 100}%` },
+                    ]}
+                  >
+                    <View style={styles.progressKnobDot} />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.masterControlDock}>
+                <View style={styles.dockLeft}>
+                  <Pressable
+                    onPress={() =>
+                      setVideoContentFit((prev) =>
+                        prev === "contain" ? "cover" : "contain",
+                      )
+                    }
+                    style={styles.hudButton}
+                  >
+                    <MaterialIcons name="aspect-ratio" size={22} color="#fff" />
                   </Pressable>
-                ))}
+                </View>
+                <View style={styles.dockCenter} pointerEvents="box-none">
+                  <Pressable
+                    onPress={togglePlaybackOrder}
+                    style={styles.hudButton}
+                  >
+                    <MaterialIcons
+                      name={
+                        playbackOrder === "shuffle"
+                          ? "shuffle"
+                          : playbackOrder === "single"
+                            ? "repeat-one"
+                            : "repeat"
+                      }
+                      size={22}
+                      color="#fff"
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => switchVideoByOffset(-1)}
+                    style={styles.hudButton}
+                  >
+                    <MaterialIcons
+                      name="skip-previous"
+                      size={26}
+                      color="#fff"
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={togglePlay}
+                    style={styles.masterPlayToggle}
+                  >
+                    <MaterialIcons
+                      name={isPlaying ? "pause" : "play-arrow"}
+                      size={26}
+                      color="#000"
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => switchVideoByOffset(1)}
+                    style={styles.hudButton}
+                  >
+                    <MaterialIcons name="skip-next" size={26} color="#fff" />
+                  </Pressable>
+                </View>
+                <View style={styles.dockRight}>
+                  <Pressable
+                    onPress={() => {
+                      setSpeedMenuVisible((current) => !current);
+                      setQueueVisible(false);
+                      showControls();
+                    }}
+                    style={[
+                      styles.hudButtonTextPill,
+                      speed !== 1 ? styles.hudButtonTextPillSelected : null,
+                      speedMenuVisible ? styles.hudButtonTextPillActive : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.hudButtonText,
+                        speed !== 1 ? styles.hudButtonTextSelected : null,
+                        speedMenuVisible ? styles.hudButtonTextActive : null,
+                      ]}
+                    >
+                      {speed}x
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={toggleOrientation}
+                    style={styles.hudButton}
+                  >
+                    <MaterialIcons
+                      name="screen-rotation"
+                      size={22}
+                      color="#fff"
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setQueueVisible((current) => !current);
+                      setSpeedMenuVisible(false);
+                      showControls();
+                    }}
+                    style={[
+                      styles.hudButton,
+                      queueVisible && styles.hudButtonActive,
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="video-library"
+                      size={22}
+                      color={queueVisible ? "#000" : "#fff"}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
+            <Animated.View
+              pointerEvents={queueVisible ? "auto" : "none"}
+              style={[
+                styles.playlistDrawer,
+                { transform: [{ translateX: drawerTranslateX }] },
+              ]}
+            >
+              <View
+                style={[
+                  styles.drawerHeader,
+                  { paddingTop: insets.top + spacing[3] },
+                ]}
+              >
+                <View style={styles.drawerHeaderLeft}>
+                  <Text style={styles.drawerTitle}>播放队列</Text>
+                  <Text style={styles.drawerSubtitle}>
+                    {(displayQueue.findIndex(
+                      (item) => item.id === activeVideoId,
+                    ) >= 0
+                      ? displayQueue.findIndex(
+                          (item) => item.id === activeVideoId,
+                        ) + 1
+                      : 0
+                    )
+                      .toString()
+                      .padStart(2, "0")}{" "}
+                    / {queue.length} 剪辑片段
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setQueueVisible(false)}
+                  style={styles.drawerCloseButton}
+                >
+                  <MaterialIcons name="close" size={20} color="#fff" />
+                </Pressable>
+              </View>
+              <ScrollView
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={false}
+                style={styles.drawerScroll}
+                contentContainerStyle={[
+                  styles.drawerScrollContent,
+                  { paddingBottom: insets.bottom + spacing[3] },
+                ]}
+              >
+                {displayQueue.map((item, idx) => {
+                  const isActive = item.id === activeVideoId;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => switchVideo(item.id, item)}
+                      style={[
+                        styles.drawerItem,
+                        isActive && styles.drawerItemActive,
+                      ]}
+                    >
+                      <View style={styles.drawerItemCover}>
+                        {(item.coverThumbnailFileUri ??
+                        item.thumbnailFileUri) ? (
+                          <SecureImage
+                            contentFit="cover"
+                            space={space}
+                            style={styles.drawerItemImage}
+                            uri={
+                              (item.coverThumbnailFileUri ??
+                                item.thumbnailFileUri) as string
+                            }
+                          />
+                        ) : null}
+                        <View style={styles.drawerItemDuration}>
+                          <Text style={styles.drawerItemDurationText}>
+                            {formatDuration(item.durationMs)}
+                          </Text>
+                        </View>
+                        {isActive && (
+                          <View style={styles.drawerItemActiveOverlay}>
+                            <MaterialIcons
+                              name="graphic-eq"
+                              size={20}
+                              color="#fff"
+                            />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.drawerItemInfo}>
+                        <View style={styles.drawerItemTitleRow}>
+                          <Text
+                            numberOfLines={1}
+                            style={styles.drawerItemTitle}
+                          >
+                            {item.originalFilename}
+                          </Text>
+                          {isActive && <View style={styles.activeDot} />}
+                        </View>
+                        {isActive ? (
+                          <Text style={styles.drawerItemNowPlaying}>
+                            播放中 · {formatDuration(displayTime * 1000)} /{" "}
+                            {formatDuration(item.durationMs)}
+                          </Text>
+                        ) : (
+                          <Text style={styles.drawerItemMeta}>
+                            {formatImageDimensions(item.width, item.height)} ·{" "}
+                            {formatFileSize(item.fileSize)}
+                          </Text>
+                        )}
+                      </View>
+                      <MaterialIcons
+                        name={isActive ? "equalizer" : "chevron-right"}
+                        size={20}
+                        color={isActive ? "#fff" : "rgba(255,255,255,0.5)"}
+                      />
+                    </Pressable>
+                  );
+                })}
               </ScrollView>
             </Animated.View>
-          ) : null}
+          </>
+        )}
+      </Animated.View>
 
-          {speedMenuVisible ? (
-            <Animated.View style={[styles.speedPanel, { bottom: insets.bottom + 152 }, floatingPanelAnimatedStyle]}>
-              <Text style={styles.speedTitle}>播放速度</Text>
-              <View style={styles.speedGrid}>
-                {SPEED_OPTIONS.map((option) => (
-                  <Pressable key={option} onPress={() => { setSpeed(option); setSpeedMenuVisible(false); showControls(); }} style={[styles.speedChip, speed === option ? styles.speedChipActive : null]}>
-                    <Text style={[styles.speedChipText, speed === option ? styles.speedChipTextActive : null]}>{option}x</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <Text style={styles.speedTitle}>长按快进</Text>
-              <View style={styles.speedGrid}>
-                {SPEED_OPTIONS.filter((option) => option >= 1).map((option) => (
-                  <Pressable key={option} onPress={() => setHoldSpeed(option)} style={[styles.speedChip, holdSpeed === option ? styles.speedChipActive : null]}>
-                    <Text style={[styles.speedChipText, holdSpeed === option ? styles.speedChipTextActive : null]}>{option}x</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </Animated.View>
-          ) : null}
-
-          <View style={[styles.bottomBar, isLandscape ? styles.landscapeBottomBar : null, { paddingBottom: insets.bottom + (isLandscape ? spacing[1] : spacing[2]) }]}>
-            {isLandscape && isScrubbing ? (
-              <View style={styles.landscapeScrubBubbleRow}>
-                <View style={styles.scrubBubble}>
-                  <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
-                  <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
-                </View>
-              </View>
-            ) : null}
-            <View
-              {...seekPanResponder.panHandlers}
-              ref={progressTrackRef}
-              onLayout={(event) => handleProgressTrackLayout(event.nativeEvent.layout.width)}
-              style={[styles.progressHitArea, isLandscape ? styles.landscapeProgressHitArea : null]}
+      <Animated.View
+        pointerEvents={controlsVisible ? "box-none" : "none"}
+        style={[StyleSheet.absoluteFillObject, { opacity: controlsOpacity }]}
+      >
+        {isPlayerLocked ? (
+          <Pressable
+            accessibilityLabel="解锁播放器"
+            onPress={togglePlayerLock}
+            style={[
+              styles.rightSideLockButton,
+              { bottom: insets.bottom + 120 },
+            ]}
+          >
+            <MaterialIcons
+              color="rgba(255,255,255,0.3)"
+              name="lock"
+              size={24}
+            />
+          </Pressable>
+        ) : (
+          controlsVisible && (
+            <Pressable
+              accessibilityLabel="锁定播放器"
+              onPress={togglePlayerLock}
+              style={[
+                styles.rightSideLockButton,
+                { bottom: insets.bottom + 120 },
+              ]}
             >
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-                <View style={[styles.progressKnob, { left: `${progress * 100}%` }]} />
-              </View>
-            </View>
-            <View style={[styles.controlRow, isLandscape ? styles.landscapeControlRow : null]}>
-              <View style={[styles.controlLeft, !isLandscape ? styles.portraitControlLeft : null]}>
-                {isLandscape ? (
-                  <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                    <Ionicons color={colors.text.inverse} name="play-skip-back" size={18} />
-                  </Pressable>
-                ) : null}
-                <Pressable accessibilityLabel={isPlaying ? '暂停' : '播放'} onPress={togglePlay} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.text.inverse} name={isPlaying ? 'pause' : 'play'} size={20} />
-                </Pressable>
-                {isLandscape ? (
-                  <Pressable accessibilityLabel="下一个视频" onPress={() => switchVideoByOffset(1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                    <Ionicons color={colors.text.inverse} name="play-skip-forward" size={18} />
-                  </Pressable>
-                ) : null}
-                {isLandscape ? (
-                  <Text numberOfLines={1} style={styles.landscapeTimeText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
-                ) : null}
-                {!isLandscape ? (
-                  <Text numberOfLines={1} style={styles.progressInfoText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
-                ) : null}
-              </View>
-              <View style={styles.controlActions}>
-                <Pressable
-                  accessibilityLabel={playbackOrder === 'shuffle' ? '切换为顺序播放' : '切换为随机播放'}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: playbackOrder === 'shuffle' }}
-                  onPress={togglePlaybackOrder}
-                  style={({ pressed }) => [styles.controlButton, playbackOrder === 'shuffle' ? styles.controlButtonActive : null, pressed && styles.pressed]}
-                >
-                  <Ionicons color={playbackOrder === 'shuffle' ? colors.primary.hover : colors.text.inverse} name={playbackOrder === 'shuffle' ? 'shuffle' : 'repeat-outline'} size={19} />
-                </Pressable>
-                <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
-                  <Text style={styles.pillButtonText}>{speed}x</Text>
-                </Pressable>
-                <Pressable accessibilityLabel="横竖屏" onPress={toggleOrientation} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.text.inverse} name={isLandscape ? 'phone-portrait-outline' : 'phone-landscape-outline'} size={19} />
-                </Pressable>
-                <Pressable
-                  accessibilityLabel={queueVisible ? '关闭待播放列表' : '打开待播放列表'}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: queueVisible }}
-                  onPress={() => { setQueueVisible((current) => !current); setSpeedMenuVisible(false); showControls(); }}
-                  style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}
-                >
-                  <Ionicons color={colors.text.inverse} name="list-outline" size={19} />
-                </Pressable>
-                <Pressable accessibilityLabel="锁定播放器" onPress={togglePlayerLock} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={18} />
-                </Pressable>
-              </View>
-            </View>
-            {!isLandscape && isScrubbing ? (
-              <View style={styles.portraitScrubBubbleRow}>
-                <View style={styles.scrubBubble}>
-                  <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
-                  <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
-                </View>
-              </View>
-            ) : null}
-          </View>
-        </Animated.View>
-
-      {isPlayerLocked ? (
-        <Pressable accessibilityLabel="解锁播放器" onPress={togglePlayerLock} style={[styles.unlockButton, { bottom: insets.bottom + spacing[2] }]}>
-          <Ionicons color={colors.text.inverse} name="lock-closed" size={18} />
-        </Pressable>
-      ) : null}
+              <MaterialIcons
+                color="rgba(255,255,255,0.3)"
+                name="lock-open"
+                size={24}
+              />
+            </Pressable>
+          )
+        )}
+      </Animated.View>
 
       <AppActionSheet
         items={[
-          { key: 'new', label: '新建 IP 并保存', icon: 'add-circle-outline', onPress: () => setNewIpDialogVisible(true) },
+          {
+            key: "new",
+            label: "新建 IP 并保存",
+            icon: "add-circle-outline",
+            onPress: () => setNewIpDialogVisible(true),
+          },
           ...normalIps.map((ip) => ({
             key: String(ip.id),
             label: ip.name,
-            icon: 'albums-outline' as const,
+            icon: "albums-outline" as const,
             meta: `${ip.imageCount} 个素材`,
             onPress: () => void saveExternalVideoToIp(ip.id),
           })),
@@ -1754,11 +2655,13 @@ export function VideoPlayerScreen({
         onClose={() => setNewIpDialogVisible(false)}
         onPrimary={() => void createIpAndSaveExternalVideo()}
         primaryDisabled={!newIpName.trim() || isSavingToIp}
-        primaryLabel={isSavingToIp ? '保存中' : '新建并保存'}
+        primaryLabel={isSavingToIp ? "保存中" : "新建并保存"}
         title="新建 IP"
         visible={newIpDialogVisible}
       >
-        <Text style={styles.dialogHint}>外部视频会按正式导入流程复制到 Pixory 私有目录。</Text>
+        <Text style={styles.dialogHint}>
+          外部视频会按正式导入流程复制到 Pixory 私有目录。
+        </Text>
         <TextInput
           editable={!isSavingToIp}
           onChangeText={setNewIpName}
@@ -1780,9 +2683,9 @@ function clamp01(value: number): number {
 function formatScrubDelta(deltaSeconds: number): string {
   const absoluteDelta = Math.abs(deltaSeconds);
   if (absoluteDelta < 0.5) {
-    return '预览中';
+    return "预览中";
   }
-  return `${deltaSeconds >= 0 ? '快进' : '后退'} ${formatDuration(absoluteDelta * 1000)}`;
+  return `${deltaSeconds >= 0 ? "快进" : "后退"} ${formatDuration(absoluteDelta * 1000)}`;
 }
 
 function formatScrubMeta(deltaSeconds: number, hint: string | null): string {
@@ -1791,18 +2694,18 @@ function formatScrubMeta(deltaSeconds: number, hint: string | null): string {
 }
 
 function getGestureFeedbackIcon(kind: GestureFeedbackKind) {
-  if (kind === 'seek-backward') return 'play-back';
-  if (kind === 'seek-forward') return 'play-forward';
-  if (kind === 'brightness') return 'sunny-outline';
-  if (kind === 'volume') return 'volume-high-outline';
-  if (kind === 'locked') return 'lock-closed-outline';
-  if (kind === 'unlocked') return 'lock-open-outline';
-  return 'information-circle-outline';
+  if (kind === "seek-backward") return "play-back";
+  if (kind === "seek-forward") return "play-forward";
+  if (kind === "brightness") return "sunny-outline";
+  if (kind === "volume") return "volume-high-outline";
+  if (kind === "locked") return "lock-closed-outline";
+  if (kind === "unlocked") return "lock-open-outline";
+  return "information-circle-outline";
 }
 
 const styles = StyleSheet.create({
   shell: {
-    backgroundColor: '#050607',
+    backgroundColor: "#050607",
     flex: 1,
   },
   videoSurface: {
@@ -1812,101 +2715,110 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   videoView: {
-    height: '100%',
-    width: '100%',
+    height: "100%",
+    width: "100%",
   },
   videoAdjacentSlot: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#050607",
+  },
+  videoAdjacentCoverImage: {
+    height: "100%",
+    width: "100%",
+  },
+  videoAdjacentPlaceholder: {
+    flex: 1,
+    backgroundColor: "#050607",
   },
   videoLoadingCover: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#050607',
+    backgroundColor: "#050607",
   },
   videoLoadingCoverImage: {
-    height: '100%',
-    width: '100%',
+    height: "100%",
+    width: "100%",
   },
   brightnessOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   gestureFeedback: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.82)',
-    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.82)",
+    borderColor: "rgba(255,255,255,0.14)",
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
-    justifyContent: 'center',
+    justifyContent: "center",
     minHeight: 104,
     minWidth: 126,
     padding: spacing[4],
-    position: 'absolute',
-    top: '42%',
+    position: "absolute",
+    top: "42%",
   },
   gestureFeedbackText: {
     ...typography.textStyles.caption,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   gestureFeedbackBar: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: "rgba(255,255,255,0.2)",
     borderRadius: radius.pill,
     height: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
     width: 82,
   },
   gestureFeedbackFill: {
     backgroundColor: colors.primary.hover,
     borderRadius: radius.pill,
-    height: '100%',
+    height: "100%",
   },
   surfaceScrubOverlay: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.58)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.58)",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
     minWidth: 180,
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
-    position: 'absolute',
-    top: '56%',
+    position: "absolute",
+    top: "56%",
   },
   surfaceScrubTime: {
     ...typography.textStyles.caption,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   surfaceScrubTrack: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: "rgba(255,255,255,0.22)",
     borderRadius: radius.pill,
     height: 3,
-    overflow: 'hidden',
+    overflow: "hidden",
     width: 148,
   },
   surfaceScrubFill: {
     backgroundColor: colors.primary.hover,
     borderRadius: radius.pill,
-    height: '100%',
+    height: "100%",
   },
   surfaceScrubMeta: {
     ...typography.textStyles.micro,
-    color: 'rgba(255,255,255,0.64)',
-    fontWeight: '700',
+    color: "rgba(255,255,255,0.64)",
+    fontWeight: "700",
   },
   unlockButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.76)',
-    borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.76)",
+    borderColor: "rgba(255,255,255,0.16)",
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     height: 40,
-    justifyContent: 'center',
-    position: 'absolute',
+    justifyContent: "center",
+    position: "absolute",
     right: spacing[3],
     width: 40,
   },
@@ -1914,52 +2826,52 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   topBar: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.24)',
-    flexDirection: 'row',
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.24)",
+    flexDirection: "row",
     gap: spacing[2],
     left: 0,
     paddingHorizontal: spacing[3],
     paddingBottom: spacing[3],
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
   },
   landscapeTopBar: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     paddingBottom: spacing[1],
   },
   iconButtonBare: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 42,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 42,
   },
   playerTitle: {
-    ...typography.textStyles.bodyStrong,
+    ...typography.textStyles.body,
     color: colors.text.inverse,
-    flex: 1,
-    minWidth: 0,
+    fontWeight: "600",
+    lineHeight: 28,
   },
   menuDismissLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 8,
   },
   moreMenu: {
-    backgroundColor: 'rgba(12, 15, 13, 0.92)',
-    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: "rgba(12, 15, 13, 0.92)",
+    borderColor: "rgba(255,255,255,0.14)",
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[1],
     minWidth: 152,
     padding: spacing[2],
-    position: 'absolute',
+    position: "absolute",
     zIndex: 12,
   },
   moreMenuRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: radius.md,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[2],
     minHeight: 38,
     paddingHorizontal: spacing[2],
@@ -1967,45 +2879,53 @@ const styles = StyleSheet.create({
   moreMenuText: {
     ...typography.textStyles.caption,
     color: colors.text.inverse,
-    fontWeight: '700',
+    fontWeight: "700",
+  },
+  rightSideLockButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    right: spacing[4],
+    width: 44,
+    height: 44,
   },
   holdSpeedBadge: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.78)',
-    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.78)",
+    borderColor: "rgba(255,255,255,0.14)",
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[1],
     minHeight: 28,
     paddingHorizontal: spacing[2],
   },
   holdSpeedFloatingBadge: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.78)',
-    borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: radius.pill,
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.78)",
+    borderColor: "rgba(255,255,255,0.14)",
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[1],
-    minHeight: 30,
     paddingHorizontal: spacing[3],
-    position: 'absolute',
+    paddingVertical: spacing[1],
+    marginBottom: spacing[2],
   },
   holdSpeedBadgeText: {
     ...typography.textStyles.micro,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   bottomBar: {
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    backgroundColor: "rgba(0, 0, 0, 0.42)",
     bottom: 0,
     gap: spacing[2],
     left: 0,
     paddingHorizontal: spacing[3],
     paddingTop: spacing[2],
-    position: 'absolute',
+    position: "absolute",
     right: 0,
   },
   landscapeBottomBar: {
@@ -2013,26 +2933,26 @@ const styles = StyleSheet.create({
     paddingTop: spacing[1],
   },
   portraitScrubBubbleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-start",
     minHeight: 30,
   },
   progressInfoText: {
     ...typography.textStyles.micro,
     color: colors.text.inverse,
     flex: 1,
-    fontWeight: '800',
+    fontWeight: "800",
     minWidth: 0,
   },
   progressTrack: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: "rgba(255,255,255,0.22)",
     borderRadius: radius.pill,
     height: 3,
-    position: 'relative',
+    position: "relative",
   },
   progressHitArea: {
-    justifyContent: 'center',
+    justifyContent: "center",
     minHeight: 34,
   },
   landscapeProgressHitArea: {
@@ -2041,56 +2961,68 @@ const styles = StyleSheet.create({
   progressFill: {
     backgroundColor: colors.primary.hover,
     borderRadius: radius.pill,
-    height: '100%',
+    height: "100%",
   },
   progressKnob: {
     backgroundColor: colors.text.inverse,
     borderRadius: radius.pill,
     height: 8,
     marginLeft: -4,
-    position: 'absolute',
+    position: "absolute",
     top: -2.5,
     width: 8,
   },
   scrubBubble: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.86)',
-    borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.86)",
+    borderColor: "rgba(255,255,255,0.16)",
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[2],
     maxWidth: 300,
     minHeight: 30,
     paddingHorizontal: spacing[3],
   },
+  scrubBubbleTimeInline: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
+  },
+  scrubBubbleMetaInline: {
+    ...typography.textStyles.micro,
+    color: colors.primary.hover,
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
+  },
   scrubBubbleTime: {
     ...typography.textStyles.caption,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   scrubBubbleMeta: {
     ...typography.textStyles.micro,
-    color: 'rgba(255,255,255,0.72)',
-    fontWeight: '700',
-    textAlign: 'center',
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "700",
+    textAlign: "center",
   },
   landscapeScrubBubbleRow: {
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
     minHeight: 30,
   },
   controlRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: spacing[2],
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   landscapeControlRow: {
     minHeight: 38,
   },
   controlLeft: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     flexShrink: 0,
   },
   portraitControlLeft: {
@@ -2101,27 +3033,27 @@ const styles = StyleSheet.create({
   landscapeTimeText: {
     ...typography.textStyles.micro,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
     marginLeft: spacing[1],
     minWidth: 86,
   },
   controlActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     flexShrink: 0,
-    flexWrap: 'nowrap',
+    flexWrap: "nowrap",
     gap: spacing[2],
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
     minWidth: 0,
   },
   controlButton: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 40,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 40,
   },
   controlButtonActive: {
-    backgroundColor: 'rgba(213, 228, 202, 0.16)',
+    backgroundColor: "rgba(213, 228, 202, 0.16)",
     borderRadius: radius.pill,
   },
   timeText: {
@@ -2131,10 +3063,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   pillButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderRadius: radius.pill,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[1],
     minHeight: 32,
     paddingHorizontal: spacing[2],
@@ -2142,67 +3074,135 @@ const styles = StyleSheet.create({
   pillButtonText: {
     ...typography.textStyles.micro,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   speedPanel: {
-    backgroundColor: 'rgba(12, 15, 13, 0.84)',
-    borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    maxWidth: 300,
-    padding: spacing[2],
-    position: 'absolute',
-    right: spacing[3],
-    width: 236,
+    backgroundColor: "rgba(22, 24, 30, 0.88)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 12,
+    position: "absolute",
+    left: "50%",
+    marginLeft: -144,
+    width: 288,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 25 },
+    shadowOpacity: 0.85,
+    shadowRadius: 50,
+    elevation: 24,
+  },
+  speedGroup: {
+    marginBottom: 10,
+  },
+  speedGroupLast: {
+    marginBottom: 0,
+  },
+  speedGroupHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 4,
+    paddingHorizontal: 2,
   },
   speedTitle: {
-    ...typography.textStyles.micro,
-    color: 'rgba(255,255,255,0.72)',
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.9)",
+    letterSpacing: 0.5,
+  },
+  speedTitleSub: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.4)",
+    letterSpacing: 1,
   },
   speedGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[1],
+    flexDirection: "row",
+    flexWrap: "wrap",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 4,
+    gap: 6,
   },
   speedChip: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
     minHeight: 28,
-    minWidth: 48,
-    justifyContent: 'center',
-    paddingHorizontal: spacing[2],
+    width: 76,
   },
   speedChipActive: {
-    backgroundColor: colors.primary.hover,
+    backgroundColor: "#ffffff",
+    shadowColor: "rgba(255,255,255,0.1)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 4,
+    transform: [{ scale: 1.02 }],
   },
   speedChipText: {
-    ...typography.textStyles.micro,
-    color: colors.text.inverse,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.7)",
   },
   speedChipTextActive: {
-    color: colors.text.title,
+    color: "#000000",
+    fontWeight: "600",
+  },
+  longPressGrid: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 4,
+    gap: 6,
+  },
+  longPressChip: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    minHeight: 28,
+  },
+  longPressChipActive: {
+    backgroundColor: "#ffffff",
+    shadowColor: "rgba(255,255,255,0.1)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 4,
+    transform: [{ scale: 1.02 }],
+  },
+  longPressChipText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.6)",
+  },
+  longPressChipTextActive: {
+    color: "#000000",
+    fontWeight: "600",
   },
   queuePanel: {
-    backgroundColor: 'rgba(12, 15, 13, 0.84)',
-    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: "rgba(12, 15, 13, 0.84)",
+    borderColor: "rgba(255,255,255,0.14)",
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
     maxHeight: 250,
     padding: spacing[2],
-    position: 'absolute',
+    position: "absolute",
     right: spacing[3],
     width: 260,
-    maxWidth: '80%',
+    maxWidth: "80%",
   },
   queueTitle: {
     ...typography.textStyles.caption,
     color: colors.text.inverse,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   queueScroll: {
     maxHeight: 190,
@@ -2212,28 +3212,28 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[1],
   },
   queueRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: radius.md,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing[2],
     minHeight: 38,
     paddingHorizontal: spacing[2],
   },
   queueRowActive: {
-    backgroundColor: 'rgba(213, 228, 202, 0.18)',
+    backgroundColor: "rgba(213, 228, 202, 0.18)",
   },
   queueCover: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: radius.sm,
     height: 30,
-    justifyContent: 'center',
-    overflow: 'hidden',
+    justifyContent: "center",
+    overflow: "hidden",
     width: 44,
   },
   queueCoverImage: {
-    height: '100%',
-    width: '100%',
+    height: "100%",
+    width: "100%",
   },
   queueName: {
     ...typography.textStyles.micro,
@@ -2243,12 +3243,12 @@ const styles = StyleSheet.create({
   },
   queueDuration: {
     ...typography.textStyles.micro,
-    color: 'rgba(255,255,255,0.68)',
+    color: "rgba(255,255,255,0.68)",
   },
   queueNowPlaying: {
     ...typography.textStyles.micro,
     color: colors.primary.hover,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   pressed: {
     opacity: 0.78,
@@ -2267,5 +3267,347 @@ const styles = StyleSheet.create({
     color: colors.text.title,
     minHeight: 44,
     paddingHorizontal: spacing[3],
+  },
+
+  topLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    flex: 1,
+    minWidth: 0,
+  },
+  topTitleGroup: {
+    flex: 1,
+    justifyContent: "center",
+    paddingLeft: spacing[2],
+  },
+  topRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[1],
+  },
+  dolbyBadge: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginRight: spacing[1],
+  },
+  dolbyText: {
+    ...typography.textStyles.micro,
+    color: "#e2e2e2",
+    fontWeight: "800",
+    fontSize: 9,
+    letterSpacing: 1.2,
+  },
+  scrubberTouchzone: {
+    flexDirection: "column",
+    gap: spacing[1],
+    width: "100%",
+  },
+  scrubberHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  scrubberHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tcCurrent: {
+    ...typography.textStyles.micro,
+    color: "#ffffff",
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  tcSlash: {
+    ...typography.textStyles.micro,
+    color: "rgba(255,255,255,0.5)",
+  },
+  tcTotal: {
+    ...typography.textStyles.micro,
+    color: "rgba(255,255,255,0.5)",
+    letterSpacing: 0.5,
+  },
+  centerBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[1],
+  },
+  scrubberHeaderCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  badgeLabel: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: radius.sm,
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    ...typography.textStyles.micro,
+    color: "#c4c7c7",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  fpsText: {
+    ...typography.textStyles.micro,
+    color: "#c4c7c7",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  tcRemaining: {
+    ...typography.textStyles.micro,
+    color: "rgba(255,255,255,0.5)",
+    letterSpacing: 0.5,
+  },
+  progressTrackBg: {
+    backgroundColor: "rgba(226,226,226,0.3)",
+    borderRadius: radius.pill,
+    height: 4,
+    position: "relative",
+    width: "100%",
+  },
+  progressTrackBuffer: {
+    backgroundColor: "rgba(226,226,226,0.5)",
+    borderRadius: radius.pill,
+    height: "100%",
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
+  progressTrackFill: {
+    backgroundColor: "#ffffff",
+    borderRadius: radius.pill,
+    height: "100%",
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
+  progressKnobWrap: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -7,
+    marginLeft: -7,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  progressKnobDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#000000",
+  },
+  masterControlDock: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[1],
+    paddingTop: spacing[2],
+    position: "relative",
+  },
+  dockLeft: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    zIndex: 10,
+  },
+  dockCenter: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing[1],
+    justifyContent: "center",
+    pointerEvents: "box-none",
+    zIndex: 5,
+  },
+  dockRight: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing[1],
+    justifyContent: "flex-end",
+  },
+  hudButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 8,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  masterPlayToggle: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  hudButtonActive: {
+    backgroundColor: "#ffffff",
+  },
+  hudButtonTextPill: {
+    height: 36,
+    paddingHorizontal: 0,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 52,
+  },
+  hudButtonTextPillSelected: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  hudButtonTextPillActive: {
+    backgroundColor: "#ffffff",
+  },
+  hudButtonText: {
+    ...typography.textStyles.caption,
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  hudButtonTextSelected: {
+    color: colors.primary.hover,
+  },
+  hudButtonTextActive: {
+    color: "#000000",
+  },
+  playlistDrawer: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 320,
+    maxWidth: "85%",
+    backgroundColor: "rgba(0,0,0,0.9)",
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "rgba(255,255,255,0.1)",
+    zIndex: 100,
+    shadowColor: "#000",
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    shadowOffset: { width: -4, height: 0 },
+  },
+  drawerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: spacing[3],
+    paddingBottom: spacing[3],
+  },
+  drawerHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing[2],
+  },
+  drawerTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: "#ffffff",
+    fontSize: 16,
+  },
+  drawerSubtitle: {
+    ...typography.textStyles.micro,
+    color: "rgba(255,255,255,0.6)",
+    fontWeight: "800",
+  },
+  drawerCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  drawerScroll: {
+    flex: 1,
+  },
+  drawerScrollContent: {
+    paddingHorizontal: spacing[3],
+    gap: spacing[2],
+  },
+  drawerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    padding: spacing[2],
+    borderRadius: radius.md,
+  },
+  drawerItemActive: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderColor: "rgba(255,255,255,0.3)",
+    borderWidth: 1,
+  },
+  drawerItemCover: {
+    width: 64,
+    height: 44,
+    borderRadius: radius.sm,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+    position: "relative",
+  },
+  drawerItemImage: {
+    width: "100%",
+    height: "100%",
+  },
+  drawerItemDuration: {
+    position: "absolute",
+    bottom: 2,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    paddingHorizontal: 4,
+    borderRadius: 2,
+  },
+  drawerItemDurationText: {
+    ...typography.textStyles.micro,
+    fontSize: 8,
+    color: "#ffffff",
+  },
+  drawerItemActiveOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  drawerItemInfo: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "column",
+    gap: 2,
+  },
+  drawerItemTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  drawerItemTitle: {
+    ...typography.textStyles.caption,
+    color: "#ffffff",
+    fontWeight: "800",
+    flexShrink: 1,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#ffffff",
+  },
+  drawerItemNowPlaying: {
+    ...typography.textStyles.micro,
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  drawerItemMeta: {
+    ...typography.textStyles.micro,
+    color: "rgba(255,255,255,0.6)",
   },
 });

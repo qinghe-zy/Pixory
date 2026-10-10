@@ -3,6 +3,8 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { aiLightColors } from './aiLightTheme';
 import type { IpRecord } from '../../database/types';
+import { IpRail } from '../IpRail';
+import { rhythm, metrics, typography } from '../../design/tokens';
 
 interface SystemActionConfirmCardProps {
   title: string;
@@ -10,11 +12,16 @@ interface SystemActionConfirmCardProps {
   onConfirm: () => void;
   onCancel?: () => void;
   confirmLabel?: string;
+  cancelLabel?: string;
   isConfirmed?: boolean;
   disableLocalConfirmState?: boolean;
+  stepLabel?: string;
+  onViewSteps?: () => void;
+  disabled?: boolean;
+  compact?: boolean;
 }
 
-export function SystemActionConfirmCard({ title, description, onConfirm, onCancel, confirmLabel = '确认', isConfirmed = false, disableLocalConfirmState = false }: SystemActionConfirmCardProps) {
+export function SystemActionConfirmCard({ title, description, onConfirm, onCancel, confirmLabel = '确认', cancelLabel = '取消', isConfirmed = false, disableLocalConfirmState = false, stepLabel, onViewSteps, disabled = false, compact = false }: SystemActionConfirmCardProps) {
   const [localConfirmed, setLocalConfirmed] = useState(false);
   const actuallyConfirmed = isConfirmed || localConfirmed;
 
@@ -31,16 +38,17 @@ export function SystemActionConfirmCard({ title, description, onConfirm, onCance
         <View style={styles.iconWrap}>
           <Ionicons name="information" size={14} color="#18181b" />
         </View>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={compact ? 2 : undefined}>{title}</Text>
       </View>
-      {description ? <Text style={styles.body}>{description}</Text> : null}
+      {description ? <Text style={styles.body} numberOfLines={compact ? 2 : undefined}>{description}</Text> : null}
       <View style={styles.footer}>
+        {stepLabel ? <Pressable onPress={onViewSteps} hitSlop={rhythm.inlineGap} style={styles.stepButton} accessibilityLabel="回看操作步骤"><Text style={styles.stepText}>{stepLabel}</Text></Pressable> : null}
         {onCancel && !actuallyConfirmed && (
           <Pressable 
             onPress={onCancel} 
             style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, pressed && styles.actionBtnPressed]}
           >
-            <Text style={styles.cancelBtnText}>取消</Text>
+            <Text style={styles.cancelBtnText}>{cancelLabel}</Text>
           </Pressable>
         )}
         <Pressable 
@@ -50,7 +58,7 @@ export function SystemActionConfirmCard({ title, description, onConfirm, onCance
             pressed && !actuallyConfirmed && styles.actionBtnPressed,
             actuallyConfirmed && styles.confirmedBtn
           ]}
-          disabled={actuallyConfirmed}
+          disabled={actuallyConfirmed || disabled}
         >
           <Text style={[styles.actionBtnText, actuallyConfirmed && styles.confirmedBtnText]}>
             {actuallyConfirmed ? '已确认' : confirmLabel}
@@ -65,15 +73,18 @@ interface SystemIpSelectCardProps {
   ips: IpRecord[];
   onConfirm: (ipId: number) => void;
   onCancel?: () => void;
+  controlled?: boolean;
+  stepLabel?: string;
+  onViewSteps?: () => void;
 }
 
-export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectCardProps) {
+export function SystemIpSelectCard({ ips, onConfirm, onCancel, controlled = false, stepLabel, onViewSteps }: SystemIpSelectCardProps) {
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
 
   const handleConfirm = () => {
     if (selectedIpId) {
-      setIsConfirmed(true);
+      if (!controlled) setIsConfirmed(true);
       onConfirm(selectedIpId);
     }
   };
@@ -88,22 +99,20 @@ export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectC
       </View>
       <Text style={styles.body}>请选择要操作的IP</Text>
       
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipList}>
-        {ips.map((ip) => (
-          <Pressable
-            key={ip.id}
-            onPress={isConfirmed ? undefined : () => setSelectedIpId(ip.id)}
-            style={[styles.ipPill, selectedIpId === ip.id && styles.ipPillSelected]}
-            disabled={isConfirmed}
-          >
-            <Text style={[styles.ipPillText, selectedIpId === ip.id && styles.ipPillTextSelected]}>
-              {ip.name}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <View pointerEvents={isConfirmed ? 'none' : 'auto'}>
+        <IpRail
+          ips={ips}
+          selectedIpId={selectedIpId}
+          onSelectIp={setSelectedIpId}
+          showAllOption={false}
+          style={{ marginBottom: 8, marginHorizontal: -12 }}
+          contentContainerStyle={{ paddingHorizontal: 12 }}
+          railId="systemActionCards"
+        />
+      </View>
 
       <View style={styles.footer}>
+        {stepLabel ? <Pressable onPress={onViewSteps} hitSlop={rhythm.inlineGap} style={styles.stepButton} accessibilityLabel="回看操作步骤"><Text style={styles.stepText}>{stepLabel}</Text></Pressable> : null}
         {onCancel && !isConfirmed && (
           <Pressable 
             onPress={onCancel} 
@@ -132,6 +141,8 @@ export function SystemIpSelectCard({ ips, onConfirm, onCancel }: SystemIpSelectC
 }
 
 const styles = StyleSheet.create({
+  stepButton: { marginRight: 'auto', alignSelf: 'center', minWidth: metrics.minTouchSize, paddingVertical: rhythm.microGap },
+  stepText: { color: aiLightColors.muted, fontSize: typography.size.caption },
   card: {
     backgroundColor: aiLightColors.surface,
     borderColor: '#e4e4e7',

@@ -168,6 +168,12 @@ import {
   type AiGenerationJobRecord,
 } from './generation/aiGenerationRepository';
 import { mergeContinuationDelta } from './generation/aiGenerationRecovery';
+import { isSystemAssistantThread, SYSTEM_ASSISTANT_THREAD_ID } from './systemAssistant/capabilityProfile';
+import { SystemAssistantProtocol, sanitizeSystemAssistantContent } from './systemAssistant/systemAssistantProtocol';
+import { ingestSystemAssistantAction } from './systemAssistant/systemAssistantTaskIngestion';
+import { clearSystemTasksInDatabase, loadSystemTask, restartSystemTask } from './systemAssistant/systemAssistantPersistence';
+import { validateSystemAssistantIp } from './systemAssistant/systemAssistantExecutor';
+import { migrateSystemAssistantHistory } from './systemAssistant/systemAssistantHistory';
 import { enqueueAiPostReplyTask } from './aiPostReplyTaskQueue';
 import { emitAiThreadPresentationUpdated } from './aiThreadPresentationEvents';
 
@@ -2767,9 +2773,15 @@ async function hydrateThreadMessagesInDatabase(
     const selectedVersion = selectedVersionsByMessageId[message.id] ?? null;
     return {
       ...message,
+      ...(isSystemAssistantThread(threadId) && message.role === 'assistant' ? {
+        content: sanitizeSystemAssistantContent(message.content),
+        reasoningText: null,
+      } : {}),
       attachments: attachmentsByMessageId[message.id] ?? [],
       citations: citationsByMessageId[message.id] ?? [],
-      messageVersions: selectedVersion ? [selectedVersion] : [],
+      messageVersions: selectedVersion ? [isSystemAssistantThread(threadId) && message.role === 'assistant'
+        ? { ...selectedVersion, content: sanitizeSystemAssistantContent(selectedVersion.content), reasoningText: null }
+        : selectedVersion] : [],
       versionIndex: selectedVersion?.versionIndex ?? versionTotal,
       versionTotal,
     };
@@ -2777,6 +2789,7 @@ async function hydrateThreadMessagesInDatabase(
 }
 
 export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
+  if (isSystemAssistantThread(threadId)) await migrateSystemAssistantHistory(db, (await aiThreadRepository.findThreadById(db, threadId))?.space ?? 'normal');
   const baseMessages = options.anchorMessageId && options.limit
     ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
     : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
@@ -2793,6 +2806,7 @@ export async function loadThreadMessagePageInDatabase(
   threadId: string,
   options: LoadThreadMessagePageOptions,
 ): Promise<AiThreadMessagePage> {
+  if (isSystemAssistantThread(threadId)) await migrateSystemAssistantHistory(db, (await aiThreadRepository.findThreadById(db, threadId))?.space ?? 'normal');
   const limit = Math.max(1, options.limit);
   const candidates = options.beforeCursor
     ? await aiThreadRepository.listMessagesBaseBefore(
@@ -2829,6 +2843,7 @@ export async function loadThreadMessagePageAroundAnchorInDatabase(
   threadId: string,
   options: LoadThreadMessagePageOptions & { anchorMessageId: string },
 ): Promise<AiThreadMessagePage> {
+  if (isSystemAssistantThread(threadId)) await migrateSystemAssistantHistory(db, (await aiThreadRepository.findThreadById(db, threadId))?.space ?? 'normal');
   const baseMessages = await aiThreadRepository.listMessagesBaseAroundAnchor(
     db,
     threadId,
@@ -2900,6 +2915,7 @@ export async function searchThreadMessages(input: {
   const branchScopes = input.branchScopes ?? [];
   const candidateLimit = offset + limit + 1;
   const matches = await runWithDatabaseSpace(input.space, async (db) => {
+    if (isSystemAssistantThread(input.threadId)) await migrateSystemAssistantHistory(db, input.space);
     const candidateRows = await aiThreadRepository.searchCompletedMessageFts(db, {
       branchScopes,
       limit: candidateLimit,
@@ -2953,6 +2969,7 @@ export async function searchGlobalMessages(input: {
   const candidateLimit = offset + limit + 1;
   let globalTotalCount = 0;
   const matches = await runWithDatabaseSpace(input.space, async (db) => {
+    await migrateSystemAssistantHistory(db, input.space);
     const { items: candidateRows, totalCount } = await aiThreadRepository.searchGlobalCompletedMessageFts(db, input.space, {
       limit: candidateLimit,
       query: input.query,
@@ -3574,7 +3591,10 @@ export async function unarchiveAiThread(space: PixorySpace, threadId: string): P
 }
 
 export async function clearAiThreadMessages(space: PixorySpace, threadId: string): Promise<void> {
-  return runWithDatabaseSpace(space, (db) => aiThreadRepository.clearThreadMessages(db, threadId));
+  return runWithDatabaseSpace(space, async db => {
+    await aiThreadRepository.clearThreadMessages(db, threadId);
+    if (isSystemAssistantThread(threadId)) await clearSystemTasksInDatabase(db);
+  });
 }
 
 export async function deleteAiThreads(space: PixorySpace, threadIds: string[]): Promise<number> {
@@ -3607,6 +3627,7 @@ export async function permanentlyDeleteAiThreads(space: PixorySpace, threadIds: 
         ownerIds: uniqueThreadIds,
       });
       deletedCount = await aiThreadRepository.deleteThreads(db, uniqueThreadIds);
+      if (uniqueThreadIds.includes(SYSTEM_ASSISTANT_THREAD_ID)) await clearSystemTasksInDatabase(db);
       for (const { roleCardId } of roleRows) {
         await dreamRepository.rebuildRoleRoundCounter(db, { roleCardId, space });
       }
@@ -4427,7 +4448,8 @@ async function streamAssistantReply(input: {
   const initialAnswerText = mode === 'continue' ? input.initialAnswerText ?? '' : '';
   const initialReasoningText = mode === 'continue' ? input.initialReasoningText ?? null : null;
   const requestContent = input.requestContentOverride ?? input.userMessage.content;
-  const ignoreReasoningDeltas = Boolean(input.ignoreReasoningDeltas);
+  const ignoreReasoningDeltas = Boolean(input.ignoreReasoningDeltas) || isSystemAssistantThread(input.thread.id);
+  const systemProtocol = isSystemAssistantThread(input.thread.id) ? new SystemAssistantProtocol() : null;
   let answerText = initialAnswerText;
   let reasoningText = initialReasoningText ?? '';
   const citationMarkerParser = new CitationMarkerStreamParser(initialAnswerText);
@@ -4453,6 +4475,10 @@ async function streamAssistantReply(input: {
   }
   function finalizeCitationParser(): void {
     if (citationParserFinalized) return;
+    if (systemProtocol) {
+      const tail = citationMarkerParser.push(systemProtocol.finish());
+      if (tail) pendingAnswerChunks.push(tail);
+    }
     const result = citationMarkerParser.finish();
     citationParserFinalized = true;
     parsedCitationMarkers = result.markers;
@@ -5408,7 +5434,7 @@ async function streamAssistantReply(input: {
             });
           }
           markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
-          const visibleDelta = citationMarkerParser.push(event.text);
+          const visibleDelta = citationMarkerParser.push(systemProtocol ? systemProtocol.push(event.text) : event.text);
           if (mode === 'continue') {
             answerText = appendContinuationAnswerDelta(answerText, visibleDelta, initialAnswerText);
           } else {
@@ -5509,6 +5535,24 @@ async function streamAssistantReply(input: {
     return;
   }
 
+  if (systemProtocol && (systemProtocol.actions.length || systemProtocol.invalid)) {
+    await ingestSystemAssistantAction({
+      space: input.space,
+      assistantMessageId: input.assistantMessageId,
+      originMessageId: input.userMessage.id,
+      requestText: input.userMessage.content,
+      action: systemProtocol.actions[0] ?? null,
+      invalid: systemProtocol.invalid,
+    });
+    flushStreamingTextChunks();
+    if (!answerText.trim()) answerText = systemProtocol.invalid ? '此操作暂不可用。' : '请在任务卡中继续。';
+  } else if (systemProtocol) {
+    const task = await loadSystemTask(input.space, input.assistantMessageId);
+    if (task?.status === 'planning') {
+      await ingestSystemAssistantAction({ space: input.space, assistantMessageId: input.assistantMessageId,
+        originMessageId: input.userMessage.id, requestText: input.userMessage.content, action: null });
+    }
+  }
   await waitForScheduledPersistStreamingSnapshot();
   flushStreamingTextChunks();
   mergeStreamingPerformanceSnapshot();
@@ -6214,6 +6258,9 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     return previousUserMessage;
   });
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  if (isSystemAssistantThread(thread.id)) {
+    await restartSystemTask(input.space, input.assistantMessageId, userMessage.id, userMessage.content);
+  }
   const replayAttachments = await loadOutgoingAttachmentsForMessage({
     messageId: userMessage.id,
     space: input.space,
@@ -6238,6 +6285,39 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     space: input.space,
     thread: latestThread,
     userMessage,
+  });
+}
+
+export async function continueSystemAssistantTask(input: RetryAssistantMessageInput): Promise<void> {
+  if (!isSystemAssistantThread(input.threadId)) throw new Error('此会话不支持系统操作。');
+  const task = await loadSystemTask(input.space, input.assistantMessageId);
+  if (!task?.selectedIp || task.status !== 'planning' || task.selectedIp.space !== input.space
+    || Date.parse(task.selectedIp.expiresAt) <= Date.now()) throw new Error('任务目标已过期，请重新选择。');
+  const selectedIp = await validateSystemAssistantIp(input.space, task.selectedIp.ipId);
+  const thread = await loadThreadForGeneration(input.space, SYSTEM_ASSISTANT_THREAD_ID);
+  const generationMetrics = createGenerationMetricsDraft({ contextType: thread.contextType,
+    generationId: createAiId('aigen'), messageId: input.assistantMessageId,
+    sendPressedAt: input.sendPressedAt, space: input.space, threadId: thread.id });
+  const userMessage = await runWithDatabaseSpace(input.space, async db => {
+    const assistant = await aiThreadRepository.findMessageById(db, input.assistantMessageId);
+    const user = await aiThreadRepository.findMessageById(db, task.originMessageId);
+    if (assistant?.threadId !== thread.id || assistant.role !== 'assistant'
+      || user?.threadId !== thread.id || user.role !== 'user') throw new Error('原任务已不存在。');
+    const lineage = await aiThreadRepository.resolveBranchLineage(db, assistant.branchRootMessageId, assistant.branchVersionIndex);
+    const origin = await aiThreadRepository.findPreviousMessageByRole(db, thread.id, assistant.id, 'user', lineage);
+    if (origin?.id !== task.originMessageId || user.content !== task.requestText) throw new Error('原请求已变化，请重新发送请求。');
+    await aiThreadRepository.updateMessage(db, assistant.id, {
+      status: 'generating', content: '', reasoningText: null, errorMessage: null, completedAt: null,
+      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+    });
+    return user;
+  });
+  input.onCreated?.({ assistantMessageId: input.assistantMessageId,
+    userMessageId: userMessage.id, generationId: generationMetrics.context.generationId, thinkingExpected: false });
+  await streamAssistantReply({ ...input, thread, userMessage, generationMetrics,
+    onTimeout: input.onTimeout,
+    ignoreReasoningDeltas: true, historyAnchorMessageId: userMessage.id,
+    requestContentOverride: `${userMessage.content}\n\n[系统任务上下文：用户已在本地选择 IP，名称为 ${JSON.stringify(selectedIp.ipNameSnapshot)}。继续原请求，使用该 IP 名称，不要再请求选择 IP。]`,
   });
 }
 

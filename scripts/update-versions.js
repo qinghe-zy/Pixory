@@ -47,7 +47,7 @@ for (const file of filesToUpdate) {
     let content = fs.readFileSync(file, 'utf8');
     
     // Replace standard version string globally
-    content = content.replace(new RegExp(oldVersion.replace(/\./g, '\\\\.'), 'g'), newVersion);
+    content = content.replace(new RegExp(oldVersion.replace(/\./g, '\\.'), 'g'), newVersion);
     
 
     

@@ -4,6 +4,7 @@ import {
   continueAssistantReply,
   continueAssistantMessage,
   regenerateAssistantMessage,
+  continueSystemAssistantTask,
   replyToAssistantMessage,
   rewriteUserMessage,
   recoverInterruptedGeneration,
@@ -246,6 +247,24 @@ function startRegenerateAssistantMessage(input: StartRegenerateAssistantMessageI
   return { promise: task.promise as Promise<void>, unsubscribe };
 }
 
+function startSystemAssistantTask(input: StartRegenerateAssistantMessageInput): ManagedTaskStart<void> {
+  if (input.threadId !== 'pixory-system-assistant') throw new Error('此会话不支持系统操作。');
+  const task = createTask(input.space, input.threadId);
+  rememberAssistantMessage(task, input.assistantMessageId);
+  const unsubscribe = addSubscriber(task, input.subscriber);
+  const { subscriber: _subscriber, ...request } = input;
+  task.promise = continueSystemAssistantTask({
+    ...request,
+    getStreamingVisibility: () => getTaskStreamingVisibility(task),
+    onCreated: ids => emitCreated(task, ids),
+    onMessagePatch: patch => emitMessagePatch(task, patch),
+    onUpdated: () => emitUpdated(task),
+    onTimeout: () => { void stopGeneration({ assistantMessageId: task.assistantMessageId, reason: 'timeout', space: task.space, threadId: task.threadId }); },
+    signal: task.controller.signal,
+  }).finally(() => finishTask(task));
+  return { promise: task.promise as Promise<void>, unsubscribe };
+}
+
 function startContinueAssistantMessage(input: StartContinueAssistantMessageInput): ManagedTaskStart<void> {
   const task = createTask(input.space, input.threadId);
   rememberAssistantMessage(task, input.assistantMessageId);
@@ -466,6 +485,7 @@ async function suspendSpace(space: PixorySpace): Promise<void> {
 }
 
 export const aiGenerationManager = {
+  startSystemAssistantTask,
   startContinueAssistantReply,
   getActiveTaskForThread,
   hasActiveTask,

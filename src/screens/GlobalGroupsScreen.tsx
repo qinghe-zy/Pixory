@@ -12,6 +12,7 @@ import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { ListSkeleton } from '../components/ListSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { IpRail } from '../components/IpRail';
 import { SecureImage } from '../components/SecureImage';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
@@ -214,57 +215,27 @@ export function GlobalGroupsScreen({
     </View>
   );
 
-  const ipPills = (
-    <>
-      <Pressable
-        onPress={() => setSelectedIpId(null)}
-        style={[styles.ipPill, selectedIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
-      >
-        <Text style={[styles.ipPillText, selectedIpId === null ? styles.ipPillTextActive : styles.ipPillTextInactive]}>全部 IP</Text>
-        <View style={selectedIpId === null ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
-          <Text style={[styles.ipPillBadgeText, selectedIpId === null ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>
-            {ipScopes.reduce((acc, ip) => acc + ip.groupCount, 0)}
-          </Text>
-        </View>
-      </Pressable>
-      {ipScopes.map((ip) => {
-        const isSelected = selectedIpId === ip.id;
-        return (
-          <Pressable
-            key={ip.id}
-            onPress={() => setSelectedIpId(ip.id)}
-            style={[styles.ipPill, isSelected ? styles.ipPillActive : styles.ipPillInactive]}
-          >
-            {!isSelected && <View style={styles.ipPillDot} />}
-            <Text style={[styles.ipPillText, isSelected ? styles.ipPillTextActive : styles.ipPillTextInactive]}>{ip.name}</Text>
-            <View style={isSelected ? styles.ipPillBadgeActive : styles.ipPillBadgeInactive}>
-              <Text style={[styles.ipPillBadgeText, isSelected ? styles.ipPillBadgeTextActive : styles.ipPillBadgeTextInactive]}>{ip.groupCount}</Text>
-            </View>
-          </Pressable>
-        );
-      })}
-      {onCreateFirstIp && (
-        <Pressable onPress={onCreateFirstIp} style={[styles.ipPill, styles.ipPillCreate]}>
-          <MaterialIcons name="add" size={14} color={protoColors.onPrimary} />
-          <Text style={[styles.ipPillText, styles.ipPillTextCreate]}>新建 IP</Text>
-        </Pressable>
-      )}
-    </>
-  );
-
   const expandedHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(scrollY.value, [0, 20], [1, 0], Extrapolation.CLAMP);
     return { opacity };
   });
+
+  const allOptionBadgeCount = useMemo(() => ipScopes.reduce((acc, ip) => acc + ip.groupCount, 0), [ipScopes]);
 
   const expandedHeader = (
     <Animated.View style={[styles.topSection, expandedHeaderStyle]}>
       {mode && onSelectMode && (
         <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={rightAction} collapsed={false} />
       )}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRail} style={{ marginHorizontal: -16 }}>
-        {ipPills}
-      </ScrollView>
+      <IpRail
+        ips={ipScopes}
+        selectedIpId={selectedIpId}
+        onSelectIp={setSelectedIpId}
+        allOptionBadgeCount={allOptionBadgeCount}
+        onCreateIp={onCreateFirstIp}
+        style={{ marginHorizontal: -16 }}
+        railId="globalGroups"
+      />
     </Animated.View>
   );
 
@@ -280,9 +251,16 @@ export function GlobalGroupsScreen({
         {mode && onSelectMode && (
           <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={compactRightAction} collapsed={true} />
         )}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRailCollapsed} style={styles.ipScrollCollapsed}>
-          {ipPills}
-        </ScrollView>
+        <IpRail
+          ips={ipScopes}
+          selectedIpId={selectedIpId}
+          onSelectIp={setSelectedIpId}
+          allOptionBadgeCount={allOptionBadgeCount}
+          onCreateIp={onCreateFirstIp}
+          style={styles.ipScrollCollapsed}
+          contentContainerStyle={styles.ipRailCollapsed}
+          railId="globalGroups"
+        />
         {compactRightAction}
       </View>
     </Animated.View>

@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 export type VideoOrientationPreference = 'portrait' | 'landscape' | 'system';
-export type VideoPlaybackOrder = 'sequence' | 'shuffle';
+export type VideoPlaybackOrder = 'sequence' | 'shuffle' | 'single';
 export type ImageReaderMode = 'horizontal-ltr' | 'horizontal-rtl' | 'vertical-continuous';
 export type ImageFitMode = 'contain' | 'width' | 'original';
 

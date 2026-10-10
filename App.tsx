@@ -1215,7 +1215,7 @@ export default function App() {
     void runWithDatabaseSpace(routeSpace, (db) => imageRepository.findById(db, imageId, { includeDeleted: true, mediaType: 'all' }))
       .then((asset) => {
         if (asset?.mediaType === 'video') {
-          pushRoute({ name: 'video-detail', videoId: imageId, space: routeSpace });
+          pushRoute({ name: 'video-player', videoId: imageId, space: routeSpace });
           return;
         }
         pushRoute({ name: 'image-detail', imageId, space: routeSpace, context });
@@ -1798,6 +1798,7 @@ export default function App() {
         videoId={currentRoute.videoId}
         space={currentRoute.space}
         onBack={popRoute}
+        onOpenDetail={(videoId) => pushRoute({ name: 'video-detail', videoId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
       />
     );

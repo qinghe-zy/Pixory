@@ -239,50 +239,37 @@ export function MeScreen({
   const lockPulse = useRef(new Animated.Value(1)).current;
   const { data, isLoading, errorMessage, reload } = useScreenLoad<MeStats>(
     async () => {
-      const [
-        ipCount,
-        activeAssetCount,
-        recentViewedCount,
-        favoriteImageCount,
-        deletedImageCount,
-        imageOriginalBytes,
-        videoOriginalBytes,
-        profileAvatarUri,
-        profileNickname,
-        uid,
-      ] = await runWithDatabaseSpace(space, (db) =>
-        Promise.all([
-          ipRepository.count(db),
-          imageRepository.count(db, { mediaType: "all" }),
-          imageRepository.countRecentViewed(db),
-          imageRepository.countFavorites(db),
-          imageRepository.countDeleted(db),
-          imageRepository.sumFileSize(db, {
-            includeDeleted: true,
-            mediaType: "image",
-          }),
-          imageRepository.sumFileSize(db, {
-            includeDeleted: true,
-            mediaType: "video",
-          }),
-          settingsRepository.getProfileAvatarUri(db),
-          settingsRepository.getProfileNickname(db),
-          UidService.getUid(),
-        ]),
-      );
+      return await runWithDatabaseSpace(space, async (db) => {
+        const ipCount = await ipRepository.count(db);
+        const activeAssetCount = await imageRepository.count(db, { mediaType: "all" });
+        const recentViewedCount = await imageRepository.countRecentViewed(db);
+        const favoriteImageCount = await imageRepository.countFavorites(db);
+        const deletedImageCount = await imageRepository.countDeleted(db);
+        const imageOriginalBytes = await imageRepository.sumFileSize(db, {
+          includeDeleted: true,
+          mediaType: "image",
+        });
+        const videoOriginalBytes = await imageRepository.sumFileSize(db, {
+          includeDeleted: true,
+          mediaType: "video",
+        });
+        const profileAvatarUri = await settingsRepository.getProfileAvatarUri(db);
+        const profileNickname = await settingsRepository.getProfileNickname(db);
+        const uid = await UidService.getUid();
 
-      return {
-        ipCount,
-        activeAssetCount,
-        recentViewedCount,
-        favoriteImageCount,
-        deletedImageCount,
-        profileAvatarUri,
-        profileNickname,
-        uid,
-        imageOriginalBytes,
-        videoOriginalBytes,
-      };
+        return {
+          ipCount,
+          activeAssetCount,
+          recentViewedCount,
+          favoriteImageCount,
+          deletedImageCount,
+          profileAvatarUri,
+          profileNickname,
+          uid,
+          imageOriginalBytes,
+          videoOriginalBytes,
+        };
+      });
     },
     ['MeScreen', refreshToken, space],
     {

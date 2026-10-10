@@ -6,9 +6,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$version = $Version.Trim().TrimStart('v')
+$version = $Version.TrimStart('v')
 if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw "版本号格式无效：$Version" }
-${branch} = (& git -C $repoRoot branch --show-current).Trim()
+${branch} = (& git -C $repoRoot branch --show-current)
 if ($branch -notin @('local-work', 'main')) {
   throw "自动远程交接只允许在 local-work 或 main 执行，当前分支为 $branch。"
 }
@@ -25,7 +25,7 @@ foreach ($required in @($externalNotes, $internalNotes, $releaseNotes)) {
   }
 }
 
-$origin = (& git -C $repoRoot remote get-url origin 2>$null).Trim()
+$origin = (& git -C $repoRoot remote get-url origin 2>$null)
 if ($LASTEXITCODE -ne 0 -or $origin -notmatch 'github\.com[:/]qinghe-zy/Pixory(?:\.git)?$') {
   throw "origin 不是 Pixory GitHub 远端，拒绝自动推送：$origin"
 }
@@ -40,7 +40,7 @@ function Test-PublicPath {
   if ($Path -eq 'PRD.md') { return $true }
   return $Path -notmatch '(^|/)(AGENTS\.md|\.codex/|\.impeccable\.md$|LOCAL_UPDATES_LOG\.md$|版本文档/|scripts/local/|\.local/|task_plan\.md$|findings\.md$|progress\.md$)'
 }
-$mainOid = (& git -C $repoRoot rev-parse refs/heads/main).Trim()
+$mainOid = (& git -C $repoRoot rev-parse refs/heads/main)
 $tempIndex = Join-Path $repoRoot ".local\release-index-$PID"
 $pathspecPath = Join-Path $repoRoot ".local\release-pathspec-$PID"
 $oldIndex = $env:GIT_INDEX_FILE
@@ -54,15 +54,15 @@ try {
   if ($LASTEXITCODE -ne 0) { throw '读取 main 公开基线失败。' }
   & git -C $repoRoot add -A
   if ($LASTEXITCODE -ne 0) { throw '公开发布文件暂存失败。' }
-  $privateStaged = @(& git -C $repoRoot diff --cached --name-only | Where-Object { -not (Test-PublicPath $_) })
+  $privateStaged = @(& git -C $repoRoot ls-files | Where-Object { -not (Test-PublicPath $_) })
   foreach ($privatePath in $privateStaged) {
     & git -C $repoRoot update-index --force-remove -- $privatePath
     if ($LASTEXITCODE -ne 0) { throw "从公开索引移除私有路径失败：$privatePath" }
   }
-  $staged = @(& git -C $repoRoot diff --cached --name-only)
+  $staged = @(& git -C $repoRoot diff --cached --name-only --diff-filter=ACM)
   $forbidden = @($staged | Where-Object { -not (Test-PublicPath $_) })
   if ($forbidden.Count -gt 0) { throw "公开交接包含私有路径，已停止：$($forbidden -join ', ')" }
-  $tree = (& git -C $repoRoot write-tree).Trim()
+  $tree = (& git -C $repoRoot write-tree)
   if ($LASTEXITCODE -ne 0 -or -not $tree) { throw '生成公开发布树失败。' }
 } finally {
   if ($oldIndex) { $env:GIT_INDEX_FILE = $oldIndex } else { Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue }
@@ -78,18 +78,18 @@ $body = @"
 - 文档：版本文档归档与下一版本当前文档已由 version-document-workflow.ps1 完成。
 - 验证：交接脚本检查了公开路径、GitHub origin、私有路径和 pre-push 规则。
 "@
-$commit = ($body | & git -C $repoRoot commit-tree $tree -p $mainOid).Trim()
+$commit = ($body | & git -C $repoRoot commit-tree $tree -p $mainOid)
 if ($LASTEXITCODE -ne 0 -or -not $commit) { throw '发版公开提交失败。' }
 & git -C $repoRoot update-ref refs/heads/main $commit $mainOid
 if ($LASTEXITCODE -ne 0) { throw '更新本地 main 发布引用失败。' }
 
 $tag = "v$version"
-$tagExists = (& git -C $repoRoot tag --list $tag).Trim()
+$tagExists = ([string](& git -C $repoRoot tag --list $tag))
 if (-not $tagExists) {
   & git -C $repoRoot tag -a $tag $commit -m "Pixory $tag"
   if ($LASTEXITCODE -ne 0) { throw "创建标签失败：$tag" }
 } else {
-  $tagCommit = (& git -C $repoRoot rev-list -n 1 $tag).Trim()
+  $tagCommit = (& git -C $repoRoot rev-list -n 1 $tag)
   if ($tagCommit -ne $commit) { throw "标签已存在且不指向本次公开提交：$tag" }
 }
 

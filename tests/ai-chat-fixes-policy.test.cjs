@@ -25,6 +25,17 @@ test.skip('AI thinking block shows timed thinking state instead of the old summa
   assert.doesNotMatch(bubble, /label=\{message\.modelSnapshotJson\.includes\('reasoning'\) \? '思路' : '摘要'\}/);
 });
 
+test('Pixory system assistant keeps thinking content hidden without changing other chats', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const screen = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(bubble, /const shouldRenderThinking =\s*[\s\S]*!isUser &&\s*!isSystemAssistant/);
+  assert.match(screen, /const isSystemAssistant = threadId === 'pixory-system-assistant'/);
+  assert.match(screen, /!isSystemAssistantRef\.current[\s\S]*activeLanes/);
+  assert.match(screen, /!isSystemAssistant &&\s*Boolean\(thinkingExpandedByMessageIdRef/);
+  assert.match(bubble, /previous\.isSystemAssistant === next\.isSystemAssistant/);
+});
+
 test('AI regenerated and rewritten replies reset the thinking timer for the new generation', () => {
   const service = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
@@ -1659,7 +1670,8 @@ test('AI streaming timeout only stops when the provider stays silent for 60 seco
   assert.match(service, /scheduleProviderTimeout\(FIRST_PROVIDER_BYTE_TIMEOUT_MS\)/);
   assert.match(service, /async \(event: AiStreamEvent\) => \{[\s\S]*scheduleProviderTimeout\(PROVIDER_IDLE_TIMEOUT_MS\)/);
   assert.match(service, /if \(event\.type === 'provider_usage'\) \{[\s\S]*return;/);
-  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*const visibleDelta = citationMarkerParser\.push\(event\.text\)[\s\S]*appendContinuationAnswerDelta\(answerText, visibleDelta, initialAnswerText\)/);
+  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*const visibleDelta = citationMarkerParser\.push\(systemProtocol \? systemProtocol\.push\(event\.text\) : event\.text\)[\s\S]*appendContinuationAnswerDelta\(answerText, visibleDelta, initialAnswerText\)/);
+  assert.match(service, /const systemProtocol = isSystemAssistantThread\(input\.thread\.id\) \? new SystemAssistantProtocol\(\) : null/);
   assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled && !ignoreReasoningDeltas\) \{[\s\S]*pendingReasoningChunks\.push\(event\.text\)/);
   assert.match(manager, /reason: 'timeout'/);
 });

@@ -9,16 +9,16 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('website release-facing files reference the current 2.8.9.0 release', () => {
-  assert.match(read('docs/index.html'), /2.8.9.0/);
-  assert.match(read('docs/m.html'), /2.8.9.0/);
-  assert.match(read('app.json'), /"version": "2.8.9.0"/);
+test('website release-facing files reference the current 2.8.9.1 release', () => {
+  assert.match(read('docs/index.html'), /2.8.9.1/);
+  assert.match(read('docs/m.html'), /2.8.9.1/);
+  assert.match(read('app.json'), /"version": "2.8.9.1"/);
   // // assert.match(read('README.md'));
   assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.8\./);
   // assert.match(read('README.md'));
-  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2.8.9.0\.apk/);
-  assert.match(read('docs/m.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2.8.9.0\.apk/);
-  assert.match(read('package.json'), /"version": "2.8.9.0"/);
+  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2.8.9.1\.apk/);
+  assert.match(read('docs/m.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2.8.9.1\.apk/);
+  assert.match(read('package.json'), /"version": "2.8.9.1"/);
   // assert.match(read('README.md'));
   assert.match(read('docs/index.html'), /直接下载[\s\S]{0,140}最新版 Android APK/);
   assert.match(read('docs/index.html'), /GitHub 备用[\s\S]{0,140}历史版本与镜像/);

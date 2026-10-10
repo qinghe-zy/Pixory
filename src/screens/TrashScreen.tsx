@@ -9,6 +9,7 @@ import Animated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { IpRail } from '../components/IpRail';
 import { SecureImage } from '../components/SecureImage';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
@@ -219,27 +220,13 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
       count={trashCount}
       topRightActions={rightAction}
       middleContent={
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ipRail} style={{ marginHorizontal: -layout.pagePaddingHorizontal }}>
-          <Pressable
-            onPress={() => setActiveIpId(null)}
-            style={[styles.ipPill, activeIpId === null ? styles.ipPillActive : styles.ipPillInactive]}
-          >
-            <Text style={[styles.ipPillText, activeIpId === null ? styles.ipPillTextActive : styles.ipPillTextInactive]}>全部 IP</Text>
-          </Pressable>
-          {ips.map((ip) => {
-            const isSelected = activeIpId === ip.id;
-            return (
-              <Pressable
-                key={ip.id}
-                onPress={() => setActiveIpId(ip.id)}
-                style={[styles.ipPill, isSelected ? styles.ipPillActive : styles.ipPillInactive]}
-              >
-                {!isSelected && <View style={styles.ipPillDot} />}
-                <Text style={[styles.ipPillText, isSelected ? styles.ipPillTextActive : styles.ipPillTextInactive]}>{ip.name}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <IpRail
+          ips={ips}
+          selectedIpId={activeIpId}
+          onSelectIp={setActiveIpId}
+          style={{ marginHorizontal: -layout.pagePaddingHorizontal }}
+          railId="globalTrash"
+        />
       }
       bottomContent={
         storageMode ? (

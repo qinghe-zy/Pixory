@@ -1,4 +1,3 @@
-import { GLOBAL_ACTIONS } from '../services/searchActionService';
 import { clearAiThreadMessages } from '../ai/aiChatService';
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -60,9 +59,10 @@ import {
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import { AiChatGuideOverlay, type AiChatGuideStep, type GuideHighlightRect } from "../components/ai/AiChatGuideOverlay";
 import { AiChatNoKeyBanner } from "../components/ai/AiChatNoKeyBanner";
-import { SystemActionConfirmCard, SystemIpSelectCard } from "../components/ai/SystemActionCards";
+import { SystemAssistantTaskCard } from "../components/ai/SystemAssistantTaskCard";
+import { useSystemAssistantAdapter } from "./useSystemAssistantAdapter";
+import type { SystemTaskSnapshot } from "../ai/systemAssistant/systemAssistantTypes";
 import { AiSessionConfigScreen } from "./AiSessionConfigScreen";
-import { ipRepository } from "../database/repositories/ipRepository";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
   aiLightColors,
@@ -680,6 +680,7 @@ function messageUsesStandaloneAssistantDisplay(message: AiMessageWithCitations):
 }
 
 type VisibleMessageItem =
+  | { type: "systemTask"; id: string; task: SystemTaskSnapshot; }
   | {
       id: string;
       type: 'message';
@@ -882,7 +883,7 @@ interface AiChatScreenProps {
   onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
-  onNavigateToGlobalRoute?: (route: string, params: Record<string, string>) => void;
+  onNavigateToGlobalRoute?: (route: string, params: Record<string, string | number>) => void;
   onNavigateToCreateIp?: () => void;
   onNavigateToImportImages?: (ipId: number) => void;
   onNavigateToStorageUsage?: () => void;
@@ -947,6 +948,8 @@ export function AiChatScreen({
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
   const isSystemAssistant = threadId === 'pixory-system-assistant';
+  const isSystemAssistantRef = useRef(isSystemAssistant);
+  isSystemAssistantRef.current = isSystemAssistant;
 
   const initialBottomInsetRef = useRef(insets.bottom);
   const statusBarHeight =
@@ -980,13 +983,6 @@ export function AiChatScreen({
     return () => clearInterval(interval);
   }, [isSystemAssistant]);
 
-  const [systemAssistantIps, setSystemAssistantIps] = useState<any[]>([]);
-  useEffect(() => {
-    if (!isSystemAssistant) return;
-    runWithDatabaseSpace(space, (db) => ipRepository.findAll(db))
-      .then(setSystemAssistantIps)
-      .catch(() => {});
-  }, [isSystemAssistant, space]);
 
   const spaceRef = useRef(space);
   spaceRef.current = space;
@@ -1396,10 +1392,12 @@ export function AiChatScreen({
       return syncTailViewportPolicy(0);
     }
     const thinkingDefaultExpanded = false;
-    const isExpanded = tailState.messageId
-      ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ??
-          thinkingDefaultExpanded)
-      : thinkingDefaultExpanded;
+    const isExpanded =
+      !isSystemAssistantRef.current &&
+      (tailState.messageId
+        ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ??
+            thinkingDefaultExpanded)
+        : thinkingDefaultExpanded);
     const activeLanes: ("content" | "reasoning")[] = isExpanded
       ? ["content", "reasoning"]
       : ["content"];
@@ -1417,10 +1415,12 @@ export function AiChatScreen({
       }
 
       const thinkingDefaultExpanded = false;
-      const isExpanded = tailState.messageId
-        ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ??
-            thinkingDefaultExpanded)
-        : thinkingDefaultExpanded;
+      const isExpanded =
+        !isSystemAssistantRef.current &&
+        (tailState.messageId
+          ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ??
+              thinkingDefaultExpanded)
+          : thinkingDefaultExpanded);
 
       const activeLanes: ("content" | "reasoning")[] = isExpanded
         ? ["content", "reasoning"]
@@ -2072,6 +2072,33 @@ export function AiChatScreen({
     diarySessionStartedAtRef.current = new Date().toISOString();
   }, [activeThreadId]);
 
+  const systemAssistant = useSystemAssistantAdapter({
+    threadId: isSystemAssistant ? activeThreadId : null,
+    isFocused,
+    space,
+    messageIds: isSystemAssistant ? messages.filter(message => message.role === 'assistant').map(message => message.id) : [],
+    navigation: {
+      createIp: onNavigateToCreateIp, importImages: onNavigateToImportImages,
+      ipDetail: onNavigateToIpDetail, storage: onNavigateToStorageUsage,
+      trash: onNavigateToTrash, lockPersonal: onNavigateToPersonalSpaceLock,
+      global: onNavigateToGlobalRoute,
+    },
+    canContinue: () => !generating && !aiGenerationManager.getActiveTaskForThread(space, 'pixory-system-assistant'),
+    continueTask: handleSystemAssistantContinue,
+    stopTask: task => aiGenerationManager.stopGeneration({
+      space: task.space, threadId: 'pixory-system-assistant', assistantMessageId: task.assistantMessageId,
+    }),
+    changed: () => {
+      if (activeThreadIdRef.current === 'pixory-system-assistant') {
+        void reloadParticipantAppearance('pixory-system-assistant');
+        // We will trigger the jump via the useEffect below.
+      }
+    },
+    reportError: setErrorMessage,
+  });
+
+  const systemAssistantTasksSignature = isSystemAssistant ? Object.values(systemAssistant.tasks).map(t => `${t.taskId}:${t.status}:${t.updatedAt}`).join(',') : '';
+
   function getSelectedMessageVersionIndex(
     messageId: string,
     versionTotal: number,
@@ -2300,6 +2327,10 @@ export function AiChatScreen({
           message.role === 'user' &&
           (startsNewDate || previousMessage?.role !== 'user'),
       });
+      const systemTask = isSystemAssistant ? systemAssistant.tasks[message.id] : null;
+      if (systemTask && message.versionIndex === message.versionTotal) {
+        nextVisibleMessageItems.push({ type: 'systemTask', id: systemTask.taskId, task: systemTask });
+      }
       previousMessage = message;
     });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
@@ -2314,11 +2345,13 @@ export function AiChatScreen({
       (tailState.status === "detached" || tailState.status === "completed") &&
       tailState.generationId
     ) {
-      const isThinkingExpanded = tailState.messageId
-        ? Boolean(
-            thinkingExpandedByMessageIdRef.current.get(tailState.messageId),
-          )
-        : false;
+      const isThinkingExpanded =
+        !isSystemAssistantRef.current &&
+        (tailState.messageId
+          ? Boolean(
+              thinkingExpandedByMessageIdRef.current.get(tailState.messageId),
+            )
+          : false);
       const activeLanes: ("content" | "reasoning")[] = isThinkingExpanded
         ? ["content", "reasoning"]
         : ["content"];
@@ -2398,6 +2431,7 @@ export function AiChatScreen({
     selectedVersionByMessageId,
     singleBubbleTailReplayEnabled,
     streamingTailVersion,
+    systemAssistant.tasks,
     roleDiaries,
     diaryVersionsById,
     roleDreams,
@@ -3319,6 +3353,12 @@ export function AiChatScreen({
     },
     [followLatestMessage],
   );
+
+  useEffect(() => {
+    if (isSystemAssistant && isNearBottomRef.current) {
+      queueFollowLatestMessageAfterLayout(true);
+    }
+  }, [systemAssistantTasksSignature, isSystemAssistant, queueFollowLatestMessageAfterLayout]);
 
   function clearLatestJumpTimeouts() {
     latestJumpTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
@@ -4336,9 +4376,11 @@ export function AiChatScreen({
       return false;
     }
     const tailState = streamingTailStateRef.current;
-    const isThinkingExpanded = tailState.messageId
-      ? Boolean(thinkingExpandedByMessageIdRef.current.get(tailState.messageId))
-      : false;
+    const isThinkingExpanded =
+      !isSystemAssistantRef.current &&
+      (tailState.messageId
+        ? Boolean(thinkingExpandedByMessageIdRef.current.get(tailState.messageId))
+        : false);
     const activeLanes: ("reasoning" | "content")[] = isThinkingExpanded
       ? ["reasoning", "content"]
       : ["content"];
@@ -4407,11 +4449,13 @@ export function AiChatScreen({
       return true;
     }
     const tailState = streamingTailStateRef.current;
-    const isThinkingExpanded = tailState.messageId
-      ? Boolean(
-          thinkingExpandedByMessageIdRef.current.get(tailState.messageId),
-        )
-      : false;
+    const isThinkingExpanded =
+      !isSystemAssistantRef.current &&
+      (tailState.messageId
+        ? Boolean(
+            thinkingExpandedByMessageIdRef.current.get(tailState.messageId),
+          )
+        : false);
     const activeLanes: ("reasoning" | "content")[] = isThinkingExpanded
       ? ["reasoning", "content"]
       : ["content"];
@@ -5933,6 +5977,34 @@ export function AiChatScreen({
     replyAssistVisible,
   ]);
 
+  async function handleSystemAssistantContinue(task: SystemTaskSnapshot) {
+    if (activeThreadIdRef.current !== 'pixory-system-assistant' || task.space !== space || generating) {
+      throw new Error('任务暂时无法继续。');
+    }
+    const actionToken = beginGenerationAction();
+    if (!actionToken) throw new Error('请等待当前请求完成。');
+    const targetThreadId = 'pixory-system-assistant';
+    const { generation, subscriber } = beginStreamingRequest(targetThreadId);
+    let unsubscribe: (() => void) | null = null;
+    try {
+      setGenerating(true);
+      setActiveAssistantId(task.assistantMessageId);
+      const managed = aiGenerationManager.startSystemAssistantTask({
+        space, threadId: targetThreadId, assistantMessageId: task.assistantMessageId, subscriber,
+      });
+      unsubscribe = managed.unsubscribe;
+      generationSubscriptionRef.current = unsubscribe;
+      await managed.promise;
+    } finally {
+      finishGenerationAction(actionToken);
+      if (screenMountedRef.current && isCurrentStream(targetThreadId, generation)) {
+        setGenerating(false);
+        setActiveAssistantId(null);
+        if (generationSubscriptionRef.current === unsubscribe) clearGenerationSubscription();
+      }
+    }
+  }
+
   async function handleSend() {
     if (voiceSessionActiveRef.current) {
       voiceCancelledRef.current = true;
@@ -6950,6 +7022,15 @@ export function AiChatScreen({
 
   const renderMessageItem = useCallback(
     ({ item }: { item: VisibleMessageItem }) => {
+      if (item.type === 'systemTask') {
+        return <SystemAssistantTaskCard task={item.task} ips={systemAssistant.ips} disabled={generating && item.task.status !== 'planning'}
+          onSelectIp={ipId => { void systemAssistant.runtime?.resolveInput(item.task.assistantMessageId, ipId); }}
+          onConfirm={() => { void systemAssistant.runtime?.approve(item.task.assistantMessageId); }}
+          onCancel={() => { void systemAssistant.runtime?.cancel(item.task.assistantMessageId); }}
+          onRetry={() => { void systemAssistant.runtime?.retry(item.task.assistantMessageId); }}
+          onUndo={() => { void systemAssistant.runtime?.undo(item.task.assistantMessageId); }}
+          onCreateIp={() => onNavigateToCreateIp?.()} />;
+      }
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
       }
@@ -7096,9 +7177,9 @@ export function AiChatScreen({
         singleBubbleTailReplayEnabled &&
         activeTailState.messageId === message.id &&
         activeTailState.status !== "idle";
-      const isThinkingExpanded = Boolean(
-        thinkingExpandedByMessageIdRef.current.get(message.id),
-      );
+      const isThinkingExpanded =
+        !isSystemAssistant &&
+        Boolean(thinkingExpandedByMessageIdRef.current.get(message.id));
       const thinkingExpected = Boolean(
         thinkingExpectedByMessageIdRef.current.get(message.id),
       );
@@ -7230,75 +7311,6 @@ export function AiChatScreen({
                 nickname: participantAppearance.userNickname,
               }}
             />
-            {(() => {
-              if (isSystemAssistant && message.role === 'assistant') {
-                const textToSearch = (generating && message.id === activeAssistantId)
-                  ? streamingTailStateRef.current.blocks.map(b => b.raw).join('')
-                  : message.content;
-                const match = textToSearch.match(/<system_action\s+([^>]*)\/>/);
-                if (match) {
-                  const params: Record<string, string> = {};
-                  const attrs = match[1].matchAll(/(\w+)="([^"]*)"/g);
-                  for (const m of attrs) {
-                    params[m[1]] = m[2];
-                  }
-                  
-                  if (params.type === 'navigate' && params.route === 'lock-personal-space') {
-                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="锁定隐私空间" description="是否确认锁定隐私空间？" onConfirm={() => onNavigateToPersonalSpaceLock?.()} />;
-                  }
-                  if (params.type === 'navigate' && params.route === 'storage-usage') {
-                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="清理存储空间" description="是否确认前往清理存储空间？" onConfirm={() => onNavigateToStorageUsage?.()} />;
-                  }
-                  if (params.type === 'navigate' && params.route === 'trash') {
-                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="打开回收站" description="是否确认打开回收站？" onConfirm={() => onNavigateToTrash?.()} />;
-                  }
-                  if (params.type === 'navigate' && params.route === 'ip-detail' && params.ipId) {
-                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="打开IP" description="确认进入此IP页面？" onConfirm={() => onNavigateToIpDetail?.(parseInt(params.ipId!, 10))} />;
-                  }
-                  if (params.type === 'rename-thread') {
-                    const originalName = participantAppearance.assistantName || 'Pixory';
-                    return <SystemActionConfirmCard title={`修改伙伴昵称为: ${params.newTitle}`} description={`原昵称: ${originalName}`} isConfirmed={params.confirmed === 'true'} onConfirm={async () => {
-                      if (activeThreadIdRef.current) {
-                        await runWithDatabaseSpace(space, async (db) => {
-                          const newContent = message.content.replace('<system_action ', '<system_action confirmed="true" ');
-                          await aiThreadRepository.updateMessage(db, message.id, { content: newContent });
-                          const thread = await aiThreadRepository.findThreadById(db, activeThreadIdRef.current!);
-                          if (thread) {
-                            try {
-                              const snapshot = JSON.parse(thread.roleSnapshotJson);
-                              snapshot.name = params.newTitle;
-                              await aiThreadRepository.updateThread(db, activeThreadIdRef.current!, { roleSnapshotJson: JSON.stringify(snapshot) });
-                            } catch (e) {}
-                          }
-                        });
-                        void reloadThreadTitle(activeThreadIdRef.current);
-                        void reloadParticipantAppearance(activeThreadIdRef.current);
-                      }
-                    }} />;
-                  }
-                  if (params.type === 'navigate' && params.route === 'create-ip') {
-                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="新建IP" description="确认进入新建IP页面？" onConfirm={() => onNavigateToCreateIp?.()} />;
-                  }
-                  if (params.type === 'navigate' && params.route === 'import-images' && params.ipId) {
-                    return <SystemActionConfirmCard disableLocalConfirmState={true} title="导入素材" description="确认进入导入素材页面？" onConfirm={() => onNavigateToImportImages?.(parseInt(params.ipId!, 10))} />;
-                  }
-                  if (params.type === 'navigate' && params.route) {
-                    const action = GLOBAL_ACTIONS.find(a => a.route === params.route);
-                    if (action) {
-                      return <SystemActionConfirmCard disableLocalConfirmState={true} title={action.title} description={`确认进入${action.title}？`} onConfirm={() => onNavigateToGlobalRoute?.(action.route, params)} />;
-                    }
-                  }
-                  if (params.type === 'select_ip') {
-                    return <SystemIpSelectCard ips={systemAssistantIps} onConfirm={(ipId) => {
-                      // Tell the system AI that the user selected this IP
-                      setComposerText(`我选择了IP: ${systemAssistantIps.find((i: any) => i.id === ipId)?.name}`);
-                      setTimeout(() => handleSend(), 100);
-                    }} />;
-                  }
-                }
-              }
-              return null;
-            })()}
           </View>
           {inlineMemoryCaptures.length > 0 ? (
             <View style={styles.inlineMemoryNotice}>
@@ -7322,6 +7334,9 @@ export function AiChatScreen({
     },
     [
       activeAssistantId,
+      systemAssistant.runtime,
+      systemAssistant.ips,
+      onNavigateToCreateIp,
       participantAppearance,
       cancelInlineEdit,
       copyMessageContent,
