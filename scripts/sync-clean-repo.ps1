@@ -23,14 +23,18 @@ if (-not (Test-Path $TargetDir)) {
 $excludeDirs = @(
     ".git", ".expo", "node_modules", "output", "dist", "web-build",
     ".codex*", ".superpowers", ".playwright-mcp", ".worktrees", ".local",
-    "版本文档", "temp", ".idea", ".vscode", "coverage", "playwright-report"
+    "版本文档", "temp", "temp_*", ".idea", ".vscode", "coverage", "playwright-report"
 )
 
 $excludeFiles = @(
     "AGENTS.md", "agents.md", ".impeccable.md", "LOCAL_UPDATES_LOG.md",
-    "*.py", "temp_*.js", "temp_*.ps1", "patch*.js", "fix_*.js", "task_plan.md", 
-    "findings.md", "progress.md", "PRD.md", "PRODUCT.md",
-    "*.codex", "*.log", ".env*.local", "credentials.json",
+    "*.py", "temp_*", "temp_*.js", "temp_*.ps1", "temp_*.md", "temp_*.txt",
+    "patch*.js", "fix_*.js", "make-b64.js", "task_plan.md",
+    "findings.md", "progress.md", "PRD.md", "PRODUCT.md", "concise_release.md",
+    "*.codex", "*.log", "*.sqlite*", "*.db*",
+    "failed_tests.txt", "test_output*.txt", "createManifest.txt",
+    "*_apk.txt", "*_assets.txt",
+    ".env*.local", "credentials.json",
     "*.tsbuildinfo"
 )
 

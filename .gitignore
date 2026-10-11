@@ -81,7 +81,15 @@ yarn-error.*
 /test-results/
 /.nyc_output/
 /*.lcov
-/test_output.txt
+/test_output*.txt
+/failed_tests.txt
+/createManifest.txt
+/*_apk.txt
+/*_assets.txt
+/*.sqlite
+/*.sqlite*
+/make-b64.js
+/concise_release.md
 
 # Root-level one-off scripts and scratch files
 /*.py
