@@ -1,18 +1,19 @@
 {
-  "version": "2.8.9.1",
-  "versionCode": 2891,
+  "version": "2.8.9.2",
+  "versionCode": 2892,
   "enabled": true,
   "forceUpdate": false,
   "minSupportVersion": "2.1.2",
-  "message": "Pixory 2.8.9.1 现已发布，优化多处界面的交互逻辑与渲染性能，提升应用整体流畅度与操作体验。",
+  "message": "Pixory 2.8.9.2 现已发布，改善聊天阅读与后台恢复体验，可在官网下载区获取。",
   "detailLines": [
-    "优化部分界面的手势交互逻辑与视觉反馈，提升触控操作响应精度",
-    "改进视图渲染与动效过渡机制，降低操作延迟并消除视觉跳变",
-    "修复已知界面交互与显示异常，提升应用运行稳定性"
+    "修正思考预览跟随异常，展开后可完整阅读",
+    "思考用时单独统计，结束后自动收起",
+    "修复回到应用后回复迟迟不显示的问题"
   ],
-  "latestVersion": "2.8.9.1",
-  "latestVersionCode": 2891,
+  "latestVersion": "2.8.9.2",
+  "latestVersionCode": 2892,
   "downloadUrl": "https://mist01.com/#download",
-  "changelog": "1. 优化部分界面的手势交互逻辑与视觉反馈；2. 改进视图渲染与动效过渡机制；3. 修复已知界面交互与显示异常，提升稳定性。",
-  "releaseNotes": "Pixory 2.8.9.1：优化多处界面的交互逻辑与渲染性能，提升应用整体流畅度与操作体验。"
+  "changelog": "1. 改善思考预览与展开阅读；2. 思考用时独立统计，结束后自动收起；3. 修复后台返回后的回复显示异常。",
+  "releaseNotes": "改善聊天思考预览与展开阅读，修复后台返回后回复显示异常。",
+  "releaseDate": "2026-10-15"
 }

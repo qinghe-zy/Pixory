@@ -1,6 +1,6 @@
 import type { AiStreamBlockType } from './aiStreamingBlockSplitter';
 
-export const AI_STREAMING_HEIGHT_RENDERER_VERSION = 1;
+export const AI_STREAMING_HEIGHT_RENDERER_VERSION = 2;
 
 export type AiStreamBlockHeightEntry = {
   blockType: AiStreamBlockType;

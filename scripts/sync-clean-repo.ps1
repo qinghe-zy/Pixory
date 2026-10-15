@@ -4,6 +4,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $sourceDir = Split-Path -Parent $PSScriptRoot
+$TargetDir = [IO.Path]::GetFullPath($TargetDir)
+$sourcePath = [IO.Path]::GetFullPath($sourceDir)
+if ($TargetDir -eq $sourcePath -or $TargetDir.StartsWith($sourcePath + '\', [StringComparison]::OrdinalIgnoreCase) -or $sourcePath.StartsWith($TargetDir + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Clean repository must not overlap the source repository.'
+}
 
 Write-Host "开始同步纯净代码到新仓库: $TargetDir" -ForegroundColor Cyan
 
@@ -23,19 +28,20 @@ if (-not (Test-Path $TargetDir)) {
 $excludeDirs = @(
     ".git", ".expo", "node_modules", "output", "dist", "web-build",
     ".codex*", ".superpowers", ".playwright-mcp", ".worktrees", ".local",
-    "版本文档", "temp", "temp_*", ".idea", ".vscode", "coverage", "playwright-report"
+    "版本文档", "temp", "temp_*", ".idea", ".vscode", "coverage", "playwright-report",
+    ".gradle", ".kotlin", ".cxx", "build", (Join-Path $sourceDir 'scripts/local')
 )
 
 $excludeFiles = @(
-    "AGENTS.md", "agents.md", ".impeccable.md", "LOCAL_UPDATES_LOG.md",
+    ".git", "AGENTS.md", "agents.md", ".impeccable.md", "LOCAL_UPDATES_LOG.md",
     "*.py", "temp_*", "temp_*.js", "temp_*.ps1", "temp_*.md", "temp_*.txt",
     "patch*.js", "fix_*.js", "make-b64.js", "task_plan.md",
     "findings.md", "progress.md", "PRD.md", "PRODUCT.md", "concise_release.md",
     "*.codex", "*.log", "*.sqlite*", "*.db*",
     "failed_tests.txt", "test_output*.txt", "createManifest.txt",
     "*_apk.txt", "*_assets.txt",
-    ".env*.local", "credentials.json",
-    "*.tsbuildinfo"
+    ".env", ".env.*", "credentials.json", "*.pem", "*.p12",
+    "*.tsbuildinfo", "*.apk", "*.jks", "*.keystore", "local.properties", "keystore.local.properties", "eas-credentials.local.json"
 )
 
 Write-Host "正在执行文件镜像覆盖..." -ForegroundColor Yellow

@@ -10,6 +10,8 @@ export type SystemAssistantRuntimeHost = {
   navigate(command: SystemNavigationCommand): void;
   rename(task: SystemTaskSnapshot): Promise<SystemTaskSnapshot['undo']>;
   undoRename(task: SystemTaskSnapshot): Promise<void>;
+  undoRoleCreation?(task: SystemTaskSnapshot): Promise<void>;
+  cancelRoleTask?(task: SystemTaskSnapshot): Promise<void>;
   isActive(): boolean;
   canContinue(): boolean;
   hasActiveGeneration?(messageId: string): boolean;
@@ -22,7 +24,7 @@ const busyBySpace = new Map<SystemTaskSnapshot['space'], Set<string>>();
 
 export function withSystemTaskStep(task: SystemTaskSnapshot, status: SystemTaskSnapshot['status'], label: string): SystemTaskSnapshot {
   const at = new Date().toISOString();
-  return { ...task, status, updatedAt: at, steps: [...task.steps, { label, at }].slice(-8), error: null };
+  return { ...task, status, updatedAt: at, steps: [...task.steps, { label, at, status }].slice(-8), error: null };
 }
 
 export function createSystemAssistantRuntime(host: SystemAssistantRuntimeHost) {
@@ -115,7 +117,8 @@ export function createSystemAssistantRuntime(host: SystemAssistantRuntimeHost) {
           return;
         }
         return run(messageId, async task => {
-          if (!['waiting_for_ip', 'waiting_for_approval', 'failed', 'expired'].includes(task.status)) return;
+          if (!['waiting_for_ip', 'waiting_for_user', 'waiting_for_approval', 'failed', 'expired'].includes(task.status)) return;
+          if (task.action?.type === 'role-draft') await host.cancelRoleTask?.(task);
           await host.save(withSystemTaskStep(task, 'cancelled', '已取消'));
         });
       } catch { host.reportError?.('任务状态无法保存，请稍后重试。'); }
@@ -125,6 +128,10 @@ export function createSystemAssistantRuntime(host: SystemAssistantRuntimeHost) {
         if (!['failed', 'expired'].includes(task.status)) return;
         if (!task.action) {
           await host.save({ ...task, error: '请重新发送原请求。', updatedAt: new Date().toISOString() });
+          return;
+        }
+        if (task.action.type === 'role-draft') {
+          await host.save({ ...task, error: '请重新发送创建指令。', updatedAt: new Date().toISOString() });
           return;
         }
         const status = task.action.type === 'rename-thread' ? 'waiting_for_approval'
@@ -139,8 +146,13 @@ export function createSystemAssistantRuntime(host: SystemAssistantRuntimeHost) {
       return run(messageId, async task => {
         if (!['planning', 'executing', 'undoing'].includes(task.status)
           || host.hasActiveGeneration?.(messageId)) return;
+        if (task.status === 'planning' && (task.action?.type === 'role-draft'
+          || task.steps.some(step => /角色|设定/.test(step.label)))) {
+          await host.save(withSystemTaskStep(task, 'waiting_for_user', '共创已暂停'));
+          return;
+        }
         // An interrupted undo retains its completed outcome and original undo token.
-        const status = task.status === 'undoing' && task.undo ? 'completed' : 'failed';
+        const status = task.status === 'undoing' && (task.undo || task.createdRoleCard) ? 'completed' : 'failed';
         await host.save({ ...withSystemTaskStep(task, status, '上次任务已中断'),
           error: '上次任务已中断，请核对结果后重试。' });
       });
@@ -148,15 +160,22 @@ export function createSystemAssistantRuntime(host: SystemAssistantRuntimeHost) {
     undo(messageId: string) {
       if (!host.canContinue()) return Promise.resolve();
       return run(messageId, async task => {
-        if (task.status !== 'completed' || !task.undo) return;
+        if (task.status !== 'completed' || (!task.undo && !task.createdRoleCard)) return;
         try {
           await host.save(withSystemTaskStep(task, 'undoing', '正在撤销'));
-          await host.undoRename(task);
-          await host.save({ ...withSystemTaskStep(task, 'undone', '已撤销昵称修改'), undo: null });
+          if (task.createdRoleCard) {
+            if (!host.undoRoleCreation) throw new Error('撤销入口不可用。');
+            await host.undoRoleCreation(task);
+            await host.save({ ...withSystemTaskStep(task, 'undone', '已撤销角色创建'), createdRoleCard: null });
+          } else {
+            await host.undoRename(task);
+            await host.save({ ...withSystemTaskStep(task, 'undone', '已撤销昵称修改'), undo: null });
+          }
           host.changed();
         } catch {
           if ((await host.load(messageId))?.status !== 'undone') {
-            await host.save({ ...task, error: '无法撤销：昵称已再次修改或撤销已过期。', updatedAt: new Date().toISOString() });
+            await host.save({ ...task, error: task.createdRoleCard
+              ? '无法撤销：角色已修改、用于会话或撤销已过期。' : '无法撤销：昵称已再次修改或撤销已过期。', updatedAt: new Date().toISOString() });
           }
         }
       });

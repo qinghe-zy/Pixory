@@ -1,9 +1,32 @@
+import type { PixorySpace } from '../database';
+
 export type StreamingVisibilityState = {
   appActive?: boolean;
   bottomLocked: boolean;
   devicePressure?: boolean;
   routeFocused?: boolean;
 };
+
+type StreamingControl = { generationId: string; publish: () => void; persist: () => Promise<void> };
+const streamingControls = new Map<string, StreamingControl>();
+
+export function registerStreamingControl(space: PixorySpace, threadId: string, control: StreamingControl): () => void {
+  const key = `${space}:${threadId}`;
+  streamingControls.set(key, control);
+  return () => {
+    if (streamingControls.get(key) === control) streamingControls.delete(key);
+  };
+}
+
+export function resumeStreamingPublication(space: PixorySpace, threadId: string, generationId?: string): void {
+  const control = streamingControls.get(`${space}:${threadId}`);
+  if (control && (!generationId || control.generationId === generationId)) control.publish();
+}
+
+export async function persistActiveStreamingGeneration(space: PixorySpace, threadId: string, generationId?: string): Promise<void> {
+  const control = streamingControls.get(`${space}:${threadId}`);
+  if (control && (!generationId || control.generationId === generationId)) await control.persist();
+}
 
 export type StreamingFlushReason = 'background' | 'completion' | 'error' | 'route_blur' | 'stop';
 
@@ -25,12 +48,12 @@ export function targetStreamingFps(input: StreamingVisibilityState & { visibleCh
     return input.devicePressure ? 8 : 12;
   }
   if (input.visibleChars <= 1000) {
-    return input.devicePressure ? 30 : 60;
-  }
-  if (input.visibleChars <= 4000) {
     return input.devicePressure ? 24 : 45;
   }
-  return input.devicePressure ? 18 : 30;
+  if (input.visibleChars <= 4000) {
+    return input.devicePressure ? 20 : 30;
+  }
+  return input.devicePressure ? 16 : 24;
 }
 
 export function targetStreamingPatchIntervalMs(input: StreamingVisibilityState & { visibleChars: number }): number | null {

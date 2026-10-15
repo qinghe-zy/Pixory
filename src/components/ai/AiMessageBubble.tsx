@@ -17,6 +17,9 @@ import { AiInlineFeedback } from './AiInlineFeedback';
 import { AiMessageContent } from './AiMessageContent';
 import { AiStreamingMessageText, AiStreamingReasoningText } from './AiStreamingMessageText';
 import { AiThinkingBlock } from './AiThinkingBlock';
+import { readThinkingEndedAt } from '../../ai/aiGenerationMetrics';
+import { SystemAssistantProgress } from './SystemAssistantProgress';
+import type { SystemTaskSnapshot } from '../../ai/systemAssistant/systemAssistantTypes';
 import { AiTypingIndicator } from './AiTypingIndicator';
 import { AiVersionStepper } from './AiVersionStepper';
 import { formatAiFullMinute } from '../../utils/aiTimeFormatters';
@@ -29,6 +32,7 @@ const AI_SYSTEM_AVATAR = require('../../../assets/ai_system_avatar.png');
 
 interface AiMessageBubbleProps {
   isSystemAssistant?: boolean;
+  systemTask?: SystemTaskSnapshot | null;
   message: AiMessageWithCitations;
   replyActionMode?: 'continue' | 'reply';
   assistantAvatar?: {
@@ -74,6 +78,7 @@ interface AiMessageBubbleProps {
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
   onLongPress?: (message: AiMessageWithCitations, pageX: number, pageY: number) => void;
   onThinkingExpandedChange?: (messageId: string, expanded: boolean) => void;
+  onThinkingHeaderAnchorShift?: (offsetDelta: number) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
   onAttachmentPress?: (attachment: AiMessageAttachmentRecord) => void;
 }
@@ -249,6 +254,7 @@ function AiMessageBubbleComponent({
   assistantAvatar,
   assistantDisplayName = null,
   isSystemAssistant = false,
+  systemTask,
   generating = false,
   message,
   replyActionMode = 'continue',
@@ -284,6 +290,7 @@ function AiMessageBubbleComponent({
   onToggleFavorite,
   onLongPress,
   onThinkingExpandedChange,
+  onThinkingHeaderAnchorShift,
   onSubmitEdit,
   onAttachmentPress,
 }: AiMessageBubbleProps) {
@@ -381,8 +388,10 @@ function AiMessageBubbleComponent({
   }
 
   return (
-    <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-      <View style={[styles.messageStack, isUser ? styles.userStack : styles.assistantStack]}>
+    <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow,
+      isSystemAssistant && !isUser && styles.systemAssistantRow]}>
+      <View style={[styles.messageStack, isUser ? styles.userStack : styles.assistantStack,
+        isSystemAssistant && !isUser && styles.systemAssistantStack]}>
         {assistantHeaderVisible ? (
           <View style={[styles.headerRow, styles.assistantHeaderRow]}>
             {showAssistantAvatar ? (
@@ -440,28 +449,40 @@ function AiMessageBubbleComponent({
             ))}
           </View>
         ) : null}
+        {isSystemAssistant && !isUser ? (
+          <View style={[styles.thinkingWrap, styles.systemProgressWrap]}>
+            <SystemAssistantProgress task={systemTask} messageStatus={message.status} hasAnswer={Boolean(message.content.trim())}
+              defaultExpanded={thinkingDefaultExpanded}
+              onExpandedChange={expanded => onThinkingExpandedChange?.(message.id, expanded)} />
+          </View>
+        ) : null}
         {shouldRenderThinking ? (
           <View style={styles.thinkingWrap}>
             {streaming && streamingIdentity ? (
               <AiStreamingReasoningText
+                thinkingEndedAt={message.thinkingEndedAt ?? readThinkingEndedAt(message.promptSnapshotJson)}
                 completedAt={message.completedAt}
                 createdAt={message.createdAt}
                 defaultExpanded={thinkingDefaultExpanded}
                 identity={streamingIdentity}
                 initialReasoningText={message.reasoningText}
+                initialContent={message.content}
                 onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
+                onHeaderAnchorShift={onThinkingHeaderAnchorShift}
                 status={message.status}
                 thinkingActive={thinkingActive}
               />
             ) : (
               <AiThinkingBlock
+                thinkingEndedAt={message.thinkingEndedAt ?? readThinkingEndedAt(message.promptSnapshotJson)}
                 completedAt={message.completedAt}
                 createdAt={message.createdAt}
                 defaultExpanded={thinkingDefaultExpanded}
                 onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
+                onHeaderAnchorShift={onThinkingHeaderAnchorShift}
                 reasoningText={message.reasoningText}
                 status={message.status}
-                thinkingActive={thinkingActive}
+                thinkingActive={thinkingActive && !message.content}
               />
             )}
           </View>
@@ -501,12 +522,12 @@ function AiMessageBubbleComponent({
               <View style={styles.inlineEditor}>
                 <TextInput
                   autoFocus
-                  cursorColor={aiLightColors.onDark}
+                  cursorColor={aiLightColors.ink}
                   multiline
                   onChangeText={updateEditDraft}
                   placeholder="重写这条消息"
                   placeholderTextColor={aiLightColors.mutedSoft}
-                  selectionColor={aiLightColors.onDark}
+                  selectionColor={aiLightColors.ink}
                   style={styles.inlineEditorInput}
                   textAlignVertical="top"
                   value={editDraft}
@@ -543,7 +564,7 @@ function AiMessageBubbleComponent({
                   renderAssistantContentWithCursor(content, streaming)
                 )}
                 {isFailed && message.content.trim() && message.errorMessage ? <Text style={styles.errorText}>{message.errorMessage}</Text> : null}
-                {isFailed && canRegenerate ? (
+                {isFailed && canRegenerate && !isSystemAssistant ? (
                   <Pressable accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.inlineRetryButton, pressed && styles.pressed]}>
                     <Ionicons color={aiLightColors.primaryActive} name="refresh-outline" size={15} />
                     <Text style={styles.inlineRetryText}>重试</Text>
@@ -596,6 +617,7 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
   return (
     previous.message === next.message &&
     previous.isSystemAssistant === next.isSystemAssistant &&
+    previous.systemTask === next.systemTask &&
     previous.replyActionMode === next.replyActionMode &&
     previous.assistantBubbleEdge === next.assistantBubbleEdge &&
     previous.space === next.space &&
@@ -605,6 +627,7 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.generating === next.generating &&
     previous.thinkingExpected === next.thinkingExpected &&
     previous.thinkingDefaultExpanded === next.thinkingDefaultExpanded &&
+    previous.onThinkingHeaderAnchorShift === next.onThinkingHeaderAnchorShift &&
     previous.favorited === next.favorited &&
     previous.favoriteDisabledByGeneration === next.favoriteDisabledByGeneration &&
     previous.favoritePending === next.favoritePending &&
@@ -636,6 +659,7 @@ const styles = StyleSheet.create({
   assistantRow: {
     alignItems: 'flex-start',
   },
+  systemAssistantRow: { width: '100%' },
   messageStack: {
     gap: rhythm.microGap,
     maxWidth: '94%',
@@ -645,9 +669,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   assistantStack: {
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
     alignItems: 'flex-start',
+    maxWidth: '100%',
   },
+  // The typing placeholder must not determine the width of assistant metadata or progress.
+  systemAssistantStack: { width: '94%', minWidth: 0 },
   avatar: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
@@ -703,16 +730,17 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   userBubble: {
-    backgroundColor: aiLightColors.primary,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.lg,
     borderTopRightRadius: radius.sm,
   },
   assistantBubble: {
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderTopLeftRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: spacing[1],
   },
   assistantBubbleOpenBottom: {
     borderBottomLeftRadius: 0,
@@ -729,20 +757,22 @@ const styles = StyleSheet.create({
   },
   content: {
     ...typography.textStyles.body,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
   },
   inlineStreamingCursor: {
     color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   userText: {
-    color: aiLightColors.onDark,
+    color: aiLightColors.ink,
   },
   assistantText: {
     color: aiLightColors.ink,
   },
   assistantContentMeasure: {
     alignSelf: 'stretch',
+    width: '100%',
   },
   errorText: {
     ...typography.textStyles.caption,
@@ -765,9 +795,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   thinkingWrap: {
-    maxWidth: '98%',
-    paddingHorizontal: spacing[1],
+    alignSelf: 'stretch',
+    maxWidth: '100%',
   },
+  systemProgressWrap: { alignSelf: 'stretch', minWidth: 0 },
   actionRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -840,7 +871,7 @@ const styles = StyleSheet.create({
   },
   inlineEditorInput: {
     ...typography.textStyles.body,
-    color: aiLightColors.onDark,
+    color: aiLightColors.ink,
     lineHeight: 22,
     maxHeight: 132,
     minHeight: 44,
@@ -854,7 +885,8 @@ const styles = StyleSheet.create({
   },
   inlineEditorButton: {
     alignItems: 'center',
-    borderColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
@@ -863,17 +895,17 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   inlineEditorPrimary: {
-    backgroundColor: aiLightColors.onDark,
-    borderColor: aiLightColors.onDark,
+    backgroundColor: aiLightColors.primary,
+    borderColor: aiLightColors.primary,
   },
   inlineEditorButtonText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.onDark,
+    color: aiLightColors.ink,
     fontWeight: '700',
     textAlign: 'center',
   },
   inlineEditorPrimaryText: {
-    color: aiLightColors.primary,
+    color: aiLightColors.onPrimary,
   },
   disabledAction: {
     opacity: 0.36,

@@ -205,7 +205,7 @@ test('single-bubble tail replay uses message segments that share one context-men
   assert.match(bubble, /!isUser && !hideCitations/);
   assert.match(bubble, /<AiCitationList citations=\{message\.citations\}/);
   const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
-  assert.match(segment, /aiLightColors\.card/);
+  assert.doesNotMatch(segment, /aiLightColors\.card/);
   assert.match(segment, /marginTop:\s*-rhythm\.listCardGap/);
   assert.match(chat, /citations=\{/);
   assert.match(segment, /chrome\.drawsCitations/);
@@ -233,11 +233,11 @@ test('detached streaming path updates the measured tail model only', () => {
   assert.doesNotMatch(detachedBody, /applyStreamingMessagePatch\(patch\)/);
 });
 
-test('streaming bubble width uses a conservative assistant content width instead of a loose window ratio', () => {
+test('streaming content width follows the equal-gutter full-width assistant surface', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
   assert.match(screen, /getLatestAssistantBubbleContentWidth\(\)/);
   assert.match(screen, /getAssistantBubbleContentWidthFallback\(\{/);
-  assert.match(screen, /messageStackRatio:\s*0\.88/);
+  assert.match(screen, /messageStackRatio:\s*1/);
   assert.match(screen, /bubbleHorizontalPadding:\s*spacing\[3\]/);
   assert.doesNotMatch(screen, /return Dimensions\.get\(['"]window['"]\)\.width \* 0\.9/);
 });
@@ -323,13 +323,13 @@ test('tail viewport policy defines hot-zone state and pre-promotion budget', () 
   assert.doesNotMatch(policy, /ratio|characterPercent|scrollPercent/);
 });
 
-test('tail continuation replay uses a dedicated assistant-style bubble shell', () => {
+test('tail continuation replay uses a dedicated assistant content shell without bubble chrome', () => {
   const shell = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
   assert.match(shell, /export function AiStreamingTailContinuationBubble/);
   assert.match(shell, /group\.blocks\.map/);
   assert.match(shell, /AiMeasuredStreamBlock/);
   assert.match(shell, /assistant/i);
-  assert.match(shell, /borderRadius|borderColor|backgroundColor/);
+  assert.doesNotMatch(shell, /borderRadius|borderColor|backgroundColor/);
   assert.doesNotMatch(shell, /favorite|versionControl|citation/i);
 });
 
@@ -502,13 +502,22 @@ test('content replay uses a stable full-width continuation surface', () => {
   const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
   const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
 
-  assert.match(segment, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
+  assert.match(segment, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']100%["']/);
   assert.match(segment, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
-  assert.match(continuation, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
+  assert.match(continuation, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']100%["']/);
   assert.match(continuation, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
-  assert.match(measured, /paddingHorizontal:\s*spacing\[3\]/);
+  assert.match(measured, /paddingHorizontal:\s*0/);
   assert.match(measured, /verticalInset\?:\s*AiMeasuredStreamBlockVerticalInset/);
   assert.match(segment, /verticalInset=\{resolveBlockVerticalInset\(edge, index, blocks\.length\)\}/);
+});
+
+test('streaming body uses the same paragraph rhythm before completion', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const splitter = read('src/ai/aiStreamingBlockSplitter.ts');
+  assert.match(content, /splitStreamingParagraphs/);
+  assert.match(content, /streamingBlockGap/);
+  assert.match(splitter, /DEFAULT_LINE_HEIGHT = 24/);
+  assert.match(splitter, /PARAGRAPH_VERTICAL_PADDING = 2/);
 });
 
 test('terminal replay schedules cleanup independently from visible terminal state', () => {

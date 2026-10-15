@@ -23,6 +23,7 @@ export const colors = {
   semantic: {
     favorite: '#B8945A',
     success: '#1a1c1c',
+    taskSuccess: '#368367',
     warning: '#B8945A',
     danger: '#C96F5F',
     successBackground: '#f3f3f4',

@@ -40,9 +40,10 @@ export type StreamBlockEstimateInput = {
   lineHeight?: number;
 };
 
-const DEFAULT_LINE_HEIGHT = 22;
+const DEFAULT_LINE_HEIGHT = 24;
 const MIN_BLOCK_HEIGHT = 24;
-const PARAGRAPH_VERTICAL_PADDING = 10;
+// Streaming blocks use the same lightweight paragraph rhythm as the live renderer.
+const PARAGRAPH_VERTICAL_PADDING = 2;
 const CODE_VERTICAL_PADDING = 34;
 const TABLE_VERTICAL_PADDING = 30;
 const RICH_FALLBACK_HEIGHT = 140;

@@ -177,8 +177,8 @@ test('AI inline edit cursor stays visible on the user bubble', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const editorInput = /<TextInput[\s\S]*?value=\{editDraft\}/.exec(bubble)?.[0] ?? '';
 
-  assert.match(editorInput, /cursorColor=\{aiLightColors\.onDark\}/);
-  assert.match(editorInput, /selectionColor=\{aiLightColors\.onDark\}/);
+  assert.match(editorInput, /cursorColor=\{aiLightColors\.ink\}/);
+  assert.match(editorInput, /selectionColor=\{aiLightColors\.ink\}/);
   assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.primary\}/);
 });
 
@@ -522,7 +522,7 @@ test('AI failed streaming state is not overwritten by a final generating patch',
   const service = read('src/ai/aiChatService.ts');
   const streamBlock = /async function streamAssistantReply[\s\S]*?let finalCitations/.exec(service)?.[0] ?? '';
   const failedReturnIndex = streamBlock.indexOf('if (streamFailed)');
-  const forcedPersistIndex = streamBlock.indexOf('await persistStreamingSnapshot(true)');
+  const forcedPersistIndex = streamBlock.lastIndexOf('await persistStreamingSnapshot(true)');
   const forcedEmitIndex = streamBlock.lastIndexOf('emitStreamingPatch(true)');
 
   assert.ok(failedReturnIndex >= 0);
@@ -1326,20 +1326,16 @@ test('AI markdown tables render in bounded views without horizontal scroll on An
   assert.match(content, /wrap:\s*\{[\s\S]*maxWidth:\s*'100%'/);
 });
 
-test('AI thinking block expands and collapses with a lightweight animation', () => {
+test('AI thinking toggles preserve the header without global layout animations or live timers', () => {
   const thinking = read('src/components/ai/AiThinkingBlock.tsx');
 
-  assert.match(thinking, /Animated/);
-  assert.match(thinking, /expandedProgress/);
-  assert.match(thinking, /Animated\.timing/);
-  assert.match(thinking, /useNativeDriver: true/);
-  assert.doesNotMatch(thinking, /useNativeDriver: false/);
-  assert.match(thinking, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 500\)/);
-  assert.doesNotMatch(thinking, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 100\)/);
-  assert.match(thinking, /thinkingAnimatedBody/);
+  assert.doesNotMatch(thinking, /LayoutAnimation|Animated\.timing|setInterval/);
+  assert.match(thinking, /measureInWindow/);
+  assert.match(thinking, /anchor\.y - y/);
+  assert.match(thinking, /revision !== toggleRevisionRef\.current/);
 });
 
-test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fixed-height clipping', () => {
+test('AI thinking block keeps a five-line auto-scrolling preview and fully expands in the page', () => {
   const thinking = read('src/components/ai/AiThinkingBlock.tsx');
 
   assert.match(thinking, /defaultExpanded\?: boolean/);
@@ -1347,6 +1343,17 @@ test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fi
   assert.match(thinking, /const hasReasoningText = Boolean\(reasoningText\?\.trim\(\)\)/);
   assert.match(thinking, /const waitingForReasoningText = thinking && expanded && !hasReasoningText/);
   assert.match(thinking, /const bodyVisible = expanded && \(hasReasoningText \|\| thinking\)/);
+  assert.match(thinking, /THINKING_PREVIEW_LINES = 5/);
+  assert.match(thinking, /THINKING_PREVIEW_MAX_HEIGHT/);
+  assert.match(thinking, /maxHeight:\s*THINKING_PREVIEW_MAX_HEIGHT/);
+  assert.match(thinking, /flexShrink: 0/);
+  assert.doesNotMatch(thinking, /ScrollView|scrollToEnd|justifyContent: 'flex-end'/);
+  assert.match(thinking, /onTextLayout=/);
+  assert.match(thinking, /Math\.max\(0, contentHeight - previewHeight\)/);
+  assert.match(thinking, /translateY: -previewOffset/);
+  assert.doesNotMatch(thinking, /requestAnimationFrame/);
+  assert.doesNotMatch(thinking, /THINKING_EXPANDED_HEIGHT/);
+  assert.doesNotMatch(thinking, /expandedBody/);
   assert.match(thinking, /正在等待思考内容/);
   assert.match(thinking, /disabled=\{!hasReasoningText && !thinking\}/);
   assert.doesNotMatch(thinking, /expanded \|\| thinking/);
@@ -1355,15 +1362,27 @@ test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fi
   assert.doesNotMatch(thinking, /maxHeight:\s*expandedProgress\.interpolate/);
 });
 
-test('AI thinking block stays slightly narrower than the message stack', () => {
+test('AI thinking content has no panel chrome and only expanded text has a guide line', () => {
+  const thinking = read('src/components/ai/AiThinkingBlock.tsx');
+  const wrap = /wrap:\s*\{[\s\S]*?\n  \}/.exec(thinking)?.[0] ?? '';
+  const body = /bodyContent:\s*\{[\s\S]*?\n  \}/.exec(thinking)?.[0] ?? '';
+  assert.doesNotMatch(wrap, /backgroundColor|borderTop|borderBottom/);
+  assert.doesNotMatch(body, /border|backgroundColor/);
+  assert.match(thinking, /expanded && bodyRenderable \? <View pointerEvents="none" style=\{styles\.expandedGuide\}/);
+  assert.match(thinking, /previewOverflowing \? \(/);
+  assert.match(thinking, /LinearGradient/);
+  assert.match(thinking, /bodySpacing:\s*\{\s*marginBottom:\s*spacing\[3\]/);
+});
+
+test('AI thinking block uses the full assistant message width', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const thinkingWrap = /thinkingWrap:\s*\{[\s\S]*?\n  \}/.exec(bubble)?.[0] ?? '';
 
-  assert.match(thinkingWrap, /maxWidth:\s*'98%'/);
-  assert.doesNotMatch(thinkingWrap, /maxWidth:\s*'100%'/);
+  assert.match(thinkingWrap, /alignSelf:\s*'stretch'/);
+  assert.match(thinkingWrap, /maxWidth:\s*'100%'/);
 });
 
-test('AI thinking expansion defaults follow the previous assistant thinking block state', () => {
+test('AI thinking starts compact and keeps each message expansion independent', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const thinking = read('src/components/ai/AiThinkingBlock.tsx');
@@ -1371,9 +1390,8 @@ test('AI thinking expansion defaults follow the previous assistant thinking bloc
   assert.match(chat, /thinkingExpandedByMessageIdRef/);
   assert.match(chat, /visibleMessagesRef/);
   assert.match(chat, /visibleMessagesRef\.current = visibleMessages/);
-  assert.match(chat, /function getLatestAssistantThinkingExpanded\(\): boolean/);
-  assert.match(chat, /visibleMessagesRef\.current\.length - 1/);
-  assert.match(chat, /thinkingExpandedByMessageIdRef\.current\.set\(assistantMessageId, getLatestAssistantThinkingExpanded\(\)\)/);
+  assert.doesNotMatch(chat, /getLatestAssistantThinkingExpanded/);
+  assert.match(chat, /thinkingExpandedByMessageIdRef\.current\.set\(assistantMessageId, false\)/);
   assert.match(chat, /thinkingDefaultExpanded=\{thinkingExpandedByMessageIdRef\.current\.get\(message\.id\) \?\? false\}/);
   assert.match(chat, /onThinkingExpandedChange=\{\(messageId, expanded\) => \{/);
   assert.match(chat, /thinkingExpandedByMessageIdRef\.current\.set\(messageId, expanded\)/);

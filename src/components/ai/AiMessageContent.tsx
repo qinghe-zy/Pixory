@@ -754,6 +754,11 @@ function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
   );
 }
 
+function splitStreamingParagraphs(content: string): string[] {
+  const blocks = content.split(/\n{2,}/).filter(Boolean);
+  return blocks.length > 0 ? blocks : [''];
+}
+
 export function AiMessageContent(props: AiMessageContentProps) {
   let { content } = props;
   const { trailingInline, streaming = false, variant = 'assistant' } = props;
@@ -774,6 +779,7 @@ export function AiMessageContent(props: AiMessageContentProps) {
     () => (shouldParseMarkdown ? getCachedMarkdownContent(content) : null),
     [content, shouldParseMarkdown]
   );
+  const streamingBlocks = useMemo(() => splitStreamingParagraphs(content), [content]);
 
   function clearFeedbackTimer() {
     if (feedbackTimeoutRef.current) {
@@ -791,7 +797,20 @@ export function AiMessageContent(props: AiMessageContentProps) {
   }
 
   if (streaming) {
-    return <Text selectable={false} style={[styles.body, styles.assistantText]}>{content}{trailingInline ?? null}</Text>;
+    return (
+      <View style={styles.streamingWrap}>
+        {streamingBlocks.map((block, index) => (
+          <Text
+            key={`streaming-${index}`}
+            selectable={false}
+            style={[styles.body, styles.assistantText, index < streamingBlocks.length - 1 && styles.streamingBlockGap]}
+          >
+            {block}
+            {index === streamingBlocks.length - 1 ? trailingInline ?? null : null}
+          </Text>
+        ))}
+      </View>
+    );
   }
   if (renderWholeRichHtml) {
     return (
@@ -992,9 +1011,16 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
     maxWidth: '100%',
   },
+  streamingWrap: {
+    maxWidth: '100%',
+  },
+  streamingBlockGap: {
+    marginBottom: rhythm.microGap,
+  },
   body: {
     ...typography.textStyles.body,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
   },
   assistantText: {
     color: aiLightColors.ink,

@@ -5,7 +5,7 @@ import type { AiStreamBlock } from '../../ai/aiStreamingBlockSplitter';
 import { streamBlockHeightCache } from '../../ai/aiStreamingBlockSplitter';
 import { AI_STREAMING_HEIGHT_RENDERER_VERSION, bucketFontScale, bucketStreamWidth, createStreamBlockHeightCacheKey, fastStringHash } from '../../ai/aiStreamingHeightCache';
 import { streamingTailPerfDebug } from '../../ai/aiStreamingPerfDebug';
-import { spacing, typography } from '../../design/tokens';
+import { rhythm, spacing, typography } from '../../design/tokens';
 import { AiMessageContent } from './AiMessageContent';
 import { aiLightColors } from './aiLightTheme';
 
@@ -148,20 +148,24 @@ export const AiMeasuredStreamBlock = memo(AiMeasuredStreamBlockComponent);
 
 const styles = StyleSheet.create({
   block: {
-    paddingHorizontal: spacing[3],
+    // The assistant stream is rendered directly on the chat canvas; the list gutter supplies the only side inset.
+    paddingHorizontal: 0,
   },
   blockBottomInset: {
-    paddingBottom: spacing[3],
+    paddingBottom: rhythm.microGap,
   },
   blockTopInset: {
-    paddingTop: spacing[3],
+    paddingTop: rhythm.microGap,
   },
   reservedBlock: {
     width: '100%',
   },
   thinkingBlock: {
-    paddingHorizontal: 0,
-    paddingVertical: spacing[1],
+    borderLeftColor: 'rgba(0, 0, 0, 0.18)',
+    borderLeftWidth: 2,
+    marginBottom: spacing[3],
+    marginLeft: spacing[1],
+    paddingLeft: spacing[2],
   },
   thinkingText: {
     ...typography.textStyles.caption,

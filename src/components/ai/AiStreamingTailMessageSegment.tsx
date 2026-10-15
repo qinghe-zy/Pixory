@@ -6,8 +6,7 @@ import {
   getSegmentChrome,
   type AiTailSegmentEdge,
 } from "../../ai/aiStreamingTailRenderContract";
-import { radius, rhythm, spacing } from "../../design/tokens";
-import { aiLightColors } from "./aiLightTheme";
+import { rhythm } from "../../design/tokens";
 import { AiMeasuredStreamBlock } from "./AiMeasuredStreamBlock";
 
 type AiStreamingTailMessageSegmentProps = {
@@ -116,13 +115,8 @@ export function AiStreamingTailMessageSegment({
 const styles = StyleSheet.create({
   assistantBubble: {
     alignSelf: "stretch",
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderTopLeftRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
     maxWidth: "100%",
-    overflow: "hidden",
+    width: "100%",
   },
   assistantRow: {
     alignItems: "flex-start",
@@ -132,9 +126,9 @@ const styles = StyleSheet.create({
   },
   assistantStack: {
     alignItems: "flex-start",
-    alignSelf: "flex-start",
-    maxWidth: "94%",
-    width: "94%",
+    alignSelf: "stretch",
+    maxWidth: "100%",
+    width: "100%",
   },
   openBottom: {
     borderBottomLeftRadius: 0,
@@ -149,7 +143,7 @@ const styles = StyleSheet.create({
   reasoningRow: {
     alignSelf: "flex-start",
     marginTop: -rhythm.listCardGap,
-    paddingHorizontal: spacing[1],
-    width: "94%",
+    paddingHorizontal: 0,
+    width: "100%",
   },
 });

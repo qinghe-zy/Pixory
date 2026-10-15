@@ -40,7 +40,8 @@ test('AI chat composer adds a bulb entry beside the model icon for reply assist'
   assert.match(composer, /onReplyAssist: \(\) => void/);
   assert.match(composer, /replyAssistDisabled\?: boolean/);
   assert.match(composer, /accessibilityLabel="AI 帮答"/);
-  assert.match(composer, /name="bulb-outline"/);
+  assert.match(composer, /<Path/);
+  assert.match(composer, /M11 3a1 1 0 10-2 0v1/);
   assert.match(composer, /styles\.replyAssistButton/);
   assert.match(composer, /onPress=\{onReplyAssist\}/);
 });

@@ -20,10 +20,10 @@ test('streaming runtime defines adaptive UI and persist throttling tiers', () =>
   assert.match(runtime, /devicePressure\?: boolean/);
   assert.match(runtime, /if \(!input\.bottomLocked\) \{\s*return input\.devicePressure \? 8 : 12;\s*\}/);
   assert.match(runtime, /visibleChars <= 1000/);
-  assert.match(runtime, /devicePressure \? 30 : 60/);
-  assert.match(runtime, /visibleChars <= 4000/);
   assert.match(runtime, /devicePressure \? 24 : 45/);
-  assert.match(runtime, /devicePressure \? 18 : 30/);
+  assert.match(runtime, /visibleChars <= 4000/);
+  assert.match(runtime, /devicePressure \? 20 : 30/);
+  assert.match(runtime, /devicePressure \? 16 : 24/);
   assert.match(runtime, /backlogChars <= 24/);
   assert.match(runtime, /backlogChars <= 120/);
   assert.match(runtime, /backlogChars <= 600/);
@@ -79,7 +79,7 @@ test('streaming message store exposes a generation-scoped external subscription 
   assert.match(store, /contentChanged/);
   assert.match(store, /reasoningChanged/);
   assert.match(store, /statusChanged/);
-  assert.match(store, /if \(!contentChanged && !reasoningChanged && !statusChanged && !hasSnapshotChanged\) \{/);
+  assert.match(store, /if \(!contentChanged && !reasoningChanged && !phaseChanged && !statusChanged && !hasSnapshotChanged\) \{/);
   assert.match(store, /useSyncExternalStore/);
   assert.match(store, /hasSnapshot: false/);
   assert.match(store, /hasSnapshot: true/);
@@ -87,7 +87,7 @@ test('streaming message store exposes a generation-scoped external subscription 
   assert.match(component, /useStreamingMessageReasoningSnapshot/);
   assert.match(component, /snapshot\.hasSnapshot \? snapshot\.content : initialContent/);
   assert.doesNotMatch(component, /snapshot\.content \|\| initialContent/);
-  assert.match(component, /<Text selectable=\{false\}/);
+  assert.match(component, /<AiMessageContent content=\{content\} streaming/);
   assert.doesNotMatch(component, /<Text selectable style/);
   assert.match(component, /InlineStreamingCursor/);
   assert.match(component, /export const AiStreamingReasoningText/);

@@ -26,6 +26,10 @@ export function getAssistantBubbleContentWidthFallback(input: {
     input.screenWidth - input.pagePaddingHorizontal * 2,
   );
   const stackWidth = listContentWidth * input.messageStackRatio;
-  const bubbleContentWidth = stackWidth - input.bubbleHorizontalPadding * 2;
+  // Assistant output now sits directly on the chat canvas. Keep the legacy inset
+  // parameter for callers while treating a full-width stack as having no bubble inset.
+  const bubbleContentWidth = input.messageStackRatio >= 1
+    ? listContentWidth
+    : stackWidth - input.bubbleHorizontalPadding * 2;
   return Math.max(220, Math.round(bubbleContentWidth / 8) * 8);
 }

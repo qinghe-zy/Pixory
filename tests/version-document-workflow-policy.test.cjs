@@ -51,7 +51,8 @@ test('Android release previews documents before Gradle and finalizes only after 
   assert.ok(previewIndex < cleanIndex, 'documentation preview must happen before Gradle work');
   assert.ok(finalizeIndex > copyIndex, 'documentation finalization must happen after the APK is copied');
   assert.match(build, /-ApkPath \$outputApk/);
-  assert.match(build, /release-handoff\.ps1/);
+  assert.match(build, /publish-dual\.ps1/);
+  assert.match(build, /if \(-not \$SkipVersionDocuments\)/);
   assert.match(build, /当前分支为/);
   assert.match(handoff, /Release-Notes-External\.md/);
   assert.match(handoff, /Release-Notes-Internal\.md/);
@@ -62,6 +63,30 @@ test('Android release previews documents before Gradle and finalizes only after 
   assert.match(handoff, /commit-tree/);
   assert.match(handoff, /tag -a \$tag \$commit/);
   assert.match(handoff, /PIXORY_RELEASE_HANDOFF/);
+});
+
+test('hot update recorder accepts a successful PowerShell script with no native exit code and propagates failures', { skip: process.platform !== 'win32' }, () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'pixory-hot-update-record-'));
+  const scripts = path.join(fixture, 'scripts');
+  fs.mkdirSync(scripts);
+  const recorder = path.join(scripts, 'record-hot-update.ps1');
+  fs.copyFileSync(path.join(root, 'scripts/record-hot-update.ps1'), recorder);
+  fs.writeFileSync(path.join(scripts, 'version-document-workflow.ps1'), `
+param([string]$Action, [string]$EventType, [string]$Summary, [string]$SourceCommit)
+if ($Summary -eq 'fail') { throw 'fixture failure' }
+if ($Action -ne 'AppendUpdate' -or $EventType -ne 'HotUpdate' -or $SourceCommit -ne 'abc123') { throw 'invalid arguments' }
+Add-Content -LiteralPath (Join-Path $PSScriptRoot 'entries.txt') -Value $Summary
+`);
+  const invoke = summary => spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass',
+    '-File', recorder, '-Summary', summary, '-SourceCommit', 'abc123'], { encoding: 'utf8', timeout: 30000 });
+  try {
+    const success = invoke('success');
+    assert.equal(success.status, 0, success.stderr || success.stdout);
+    assert.equal(fs.readFileSync(path.join(scripts, 'entries.txt'), 'utf8').trim(), 'success');
+    const failure = invoke('fail');
+    assert.notEqual(failure.status, 0);
+    assert.equal(fs.readFileSync(path.join(scripts, 'entries.txt'), 'utf8').trim(), 'success');
+  } finally { fs.rmSync(fixture, { recursive: true, force: true }); }
 });
 
 test('successful finalization archives one flat version and opens the next patch cycle', { skip: process.platform !== 'win32' }, () => {

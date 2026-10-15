@@ -4,6 +4,12 @@ import type { SystemAssistantAction } from './systemAssistantTypes';
 const MARKER = '<system_action';
 const HIDDEN_MARKERS = [MARKER, '<tool_call', '<function_call', '<think', '```', '{', '['];
 
+function decodeXmlAttribute(value: string): string {
+  return value.replace(/&(?:quot|apos|lt|gt|amp|#10|#13);/g, entity => ({
+    '&quot;': '"', '&apos;': "'", '&lt;': '<', '&gt;': '>', '&amp;': '&', '&#10;': '\n', '&#13;': '\r',
+  })[entity] ?? entity);
+}
+
 // Hold a possible marker suffix across chunks so even a one-character stream cannot flash XML.
 export class SystemAssistantProtocol {
   private pending = '';
@@ -21,16 +27,18 @@ export class SystemAssistantProtocol {
       if (this.hidden) {
         const end = this.pending.indexOf('>');
         if (end < 0) {
-          if (this.pending.length > 4096) { this.pending = ''; this.invalid = true; }
+          const maxLength = /^<system_action\s+type=["']role-draft["']/.test(this.pending) ? 24000 : 4096;
+          if (this.pending.length > maxLength) { this.pending = ''; this.invalid = true; }
           break;
         }
         const tag = this.pending.slice(0, end + 1);
         const attrs: Record<string, string> = {};
         for (const match of tag.matchAll(/([a-zA-Z_][\w-]*)\s*=\s*["']([^"']*)["']/g)) {
-          attrs[match[1]] = match[2];
+          if (Object.hasOwn(attrs, match[1])) this.invalid = true;
+          attrs[match[1]] = decodeXmlAttribute(match[2]);
         }
         const action = normalizeSystemAssistantAction(attrs);
-        if (action && /^<system_action\s/i.test(tag) && /\/\s*>$/.test(tag) && !this.sawAction) this.actions.push(action);
+        if (!this.invalid && action && /^<system_action\s/i.test(tag) && /\/\s*>$/.test(tag) && !this.sawAction) this.actions.push(action);
         else this.invalid = true;
         this.sawAction = true;
         // Protocol must be last. Drop any trailing payload, including malformed XML bodies.

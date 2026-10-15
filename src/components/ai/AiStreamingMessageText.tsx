@@ -4,8 +4,8 @@ import { StyleSheet, Text } from 'react-native';
 import type { AiMessageStatus } from '../../ai/types';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 import { useStreamingMessageReasoningSnapshot, useStreamingMessageTextSnapshot } from '../../ai/aiStreamingMessageStore';
-import { typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
+import { AiMessageContent } from './AiMessageContent';
 import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
 
@@ -15,12 +15,15 @@ interface AiStreamingMessageTextProps {
 }
 
 interface AiStreamingReasoningTextProps {
+  thinkingEndedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
   defaultExpanded?: boolean;
   identity: AiStreamingMessageIdentity;
   initialReasoningText?: string | null;
+  initialContent?: string;
   onExpandedChange?: (expanded: boolean) => void;
+  onHeaderAnchorShift?: (offsetDelta: number) => void;
   status: AiMessageStatus;
   thinkingActive?: boolean;
 }
@@ -35,38 +38,39 @@ function AiStreamingMessageTextComponent({ identity, initialContent }: AiStreami
   if (!content.trim()) {
     return <AiTypingIndicator />;
   }
-  return (
-    <Text selectable={false} style={[styles.body, styles.assistantText]}>
-      {content}
-      {content.trim() ? <InlineStreamingCursor /> : null}
-    </Text>
-  );
+  return <AiMessageContent content={content} streaming trailingInline={<InlineStreamingCursor />} />;
 }
 
 export const AiStreamingMessageText = memo(AiStreamingMessageTextComponent);
 
 function AiStreamingReasoningTextComponent({
+  thinkingEndedAt,
   completedAt,
   createdAt,
   defaultExpanded = false,
   identity,
   initialReasoningText = null,
+  initialContent = '',
   onExpandedChange,
+  onHeaderAnchorShift,
   status,
   thinkingActive,
 }: AiStreamingReasoningTextProps) {
   const snapshot = useStreamingMessageReasoningSnapshot(identity);
   const reasoningText = snapshot.hasSnapshot ? snapshot.reasoningText : initialReasoningText;
   const streamingStatus = snapshot.hasSnapshot ? snapshot.status : status;
+  const hasAnswer = Boolean(snapshot.hasSnapshot ? snapshot.content : initialContent);
   return (
     <AiThinkingBlock
+      thinkingEndedAt={snapshot.thinkingEndedAt ?? thinkingEndedAt}
       completedAt={completedAt}
       createdAt={createdAt}
       defaultExpanded={defaultExpanded}
       onExpandedChange={onExpandedChange}
+      onHeaderAnchorShift={onHeaderAnchorShift}
       reasoningText={reasoningText}
       status={streamingStatus}
-      thinkingActive={thinkingActive}
+      thinkingActive={hasAnswer ? false : thinkingActive}
     />
   );
 }
@@ -74,16 +78,9 @@ function AiStreamingReasoningTextComponent({
 export const AiStreamingReasoningText = memo(AiStreamingReasoningTextComponent);
 
 const styles = StyleSheet.create({
-  assistantText: {
-    color: aiLightColors.ink,
-  },
-  body: {
-    ...typography.textStyles.body,
-    lineHeight: 22,
-  },
   inlineStreamingCursor: {
     color: aiLightColors.primaryActive,
-    fontSize: typography.size.body,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
   },
 });

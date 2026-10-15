@@ -21,6 +21,9 @@ export type AiGenerationTimestampKey =
   | 'promptBuildEndAt'
   | 'providerRequestSentAt'
   | 'firstProviderDeltaAt'
+  | 'firstReasoningDeltaAt'
+  | 'firstAnswerDeltaAt'
+  | 'thinkingEndedAt'
   | 'firstUiPatchAt'
   | 'lastProviderDeltaAt'
   | 'finalPersistStartAt'
@@ -117,6 +120,8 @@ export interface AiGenerationMetrics extends AiGenerationMetricsDraft {
     historyLoadMs: number | null;
     finalizationMs: number | null;
     totalGenerationMs: number | null;
+    thinkingMs: number | null;
+    answerStreamMs: number | null;
   };
 }
 
@@ -269,8 +274,20 @@ export function finalizeGenerationMetrics(draft: AiGenerationMetricsDraft): AiGe
       historyLoadMs: msBetween(timestamps.historyLoadStartAt, timestamps.historyLoadEndAt),
       finalizationMs: msBetween(timestamps.finalPersistStartAt, timestamps.finalPersistEndAt),
       totalGenerationMs: msBetween(timestamps.generationStartAt, timestamps.generationSettledAt),
+      thinkingMs: msBetween(timestamps.generationStartAt, timestamps.thinkingEndedAt ?? timestamps.firstAnswerDeltaAt),
+      answerStreamMs: msBetween(timestamps.firstAnswerDeltaAt, timestamps.lastProviderDeltaAt),
     },
   };
+}
+
+export function readThinkingEndedAt(promptSnapshotJson: string | null | undefined): string | null {
+  try {
+    const timestamps = JSON.parse(promptSnapshotJson || '{}')?.generationMetrics?.timestamps;
+    const value: unknown = timestamps?.thinkingEndedAt ?? timestamps?.firstAnswerDeltaAt;
+    return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export function assertContentFreeGenerationMetrics(metrics: unknown): void {

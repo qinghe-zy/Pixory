@@ -13,6 +13,7 @@ export type AiStreamingMessageSnapshot = {
   content: string;
   hasSnapshot: boolean;
   reasoningText: string | null;
+  thinkingEndedAt: string | null;
   status: 'generating' | 'stopped' | 'failed' | 'completed';
   updatedAt: number;
 };
@@ -21,6 +22,7 @@ const emptySnapshot: AiStreamingMessageSnapshot = {
   content: '',
   hasSnapshot: false,
   reasoningText: null,
+  thinkingEndedAt: null,
   status: 'generating',
   updatedAt: 0,
 };
@@ -48,14 +50,17 @@ export function publishStreamingMessage(
     content: snapshot.content ?? current.content,
     hasSnapshot: true,
     reasoningText: snapshot.reasoningText === undefined ? current.reasoningText : snapshot.reasoningText,
+    thinkingEndedAt: snapshot.thinkingEndedAt === undefined ? current.thinkingEndedAt : snapshot.thinkingEndedAt,
     status: snapshot.status ?? current.status,
     updatedAt: Date.now(),
   };
   const contentChanged = nextSnapshot.content !== current.content;
+  const answerStarted = contentChanged && !current.content && Boolean(nextSnapshot.content);
   const reasoningChanged = nextSnapshot.reasoningText !== current.reasoningText;
+  const phaseChanged = nextSnapshot.thinkingEndedAt !== current.thinkingEndedAt;
   const statusChanged = nextSnapshot.status !== current.status;
   const hasSnapshotChanged = nextSnapshot.hasSnapshot !== current.hasSnapshot;
-  if (!contentChanged && !reasoningChanged && !statusChanged && !hasSnapshotChanged) {
+  if (!contentChanged && !reasoningChanged && !phaseChanged && !statusChanged && !hasSnapshotChanged) {
     return;
   }
   snapshots.set(key, nextSnapshot);
@@ -63,7 +68,7 @@ export function publishStreamingMessage(
   if (contentChanged || hasSnapshotChanged) {
     notify(contentListeners, key);
   }
-  if (reasoningChanged || statusChanged || hasSnapshotChanged) {
+  if (reasoningChanged || phaseChanged || statusChanged || hasSnapshotChanged || answerStarted) {
     notify(reasoningListeners, key);
   }
 }

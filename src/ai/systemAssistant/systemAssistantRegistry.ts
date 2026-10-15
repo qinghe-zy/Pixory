@@ -18,9 +18,19 @@ export const IP_SCOPED_SYSTEM_ROUTES = new Set(['ip-detail', 'import-images', 'a
 
 export function normalizeSystemAssistantAction(input: Record<string, string>): SystemAssistantAction | null {
   const allowed = input.type === 'select_ip' ? ['type']
+    : input.type === 'role-draft' ? ['type', 'name', 'description', 'prompt', 'firstMessage']
     : input.type === 'rename-thread' ? ['type', 'newTitle', 'confirmed'] : ['type', 'route', 'ipName', 'ipId'];
   if (Object.keys(input).some(field => !allowed.includes(field))) return null;
   if (input.type === 'select_ip') return { type: 'select_ip' };
+  if (input.type === 'role-draft') {
+    const name = input.name?.trim() ?? '';
+    const description = input.description?.trim() ?? '';
+    const prompt = input.prompt?.trim() ?? '';
+    const firstMessage = input.firstMessage?.trim() ?? '';
+    if (name.length > 80 || description.length > 1000 || prompt.length > 6000 || firstMessage.length > 2000) return null;
+    // An initial question can legitimately have no established role details yet.
+    return { type: 'role-draft', name, description, prompt, firstMessage };
+  }
   if (input.type === 'rename-thread' && input.newTitle?.trim() && input.newTitle.length <= 80) {
     return { type: 'rename-thread', newTitle: input.newTitle.trim() };
   }
@@ -32,5 +42,6 @@ export function normalizeSystemAssistantAction(input: Record<string, string>): S
 
 export function systemActionTitle(action: SystemAssistantAction | null): string {
   if (!action || action.type === 'select_ip') return '选择 IP';
+  if (action.type === 'role-draft') return '创建角色卡';
   return action.type === 'rename-thread' ? '修改伙伴昵称' : SYSTEM_ASSISTANT_ROUTES[action.route];
 }

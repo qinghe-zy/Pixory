@@ -4,6 +4,7 @@ import { publishSystemTask } from './systemAssistantEvents';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { SystemTaskSnapshot } from './systemAssistantTypes';
 import { normalizeSystemAssistantAction } from './systemAssistantRegistry';
+import { withSystemTaskStep } from './systemAssistantRuntime';
 
 // Existing SQLite app_settings provides isolated storage and backup without a schema migration.
 const key = (messageId: string) => `systemAssistantTask:v1:${messageId}`;
@@ -14,6 +15,8 @@ export async function saveSystemTaskInDatabase(db: SQLiteDatabase, task: SystemT
 
 export async function clearSystemTasksInDatabase(db: SQLiteDatabase): Promise<void> {
   await db.runAsync("DELETE FROM app_settings WHERE key LIKE 'systemAssistantTask:v1:%'");
+  await db.runAsync("DELETE FROM app_settings WHERE key = 'systemAssistantRoleCreation:v1'");
+  await db.runAsync("DELETE FROM app_settings WHERE key LIKE 'systemAssistantRoleSnapshot:v1:%'");
 }
 
 export async function loadSystemTask(space: PixorySpace, messageId: string): Promise<SystemTaskSnapshot | null> {
@@ -26,7 +29,7 @@ export async function loadSystemTask(space: PixorySpace, messageId: string): Pro
       || typeof task.requestText !== 'string' || !Array.isArray(task.steps)
       || (task.requiresIp !== undefined && typeof task.requiresIp !== 'boolean')
       || !task.steps.every(step => typeof step.label === 'string' && Number.isFinite(Date.parse(step.at)))
-      || !['waiting_for_ip', 'planning', 'waiting_for_approval', 'executing', 'completed', 'failed',
+      || !['waiting_for_ip', 'waiting_for_user', 'planning', 'waiting_for_approval', 'executing', 'completed', 'failed',
         'cancelled', 'expired', 'undoing', 'undone'].includes(task.status)) return null;
     if (task.selectedIp && (task.selectedIp.space !== space || !Number.isSafeInteger(task.selectedIp.ipId)
       || task.selectedIp.ipId <= 0 || typeof task.selectedIp.ipNameSnapshot !== 'string'
@@ -41,6 +44,9 @@ export async function loadSystemTask(space: PixorySpace, messageId: string): Pro
     if (task.undo && (typeof task.undo.appliedName !== 'string'
       || (task.undo.previousName !== null && typeof task.undo.previousName !== 'string')
       || !Number.isFinite(Date.parse(task.undo.expiresAt)))) return null;
+    if (task.createdRoleCard && (typeof task.createdRoleCard.id !== 'string' || typeof task.createdRoleCard.name !== 'string'
+      || !Number.isFinite(Date.parse(task.createdRoleCard.updatedAt))
+      || !Number.isFinite(Date.parse(task.createdRoleCard.expiresAt)))) return null;
     return task;
   } catch { return null; }
 }
@@ -48,6 +54,40 @@ export async function loadSystemTask(space: PixorySpace, messageId: string): Pro
 export async function saveSystemTask(task: SystemTaskSnapshot): Promise<void> {
   await runWithDatabaseSpace(task.space, db => saveSystemTaskInDatabase(db, task));
   publishSystemTask(task);
+}
+
+export async function beginSystemTask(input: {
+  space: PixorySpace; assistantMessageId: string; originMessageId: string; requestText: string; generationId: string;
+}): Promise<SystemTaskSnapshot> {
+  const previous = await loadSystemTask(input.space, input.assistantMessageId);
+  if (previous?.createdRoleCard || previous?.status === 'undone') {
+    const preserved = { ...previous, generationId: input.generationId,
+      status: previous.createdRoleCard ? 'completed' as const : 'undone' as const };
+    await saveSystemTask(preserved);
+    return preserved;
+  }
+  const task: SystemTaskSnapshot = {
+    version: 1, taskId: `system-task:${input.assistantMessageId}`, ...input,
+    status: 'planning', action: null, selectedIp: previous?.status === 'planning' ? previous.selectedIp : null,
+    steps: [], error: null, undo: null, updatedAt: new Date().toISOString(),
+  };
+  const started = withSystemTaskStep(task, 'planning', '正在理解请求');
+  await saveSystemTask(started);
+  return started;
+}
+
+export async function settleSystemTaskGeneration(input: {
+  space: PixorySpace; assistantMessageId: string; generationId: string;
+  status: 'completed' | 'failed' | 'stopped'; roleCollecting?: boolean;
+}): Promise<void> {
+  const task = await loadSystemTask(input.space, input.assistantMessageId);
+  if (!task || task.generationId !== input.generationId || task.status !== 'planning') return;
+  const status = input.status === 'failed' ? 'failed' : input.status === 'stopped' ? 'cancelled'
+    : input.roleCollecting ? 'waiting_for_user' : 'completed';
+  const label = status === 'failed' ? '回复未完成' : status === 'cancelled' ? '已停止'
+    : status === 'waiting_for_user' ? '等待补充设定' : '已回复';
+  await saveSystemTask({ ...withSystemTaskStep(task, status, label),
+    error: status === 'failed' ? '回复未完成，可重新发送。' : null });
 }
 
 export async function restartSystemTask(space: PixorySpace, messageId: string, originMessageId: string, requestText: string): Promise<void> {

@@ -122,6 +122,7 @@ import {
   targetStreamingFps,
   targetStreamingPatchIntervalMs,
   updateStreamingDevicePressure,
+  registerStreamingControl,
 } from './aiStreamingRuntime';
 import {
   aggregateAiUsageObservations,
@@ -133,6 +134,7 @@ import {
   markGenerationMetric,
   nowIso,
   redactGenerationMetricsForDiagnostics,
+  readThinkingEndedAt,
   toGenerationFailureCode,
   type AiGenerationMetricsDraft,
 } from './aiGenerationMetrics';
@@ -171,7 +173,11 @@ import { mergeContinuationDelta } from './generation/aiGenerationRecovery';
 import { isSystemAssistantThread, SYSTEM_ASSISTANT_THREAD_ID } from './systemAssistant/capabilityProfile';
 import { SystemAssistantProtocol, sanitizeSystemAssistantContent } from './systemAssistant/systemAssistantProtocol';
 import { ingestSystemAssistantAction } from './systemAssistant/systemAssistantTaskIngestion';
-import { clearSystemTasksInDatabase, loadSystemTask, restartSystemTask } from './systemAssistant/systemAssistantPersistence';
+import { beginSystemTask, clearSystemTasksInDatabase, loadSystemTask, restartSystemTask, saveSystemTask, saveSystemTaskInDatabase, settleSystemTaskGeneration } from './systemAssistant/systemAssistantPersistence';
+import { publishSystemTask } from './systemAssistant/systemAssistantEvents';
+import { buildSystemRoleTaskContext, prepareSystemRoleTurn } from './systemAssistant/systemAssistantRoleCreation';
+import { buildSystemAssistantClockContext, resolveSystemAssistantTimeRequest } from './systemAssistant/systemAssistantTime';
+import { withSystemTaskStep } from './systemAssistant/systemAssistantRuntime';
 import { validateSystemAssistantIp } from './systemAssistant/systemAssistantExecutor';
 import { migrateSystemAssistantHistory } from './systemAssistant/systemAssistantHistory';
 import { enqueueAiPostReplyTask } from './aiPostReplyTaskQueue';
@@ -396,6 +402,7 @@ type ThreadModelSource = 'global_default' | 'provider_default' | 'thread_model';
 type ThreadModelConfig = Pick<AiThreadRecord, 'id' | 'space' | 'providerId' | 'modelId' | 'sessionBaseUrl' | 'sessionApiKeyRef'>;
 
 type BuildPromptForThreadOptions = {
+  systemAssistantRoleContext?: string;
   attachmentPromptContext?: string | null;
   generationMetrics?: AiGenerationMetricsDraft | null;
   excludedMemoryClaimIds?: string[];
@@ -591,6 +598,7 @@ const ASSISTANT_TOPIC_PATTERNS = [
 ];
 
 export type AiMessageWithCitations = AiMessageRecord & {
+  thinkingEndedAt?: string | null;
   attachments?: AiMessageAttachmentRecord[];
   citations: AiCitationRecord[];
   messageVersions: AiMessageVersionRecord[];
@@ -599,6 +607,7 @@ export type AiMessageWithCitations = AiMessageRecord & {
 };
 
 export interface AiStreamingMessagePatch {
+  thinkingEndedAt?: string | null;
   id: string;
   generationId: string;
   status?: AiMessageRecord['status'];
@@ -2469,7 +2478,22 @@ async function buildPromptForThread(
     hashPromptCacheText([coverage.stableSummaryText, stableMemoryPrefix].filter(Boolean).join('\n\n')).slice(0, 16),
   ].join(':');
   const roleCardContext = buildRolePromptContextFromThread(thread);
+  const systemAssistantClockContext = isSystemAssistantThread(thread.id) ? buildSystemAssistantClockContext() : '';
   const dynamicSegments: AiDynamicContextSegment[] = [
+    ...(systemAssistantClockContext ? [{
+      branchRouteHash: coverage.plan.branchRouteHash, expiresAt: null,
+      id: 'system-assistant-clock', privacy: thread.space, priority: 100,
+      scope: `thread:${thread.id}`, source: 'device-clock',
+      text: systemAssistantClockContext, tokenEstimate: estimatePromptTokens(systemAssistantClockContext),
+      traceOnly: false, trust: 'source' as const, type: 'companion_runtime' as const, version: 1,
+    }] : []),
+    ...(options?.systemAssistantRoleContext ? [{
+      branchRouteHash: coverage.plan.branchRouteHash, expiresAt: null,
+      id: 'system-assistant-role-task', privacy: thread.space, priority: 100,
+      scope: `thread:${thread.id}`, source: 'system-assistant-task',
+      text: options.systemAssistantRoleContext, tokenEstimate: estimatePromptTokens(options.systemAssistantRoleContext),
+      traceOnly: false, trust: 'source' as const, type: 'companion_runtime' as const, version: 1,
+    }] : []),
     ...(options?.companionDynamicSegments ?? []),
     ...(artifactSelection ? [artifactSelection.segment] : []),
     ...(companionMemoryPrefix ? [{
@@ -4556,7 +4580,11 @@ async function streamAssistantReply(input: {
     generationMetrics.counters.detachedTailMergeTotalMs += snapshot.detachedTailMergeTotalMs;
   };
   const emitMessagePatch = (patch: Omit<AiStreamingMessagePatch, 'generationId'>) => {
-    input.onMessagePatch?.({ generationId, ...patch });
+    input.onMessagePatch?.({ generationId, thinkingEndedAt: generationMetrics.timestamps.thinkingEndedAt ?? null, ...patch });
+    if (systemProtocol && (patch.status === 'failed' || patch.status === 'stopped')) {
+      void settleSystemTaskGeneration({ space: input.space, assistantMessageId: input.assistantMessageId,
+        generationId, status: patch.status }).catch(() => {});
+    }
   };
   markGenerationMetric(generationMetrics, 'generationStartAt');
   const currentStopReason = () =>
@@ -4708,6 +4736,9 @@ async function streamAssistantReply(input: {
     return;
   }
 
+  let systemAssistantRoleContext = '';
+  let systemRoleSaveAuthorized = false;
+
   let apiKey: string | null = '';
   let branchScopes: AiBranchScope[] = [];
   let companionContextPlan: CompanionContextPlan | null = null;
@@ -4745,6 +4776,58 @@ async function streamAssistantReply(input: {
     );
     generationMetrics.context.branchScopeCount = branchScopes.length;
     markGenerationMetric(generationMetrics, 'branchResolveEndAt');
+    if (systemProtocol) {
+      const task = await beginSystemTask({ space: input.space, assistantMessageId: input.assistantMessageId,
+        originMessageId: input.userMessage.id, requestText: input.userMessage.content, generationId });
+      const previousGenerationId = await runWithDatabaseSpace(input.space, async db => {
+        const previous = await aiThreadRepository.findPreviousMessageByRole(db, input.thread.id,
+          input.userMessage.id, 'assistant', branchScopes);
+        return readSnapshotGenerationId(previous?.promptSnapshotJson);
+      });
+      const session = await prepareSystemRoleTurn({ space: input.space, generationId, previousGenerationId,
+        userMessageId: input.userMessage.id, requestText: input.userMessage.content,
+        canExecute: db => !input.signal?.aborted
+          ? isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId) : Promise.resolve(false) });
+      const timeResult = !(input.attachments?.length) && mode === 'replace'
+        ? resolveSystemAssistantTimeRequest(input.userMessage.content) : null;
+      if (timeResult) {
+        if (await stopForAbort()) return;
+        let completed = task;
+        for (const label of timeResult.stages) completed = withSystemTaskStep(completed,
+          label === '等待选择时区' ? 'waiting_for_user' : label === '时区无效' ? 'failed' : 'completed', label);
+        if (completed.status === 'failed') completed.error = timeResult.text;
+        const completedAt = new Date().toISOString();
+        generationMetrics.counters.finalAnswerChars = timeResult.text.length;
+        markGenerationMetric(generationMetrics, 'generationSettledAt');
+        const promptSnapshotJson = buildMetricsOnlyPromptSnapshotJson({ generationMetrics, messageDisplayKind });
+        const persisted = await runWithDatabaseSpace(input.space, async db => {
+          if (!await isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId)) return false;
+          await db.withTransactionAsync(async () => {
+            await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
+              content: timeResult.text, status: 'completed', reasoningText: null, errorMessage: null, completedAt,
+              providerId: null, modelId: null, modelSnapshotJson: JSON.stringify({ tool: 'local-time',
+                timeZone: timeResult.timeZone, sampledAt: timeResult.sampledAt }), promptSnapshotJson,
+            });
+            await aiThreadRepository.updateThread(db, input.thread.id, { lastMessagePreview: timeResult.text.slice(0, 80) });
+            await saveSystemTaskInDatabase(db, completed);
+          });
+          return true;
+        });
+        if (persisted) {
+          publishSystemTask(completed);
+          emitMessagePatch({ id: input.assistantMessageId, status: 'completed', content: timeResult.text,
+            reasoningText: null, errorMessage: null, completedAt, providerId: null, modelId: null, promptSnapshotJson });
+          input.onUpdated?.();
+        }
+        return;
+      }
+      systemAssistantRoleContext = buildSystemRoleTaskContext(session, input.userMessage.id);
+      systemRoleSaveAuthorized = Boolean(systemAssistantRoleContext && session?.authorizedMessageId === input.userMessage.id);
+      if (systemAssistantRoleContext && task.status === 'planning') {
+        await saveSystemTask(withSystemTaskStep(task, 'planning',
+          session?.authorizedMessageId === input.userMessage.id ? '正在整理角色卡' : '正在梳理角色设定'));
+      }
+    }
     await runWithDatabaseSpace(input.space, async (db) => {
       await db.withTransactionAsync(async () => {
         await createPreparedGenerationJob(db, {
@@ -4946,6 +5029,7 @@ async function streamAssistantReply(input: {
       generationMetrics,
       historyAnchorMessageId: input.historyAnchorMessageId ?? input.userMessage.id,
       historyRoundLimit,
+      systemAssistantRoleContext,
     }));
     prompt = fitBuiltPromptToContextBudget({ modelContextWindowTokens, prompt });
     snippets = filterSnippetsPresentInPrompt(snippets, prompt);
@@ -5146,6 +5230,7 @@ async function streamAssistantReply(input: {
   let lastPersistAt = 0;
   let lastPersistedAnswerChars = initialAnswerText.length;
   let lastPersistedReasoningChars = reasoningText.length;
+  let lastPersistedThinkingEndedAt: string | undefined;
   let lastUiPatchAt = 0;
   let lastUiPatchAnswerChars = initialAnswerText.length;
   let lastUiPatchReasoningChars = reasoningText.length;
@@ -5187,7 +5272,7 @@ async function streamAssistantReply(input: {
     }, ms);
   };
   const emitStreamingPatch = (force = false) => {
-    if (input.signal?.aborted) {
+    if (streamFailed || input.signal?.aborted) {
       return;
     }
     const now = Date.now();
@@ -5266,14 +5351,15 @@ async function streamAssistantReply(input: {
     }, intervalMs);
   };
   const persistStreamingSnapshot = async (force = false) => {
-    if (input.signal?.aborted) {
+    if (streamFailed || input.signal?.aborted) {
       return;
     }
     flushStreamingTextChunks();
     const now = Date.now();
     const answerChars = answerText.length + pendingAnswerChars;
     const reasoningChars = reasoningText.length + pendingReasoningChars;
-    if (!force && answerChars === lastPersistedAnswerChars && reasoningChars === lastPersistedReasoningChars) {
+    if (!force && answerChars === lastPersistedAnswerChars && reasoningChars === lastPersistedReasoningChars
+      && lastPersistedThinkingEndedAt === generationMetrics.timestamps.thinkingEndedAt) {
       generationMetrics.counters.streamSkippedPersistCount += 1;
       return;
     }
@@ -5286,6 +5372,7 @@ async function streamAssistantReply(input: {
     lastPersistAt = now;
     lastPersistedAnswerChars = answerChars;
     lastPersistedReasoningChars = reasoningChars;
+    lastPersistedThinkingEndedAt = generationMetrics.timestamps.thinkingEndedAt;
     generationMetrics.counters.streamPersistCount += 1;
     const persistStartedAt = Date.now();
     await runWithDatabaseSpace(input.space, async (db) => {
@@ -5293,6 +5380,7 @@ async function streamAssistantReply(input: {
         await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
           content: answerText,
           reasoningText: reasoningText || null,
+          promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(generationMetrics, messageDisplayKind),
         }, { syncFts: false });
         await persistGenerationPartial(db, {
           content: answerText,
@@ -5365,6 +5453,15 @@ async function streamAssistantReply(input: {
     await streamingTransition;
   };
 
+  const unregisterStreamingControl = registerStreamingControl(input.space, input.thread.id, {
+    generationId,
+    publish: () => emitStreamingPatch(true),
+    persist: async () => {
+      await waitForScheduledPersistStreamingSnapshot();
+      await persistStreamingSnapshot(true);
+    },
+  });
+
   try {
     markGenerationMetric(generationMetrics, 'providerRequestSentAt');
     scheduleProviderTimeout(FIRST_PROVIDER_BYTE_TIMEOUT_MS);
@@ -5383,7 +5480,7 @@ async function streamAssistantReply(input: {
       },
       async (event: AiStreamEvent) => {
         const eventStartedAt = Date.now();
-        if (input.signal?.aborted || hasStoppedGeneration(input.assistantMessageId, generationId)) {
+        if (streamFailed || input.signal?.aborted || hasStoppedGeneration(input.assistantMessageId, generationId)) {
           return;
         }
         scheduleProviderTimeout(PROVIDER_IDLE_TIMEOUT_MS);
@@ -5415,6 +5512,15 @@ async function streamAssistantReply(input: {
           return;
         }
         if (event.type === 'answer_delta') {
+          // Timestamp ingress before database work or display throttling can delay the phase transition.
+          const answerStarted = Boolean(event.text) && !generationMetrics.timestamps.firstAnswerDeltaAt;
+          if (answerStarted) {
+            markGenerationMetric(generationMetrics, 'firstAnswerDeltaAt');
+            if (!generationMetrics.timestamps.thinkingEndedAt) {
+              markGenerationMetric(generationMetrics, 'thinkingEndedAt', generationMetrics.timestamps.firstAnswerDeltaAt);
+            }
+            emitMessagePatch({ id: input.assistantMessageId, status: 'generating' });
+          }
           await ensureGenerationStreaming();
           recordStreamingProviderDelta(event);
           generationMetrics.counters.providerDeltaCount += 1;
@@ -5441,9 +5547,13 @@ async function streamAssistantReply(input: {
             if (visibleDelta) pendingAnswerChunks.push(visibleDelta);
             pendingAnswerChars += visibleDelta.length;
           }
+          if (answerStarted) emitStreamingPatch(true);
         }
         if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas) {
           if (!legacyThinkingDisabled) {
+            if (event.text && !generationMetrics.timestamps.firstReasoningDeltaAt) {
+              markGenerationMetric(generationMetrics, 'firstReasoningDeltaAt');
+            }
             await ensureGenerationStreaming();
             recordStreamingProviderDelta(event);
             generationMetrics.counters.providerDeltaCount += 1;
@@ -5513,6 +5623,7 @@ async function streamAssistantReply(input: {
     input.onUpdated?.();
   } finally {
     pressureProbeActive = false;
+    unregisterStreamingControl();
     if (pendingUiPatchTimer) {
       clearTimeout(pendingUiPatchTimer);
       pendingUiPatchTimer = null;
@@ -5535,22 +5646,33 @@ async function streamAssistantReply(input: {
     return;
   }
 
-  if (systemProtocol && (systemProtocol.actions.length || systemProtocol.invalid)) {
-    await ingestSystemAssistantAction({
+  if (systemProtocol && (systemProtocol.actions.length || systemProtocol.invalid || systemAssistantRoleContext)) {
+    const operationReply = await ingestSystemAssistantAction({
       space: input.space,
       assistantMessageId: input.assistantMessageId,
       originMessageId: input.userMessage.id,
       requestText: input.userMessage.content,
       action: systemProtocol.actions[0] ?? null,
       invalid: systemProtocol.invalid,
+      replyText: answerText,
+      roleCollecting: Boolean(systemAssistantRoleContext),
+      roleSaveAuthorized: systemRoleSaveAuthorized,
+      canExecute: db => !input.signal?.aborted
+        ? isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId) : Promise.resolve(false),
+    }).catch(error => {
+      if (!systemAssistantRoleContext) throw error;
+      // Draft maintenance is best effort; never interrupt a natural collection turn.
+      return systemRoleSaveAuthorized ? '角色卡暂未保存，请稍后再试。' : undefined;
     });
     flushStreamingTextChunks();
-    if (!answerText.trim()) answerText = systemProtocol.invalid ? '此操作暂不可用。' : '请在任务卡中继续。';
+    if (operationReply) answerText = operationReply;
+    if (!answerText.trim()) answerText = systemAssistantRoleContext
+      ? '你希望这个角色是什么样的？' : systemProtocol.invalid ? '此操作暂不可用。' : '请在任务卡中继续。';
   } else if (systemProtocol) {
     const task = await loadSystemTask(input.space, input.assistantMessageId);
     if (task?.status === 'planning') {
-      await ingestSystemAssistantAction({ space: input.space, assistantMessageId: input.assistantMessageId,
-        originMessageId: input.userMessage.id, requestText: input.userMessage.content, action: null });
+      await settleSystemTaskGeneration({ space: input.space, assistantMessageId: input.assistantMessageId,
+        generationId, status: 'completed', roleCollecting: Boolean(systemAssistantRoleContext) });
     }
   }
   await waitForScheduledPersistStreamingSnapshot();
@@ -6350,6 +6472,8 @@ export async function continueAssistantMessage(input: ContinueAssistantMessageIn
     if (!assistantMessage.content.trim()) {
       throw new Error('这条回复还没有可继续的正文。');
     }
+    const originalThinkingEnd = readThinkingEndedAt(assistantMessage.promptSnapshotJson);
+    if (originalThinkingEnd) markGenerationMetric(generationMetrics, 'thinkingEndedAt', originalThinkingEnd);
     const assistantBranchScopes = await aiThreadRepository.resolveBranchLineage(
       db,
       assistantMessage.branchRootMessageId,

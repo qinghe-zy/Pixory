@@ -48,6 +48,25 @@ function identity() {
   };
 }
 
+test('reasoning phase ends on ingress metadata even before any visible answer text', () => {
+  const store = loadStreamingStore();
+  const id = identity();
+  store.publishStreamingMessage(id, { reasoningText: 'thinking' });
+  let reasoning = 0;
+  let content = 0;
+  store.subscribeStreamingMessageReasoning(id, () => reasoning++);
+  store.subscribeStreamingMessageContent(id, () => content++);
+  store.publishStreamingMessage(id, { thinkingEndedAt: '2026-10-14T00:00:03Z' });
+  assert.equal(reasoning, 1);
+  assert.equal(content, 0);
+  assert.equal(store.getStreamingMessageSnapshot(id).content, '');
+  store.publishStreamingMessage(id, { content: 'first answer' });
+  store.publishStreamingMessage(id, { content: 'first answer continues' });
+  assert.equal(store.getStreamingMessageSnapshot(id).thinkingEndedAt, '2026-10-14T00:00:03Z');
+  store.publishStreamingMessage({ ...id, generationId: 'other' }, { thinkingEndedAt: null });
+  assert.equal(store.getStreamingMessageSnapshot(id).thinkingEndedAt, '2026-10-14T00:00:03Z');
+});
+
 test('streaming message store notifies only changed subscription channels', () => {
   const store = loadStreamingStore();
   const id = identity();
@@ -133,4 +152,17 @@ test('streaming message store clear resets snapshots and notifies active subscri
   unsubscribeAll();
   unsubscribeContent();
   unsubscribeReasoning();
+});
+
+test('first answer token notifies reasoning once so thinking ends before the answer finishes', () => {
+  const store = loadStreamingStore();
+  const id = identity();
+  store.publishStreamingMessage(id, { reasoningText: 'working', content: '' });
+  let notifications = 0;
+  store.subscribeStreamingMessageReasoning(id, () => notifications++);
+  store.publishStreamingMessage(id, { content: 'first' });
+  assert.equal(notifications, 1);
+  assert.equal(store.getStreamingMessageSnapshot(id).status, 'generating');
+  store.publishStreamingMessage(id, { content: 'first answer' });
+  assert.equal(notifications, 1);
 });

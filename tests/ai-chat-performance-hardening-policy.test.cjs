@@ -198,7 +198,9 @@ test('streaming assistant content uses lightweight rendering until the reply is 
   assert.match(bubble, /<AiMessageContent content=\{content\} streaming=\{streaming\} trailingInline=\{<InlineStreamingCursor \/>\} \/>/);
   assert.match(content, /streaming\?: boolean;/);
   assert.match(content, /if \(streaming\) \{/);
-  assert.match(content, /return <Text selectable=\{false\} style=\{\[styles\.body, styles\.assistantText\]\}>/);
+  assert.match(content, /function splitStreamingParagraphs/);
+  assert.match(content, /<View style=\{styles\.streamingWrap\}>/);
+  assert.match(content, /streamingBlockGap/);
   assert.doesNotMatch(content, /const parsedMarkdown = useMemo\(.*\[content, streaming\]\)/);
 });
 

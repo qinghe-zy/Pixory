@@ -10,6 +10,7 @@ import { createSystemAssistantRuntime } from '../ai/systemAssistant/systemAssist
 import { navigateSystemAssistant, type SystemAssistantNavigationAdapter } from '../ai/systemAssistant/systemAssistantNavigation';
 import type { SystemTaskSnapshot } from '../ai/systemAssistant/systemAssistantTypes';
 import type { IpRecord } from '../database/types';
+import { cancelSystemRoleTask, undoSystemRoleCreation } from '../ai/systemAssistant/systemAssistantRoleCreation';
 
 const EMPTY_TASKS: Record<string, SystemTaskSnapshot> = {};
 const EMPTY_IPS: IpRecord[] = [];
@@ -54,6 +55,7 @@ export function useSystemAssistantAdapter(input: {
       stopTask: task => current.current.stopTask(task),
       navigate: command => navigateSystemAssistant(current.current.navigation, command),
       rename: renameSystemAssistant, undoRename: undoSystemAssistantRename, isActive,
+      cancelRoleTask: cancelSystemRoleTask, undoRoleCreation: undoSystemRoleCreation,
       canContinue: () => current.current.canContinue(), changed: () => current.current.changed(),
       hasActiveGeneration: messageId => aiGenerationManager.getActiveTaskForThread(space, 'pixory-system-assistant')?.assistantMessageId === messageId,
       reportError: message => current.current.reportError(message),

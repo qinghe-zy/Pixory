@@ -104,7 +104,6 @@ import {
   createThreadFromContext,
   DEFAULT_AI_USER_AVATAR_ENABLED,
   deleteAiThreads,
-  flushStreamingMessageSnapshot,
   getCurrentChatModelPresentation,
   generateReplyAssistSuggestions,
   listThreadMessages,
@@ -123,6 +122,7 @@ import {
   type AiStreamingMessagePatch,
 } from "../ai/aiChatService";
 import type { AiModelIconBrand } from "../ai/aiModelIconService";
+import { persistActiveStreamingGeneration } from '../ai/aiStreamingRuntime';
 import {
   aiGenerationManager,
   type AiGenerationSubscriber,
@@ -472,6 +472,7 @@ function applyStreamingPatchToMessage(
     modelId: patch.modelId === undefined ? message.modelId : patch.modelId,
     modelSnapshotJson: patch.modelSnapshotJson ?? message.modelSnapshotJson,
     promptSnapshotJson: patch.promptSnapshotJson ?? message.promptSnapshotJson,
+    thinkingEndedAt: patch.thinkingEndedAt === undefined ? message.thinkingEndedAt : patch.thinkingEndedAt,
     createdAt: patch.createdAt ?? message.createdAt,
     completedAt:
       patch.completedAt === undefined ? message.completedAt : patch.completedAt,
@@ -1326,6 +1327,7 @@ export function AiChatScreen({
   const maxTailReservedHeightMessageIdRef = useRef<string | null>(null);
   const messageViewportHeightRef = useRef(initialMessageViewportHeight);
   const nativeMessageScrollOffsetRef = useRef(0);
+  const thinkingHeaderReadingRef = useRef<string | null>(null);
   const previousMessageScrollOffsetRef = useRef(0);
   const scrollingTowardLatestRef = useRef(true);
   const tailViewportPolicyRef = useRef<StreamingTailViewportPolicy>(
@@ -1350,6 +1352,7 @@ export function AiChatScreen({
   const [replyAssistLoading, setReplyAssistLoading] = useState(false);
   const [replyAssistError, setReplyAssistError] = useState<string | null>(null);
   const updateStreamingLockStateSnapshot = useCallback((offsetY: number) => {
+    if (thinkingHeaderReadingRef.current) return;
     const atBottom = offsetY <= MESSAGE_STREAM_FOLLOW_THRESHOLD;
     const nearBottom = offsetY <= STICK_TO_BOTTOM_OFFSET_PX;
     if (!hasPendingStreamingReadBuffer()) {
@@ -1568,6 +1571,7 @@ export function AiChatScreen({
 
         if (
           reconcileAllowFollowLatestRef.current &&
+          !thinkingHeaderReadingRef.current &&
           (bottomLockedRef.current || isNearBottomRef.current) &&
           !hasPendingStreamingReadBuffer()
         ) {
@@ -2724,17 +2728,12 @@ export function AiChatScreen({
     if (!identity) {
       return;
     }
-    const snapshot = getStreamingMessageSnapshot(identity);
-    if (!snapshot.hasSnapshot) {
-      return;
+    // Persist the generation owner's newest chunks, never a potentially stale visible preview.
+    try {
+      await persistActiveStreamingGeneration(identity.space, identity.threadId, identity.generationId);
+    } catch (error) {
+      console.warn('Pixory AI background snapshot persistence failed.', error);
     }
-    await flushStreamingMessageSnapshot({
-      assistantMessageId: identity.messageId,
-      content: snapshot.content,
-      generationId: identity.generationId,
-      reasoningText: snapshot.reasoningText,
-      space: identity.space,
-    });
   }
 
   function getActiveStreamingVisibility(
@@ -2754,20 +2753,6 @@ export function AiChatScreen({
   function clearGenerationSubscription() {
     generationSubscriptionRef.current?.();
     generationSubscriptionRef.current = null;
-  }
-
-  function getLatestAssistantThinkingExpanded(): boolean {
-    for (
-      let index = visibleMessagesRef.current.length - 1;
-      index >= 0;
-      index -= 1
-    ) {
-      const message = visibleMessagesRef.current[index];
-      if (message?.role === "assistant") {
-        return thinkingExpandedByMessageIdRef.current.get(message.id) ?? false;
-      }
-    }
-    return false;
   }
 
   function transitionGenerationPhase(nextPhase: Parameters<typeof transitionAiGeneration>[1]): void {
@@ -2828,7 +2813,7 @@ export function AiChatScreen({
         // prettier-ignore
         publishStreamingMessage(streamingIdentity, { content: '', reasoningText: null, status: 'generating' });
         // prettier-ignore
-        thinkingExpandedByMessageIdRef.current.set(assistantMessageId, getLatestAssistantThinkingExpanded());
+        thinkingExpandedByMessageIdRef.current.set(assistantMessageId, false);
         setActiveAssistantId(assistantMessageId);
         setMessages((current) => {
           let nextMessages = current;
@@ -2902,7 +2887,7 @@ export function AiChatScreen({
           streamDiagnosticWindowRef.current = { generationId: patch.generationId, recordedAt: now, answerChars, reasoningChars };
         }
         if (generationStateRef.current && patch.generationId) {
-          const nextPhase = terminal ? 'terminal' : patch.content?.trim() ? 'answer' : patch.reasoningText?.trim() ? 'reasoning' : 'first_byte';
+          const nextPhase = terminal ? 'terminal' : patch.thinkingEndedAt || patch.content?.trim() ? 'answer' : patch.reasoningText?.trim() ? 'reasoning' : 'first_byte';
           transitionGenerationPhase(nextPhase);
         }
         applyOrBufferStreamingMessagePatch(targetThreadId, generation, patch);
@@ -2979,6 +2964,7 @@ export function AiChatScreen({
     resetStreamingReadBufferState();
     clearActiveStreamingIdentity();
     activeStreamGenerationRef.current += 1;
+    nextRequestId('messages');
     activeThreadIdRef.current = targetThreadId;
     const generation = activeStreamGenerationRef.current;
     return {
@@ -3052,7 +3038,7 @@ export function AiChatScreen({
       getLatestAssistantBubbleContentWidth() ??
       getAssistantBubbleContentWidthFallback({
         bubbleHorizontalPadding: spacing[3],
-        messageStackRatio: 0.88,
+        messageStackRatio: 1,
         pagePaddingHorizontal: layout.pagePaddingHorizontal,
         screenWidth,
       })
@@ -3186,6 +3172,7 @@ export function AiChatScreen({
   }
 
   function resetStreamingReadBufferState() {
+    thinkingHeaderReadingRef.current = null;
     if (liveStreamingRestoreAnimationFrameRef.current != null) {
       cancelAnimationFrame(liveStreamingRestoreAnimationFrameRef.current);
       liveStreamingRestoreAnimationFrameRef.current = null;
@@ -3250,6 +3237,7 @@ export function AiChatScreen({
 
   const followLatestMessage = useCallback(
     (animated = true) => {
+      thinkingHeaderReadingRef.current = null;
       userScrolledAwayFromBottomRef.current = false;
       bottomLockedRef.current = true;
       isNearBottomRef.current = true;
@@ -3328,6 +3316,10 @@ export function AiChatScreen({
       contentOffset.y <= previousMessageScrollOffsetRef.current;
     previousMessageScrollOffsetRef.current = contentOffset.y;
     messageScrollOffsetRef.current = contentOffset.y;
+    if (thinkingHeaderReadingRef.current && !isUserDraggingRef.current) {
+      setScrollToLatestVisible(shouldShowScrollToLatest(contentOffset.y));
+      return;
+    }
     lastUserScrollAtRef.current = Date.now();
     updateStreamingLockStateSnapshot(contentOffset.y);
     syncTailViewportPolicyForCurrentTailState();
@@ -3353,6 +3345,20 @@ export function AiChatScreen({
     },
     [followLatestMessage],
   );
+
+  const preserveThinkingHeaderAnchor = useCallback((offsetDelta: number) => {
+    if (!screenMountedRef.current || isUserDraggingRef.current || !Number.isFinite(offsetDelta)) return;
+    const offset = Math.max(0, nativeMessageScrollOffsetRef.current + offsetDelta);
+    nativeMessageScrollOffsetRef.current = offset;
+    messageScrollOffsetRef.current = offset;
+    previousMessageScrollOffsetRef.current = offset;
+    if (!thinkingHeaderReadingRef.current) {
+      updateStreamingLockStateSnapshot(offset);
+      userScrolledAwayFromBottomRef.current = !isNearBottomRef.current;
+    }
+    setScrollToLatestVisible(shouldShowScrollToLatest(offset));
+    messageListRef.current?.scrollToOffset({ animated: false, offset });
+  }, [updateStreamingLockStateSnapshot]);
 
   useEffect(() => {
     if (isSystemAssistant && isNearBottomRef.current) {
@@ -3942,7 +3948,7 @@ export function AiChatScreen({
         }
         return;
       }
-      if (!isLatestRequest("messages", requestId, targetThreadId)) {
+      if (!screenMountedRef.current || spaceRef.current !== space || !isLatestRequest("messages", requestId, targetThreadId)) {
         return;
       }
       setMessageLoadError(null);
@@ -4069,6 +4075,7 @@ export function AiChatScreen({
         publishStreamingMessage(streamingIdentity, {
           content: patch.content,
           reasoningText: patch.reasoningText,
+          thinkingEndedAt: patch.thinkingEndedAt,
           status: patch.status === "generating" ? patch.status : undefined,
         });
         requestAnimationFrame(() => {
@@ -4087,6 +4094,14 @@ export function AiChatScreen({
         if (canPublishLive) {
           return;
         }
+        if (streamingIdentity) {
+          publishStreamingMessage(streamingIdentity, {
+            content: patch.content,
+            reasoningText: patch.reasoningText,
+            thinkingEndedAt: patch.thinkingEndedAt,
+            status: patch.status === 'generating' || patch.status === 'completed' || patch.status === 'failed' || patch.status === 'stopped' ? patch.status : undefined,
+          });
+        }
         applyStreamingMessagePatch(patch);
       } else {
         streamingTailPerfDebug.incrementDetachedPatchCount();
@@ -4095,6 +4110,11 @@ export function AiChatScreen({
         streamingReadBufferActiveRef.current = true;
         hasBufferedStreamingUpdateRef.current = true;
         freezeVisibleStreamingMessage(patch.id);
+        const frozen = frozenStreamingMessageByIdRef.current.get(patch.id);
+        if (frozen && patch.thinkingEndedAt && frozen.thinkingEndedAt !== patch.thinkingEndedAt) {
+          frozenStreamingMessageByIdRef.current.set(patch.id, { ...frozen, thinkingEndedAt: patch.thinkingEndedAt });
+          applyStreamingMessagePatch({ id: patch.id, generationId: patch.generationId, thinkingEndedAt: patch.thinkingEndedAt });
+        }
         mergeBufferedStreamingPatch(patch);
 
         if (patch.generationId) {
@@ -4295,6 +4315,7 @@ export function AiChatScreen({
       followLatest: boolean;
       resetTail?: boolean;
     }) => {
+      const flushGeneration = activeStreamGenerationRef.current;
       pendingStreamingTailCommitRef.current = false;
       const bufferedPatch = bufferedStreamingPatchRef.current;
       const shouldReloadFinal = pendingFinalReloadRef.current;
@@ -4335,6 +4356,7 @@ export function AiChatScreen({
           publishStreamingMessage(streamingIdentity, {
             content: bufferedPatch.content,
             reasoningText: bufferedPatch.reasoningText,
+            thinkingEndedAt: bufferedPatch.thinkingEndedAt,
             status:
               bufferedPatch.status === "completed" ||
               bufferedPatch.status === "failed" ||
@@ -4351,8 +4373,10 @@ export function AiChatScreen({
       }
       if (shouldReloadFinal && targetThreadId) {
         await reloadMessages(targetThreadId, followLatest);
+        if (!screenMountedRef.current || spaceRef.current !== space || !isCurrentStream(targetThreadId, flushGeneration)) return;
         await reloadContinuityMilestones(targetThreadId);
         await reloadMemoryCaptures(targetThreadId);
+        if (!screenMountedRef.current || spaceRef.current !== space || !isCurrentStream(targetThreadId, flushGeneration)) return;
         clearStreamingIdentity(pendingFinalStreamingIdentity);
       }
     },
@@ -4363,6 +4387,7 @@ export function AiChatScreen({
       reloadContinuityMilestones,
       reloadMemoryCaptures,
       reloadMessages,
+      space,
     ],
   );
 
@@ -4510,6 +4535,7 @@ export function AiChatScreen({
 
   const handleMessageScrollBeginDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      thinkingHeaderReadingRef.current = null;
       nativeMessageScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
       isUserDraggingRef.current = true;
       lastUserScrollAtRef.current = Date.now();
@@ -4643,7 +4669,9 @@ export function AiChatScreen({
       setClippingEnabled(false);
       return;
     }
-    const timer = setTimeout(() => setClippingEnabled(true), 1000);
+    const timer = setTimeout(() => {
+      if (!thinkingHeaderReadingRef.current) setClippingEnabled(true);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [generating, shouldRelaxClipping, streamingTailVersion]);
   const tailListRemoveClippedSubviews = Platform.OS === "android" ? clippingEnabled : undefined;
@@ -5153,6 +5181,26 @@ export function AiChatScreen({
       appActiveRef.current = state === "active";
       setAppIsActive(state === "active");
       if (state === 'active') {
+        const targetThreadId = activeThreadIdRef.current;
+        if (targetThreadId) {
+          const active = aiGenerationManager.refreshThread(spaceRef.current, targetThreadId);
+          if (active) {
+            scheduleStreamingTailReconcile('foreground', { forceRender: true });
+          } else {
+            const hadFinalBuffer = pendingFinalReloadRef.current;
+            const resumeGeneration = activeStreamGenerationRef.current;
+            void (async () => {
+              await flushBufferedStreamingState({ followLatest: false, resetTail: true });
+              if (!screenMountedRef.current || activeThreadIdRef.current !== targetThreadId || spaceRef.current !== space || activeStreamGenerationRef.current !== resumeGeneration) return;
+              if (!hadFinalBuffer) {
+                await reloadMessages(targetThreadId, {
+                  branchScopes: activeMessageBranchScopesRef.current ?? [],
+                  limitOverride: Math.max(CHAT_MESSAGE_PAGE_SIZE, messagesRef.current.length),
+                });
+              }
+            })().catch(() => undefined);
+          }
+        }
         void reloadRoleDiaries().catch(() => undefined);
         scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
@@ -5164,11 +5212,15 @@ export function AiChatScreen({
         scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
     });
+    return () => subscription.remove();
+  }, [reloadRoleDiaries, space, flushBufferedStreamingState, reloadMessages, scheduleStreamingTailReconcile]);
+
+  useEffect(() => {
+    screenMountedRef.current = true;
     return () => {
       screenMountedRef.current = false;
       void flushActiveStreamingSnapshot();
       scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
-      subscription.remove();
       clearComposerFocusVisibilityTimeouts();
       clearLatestJumpTimeouts();
       clearInlineEditVisibilityTimeouts();
@@ -5189,7 +5241,7 @@ export function AiChatScreen({
         newChatFeedbackTimeoutRef.current = null;
       }
     };
-  }, [reloadRoleDiaries]);
+  }, []);
 
   useEffect(() => {
     // Wait until message loading is settled before playing the entrance
@@ -7027,9 +7079,13 @@ export function AiChatScreen({
           onSelectIp={ipId => { void systemAssistant.runtime?.resolveInput(item.task.assistantMessageId, ipId); }}
           onConfirm={() => { void systemAssistant.runtime?.approve(item.task.assistantMessageId); }}
           onCancel={() => { void systemAssistant.runtime?.cancel(item.task.assistantMessageId); }}
-          onRetry={() => { void systemAssistant.runtime?.retry(item.task.assistantMessageId); }}
+          onRetry={() => {
+            if (!item.task.action || item.task.action.type === 'role-draft') void handleRegenerate(item.task.assistantMessageId);
+            else void systemAssistant.runtime?.retry(item.task.assistantMessageId);
+          }}
           onUndo={() => { void systemAssistant.runtime?.undo(item.task.assistantMessageId); }}
-          onCreateIp={() => onNavigateToCreateIp?.()} />;
+          onCreateIp={() => onNavigateToCreateIp?.()}
+          onOpenRole={roleCardId => onNavigateToGlobalRoute?.('ai-role-card-detail', { roleCardId })} />;
       }
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
@@ -7231,6 +7287,7 @@ export function AiChatScreen({
           >
             <AiMessageBubble
               isSystemAssistant={isSystemAssistant}
+              systemTask={isSystemAssistant && message.versionIndex === message.versionTotal ? systemAssistant.tasks[message.id] : null}
               assistantAvatar={{
                 avatarEnabled: isSystemAssistant ? true : participantAppearance.assistantAvatarEnabled,
                 avatarUri: isSystemAssistant ? null : participantAppearance.assistantAvatarUri,
@@ -7276,6 +7333,7 @@ export function AiChatScreen({
               thinkingExpected={thinkingExpected}
               // prettier-ignore
               thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
+              onThinkingHeaderAnchorShift={preserveThinkingHeaderAnchor}
               onCopy={(targetMessage) => {
                 void copyMessageContent(targetMessage);
               }}
@@ -7295,12 +7353,14 @@ export function AiChatScreen({
               }}
               onThinkingExpandedChange={(messageId, expanded) => {
                 thinkingExpandedByMessageIdRef.current.set(messageId, expanded);
+                // Reading a header pauses auto-follow without swapping live text for detached replay.
+                thinkingHeaderReadingRef.current = messageId;
+                if (Platform.OS === 'android') setClippingEnabled(false);
                 const sameTailMessage =
                   streamingTailStateRef.current.messageId === messageId &&
                   streamingTailStateRef.current.status !== "idle";
-                scheduleStreamingTailReconcile("thinking-expanded", {
-                  allowFollowLatest:
-                    bottomLockedRef.current || isNearBottomRef.current,
+                if (sameTailMessage) scheduleStreamingTailReconcile("thinking-expanded", {
+                  allowFollowLatest: false,
                   forceRender: true,
                   retainWindow: sameTailMessage,
                 });
@@ -7336,6 +7396,8 @@ export function AiChatScreen({
       activeAssistantId,
       systemAssistant.runtime,
       systemAssistant.ips,
+      systemAssistant.tasks,
+      onNavigateToGlobalRoute,
       onNavigateToCreateIp,
       participantAppearance,
       cancelInlineEdit,
@@ -7358,6 +7420,7 @@ export function AiChatScreen({
       memoryCapturesBySourceMessageId,
       openCitation,
       pendingMessageActionId,
+      preserveThinkingHeaderAnchor,
       replyActionModeByMessageId,
       searchHighlightMessageId,
       singleBubbleTailReplayEnabled,

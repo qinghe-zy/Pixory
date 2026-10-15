@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { AiStreamingTailContinuationGroup } from '../../ai/aiStreamingTailContinuation';
-import { colors, radius, rhythm, spacing } from '../../design/tokens';
+import { rhythm } from '../../design/tokens';
 import { AiMeasuredStreamBlock } from './AiMeasuredStreamBlock';
 
 type AiStreamingTailContinuationBubbleProps = {
@@ -89,13 +89,8 @@ export function AiStreamingTailContinuationBubble({
 const styles = StyleSheet.create({
   assistantBubble: {
     alignSelf: 'stretch',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderTopLeftRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
     maxWidth: '100%',
-    overflow: 'hidden',
+    width: '100%',
   },
   assistantRow: {
     alignItems: 'flex-start',
@@ -104,14 +99,14 @@ const styles = StyleSheet.create({
   },
   assistantStack: {
     alignItems: 'flex-start',
-    alignSelf: 'flex-start',
-    maxWidth: '94%',
-    width: '94%',
+    alignSelf: 'stretch',
+    maxWidth: '100%',
+    width: '100%',
   },
   reasoningRow: {
     alignSelf: 'flex-start',
     marginTop: -rhythm.listCardGap,
-    paddingHorizontal: spacing[1],
-    width: '94%',
+    paddingHorizontal: 0,
+    width: '100%',
   },
 });

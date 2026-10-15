@@ -50,10 +50,13 @@ if (Test-Path -LiteralPath $archive) {
 }
 
 tar -czf $archive -C $docsDir .
+if ($LASTEXITCODE -ne 0) { throw 'Website archive creation failed.' }
 scp -o StrictHostKeyChecking=no -i $KeyPath $archive "$User@$Server`:$remoteArchive"
+if ($LASTEXITCODE -ne 0) { throw 'Website archive upload failed.' }
 
 if ($ApkPath) {
   scp -o StrictHostKeyChecking=no -i $KeyPath $resolvedApkPath "$User@$Server`:$remoteApkTemp"
+  if ($LASTEXITCODE -ne 0) { throw 'APK upload failed.' }
 }
 
 $remoteScript = @"
@@ -84,7 +87,9 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($remoteRunner, ($remoteScript -replace "`r`n", "`n"), $utf8NoBom)
 
 scp -o StrictHostKeyChecking=no -i $KeyPath $remoteRunner "$User@$Server`:$remoteRunnerPath"
+if ($LASTEXITCODE -ne 0) { throw 'Deployment runner upload failed.' }
 ssh -o StrictHostKeyChecking=no -i $KeyPath "$User@$Server" "bash '$remoteRunnerPath'"
+if ($LASTEXITCODE -ne 0) { throw 'Remote website deployment failed. Inspect server state before retrying.' }
 
 Write-Host "Deployed docs to https://$HostName/"
 if ($ApkPath) {

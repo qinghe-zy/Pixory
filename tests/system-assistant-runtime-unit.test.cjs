@@ -6,6 +6,7 @@ const ts = require('typescript');
 const vm = require('node:vm');
 
 function load(relative, mocks = {}) {
+  mocks = { './systemAssistantRoleCreation': {}, '../ai/systemAssistant/systemAssistantRoleCreation': {}, ...mocks };
   const filename = path.resolve(__dirname, '..', relative);
   const source = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -203,6 +204,12 @@ test('recovery checks the exact generating message and preserves interrupted und
   stopped.set({ status: 'planning' });
   await stopped.runtime.recover('assistant');
   assert.equal(stopped.get().status, 'failed');
+  const role = fixture({ hasActiveGeneration: () => false });
+  role.set({ status: 'planning', action: null, steps: [{ label: '正在梳理角色设定' }] });
+  await role.runtime.recover('assistant');
+  assert.equal(role.get().status, 'waiting_for_user');
+  assert.equal(role.get().error, null);
+  assert.equal(role.get().steps.at(-1).label, '共创已暂停');
   stopped.set({ status: 'undoing', undo: { previousName: '旧名字', appliedName: '伙伴',
     expiresAt: new Date(Date.now() + 60000).toISOString() } });
   await stopped.runtime.recover('assistant');

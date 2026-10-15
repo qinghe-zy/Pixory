@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const { DatabaseSync } = require('node:sqlite');
 
 function load(relative, mocks = {}) {
+  mocks = { './systemAssistantRoleCreation': {}, '../../database': {}, ...mocks };
   const filename = path.resolve(__dirname, '..', relative);
   const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
