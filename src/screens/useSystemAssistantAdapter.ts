@@ -14,6 +14,7 @@ import { cancelSystemRoleTask, undoSystemRoleCreation } from '../ai/systemAssist
 
 const EMPTY_TASKS: Record<string, SystemTaskSnapshot> = {};
 const EMPTY_IPS: IpRecord[] = [];
+const taskMemoryCache = new Map<string, Record<string, SystemTaskSnapshot>>();
 
 export function useSystemAssistantAdapter(input: {
   threadId: string | null | undefined;
@@ -33,7 +34,7 @@ export function useSystemAssistantAdapter(input: {
   current.current = input;
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [tasks, setTasks] = useState<Record<string, SystemTaskSnapshot>>({});
+  const [tasks, setTasks] = useState<Record<string, SystemTaskSnapshot>>(() => taskMemoryCache.get(input.space) ?? {});
   const [ips, setIps] = useState<IpRecord[]>([]);
   const [ipsSpace, setIpsSpace] = useState<PixorySpace | null>(null);
   const space = input.space;
@@ -65,13 +66,20 @@ export function useSystemAssistantAdapter(input: {
   useEffect(() => {
     if (!enabled) { setTasks({}); setIps([]); return; }
     let live = true;
+    const cached = taskMemoryCache.get(space);
+    if (cached) {
+      setTasks(previous => ({ ...cached, ...previous }));
+    }
     const upsert = (task: SystemTaskSnapshot) => {
       if (!live) return;
-      setTasks(previous => previous[task.assistantMessageId]?.updatedAt > task.updatedAt ? previous
-        : { ...previous, [task.assistantMessageId]: task });
+      setTasks(previous => {
+        if (previous[task.assistantMessageId]?.updatedAt > task.updatedAt) return previous;
+        const next = { ...previous, [task.assistantMessageId]: task };
+        taskMemoryCache.set(space, next);
+        return next;
+      });
     };
     const unsubscribe = subscribeSystemTasks(space, upsert);
-    setTasks({});
     return () => { live = false; unsubscribe(); };
   }, [enabled, space]);
 
@@ -111,14 +119,28 @@ export function useSystemAssistantAdapter(input: {
         for (const value of values) {
           if (value && (!next[value.assistantMessageId] || next[value.assistantMessageId].updatedAt <= value.updatedAt)) next[value.assistantMessageId] = value;
         }
+        taskMemoryCache.set(space, next);
         return next;
       });
     }).catch(() => {});
     return () => { live = false; };
   }, [active, space, idsKey, runtime]);
 
+  const refreshTask = async (assistantMessageId: string) => {
+    try {
+      const task = await loadSystemTask(space, assistantMessageId);
+      if (task) {
+        setTasks(previous => {
+          const next = { ...previous, [assistantMessageId]: task };
+          taskMemoryCache.set(space, next);
+          return next;
+        });
+      }
+    } catch {}
+  };
+
   const visibleTasks = useMemo(() => enabled
     ? Object.fromEntries(Object.entries(tasks).filter(([, task]) => task.space === space))
     : EMPTY_TASKS, [enabled, tasks, space]);
-  return { tasks: visibleTasks, ips: enabled && ipsSpace === space ? ips : EMPTY_IPS, runtime };
+  return { tasks: visibleTasks, ips: enabled && ipsSpace === space ? ips : EMPTY_IPS, runtime, refreshTask };
 }

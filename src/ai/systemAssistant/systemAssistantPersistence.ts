@@ -19,13 +19,12 @@ export async function clearSystemTasksInDatabase(db: SQLiteDatabase): Promise<vo
   await db.runAsync("DELETE FROM app_settings WHERE key LIKE 'systemAssistantRoleSnapshot:v1:%'");
 }
 
-export async function loadSystemTask(space: PixorySpace, messageId: string): Promise<SystemTaskSnapshot | null> {
-  const raw = await runWithDatabaseSpace(space, db => settingsRepository.getValue(db, key(messageId)));
+export function parseSystemTaskSnapshot(raw: string | null, space: PixorySpace, messageId?: string): SystemTaskSnapshot | null {
   if (!raw) return null;
   try {
     const task = JSON.parse(raw) as SystemTaskSnapshot;
-    if (task.version !== 1 || task.space !== space || task.assistantMessageId !== messageId
-      || task.taskId !== `system-task:${messageId}` || typeof task.originMessageId !== 'string'
+    if (task.version !== 1 || task.space !== space || (messageId && task.assistantMessageId !== messageId)
+      || (messageId && task.taskId !== `system-task:${messageId}`) || typeof task.originMessageId !== 'string'
       || typeof task.requestText !== 'string' || !Array.isArray(task.steps)
       || (task.requiresIp !== undefined && typeof task.requiresIp !== 'boolean')
       || !task.steps.every(step => typeof step.label === 'string' && Number.isFinite(Date.parse(step.at)))
@@ -49,6 +48,11 @@ export async function loadSystemTask(space: PixorySpace, messageId: string): Pro
       || !Number.isFinite(Date.parse(task.createdRoleCard.expiresAt)))) return null;
     return task;
   } catch { return null; }
+}
+
+export async function loadSystemTask(space: PixorySpace, messageId: string): Promise<SystemTaskSnapshot | null> {
+  const raw = await runWithDatabaseSpace(space, db => settingsRepository.getValue(db, key(messageId)));
+  return parseSystemTaskSnapshot(raw, space, messageId);
 }
 
 export async function saveSystemTask(task: SystemTaskSnapshot): Promise<void> {
@@ -98,10 +102,23 @@ export async function restartSystemTask(space: PixorySpace, messageId: string, o
 }
 
 export async function loadSystemTasks(space: PixorySpace, messageIds: string[]): Promise<SystemTaskSnapshot[]> {
+  if (messageIds.length === 0) return [];
+  const targetKeys = messageIds.map(id => key(id));
+  const placeholders = targetKeys.map(() => '?').join(',');
+  const rows = await runWithDatabaseSpace(space, db =>
+    db.getAllAsync<{ key: string; value: string }>(
+      `SELECT key, value FROM app_settings WHERE key IN (${placeholders})`,
+      targetKeys
+    )
+  ).catch(() => []);
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    if (row?.key && row?.value) map.set(row.key, row.value);
+  }
   const tasks: SystemTaskSnapshot[] = [];
-  // expo-sqlite prepared statements must be finalized sequentially on this connection.
   for (const id of messageIds) {
-    const task = await loadSystemTask(space, id);
+    const raw = map.get(key(id));
+    const task = parseSystemTaskSnapshot(raw ?? null, space, id);
     if (task) tasks.push(task);
   }
   return tasks;

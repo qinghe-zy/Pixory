@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 64;
+export const DATABASE_VERSION = 66;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1275,6 +1275,20 @@ CREATE TABLE IF NOT EXISTS memory_board_projection (
 CREATE INDEX IF NOT EXISTS idx_memory_board_lane
   ON memory_board_projection(space, lane, hidden, sortKey DESC);
 
+CREATE TABLE IF NOT EXISTS memory_claim_feedback (
+  claimId TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  injectedCount INTEGER NOT NULL DEFAULT 0,
+  usedCount INTEGER NOT NULL DEFAULT 0,
+  lastInjectedAt TEXT,
+  lastUsedAt TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (claimId) REFERENCES memory_claims(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_claim_feedback_space
+  ON memory_claim_feedback(space, usedCount, injectedCount);
+
 CREATE TABLE IF NOT EXISTS memory_current_turn_observations (
   id TEXT PRIMARY KEY NOT NULL,
   space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
@@ -2300,4 +2314,32 @@ WHERE status = 'active' AND supersededByMemoryId IS NULL;
 export const MIGRATION_STATEMENTS_V65 = `
 ALTER TABLE ai_threads ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_ai_threads_is_pinned ON ai_threads(isPinned);
+`;
+
+export const MIGRATION_STATEMENTS_V66 = `
+CREATE TABLE IF NOT EXISTS ai_context_windows (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  threadId TEXT NOT NULL REFERENCES ai_threads(id) ON DELETE CASCADE,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL,
+  plannerVersion INTEGER NOT NULL DEFAULT 1,
+  windowTarget INTEGER NOT NULL,
+  rawStartMessageId TEXT REFERENCES ai_messages(id) ON DELETE SET NULL,
+  activeSummaryIdsJson TEXT NOT NULL DEFAULT '[]',
+  updatedAt TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_context_windows_owner
+  ON ai_context_windows(space, threadId, branchRouteHash, lineageVersion);
+CREATE TABLE IF NOT EXISTS ai_context_maintenance_samples (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  threadId TEXT NOT NULL REFERENCES ai_threads(id) ON DELETE CASCADE,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL,
+  durationMs INTEGER NOT NULL CHECK (durationMs >= 0),
+  createdAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_context_maintenance_samples_scope
+  ON ai_context_maintenance_samples(space, threadId, branchRouteHash, lineageVersion, createdAt DESC);
 `;

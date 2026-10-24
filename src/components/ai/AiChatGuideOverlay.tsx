@@ -244,27 +244,34 @@ function GuideBubble({
 
   if (hasHighlight && highlightRect) {
     const { x, y, width, height } = highlightRect;
+    const bubbleWidth = 220;
+    const alignedRight = SCREEN_WIDTH - (x + width + HIGHLIGHT_PADDING);
+    const safeRight = Math.min(
+      Math.max(16, alignedRight),
+      Math.max(16, SCREEN_WIDTH - bubbleWidth - 16),
+    );
     positionStyle = {
       position: 'absolute' as const,
-      // 在按钮正下方
+      // 在按钮正下方，右边缘与高亮框右边缘对齐，保证完整落在左侧栏内部不跨越推挤主卡片边界
       top: y + height + HIGHLIGHT_PADDING + 12,
-      // 直接固定右边距，避免受到容器宽度的影响
-      right: 20,
-      width: 220,
+      right: safeRight,
+      width: bubbleWidth,
     };
   } else if (step === 1) {
     positionStyle = {
       position: 'absolute' as const,
       bottom: SCREEN_HEIGHT * 0.25,
       left: 20,
-      right: 20,
+      // 约束在左侧栏（86% 宽度）内部居中，避免跨越推挤缩放态右侧悬浮主卡片边界
+      right: Math.max(20, Math.round(SCREEN_WIDTH * 0.14) + 16),
     };
   } else {
     // step === 3
     positionStyle = {
       position: 'absolute' as const,
       bottom: SCREEN_HEIGHT * 0.25,
-      left: 20,
+      // 约束在右侧栏（85% 宽度）内部居中，避免跨越推挤缩放态左侧悬浮主卡片边界
+      left: Math.max(20, Math.round(SCREEN_WIDTH * 0.15) + 16),
       right: 20,
     };
   }

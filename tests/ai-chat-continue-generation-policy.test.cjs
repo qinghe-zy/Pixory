@@ -31,14 +31,13 @@ test('AI stopped or failed assistant replies can continue without replacing exis
   assert.match(manager, /continueAssistantMessage/);
   assert.match(manager, /startContinueAssistantMessage/);
 
-  assert.match(bubble, /onContinue/);
-  assert.match(bubble, /canContinue/);
-  assert.match(bubble, /accessibilityLabel="继续生成回复"/);
-  assert.match(bubble, /name="play-forward-outline"/);
+  assert.match(chat, /key:\s*['"]continue-generation['"]/);
+  assert.match(chat, /label:\s*['"]断点接续['"]/);
+  assert.match(chat, /ContinueGenerationIcon/);
+  assert.doesNotMatch(bubble, /accessibilityLabel="继续生成回复"/);
 
   assert.match(chat, /async function handleContinueAssistantMessage/);
   assert.match(chat, /aiGenerationManager\.startContinueAssistantMessage/);
-  assert.match(chat, /onContinue=\{handleContinueAssistantMessage\}/);
 });
 
 test('AI completed assistant replies can either continue downward or branch into a manual reply from the same action slot', () => {
@@ -77,10 +76,9 @@ test('AI completed assistant replies can either continue downward or branch into
   assert.match(bubble, /const assistantActionTargetsLatestVersion = message\.versionIndex === message\.versionTotal;/);
   assert.match(bubble, /const canContinueReply = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'continue'/);
   assert.match(bubble, /const canReplyToAssistant = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'reply'/);
-  assert.match(bubble, /const textReplyActionLabel = replyActionMode === 'reply' \? '回复' : '续答'/);
-  assert.match(bubble, /styles\.continueReplyActionButton/);
-  assert.match(bubble, /styles\.continueReplyActionText/);
-  assert.match(bubble, /fontStyle:\s*'italic'/);
+  assert.match(bubble, /const textReplyActionLabel = replyActionMode === 'reply' \? 'AI续写' : '续答'/);
+  assert.match(bubble, /ContinueReplyIcon/);
+  assert.match(bubble, /accessibilityLabel=\{textReplyActionLabel\}/);
   assert.match(bubble, /if \(canReplyToAssistant\) \{\s*onReplyToAssistant\(message\.id\);/);
 
   assert.match(chat, /async function handleContinueAssistantReply/);

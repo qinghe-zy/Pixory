@@ -127,7 +127,7 @@ test('each generation starts compact regardless of the previous or reused messag
     const states = new Map([['previous', expanded], ['current', expanded]]);
     const context = {
       space: 'normal', targetThreadId: 't', generation: 1, pendingUserMessage: undefined,
-      isCurrentStream: () => true, activeStreamingIdentityRef: {}, generationStateRef: {},
+      isCurrentStream: () => true, activeStreamingIdentityRef: {}, activeAssistantIdRef: { current: null }, generationStateRef: {},
       createAiGenerationState: () => ({}), transitionGenerationPhase() {},
       thinkingExpectedByMessageIdRef: { current: new Map() }, publishStreamingMessage() {},
       thinkingExpandedByMessageIdRef: { current: states },

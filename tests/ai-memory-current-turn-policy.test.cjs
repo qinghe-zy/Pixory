@@ -100,3 +100,14 @@ test('explicit forget and correction observations are staged before provider res
   const providerIndex = streamBody.indexOf('resolveThreadChatModel');
   assert.ok(stageIndex >= 0 && providerIndex >= 0 && stageIndex < providerIndex);
 });
+
+test('shouldExtractMemory gates out transient physiological states and pleasantries while admitting salient facts', () => {
+  const extractor = loadTypeScriptModule(extractorPath);
+  assert.equal(extractor.shouldExtractMemory('我去洗澡了'), false);
+  assert.equal(extractor.shouldExtractMemory('好困啊'), false);
+  assert.equal(extractor.shouldExtractMemory('先去拿个外卖'), false);
+  assert.equal(extractor.shouldExtractMemory('嗯嗯好的'), false);
+  assert.equal(extractor.shouldExtractMemory('请记住我不吃香菜'), true);
+  assert.equal(extractor.shouldExtractMemory('我对海鲜过敏'), true);
+  assert.equal(extractor.shouldExtractMemory('我喜欢喝冰美式'), true);
+});

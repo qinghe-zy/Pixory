@@ -37,6 +37,7 @@ test('prompt layer order is fixed from stable prefix through current user messag
       'stable_material_rules',
       'stable_tool_definitions',
       'memory_snapshot',
+      'summary_archive',
       'history_window',
       'companion_runtime',
       'temporal_open_loops',
@@ -101,7 +102,7 @@ test('immersive continuation nudge stays near current request and out of stable 
   assert.doesNotMatch(stablePrefixRegion, /buildNextReplyNudge/);
 });
 
-test('prompt cache key contains scope, branch route, retrieval version, and generation params without metrics', () => {
+test('prompt cache routing preserves scope and branch while sampling remains in the business fingerprint', () => {
   const promptCache = read('src/ai/aiPromptCache.ts');
   const chat = read('src/ai/aiChatService.ts');
 
@@ -109,6 +110,8 @@ test('prompt cache key contains scope, branch route, retrieval version, and gene
   assert.match(promptCache, /AI_RETRIEVAL_CONTEXT_VERSION/);
   assert.match(promptCache, /branchRouteHash/);
   assert.match(promptCache, /generationParamsHash/);
+  const key = /const openAiPromptCacheKey = \[[\s\S]*?\]\.join\(': '\)|const openAiPromptCacheKey = \[[\s\S]*?\]\.join\(':'\)/.exec(promptCache)?.[0] ?? '';
+  assert.ok(key); assert.doesNotMatch(key, /generationParamsHash|memoryEpoch/);
   assert.match(promptCache, /scopeKey/);
   assert.match(promptCache, /`pv\$\{input\.metadata\.promptVersion\}`/);
   assert.match(promptCache, /input\.metadata\.retrievalVersion/);
@@ -117,6 +120,24 @@ test('prompt cache key contains scope, branch route, retrieval version, and gene
   assert.match(chat, /buildPromptScopeKey/);
   assert.doesNotMatch(promptCache, /generationMetrics/);
   assert.doesNotMatch(promptCache, /sendPressedAt|requestId|providerRequestSentAt|firstProviderDeltaAt/);
+});
+
+test('chat sends the compiled staircase window through one final whole-round budget plan', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const planner = read('src/ai/context/contextPlanner.ts');
+  const sendPath = /const historyMessages = coverage\.recentMessages;[\s\S]*?userPrompt = finalizedContext\.userPrompt;/.exec(chat)?.[0] ?? '';
+
+  assert.match(chat, /preservePlannedHistory: true/);
+  assert.match(sendPath, /coverage\.plan/);
+  assert.match(sendPath, /sourceMessages: historyMessages/);
+  assert.match(sendPath, /attachmentCount: outgoingAttachments\.length/);
+  assert.match(sendPath, /history = finalizedContext\.history/);
+  assert.match(sendPath, /userPrompt = finalizedContext\.userPrompt/);
+  assert.match(chat, /requestEstimatedTokens: contextPlan\.budget\.estimatedInputTokens/);
+  assert.match(chat, /preserveBlockNames: \['memory_snapshot', 'summary_archive', 'stable_role'/);
+  assert.match(chat, /contextPlan: input\.contextPlan \?\? null/);
+  assert.match(planner, /buildSkeletonBridge\(removed\)/);
+  assert.match(planner, /smallest complete-round removal/);
 });
 
 test('dynamic retrieval changes retrieval hash without being part of stable prefix hash', () => {

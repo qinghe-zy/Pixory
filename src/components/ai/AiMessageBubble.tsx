@@ -1,7 +1,7 @@
 import { Image } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { memo, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 
@@ -17,11 +17,23 @@ import { AiInlineFeedback } from './AiInlineFeedback';
 import { AiMessageContent } from './AiMessageContent';
 import { AiStreamingMessageText, AiStreamingReasoningText } from './AiStreamingMessageText';
 import { AiThinkingBlock } from './AiThinkingBlock';
-import { readThinkingEndedAt } from '../../ai/aiGenerationMetrics';
+import { readThinkingEndedAt, readThinkingStartedAt } from '../../ai/aiGenerationMetrics';
 import { SystemAssistantProgress } from './SystemAssistantProgress';
 import type { SystemTaskSnapshot } from '../../ai/systemAssistant/systemAssistantTypes';
 import { AiTypingIndicator } from './AiTypingIndicator';
 import { AiVersionStepper } from './AiVersionStepper';
+import {
+  getCachedAiStreamingPacingMode,
+  useChatAppearancePreferences,
+  useChatTypographyPreferences,
+} from '../../services/aiChatPreferences';
+import {
+  ContinueReplyIcon,
+  CopyIcon,
+  EditIcon,
+  FavoriteStarIcon,
+  RegenerateIcon,
+} from './AiMessageActionIcons';
 import { formatAiFullMinute } from '../../utils/aiTimeFormatters';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 import type { AiMessageAttachmentRecord } from '../../database/repositories/aiThreadRepository';
@@ -34,6 +46,8 @@ interface AiMessageBubbleProps {
   isSystemAssistant?: boolean;
   systemTask?: SystemTaskSnapshot | null;
   message: AiMessageWithCitations;
+  isLatestMessage?: boolean;
+  isDeepHistory?: boolean;
   replyActionMode?: 'continue' | 'reply';
   assistantAvatar?: {
     avatarEnabled: boolean;
@@ -63,6 +77,7 @@ interface AiMessageBubbleProps {
   favoritePending?: boolean;
   hideCitations?: boolean;
   hideFooterActions?: boolean;
+  isSandboxModalOpen?: boolean;
   showActionButtons?: boolean;
   pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
@@ -73,25 +88,28 @@ interface AiMessageBubbleProps {
   onContinue: (messageId: string) => void;
   onContinueReply: (messageId: string) => void;
   onReplyToAssistant: (messageId: string) => void;
+  onOpenSandbox?: (params: { code: string; language?: string; title?: string; messageId?: string }) => void;
+  onRequestTweak?: (params: { code: string; language?: string; title?: string; messageId?: string }) => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
   onLongPress?: (message: AiMessageWithCitations, pageX: number, pageY: number) => void;
   onThinkingExpandedChange?: (messageId: string, expanded: boolean) => void;
   onThinkingHeaderAnchorShift?: (offsetDelta: number) => void;
+  onAnchorShift?: (offsetDelta: number) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
   onAttachmentPress?: (attachment: AiMessageAttachmentRecord) => void;
+  pinnedDocumentIds?: Set<string>;
+  pinningDocumentId?: string | null;
+  onPinDocument?: (documentId: string, title: string) => void;
+  onOpenDocumentActionSheet?: (documentId: string, title: string) => void;
 }
 
 function InlineStreamingCursor() {
-  return <Text style={styles.inlineStreamingCursor}>▍</Text>;
-}
-
-function renderAssistantContentWithCursor(content: string, streaming: boolean) {
-  if (!streaming || !content.trim()) {
-    return <AiMessageContent content={content} />;
+  if (getCachedAiStreamingPacingMode() === 'typewriter') {
+    return <Text style={styles.inlineStreamingCursor}>▍</Text>;
   }
-  return <AiMessageContent content={content} streaming={streaming} trailingInline={<InlineStreamingCursor />} />;
+  return null;
 }
 
 type AiMessageFooterActionsProps = {
@@ -137,12 +155,22 @@ export function AiMessageFooterActions({
   const assistantActionTargetsLatestVersion = message.versionIndex === message.versionTotal;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const canEdit = isUser && !generating && !actionPending && message.versionIndex === message.versionTotal;
-  const canContinue = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && Boolean(message.content.trim()) && (message.status === 'failed' || message.status === 'stopped');
   const canContinueReply = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'continue' && Boolean(message.content.trim()) && message.status === 'completed';
   const canReplyToAssistant = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'reply' && Boolean(message.content.trim()) && message.status === 'completed';
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
-  const textReplyActionLabel = replyActionMode === 'reply' ? '回复' : '续答';
+  const textReplyActionLabel = replyActionMode === 'reply' ? 'AI续写' : '续答';
+
+  const starScale = useRef(new Animated.Value(1)).current;
+
+  function handleFavoritePress() {
+    Animated.sequence([
+      Animated.timing(starScale, { toValue: 0.65, duration: 80, useNativeDriver: true }),
+      Animated.spring(starScale, { toValue: 1.25, friction: 3, tension: 240, useNativeDriver: true }),
+      Animated.spring(starScale, { toValue: 1.0, friction: 5, tension: 240, useNativeDriver: true }),
+    ]).start();
+    onToggleFavorite?.(message);
+  }
 
   function selectVersion(offset: -1 | 1) {
     const nextVersionIndex = Math.min(message.versionTotal, Math.max(1, message.versionIndex + offset));
@@ -151,102 +179,140 @@ export function AiMessageFooterActions({
     }
   }
 
+  if (isUser) {
+    return (
+      <View style={[styles.actionRow, styles.userActionRow]}>
+        <View style={styles.leftActionGroup}>
+          {message.versionTotal > 1 ? (
+            <AiVersionStepper
+              currentIndex={message.versionIndex}
+              nextAccessibilityLabel="下一版消息"
+              onNext={() => selectVersion(1)}
+              onPrevious={() => selectVersion(-1)}
+              previousAccessibilityLabel="上一版消息"
+              total={message.versionTotal}
+            />
+          ) : null}
+          {showActionButtons ? (
+            <>
+              <Pressable
+                accessibilityLabel="复制消息"
+                accessibilityRole="button"
+                disabled={!canCopy}
+                hitSlop={6}
+                onPress={() => onCopy(message)}
+                style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
+              >
+                <CopyIcon color="#94A3B8" size={16} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="重写消息"
+                accessibilityRole="button"
+                disabled={!canEdit}
+                hitSlop={6}
+                onPress={() => onEditUser(message.id)}
+                style={({ pressed }) => [styles.messageActionButton, !canEdit && styles.disabledAction, pressed && canEdit && styles.pressed]}
+              >
+                <EditIcon color="#94A3B8" size={16} />
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.actionRow, isUser ? styles.userActionRow : styles.assistantActionRow]}>
-      {showActionButtons ? (
-        <Pressable
-          accessibilityLabel="复制消息"
-          accessibilityRole="button"
-          disabled={!canCopy}
-          hitSlop={8}
-          onPress={() => onCopy(message)}
-          style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
-        >
-          <Ionicons color={aiLightColors.muted} name="copy-outline" size={15} />
-        </Pressable>
-      ) : null}
-      {showActionButtons && !isUser ? (
-        <Pressable
-          accessibilityLabel={favorited ? '取消收藏 AI 消息' : '收藏 AI 消息'}
-          accessibilityRole="button"
-          accessibilityState={{ selected: favorited, disabled: !canFavorite }}
-          disabled={!canFavorite}
-          hitSlop={8}
-          onPress={() => onToggleFavorite?.(message)}
-          style={({ pressed }) => [styles.messageActionButton, favorited ? styles.favoriteActionButtonActive : null, !canFavorite && styles.disabledAction, pressed && canFavorite && styles.pressed]}
-        >
-          <Ionicons color={favorited ? aiLightColors.primaryActive : aiLightColors.muted} name={favorited ? 'star' : 'star-outline'} size={15} />
-        </Pressable>
-      ) : null}
-      {showActionButtons && !isUser ? (
-        <Pressable
-          accessibilityLabel="继续生成回复"
-          accessibilityRole="button"
-          disabled={!canContinue}
-          hitSlop={8}
-          onPress={() => onContinue(message.id)}
-          style={({ pressed }) => [styles.messageActionButton, !canContinue && styles.disabledAction, pressed && canContinue && styles.pressed]}
-        >
-          <Ionicons color={aiLightColors.muted} name="play-forward-outline" size={15} />
-        </Pressable>
-      ) : null}
-      {showActionButtons && !isUser ? (
-        <Pressable
-          accessibilityLabel={textReplyActionLabel}
-          accessibilityRole="button"
-          disabled={!canContinueReply && !canReplyToAssistant}
-          hitSlop={8}
-          onPress={() => {
-            if (canReplyToAssistant) {
-              onReplyToAssistant(message.id);
-              return;
-            }
-            onContinueReply(message.id);
-          }}
-          style={({ pressed }) => [
-            styles.continueReplyActionButton,
-            !canContinueReply && !canReplyToAssistant && styles.disabledAction,
-            pressed && (canContinueReply || canReplyToAssistant) && styles.pressed,
-          ]}
-        >
-          <Text style={styles.continueReplyActionText}>{textReplyActionLabel}</Text>
-        </Pressable>
-      ) : null}
-      {showActionButtons && isUser ? (
-        <Pressable
-          accessibilityLabel="重写消息"
-          accessibilityRole="button"
-          disabled={!canEdit}
-          hitSlop={8}
-          onPress={() => onEditUser(message.id)}
-          style={({ pressed }) => [styles.messageActionButton, !canEdit && styles.disabledAction, pressed && canEdit && styles.pressed]}
-        >
-          <Ionicons color={aiLightColors.muted} name="create-outline" size={15} />
-        </Pressable>
-      ) : showActionButtons ? (
+    <View style={[styles.actionRow, styles.assistantActionRow]}>
+      <View style={styles.leftActionGroup}>
+        {/* 1. 最左侧：多版本批次按钮（若有多版本） */}
+        {message.versionTotal > 1 ? (
+          <AiVersionStepper
+            currentIndex={message.versionIndex}
+            nextAccessibilityLabel="下一版消息"
+            onNext={() => selectVersion(1)}
+            onPrevious={() => selectVersion(-1)}
+            previousAccessibilityLabel="上一版消息"
+            total={message.versionTotal}
+          />
+        ) : null}
+
+        {/* 2. 动作按钮组：若无 2/2，第一个复制按钮自动补位到最左侧 */}
+        {showActionButtons ? (
+          <>
+            <Pressable
+              accessibilityLabel="复制消息"
+              accessibilityRole="button"
+              disabled={!canCopy}
+              hitSlop={6}
+              onPress={() => onCopy(message)}
+              style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
+            >
+              <CopyIcon color="#94A3B8" size={16} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={favorited ? '取消收藏 AI 消息' : '收藏 AI 消息'}
+              accessibilityRole="button"
+              accessibilityState={{ selected: favorited, disabled: !canFavorite }}
+              disabled={!canFavorite}
+              hitSlop={6}
+              onPress={handleFavoritePress}
+              style={({ pressed }) => [styles.messageActionButton, !canFavorite && styles.disabledAction, pressed && canFavorite && styles.pressed]}
+            >
+              <Animated.View style={{ transform: [{ scale: starScale }] }}>
+                <FavoriteStarIcon favorited={favorited} size={16} />
+              </Animated.View>
+            </Pressable>
+            {canContinueReply || canReplyToAssistant ? (
+              <Pressable
+                accessibilityLabel={textReplyActionLabel}
+                accessibilityRole="button"
+                disabled={!canContinueReply && !canReplyToAssistant}
+                hitSlop={6}
+                onPress={() => {
+                  if (canReplyToAssistant) {
+                    onReplyToAssistant(message.id);
+                    return;
+                  }
+                  onContinueReply(message.id);
+                }}
+                style={({ pressed }) => [
+                  styles.messageActionButton,
+                  !canContinueReply && !canReplyToAssistant && styles.disabledAction,
+                  pressed && (canContinueReply || canReplyToAssistant) && styles.pressed,
+                ]}
+              >
+                <ContinueReplyIcon color="#94A3B8" size={16} />
+              </Pressable>
+            ) : null}
+          </>
+        ) : null}
+      </View>
+
+      {/* 3. 最右侧：重新生成按钮（靠右对齐，占据原 2/2 所在位置） */}
+      {showActionButtons && canRegenerate ? (
         <Pressable
           accessibilityLabel="重新生成回复"
           accessibilityRole="button"
           disabled={!canRegenerate}
-          hitSlop={8}
+          hitSlop={6}
           onPress={() => onRegenerate(message.id)}
           style={({ pressed }) => [styles.messageActionButton, !canRegenerate && styles.disabledAction, pressed && canRegenerate && styles.pressed]}
         >
-          <Ionicons color={aiLightColors.muted} name="refresh-outline" size={15} />
+          <RegenerateIcon color="#94A3B8" size={16} />
         </Pressable>
-      ) : null}
-      {message.versionTotal > 1 ? (
-        <AiVersionStepper
-          currentIndex={message.versionIndex}
-          nextAccessibilityLabel="下一版消息"
-          onNext={() => selectVersion(1)}
-          onPrevious={() => selectVersion(-1)}
-          previousAccessibilityLabel="上一版消息"
-          total={message.versionTotal}
-        />
       ) : null}
     </View>
   );
+}
+
+function isDarkColor(hex: string): boolean {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16) || 0;
+  const g = parseInt(c.substring(2, 4), 16) || 0;
+  const b = parseInt(c.substring(4, 6), 16) || 0;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance < 0.5;
 }
 
 function AiMessageBubbleComponent({
@@ -273,6 +339,9 @@ function AiMessageBubbleComponent({
   favoritePending = false,
   hideCitations = false,
   hideFooterActions = false,
+  isSandboxModalOpen = false,
+  isLatestMessage = false,
+  isDeepHistory = false,
   showActionButtons = false,
   pendingActionMessageId = null,
   thinkingExpected = false,
@@ -284,6 +353,8 @@ function AiMessageBubbleComponent({
   onContinue,
   onContinueReply,
   onReplyToAssistant,
+  onOpenSandbox,
+  onRequestTweak,
   onOpenCitation,
   onRegenerate,
   onSelectVersion,
@@ -291,9 +362,16 @@ function AiMessageBubbleComponent({
   onLongPress,
   onThinkingExpandedChange,
   onThinkingHeaderAnchorShift,
+  onAnchorShift,
   onSubmitEdit,
   onAttachmentPress,
+  pinnedDocumentIds,
+  pinningDocumentId,
+  onPinDocument,
+  onOpenDocumentActionSheet,
 }: AiMessageBubbleProps) {
+  const chatAppearance = useChatAppearancePreferences(space);
+  const chatTypography = useChatTypographyPreferences(space);
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
@@ -325,8 +403,11 @@ function AiMessageBubbleComponent({
       (hasReasoningText &&
         (thinkingExpected ||
           (message.status !== 'generating' && message.status !== 'queued'))));
+  const isContinuousPacing = getCachedAiStreamingPacingMode() === 'continuous';
+  const isMessageGenerating = generating || message.status === 'generating';
   const footerActionsVisible =
     !hideFooterActions &&
+    (!isContinuousPacing || !isMessageGenerating) &&
     ((showActionButtons && !isUser && assistantTerminal) ||
       message.versionTotal > 1);
   const rawContent = message.content;
@@ -355,6 +436,48 @@ function AiMessageBubbleComponent({
   const [editDraft, setEditDraft] = useState('');
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
   const copyFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleOpenSandbox = useCallback(
+    (params: { code: string; language?: string; title?: string; initialTab?: 'preview' | 'code' }) => {
+      onOpenSandbox?.({ ...params, messageId: message.id });
+    },
+    [onOpenSandbox, message.id]
+  );
+
+  const handleRequestTweak = useCallback(
+    (params: { code: string; language?: string; title?: string }) => {
+      onRequestTweak?.({ ...params, messageId: message.id });
+    },
+    [onRequestTweak, message.id]
+  );
+
+  function renderAssistantContentWithCursor(content: string, streaming: boolean) {
+    if (!streaming || !content.trim()) {
+      return (
+        <AiMessageContent
+          content={content}
+          isDeepHistory={isDeepHistory}
+          isLatestMessage={isLatestMessage}
+          isSandboxModalOpen={isSandboxModalOpen}
+          messageId={message.id}
+          onAnchorShift={onAnchorShift}
+          onOpenSandbox={onOpenSandbox ? handleOpenSandbox : undefined}
+          onRequestTweak={onRequestTweak ? handleRequestTweak : undefined}
+        />
+      );
+    }
+    return (
+      <AiMessageContent
+        content={content}
+        isSandboxModalOpen={isSandboxModalOpen}
+        messageId={message.id}
+        onOpenSandbox={onOpenSandbox ? handleOpenSandbox : undefined}
+        onRequestTweak={onRequestTweak ? handleRequestTweak : undefined}
+        streaming={streaming}
+        trailingInline={<InlineStreamingCursor />}
+      />
+    );
+  }
 
   useEffect(() => {
     if (editing) {
@@ -395,7 +518,7 @@ function AiMessageBubbleComponent({
         {assistantHeaderVisible ? (
           <View style={[styles.headerRow, styles.assistantHeaderRow]}>
             {showAssistantAvatar ? (
-              <View style={styles.avatar}>
+              <View style={[styles.avatar, { borderRadius: chatAppearance.avatarRadius }]}>
                 {isSystemAssistant ? (
                   <ExpoImage source={{ uri: AI_SYSTEM_AVATAR_B64 }} style={styles.avatarImage} />
                 ) : assistantAvatar?.avatarUri ? (
@@ -418,7 +541,7 @@ function AiMessageBubbleComponent({
               {headerTime ? <Text numberOfLines={1} style={styles.headerTime}>{headerTime}</Text> : null}
             </View>
             {showUserAvatarHeader ? (
-              <View style={styles.avatar}>
+              <View style={[styles.avatar, { borderRadius: chatAppearance.avatarRadius }]}>
                 {userProfile?.avatarUri ? (
                   <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={userProfile.avatarUri} />
                 ) : (
@@ -430,23 +553,63 @@ function AiMessageBubbleComponent({
         ) : null}
         {message.attachments && message.attachments.length > 0 ? (
           <View style={[styles.attachmentGalleryOuter, !isUser && styles.attachmentGalleryOuterAssistant]}>
-            {message.attachments.map((attachment) => (
-              <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
-                {attachment.kind === 'image' ? (
-                  <SecureImage
-                    contentFit="cover"
-                    space={space}
-                    style={styles.attachmentImageOuter}
-                    uri={attachment.localUri}
-                  />
-                ) : (
-                  <View style={styles.attachmentDocumentOuter}>
-                    <Ionicons color={aiLightColors.primaryActive} name="document-text-outline" size={32} />
-                    <Text numberOfLines={2} style={styles.attachmentDocumentTextOuter}>{attachment.name}</Text>
-                  </View>
-                )}
-              </Pressable>
-            ))}
+            {message.attachments.map((attachment) => {
+              const isPinned = attachment.documentId ? pinnedDocumentIds?.has(attachment.documentId) : false;
+              const isPinning = attachment.documentId ? pinningDocumentId === attachment.documentId : false;
+
+              return (
+                <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
+                  {attachment.kind === 'image' ? (
+                    <SecureImage
+                      contentFit="cover"
+                      space={space}
+                      style={styles.attachmentImageOuter}
+                      uri={attachment.localUri}
+                    />
+                  ) : (
+                    <View style={styles.attachmentDocumentOuter}>
+                      <Ionicons color={aiLightColors.primaryActive} name="document-text-outline" size={30} />
+                      <Text numberOfLines={2} style={styles.attachmentDocumentTextOuter}>{attachment.name}</Text>
+                      {attachment.documentId ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          hitSlop={6}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            if (isPinning) return;
+                            if (isPinned) {
+                              onOpenDocumentActionSheet?.(attachment.documentId!, attachment.name);
+                            } else {
+                              onPinDocument?.(attachment.documentId!, attachment.name);
+                            }
+                          }}
+                          style={({ pressed }) => [
+                            styles.pinPill,
+                            isPinned && styles.pinPillActive,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          {isPinning ? (
+                            <ActivityIndicator color={aiLightColors.primary} size={10} />
+                          ) : (
+                            <>
+                              <Ionicons
+                                color={isPinned ? aiLightColors.primary : aiLightColors.mutedSoft}
+                                name={isPinned ? 'bookmark' : 'bookmark-outline'}
+                                size={11}
+                              />
+                              <Text style={[styles.pinPillText, isPinned && styles.pinPillTextActive]}>
+                                {isPinned ? '已存入 ▾' : '存入资料库'}
+                              </Text>
+                            </>
+                          )}
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
         {isSystemAssistant && !isUser ? (
@@ -458,33 +621,36 @@ function AiMessageBubbleComponent({
         ) : null}
         {shouldRenderThinking ? (
           <View style={styles.thinkingWrap}>
-            {streaming && streamingIdentity ? (
-              <AiStreamingReasoningText
-                thinkingEndedAt={message.thinkingEndedAt ?? readThinkingEndedAt(message.promptSnapshotJson)}
-                completedAt={message.completedAt}
-                createdAt={message.createdAt}
-                defaultExpanded={thinkingDefaultExpanded}
-                identity={streamingIdentity}
-                initialReasoningText={message.reasoningText}
-                initialContent={message.content}
-                onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
-                onHeaderAnchorShift={onThinkingHeaderAnchorShift}
-                status={message.status}
-                thinkingActive={thinkingActive}
-              />
-            ) : (
-              <AiThinkingBlock
-                thinkingEndedAt={message.thinkingEndedAt ?? readThinkingEndedAt(message.promptSnapshotJson)}
-                completedAt={message.completedAt}
-                createdAt={message.createdAt}
-                defaultExpanded={thinkingDefaultExpanded}
-                onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
-                onHeaderAnchorShift={onThinkingHeaderAnchorShift}
-                reasoningText={message.reasoningText}
-                status={message.status}
-                thinkingActive={thinkingActive && !message.content}
-              />
-            )}
+            {(() => {
+              const thinkingStartedAt = readThinkingStartedAt(message.promptSnapshotJson) ?? message.createdAt;
+              return streaming && streamingIdentity ? (
+                <AiStreamingReasoningText
+                  thinkingEndedAt={message.thinkingEndedAt ?? readThinkingEndedAt(message.promptSnapshotJson)}
+                  completedAt={message.completedAt}
+                  createdAt={thinkingStartedAt}
+                  defaultExpanded={thinkingDefaultExpanded}
+                  identity={streamingIdentity}
+                  initialReasoningText={message.reasoningText}
+                  initialContent={message.content}
+                  onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
+                  onHeaderAnchorShift={onThinkingHeaderAnchorShift}
+                  status={message.status}
+                  thinkingActive={thinkingActive}
+                />
+              ) : (
+                <AiThinkingBlock
+                  thinkingEndedAt={message.thinkingEndedAt ?? readThinkingEndedAt(message.promptSnapshotJson)}
+                  completedAt={message.completedAt}
+                  createdAt={thinkingStartedAt}
+                  defaultExpanded={thinkingDefaultExpanded}
+                  onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
+                  onHeaderAnchorShift={onThinkingHeaderAnchorShift}
+                  reasoningText={message.reasoningText}
+                  status={message.status}
+                  thinkingActive={thinkingActive && !message.content}
+                />
+              );
+            })()}
           </View>
         ) : null}
         {copyFeedbackVisible ? <AiInlineFeedback message="已复制" tone="success" /> : null}
@@ -492,6 +658,7 @@ function AiMessageBubbleComponent({
           <Pressable
             accessibilityHint={editing ? undefined : '长按打开消息操作'}
             delayLongPress={500}
+            unstable_pressDelay={50}
             onLongPress={
               editing || !onLongPress
                 ? undefined
@@ -505,7 +672,14 @@ function AiMessageBubbleComponent({
             style={[
               styles.bubble,
               isUser
-                ? styles.userBubble
+                ? [
+                    styles.userBubble,
+                    {
+                      backgroundColor: chatAppearance.userBubbleColor,
+                      borderRadius: chatAppearance.bubbleRadius,
+                      borderTopRightRadius: Math.min(6, chatAppearance.bubbleRadius),
+                    },
+                  ]
                 : [
                     styles.assistantBubble,
                     (assistantBubbleEdge === "first" ||
@@ -543,7 +717,23 @@ function AiMessageBubbleComponent({
               </View>
             ) : isUser ? (
               <View style={styles.userContentWrap}>
-                {displayContent ? <Text selectable={false} style={[styles.content, styles.userText]}>{displayContent}</Text> : null}
+                {displayContent ? (
+                  <Text
+                    selectable={false}
+                    style={[
+                      styles.content,
+                      styles.userText,
+                      {
+                        color: isDarkColor(chatAppearance.userBubbleColor) ? '#FFFFFF' : '#0F172A',
+                        fontSize: chatTypography.fontSize,
+                        lineHeight: chatTypography.lineHeight,
+                        letterSpacing: chatTypography.letterSpacing,
+                      },
+                    ]}
+                  >
+                    {displayContent}
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View
@@ -557,7 +747,13 @@ function AiMessageBubbleComponent({
                 style={styles.assistantContentMeasure}
               >
                 {streaming && streamingIdentity ? (
-                  <AiStreamingMessageText identity={streamingIdentity} initialContent={message.content} />
+                  <AiStreamingMessageText
+                    identity={streamingIdentity}
+                    initialContent={message.content}
+                    isSandboxModalOpen={isSandboxModalOpen}
+                    messageId={message.id}
+                    onOpenSandbox={onOpenSandbox ? handleOpenSandbox : undefined}
+                  />
                 ) : waitingForFirstToken ? (
                   <AiTypingIndicator />
                 ) : (
@@ -614,6 +810,56 @@ function AiMessageBubbleComponent({
 }
 
 function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMessageBubbleProps): boolean {
+  // 1. 历史消息绝对免疫盾：流式打字期间历史气泡零唤醒、零重渲染
+  const isHistorical = !previous.isLatestMessage && !next.isLatestMessage;
+  if (isHistorical) {
+    return (
+      previous.message === next.message &&
+      previous.isSystemAssistant === next.isSystemAssistant &&
+      previous.systemTask === next.systemTask &&
+      previous.replyActionMode === next.replyActionMode &&
+      previous.assistantBubbleEdge === next.assistantBubbleEdge &&
+      previous.space === next.space &&
+      previous.favorited === next.favorited &&
+      previous.favoritePending === next.favoritePending &&
+      previous.isDeepHistory === next.isDeepHistory &&
+      previous.isSandboxModalOpen === next.isSandboxModalOpen &&
+      previous.editingMessageId === next.editingMessageId &&
+      previous.pendingActionMessageId === next.pendingActionMessageId &&
+      previous.showAvatar === next.showAvatar &&
+      previous.showUserAvatar === next.showUserAvatar &&
+      previous.hideCitations === next.hideCitations &&
+      previous.hideFooterActions === next.hideFooterActions &&
+      previous.assistantDisplayName === next.assistantDisplayName &&
+      previous.assistantAvatar?.avatarEnabled === next.assistantAvatar?.avatarEnabled &&
+      previous.assistantAvatar?.avatarUri === next.assistantAvatar?.avatarUri &&
+      previous.userProfile?.avatarEnabled === next.userProfile?.avatarEnabled &&
+      previous.userProfile?.avatarUri === next.userProfile?.avatarUri &&
+      previous.userProfile?.nickname === next.userProfile?.nickname
+    );
+  }
+
+  // 2. 最新活跃消息或状态更迭：执行完整属性对比
+  const generatingMatters =
+    previous.streaming ||
+    next.streaming ||
+    previous.showActionButtons ||
+    next.showActionButtons ||
+    previous.message.status === 'generating' ||
+    next.message.status === 'generating' ||
+    previous.message.status === 'queued' ||
+    next.message.status === 'queued' ||
+    previous.message.status === 'failed' ||
+    next.message.status === 'failed' ||
+    previous.message.versionTotal > 1 ||
+    next.message.versionTotal > 1;
+
+  const hasDocAttachments = Boolean(previous.message.attachments?.some((a) => a.documentId));
+  if (hasDocAttachments) {
+    if (previous.pinningDocumentId !== next.pinningDocumentId) return false;
+    if (previous.pinnedDocumentIds !== next.pinnedDocumentIds) return false;
+  }
+
   return (
     previous.message === next.message &&
     previous.isSystemAssistant === next.isSystemAssistant &&
@@ -624,13 +870,17 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.streaming === next.streaming &&
     previous.streamingIdentity?.generationId === next.streamingIdentity?.generationId &&
     previous.streamingIdentity?.messageId === next.streamingIdentity?.messageId &&
-    previous.generating === next.generating &&
+    (!generatingMatters || previous.generating === next.generating) &&
     previous.thinkingExpected === next.thinkingExpected &&
     previous.thinkingDefaultExpanded === next.thinkingDefaultExpanded &&
     previous.onThinkingHeaderAnchorShift === next.onThinkingHeaderAnchorShift &&
+    previous.onAnchorShift === next.onAnchorShift &&
     previous.favorited === next.favorited &&
+    previous.isSandboxModalOpen === next.isSandboxModalOpen &&
     previous.favoriteDisabledByGeneration === next.favoriteDisabledByGeneration &&
     previous.favoritePending === next.favoritePending &&
+    previous.isLatestMessage === next.isLatestMessage &&
+    previous.isDeepHistory === next.isDeepHistory &&
     previous.hideCitations === next.hideCitations &&
     previous.hideFooterActions === next.hideFooterActions &&
     previous.showActionButtons === next.showActionButtons &&
@@ -730,8 +980,8 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   userBubble: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
+    backgroundColor: aiLightColors.userBubble,
+    borderColor: '#E8EAED',
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.lg,
     borderTopRightRadius: radius.sm,
@@ -801,46 +1051,49 @@ const styles = StyleSheet.create({
   systemProgressWrap: { alignSelf: 'stretch', minWidth: 0 },
   actionRow: {
     alignItems: 'center',
+    borderTopColor: 'rgba(241, 245, 249, 0.9)',
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
-    paddingHorizontal: spacing[1],
+    justifyContent: 'space-between',
+    marginTop: spacing[1],
+    paddingTop: 8,
+    width: '100%',
+  },
+  leftActionGroup: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   userActionRow: {
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
   },
   assistantActionRow: {
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
   },
   messageActionButton: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
+    borderRadius: 8,
     height: 28,
     justifyContent: 'center',
     width: 28,
   },
   continueReplyActionButton: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
+    borderRadius: 8,
     height: 28,
     justifyContent: 'center',
-    paddingHorizontal: spacing[2],
+    width: 28,
   },
   continueReplyActionText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-    fontStyle: 'italic',
+    color: '#94A3B8',
     fontWeight: '600',
     textAlign: 'center',
   },
   favoriteActionButtonActive: {
-    backgroundColor: aiLightColors.primarySoft,
-    borderColor: aiLightColors.primary,
+    backgroundColor: 'transparent',
   },
   versionControl: {
     alignItems: 'center',
@@ -952,6 +1205,31 @@ const styles = StyleSheet.create({
     marginTop: spacing[1],
     textAlign: 'center',
     width: '100%',
+  },
+  pinPill: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 3,
+    marginTop: spacing[1],
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+  },
+  pinPillActive: {
+    borderColor: aiLightColors.primary,
+    backgroundColor: aiLightColors.surface,
+  },
+  pinPillText: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.muted,
+    fontSize: 10,
+  },
+  pinPillTextActive: {
+    color: aiLightColors.primary,
+    fontWeight: '600',
   },
 });
 

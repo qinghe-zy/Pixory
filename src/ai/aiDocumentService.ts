@@ -425,6 +425,10 @@ export async function listKnowledgeBases(space: PixorySpace): Promise<AiKnowledg
   return runWithDatabaseSpace(space, (db) => aiKnowledgeRepository.listKnowledgeBases(db, space));
 }
 
+export async function getKnowledgeBaseDocCounts(space: PixorySpace): Promise<Record<string, number>> {
+  return runWithDatabaseSpace(space, (db) => aiKnowledgeRepository.getDocCountsByKnowledgeBases(db, space));
+}
+
 export async function deleteKnowledgeBases(input: { space: PixorySpace; knowledgeBaseIds: string[] }): Promise<number> {
   const uniqueIds = Array.from(new Set(input.knowledgeBaseIds));
   if (uniqueIds.length === 0) {

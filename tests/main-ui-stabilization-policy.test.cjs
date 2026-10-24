@@ -33,12 +33,13 @@ test('AI canvas, title, and real composer use the approved Android-safe floating
   const composer = read('src/components/ai/AiChatComposer.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
 
-  assert.match(theme, /canvas:\s*'#EDEDED'/);
-  assert.match(theme, /posterBottomFade:\s*'rgba\(237,\s*237,\s*237,\s*0\.92\)'/);
-  assert.match(theme, /posterRightFade:\s*'rgba\(237,\s*237,\s*237,\s*0\.82\)'/);
+  assert.match(theme, /canvas:\s*'#FFFFFF'/);
+  assert.match(theme, /posterBottomFade:\s*'rgba\(255,\s*255,\s*255,\s*0\.92\)'/);
+  assert.match(theme, /posterRightFade:\s*'rgba\(255,\s*255,\s*255,\s*0\.82\)'/);
   assert.match(scaffold, /title:\s*\{[\s\S]*fontFamily:\s*typography\.family\.base[\s\S]*fontSize:\s*18[\s\S]*fontWeight:\s*'600'/);
   assert.match(composer, /composerShell:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.surface[\s\S]*borderWidth:\s*StyleSheet\.hairlineWidth[\s\S]*\.\.\.shadows\.sm/);
-  assert.match(chat, /composerPanel:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.canvas/);
+  assert.match(chat, /composerPanel:\s*\{[\s\S]*backgroundColor:\s*'transparent'/);
+  assert.match(chat, /composerBottomMask:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.canvas/);
 });
 
 test('AI dialog and button styling is optional and default styling remains the default', () => {

@@ -29,6 +29,7 @@ import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletion
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
 import { getStorageUsageSummary } from '../services/storageUsageService';
 import { getCachedStorageUsageSummary } from '../services/storageUsageSnapshotCache';
+import { PersonalCredentialPrompt } from '../components/PersonalCredentialPrompt';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部 IP' },
@@ -114,6 +115,8 @@ export function HomeLibraryScreen({
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
   const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
+  const [authMethod, setAuthMethod] = useState<'password' | 'pattern'>('pattern');
+  const [patternError, setPatternError] = useState(false);
   const [isMovingSpace, setIsMovingSpace] = useState(false);
   const [showSweep, setShowSweep] = useState(true);
   const [listWidth, setListWidth] = useState(0);
@@ -358,6 +361,7 @@ export function HomeLibraryScreen({
   function startMoveSpace(ip: IpListItem) {
     setSpaceMoveIp(ip);
     setPersonalPassword('');
+    setPatternError(false);
   }
 
   async function confirmMoveSpace(ip = spaceMoveIp, password = personalPassword) {
@@ -375,6 +379,8 @@ export function HomeLibraryScreen({
       setPersonalPassword('');
       setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
     } catch (error) {
+      setPatternError(true);
+      setTimeout(() => setPatternError(false), 800);
       showToast(error instanceof Error ? `空间迁移失败：${error.message}` : '空间迁移失败');
     } finally {
       setIsMovingSpace(false);
@@ -581,24 +587,41 @@ export function HomeLibraryScreen({
         if (!isMovingSpace) {
           setSpaceMoveIp(null);
           setPersonalPassword('');
+          setPatternError(false);
         }
       }}
       onPrimary={() => void confirmMoveSpace()}
-      primaryDisabled={space === 'normal' && !personalPassword.trim()}
-      primaryLabel={isMovingSpace ? '正在迁移' : (space === 'normal' ? '移入隐私空间' : '移出隐私空间')}
+      primaryDisabled={
+        isMovingSpace ||
+        (space === 'normal' &&
+          (authMethod === 'pattern' ? true : !personalPassword.trim()))
+      }
+      primaryLabel={
+        isMovingSpace
+          ? '正在迁移'
+          : space === 'normal' && authMethod === 'pattern'
+          ? '请绘制图案'
+          : space === 'normal'
+          ? '移入隐私空间'
+          : '移出隐私空间'
+      }
       title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
       visible={Boolean(spaceMoveIp)}
     >
       {space === 'normal' ? (
-        <TextInput
-          secureTextEntry
-          editable={!isMovingSpace}
-          onChangeText={setPersonalPassword}
-          placeholder="输入隐私密码"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={styles.passwordInput}
-          value={personalPassword}
+        <PersonalCredentialPrompt
+          disabled={isMovingSpace}
+          isError={patternError}
+          onAuthMethodChange={setAuthMethod}
+          onBiometricSuccess={() => {
+            void confirmMoveSpace(spaceMoveIp, '__BIOMETRIC_PASSTHROUGH__');
+          }}
+          onPasswordChange={setPersonalPassword}
+          onPatternSubmit={(pattern) => {
+            void confirmMoveSpace(spaceMoveIp, pattern);
+          }}
+          passwordValue={personalPassword}
+          theme="default"
         />
       ) : (
         <Text style={{ color: colors.text.secondary, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>

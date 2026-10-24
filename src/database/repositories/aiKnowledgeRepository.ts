@@ -541,6 +541,21 @@ export const aiKnowledgeRepository = {
     return row?.count ?? 0;
   },
 
+  async getDocCountsByKnowledgeBases(db: SQLiteDatabase, space: PixorySpace): Promise<Record<string, number>> {
+    const rows = await db.getAllAsync<{ ownerId: string; count: number }>(
+      `SELECT ownerId, COUNT(*) as count
+       FROM ai_documents
+       WHERE space = ? AND ownerType = 'knowledge_base'
+       GROUP BY ownerId`,
+      [space]
+    );
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      counts[row.ownerId] = row.count;
+    }
+    return counts;
+  },
+
   async listChunksByDocumentId(db: SQLiteDatabase, documentId: string): Promise<AiChunkRecord[]> {
     return db.getAllAsync<AiChunkRecord>(
       `SELECT * FROM ai_chunks

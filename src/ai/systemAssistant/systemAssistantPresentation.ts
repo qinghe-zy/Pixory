@@ -7,6 +7,13 @@ export type SystemProgressState = {
 };
 
 export type SystemProgressRow = { label: string; tone: 'neutral' | 'success' | 'danger'; busy: boolean };
+export type SystemProgressSummary = {
+  title: string;
+  badge?: string;
+  tone: 'neutral' | 'success' | 'warning' | 'danger';
+  busy: boolean;
+  totalSteps: number;
+};
 const internalStep = /^(?:正在理解请求|正在回复|已回复)$/;
 
 export function shouldShowSystemProgress(task: SystemTaskSnapshot | null | undefined): boolean {
@@ -25,9 +32,15 @@ export function getSystemProgressRows(task: SystemTaskSnapshot | null | undefine
   state: SystemProgressState): SystemProgressRow[] {
   const stages = (task?.steps ?? []).filter(step => !internalStep.test(step.label));
   const rows: SystemProgressRow[] = [];
+  const isOverallCompleted = state.status === 'completed' && task?.status === 'completed';
+
   for (const [index, step] of stages.entries()) {
     const last = index === stages.length - 1;
-    const status = last ? state.status : step.status;
+    let status = last ? state.status : step.status;
+    // When the whole task is successfully completed, prior valid stages are also successfully completed milestones!
+    if (isOverallCompleted && status !== 'failed' && status !== 'expired') {
+      status = 'completed';
+    }
     const tone = status === 'failed' || status === 'expired' ? 'danger'
       : status === 'completed' || /^(?:设定已记录|草稿已保留)$/.test(step.label) ? 'success' : 'neutral';
     const row: SystemProgressRow = { label: compactLabel(last ? state.label : step.label), tone,
@@ -38,6 +51,44 @@ export function getSystemProgressRows(task: SystemTaskSnapshot | null | undefine
   if (!rows.length) rows.push({ label: compactLabel(state.label),
     tone: state.tone === 'danger' ? 'danger' : state.tone === 'success' ? 'success' : 'neutral', busy: state.busy });
   return rows;
+}
+
+export function getSystemProgressSummary(
+  task: SystemTaskSnapshot | null | undefined,
+  state: SystemProgressState,
+  rows: SystemProgressRow[]
+): SystemProgressSummary {
+  const totalSteps = rows.length;
+  let title = state.label;
+
+  if (task?.action?.type === 'navigate') {
+    title = state.status === 'completed' ? '操作已就绪' : state.busy ? '正在处理操作' : '操作入口';
+  } else if (task?.action?.type === 'rename-thread') {
+    title = state.status === 'completed' ? '昵称已修改' : state.busy ? '正在修改昵称' : '修改昵称';
+  } else if (task?.createdRoleCard || task?.steps.some(s => /角色/.test(s.label))) {
+    title = state.status === 'completed' ? '角色卡已就绪' : state.busy ? '正在生成角色卡' : '角色卡任务';
+  } else if (state.status === 'completed') {
+    title = '操作已完成';
+  }
+
+  let badge: string | undefined;
+  if (totalSteps > 1) {
+    if (state.status === 'completed') {
+      badge = `${totalSteps} 步完成`;
+    } else if (state.busy) {
+      badge = `步骤 ${totalSteps} 进行中`;
+    } else {
+      badge = `${totalSteps} 步`;
+    }
+  }
+
+  return {
+    title: compactLabel(title),
+    badge,
+    tone: state.tone,
+    busy: state.busy,
+    totalSteps,
+  };
 }
 
 export function getSystemProgressState(task: SystemTaskSnapshot | null | undefined,

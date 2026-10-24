@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Animated, PanResponder, Dimensions, Keyboard, Modal } from 'react-native';
+import { Alert, findNodeHandle, InteractionManager, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Animated, PanResponder, Dimensions, Keyboard, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SecureImage } from '../components/SecureImage';
@@ -21,6 +21,7 @@ import { AiSwitch } from '../components/ai/AiSwitch';
 import { AiContextSlider } from '../components/ai/AiContextSlider';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
+import { RIGHT_DRAWER_WIDTH } from '../components/ai/AiPushScaleDrawerStage';
 import {
   addThreadSessionManualModel,
   applyRoleCardToThread,
@@ -74,6 +75,8 @@ interface AiSessionConfigScreenProps {
   onStartChat: () => void;
   onSettingsChanged?: () => void;
   onCurrentThreadDeleted?: () => void;
+  /** 侧边栏展开形态：classic 为传统浮层覆盖，push_scale 为底层画布推挤缩放 */
+  presentationMode?: 'classic' | 'push_scale';
 }
 
 const BOUNDARY_MODES: Array<{ value: AiBoundaryMode; label: string }> = [
@@ -191,7 +194,12 @@ export function AiSessionConfigScreen({
   onStartChat,
   onSettingsChanged,
   onCurrentThreadDeleted,
+  presentationMode = 'classic',
 }: AiSessionConfigScreenProps) {
+  const isPushScale = presentationMode === 'push_scale';
+  const isPushScaleRef = useRef(isPushScale);
+  isPushScaleRef.current = isPushScale;
+  const closedOffset = isPushScale ? DRAWER_WIDTH * 0.22 : DRAWER_WIDTH;
   const fallbackThreadTitle = contextTitle ?? '普通聊天';
   const [threadTitle, setThreadTitle] = useState(fallbackThreadTitle);
   const [renameDialogVisible, setRenameDialogVisible] = useState(false);
@@ -286,10 +294,20 @@ export function AiSessionConfigScreen({
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
-    const [config, nextProfileAvatarUri, nextProfileNickname] = await Promise.all([
+    const [
+      config,
+      nextProfileAvatarUri,
+      nextProfileNickname,
+      nextMaintenanceStatus,
+      nextSessionModelConfig,
+      nextThreadUsage,
+    ] = await Promise.all([
       loadThreadSessionConfig(space, threadId),
       runWithDatabaseSpace(space, (db) => settingsRepository.getProfileAvatarUri(db)),
       runWithDatabaseSpace(space, (db) => settingsRepository.getProfileNickname(db)),
+      loadMemoryMaintenanceStatus(space, threadId),
+      loadThreadSessionModelConfig(space, threadId),
+      loadThreadAiUsageOverview(space, threadId),
     ]);
     if (!config) {
       setStatus({ message: '没有找到当前会话。', tone: 'error' });
@@ -306,11 +324,6 @@ export function AiSessionConfigScreen({
       normalizeAiContextSettings({ historyRoundLimit: config.thread.contextHistoryRoundLimit }).historyRoundLimit,
     );
     setLastMaintenanceError(config.lastMaintenanceError);
-    const [nextMaintenanceStatus, nextSessionModelConfig, nextThreadUsage] = await Promise.all([
-      loadMemoryMaintenanceStatus(space, threadId),
-      loadThreadSessionModelConfig(space, threadId),
-      loadThreadAiUsageOverview(space, threadId),
-    ]);
     setMaintenanceStatus(nextMaintenanceStatus);
     setSessionModelConfig(nextSessionModelConfig);
     setSessionBaseUrlDraft(nextSessionModelConfig?.sessionBaseUrl ?? '');
@@ -372,13 +385,25 @@ export function AiSessionConfigScreen({
     onSettingsChanged,
   ]);
 
+  // 借力后台空闲预热：当会话 threadId 变化时，在主界面交互空闲期预加载配置到内存，展开右抽屉时 0ms 直接命中内存
+  useEffect(() => {
+    settingsLoadedRef.current = false;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void reloadConfig();
+    });
+    return () => interaction.cancel();
+  }, [reloadConfig]);
+
   useEffect(() => {
     if (visible) {
-      settingsLoadedRef.current = false;
-      void reloadConfig();
-    } else {
-      settingsLoadedRef.current = false;
+      // Reanimated withSpring 运行在 UI 线程，延后 280ms 待展开弹簧落定后再静默复刷 SQLite，杜绝动画初段 JS 重渲染掉帧
+      const timer = setTimeout(() => {
+        settingsLoadedRef.current = false;
+        void reloadConfig();
+      }, 280);
+      return () => clearTimeout(timer);
     }
+    return undefined;
   }, [reloadConfig, visible]);
 
   useEffect(() => {
@@ -986,7 +1011,7 @@ export function AiSessionConfigScreen({
 
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const slideAnim = useRef(new Animated.Value(closedOffset)).current;
   const scrimOpacity = useRef(new Animated.Value(0)).current;
   const drawerAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const [promptEditorVisible, setPromptEditorVisible] = useState(false);
@@ -1006,33 +1031,56 @@ export function AiSessionConfigScreen({
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
+    if (isPushScale) {
+      onBack();
+      return;
+    }
     startDrawerAnimation(Animated.parallel([
-      Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 200, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: closedOffset, duration: 200, useNativeDriver: true }),
       Animated.timing(scrimOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
     ]), () => {
       setMounted(false);
       onBack();
     });
-  }, [onBack, slideAnim, scrimOpacity]);
+  }, [closedOffset, isPushScale, onBack, slideAnim, scrimOpacity]);
 
   useEffect(() => {
+    if (isPushScale) {
+      setMounted(true);
+      slideAnim.setValue(0);
+      scrimOpacity.setValue(0);
+      return;
+    }
     if (visible) {
       setMounted(true);
       startDrawerAnimation(Animated.parallel([
-        Animated.spring(slideAnim, { toValue: 0, damping: 28, stiffness: 260, mass: 0.9, useNativeDriver: true }),
-        Animated.timing(scrimOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          damping: 28,
+          stiffness: 260,
+          mass: 0.9,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrimOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
       ]));
     } else {
       if (mounted) {
         handleClose();
       }
     }
-  }, [visible]);
+  }, [visible, isPushScale]);
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gs) =>
-        Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx > 0,
+        !isPushScaleRef.current &&
+        Math.abs(gs.dx) > 8 &&
+        Math.abs(gs.dx) > Math.abs(gs.dy) &&
+        gs.dx > 0,
       onPanResponderMove: (_evt, gs) => {
         const clampedDx = Math.max(0, gs.dx);
         slideAnim.setValue(clampedDx);
@@ -1062,22 +1110,45 @@ export function AiSessionConfigScreen({
     })
   ).current;
 
-  if (!mounted && !visible) {
+  if (!isPushScale && !mounted && !visible) {
     return null;
   }
 
   return (
     <>
-      <View pointerEvents="box-none" style={styles.drawerOverlay}>
-        <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[styles.drawerScrimBase, { opacity: scrimOpacity }]} />
-        <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={handleClose} style={styles.drawerScrimTouchable} />
-        
+      <View
+        pointerEvents="box-none"
+        style={[styles.drawerOverlay, isPushScale && styles.drawerOverlayPushScale]}
+      >
+        {!isPushScale ? (
+          <>
+            <Animated.View
+              pointerEvents={visible ? 'auto' : 'none'}
+              style={[styles.drawerScrimBase, { opacity: scrimOpacity }]}
+            />
+            <Pressable
+              accessibilityLabel="关闭设置"
+              accessibilityRole="button"
+              onPress={handleClose}
+              style={styles.drawerScrimTouchable}
+            />
+          </>
+        ) : null}
+
         <Animated.View
+          renderToHardwareTextureAndroid={!isPushScale}
+          shouldRasterizeIOS={!isPushScale}
           style={[
             styles.drawerContainer,
+            isPushScale && styles.drawerContainerPushScale,
             {
-              paddingBottom: Math.max(insets.bottom, spacing[5]),
-              paddingTop: Math.max(insets.top, spacing[2]),
+              // push_scale 模式下外层容器底部 padding 强制归零，让 ScrollView 视口 100% 延伸至物理屏幕最底端像素，根治底部卡片水平腰斩截断
+              paddingBottom: isPushScale ? 0 : Math.max(insets.bottom, spacing[5]),
+              paddingTop: Math.max(
+                insets.top,
+                Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
+                spacing[2],
+              ) + (isPushScale ? spacing[2] : 0),
               transform: [{ translateX: slideAnim }],
             },
           ]}
@@ -1096,7 +1167,14 @@ export function AiSessionConfigScreen({
           </View>
 
           {/* Scrollable Content */}
-          <ScrollView contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={isPushScale ? { flex: 1, backgroundColor: aiLightColors.underlayCanvas } : { flex: 1 }}
+            contentContainerStyle={[
+              styles.drawerContent,
+              isPushScale && { paddingBottom: Math.max(insets.bottom + 32, 52) },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Quick Actions — not sticky */}
             <View style={styles.drawerQuickActions}>
               <DrawerActionItem icon="search-outline" label="搜索" onPress={onOpenChatSearch} disabled={!threadId || !onOpenChatSearch} />
@@ -1609,6 +1687,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     zIndex: 20,
   },
+  drawerOverlayPushScale: {
+    zIndex: 1,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: RIGHT_DRAWER_WIDTH,
+  },
   drawerScrimBase: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1632,6 +1718,23 @@ const styles = StyleSheet.create({
     elevation: 10,
     display: 'flex',
     flexDirection: 'column',
+  },
+  drawerContainerPushScale: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: aiLightColors.underlayCanvas,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    borderWidth: 0,
+    borderLeftWidth: 0,
+    borderColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    width: RIGHT_DRAWER_WIDTH,
   },
   drawerStickyHeader: {
     paddingHorizontal: spacing[4],
@@ -1663,9 +1766,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: aiLightColors.canvas,
+    backgroundColor: aiLightColors.surface,
+    borderWidth: 0,
+    elevation: 0,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: radius.pill,
   },
   drawerUsageBtnText: {
@@ -1695,10 +1800,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   drawerActionIconWrap: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     borderRadius: radius.pill,
-    backgroundColor: aiLightColors.canvas,
+    backgroundColor: aiLightColors.surface,
+    borderWidth: 0,
+    elevation: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1727,7 +1834,6 @@ const styles = StyleSheet.create({
     minHeight: spacing[10],
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
-    ...shadows.sm,
   },
   closeButtonText: {
     ...typography.textStyles.bodyStrong,
@@ -1750,13 +1856,10 @@ const styles = StyleSheet.create({
   },
   drawerCardGroup: {
     backgroundColor: aiLightColors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
+    borderWidth: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    elevation: 0,
   },
   drawerListRow: {
     flexDirection: 'row',

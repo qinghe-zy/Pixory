@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, PanResponder, Pressable, Text } from 'react-native';
+import { View, StyleSheet, PanResponder, Pressable, Text, Animated } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,10 +14,13 @@ interface Point {
   y: number;
 }
 
+export type BiometricState = 'idle' | 'scanning' | 'success' | 'failed';
+
 export interface SecurityUnlockModuleProps {
   onUnlockAttempt: (patternStr: string) => void;
   onBiometricSuccess: () => void;
   onBiometricError?: (error: string) => void;
+  onUnlockErrorHint?: (msg: string) => void;
   size?: number;
   isError?: boolean;
   disableBiometric?: boolean;
@@ -27,21 +30,48 @@ export function SecurityUnlockModule({
   onUnlockAttempt,
   onBiometricSuccess,
   onBiometricError,
+  onUnlockErrorHint,
   size = 280,
   isError = false,
   disableBiometric = false,
 }: SecurityUnlockModuleProps) {
   const [activeNodes, setActiveNodes] = useState<number[]>([]);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
+  const [localError, setLocalError] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricState, setBiometricState] = useState<BiometricState>('idle');
+  const [biometricFeedbackMsg, setBiometricFeedbackMsg] = useState<string | null>(null);
+
   const activeNodesRef = useRef<number[]>([]);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const biometricTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const biometricAnim = useRef(new Animated.Value(1)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
 
   // Nodes coordinates inside the SVG
   const nodeOffset = size / (GRID_SIZE + 1);
   const hitSlop = nodeOffset * 0.4;
 
+  const cancelPendingClear = () => {
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
+  };
+
+  const cancelBiometricTimer = () => {
+    if (biometricTimerRef.current) {
+      clearTimeout(biometricTimerRef.current);
+      biometricTimerRef.current = null;
+    }
+  };
+
   useEffect(() => {
     void checkBiometric();
+    return () => {
+      cancelPendingClear();
+      cancelBiometricTimer();
+    };
   }, []);
 
   const checkBiometric = async () => {
@@ -62,32 +92,85 @@ export function SecurityUnlockModule({
     isErrorRef.current = isError;
   }, [onUnlockAttempt, isError]);
 
+  // Handle external isError changes
+  useEffect(() => {
+    if (isError) {
+      cancelPendingClear();
+      clearTimerRef.current = setTimeout(() => {
+        setActiveNodes([]);
+        activeNodesRef.current = [];
+      }, 800);
+    }
+  }, [isError]);
+
+  const triggerShake = () => {
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+    ]).start();
+  };
+
   const triggerBiometric = async () => {
+    setBiometricState('scanning');
+    setBiometricFeedbackMsg('正在等待验证...');
+
+    // Pulse animation
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(biometricAnim, { toValue: 1.15, duration: 500, useNativeDriver: true }),
+        Animated.timing(biometricAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    pulseLoop.start();
+
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: '验证指纹/面容进入隐私模式',
         fallbackLabel: '使用密码',
         disableDeviceFallback: true,
       });
+
+      pulseLoop.stop();
+      biometricAnim.setValue(1);
+
       if (result.success) {
-        onBiometricSuccess();
-      } else if (result.error) {
-        onBiometricError?.(result.error);
+        setBiometricState('success');
+        setBiometricFeedbackMsg('指纹验证成功');
+        cancelBiometricTimer();
+        biometricTimerRef.current = setTimeout(() => {
+          onBiometricSuccess();
+        }, 320);
+      } else {
+        setBiometricState('failed');
+        setBiometricFeedbackMsg(result.error === 'user_cancel' ? '已取消验证' : '指纹不匹配，请重试');
+        triggerShake();
+        if (result.error && result.error !== 'user_cancel') {
+          onBiometricError?.(result.error);
+        }
+        cancelBiometricTimer();
+        biometricTimerRef.current = setTimeout(() => {
+          setBiometricState('idle');
+          setBiometricFeedbackMsg(null);
+        }, 1600);
       }
     } catch (e) {
+      pulseLoop.stop();
+      biometricAnim.setValue(1);
+      setBiometricState('failed');
+      setBiometricFeedbackMsg('指纹识别异常');
+      triggerShake();
       console.log('Biometric auth error:', e);
+      cancelBiometricTimer();
+      biometricTimerRef.current = setTimeout(() => {
+        setBiometricState('idle');
+        setBiometricFeedbackMsg(null);
+      }, 1600);
     }
   };
-
-  // Allow clearing externally or internally
-  useEffect(() => {
-    if (isError) {
-      setTimeout(() => {
-        setActiveNodes([]);
-        activeNodesRef.current = [];
-      }, 800);
-    }
-  }, [isError]);
 
   const getNodeIndex = (x: number, y: number): number | null => {
     for (let row = 0; row < GRID_SIZE; row++) {
@@ -120,6 +203,9 @@ export function SecurityUnlockModule({
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (evt) => {
+        cancelPendingClear();
+        setLocalError(false);
+
         const { locationX, locationY } = evt.nativeEvent;
         const node = getNodeIndex(locationX, locationY);
         if (node !== null) {
@@ -165,38 +251,49 @@ export function SecurityUnlockModule({
       },
       onPanResponderRelease: () => {
         setCurrentPoint(null);
-        if (activeNodesRef.current.length > 0) {
-          const patternStr = activeNodesRef.current.join('');
+        const nodes = activeNodesRef.current;
+
+        if (nodes.length > 0) {
+          if (nodes.length < 4) {
+            setLocalError(true);
+            onUnlockErrorHint?.('至少连接 4 个点');
+            cancelPendingClear();
+            clearTimerRef.current = setTimeout(() => {
+              setLocalError(false);
+              setActiveNodes([]);
+              activeNodesRef.current = [];
+            }, 700);
+            return;
+          }
+
+          const patternStr = nodes.join('');
           onUnlockAttemptRef.current(patternStr);
         }
-        // Don't clear immediately, wait for parent to handle error/success or delay
-        setTimeout(() => {
+
+        cancelPendingClear();
+        clearTimerRef.current = setTimeout(() => {
           if (!isErrorRef.current) {
-             setActiveNodes([]);
-             activeNodesRef.current = [];
+            setActiveNodes([]);
+            activeNodesRef.current = [];
           }
-        }, 1000);
+        }, 800);
       },
       onPanResponderTerminate: () => {
         setCurrentPoint(null);
-        if (activeNodesRef.current.length > 0) {
-          const patternStr = activeNodesRef.current.join('');
-          onUnlockAttemptRef.current(patternStr);
-        }
-        setTimeout(() => {
-          if (!isErrorRef.current) {
-             setActiveNodes([]);
-             activeNodesRef.current = [];
-          }
-        }, 1000);
+        cancelPendingClear();
+        setLocalError(false);
+        setActiveNodes([]);
+        activeNodesRef.current = [];
       },
     })
   ).current;
 
+  const hasError = isError || localError;
+
   return (
     <View style={styles.container}>
       <View style={[styles.patternContainer, { width: size, height: size }]} {...panResponder.panHandlers}>
-        <Svg width={size} height={size}>
+        <Svg height={size} pointerEvents="none" width={size}>
           {/* Draw lines */}
           {activeNodes.map((node, i) => {
             if (i === 0) return null;
@@ -210,7 +307,7 @@ export function SecurityUnlockModule({
                 y1={p1.y}
                 x2={p2.x}
                 y2={p2.y}
-                stroke={isError ? colors.semantic.danger : colors.primary.default}
+                stroke={hasError ? colors.semantic.danger : colors.primary.default}
                 strokeWidth={4}
                 strokeLinecap="round"
               />
@@ -239,7 +336,7 @@ export function SecurityUnlockModule({
                 cx={x}
                 cy={y}
                 r={isActive ? DOT_ACTIVE_RADIUS : DOT_RADIUS}
-                fill={isActive ? (isError ? colors.semantic.danger : colors.primary.default) : colors.border.default}
+                fill={isActive ? (hasError ? colors.semantic.danger : colors.primary.default) : colors.border.default}
               />
             );
           })}
@@ -247,10 +344,41 @@ export function SecurityUnlockModule({
       </View>
       
       {!disableBiometric && biometricAvailable && (
-        <Pressable onPress={triggerBiometric} style={({pressed}) => [styles.biometricButton, pressed && styles.pressed]}>
-          <Ionicons name="finger-print" size={48} color={colors.primary.default} />
-          <Text style={styles.biometricText}>使用指纹/面容解锁</Text>
-        </Pressable>
+        <Animated.View style={{ transform: [{ scale: biometricAnim }, { translateX: shakeAnim }], alignItems: 'center' }}>
+          <Pressable
+            onPress={triggerBiometric}
+            disabled={biometricState === 'scanning'}
+            style={({pressed}) => [styles.biometricButton, pressed && styles.pressed]}
+          >
+            <View style={[
+              styles.biometricIconWrapper,
+              biometricState === 'scanning' && styles.biometricScanning,
+              biometricState === 'success' && styles.biometricSuccess,
+              biometricState === 'failed' && styles.biometricFailed,
+            ]}>
+              <Ionicons
+                name={biometricState === 'success' ? 'checkmark-circle' : 'finger-print'}
+                size={36}
+                color={
+                  biometricState === 'success'
+                    ? colors.semantic.taskSuccess
+                    : biometricState === 'failed'
+                    ? colors.semantic.danger
+                    : biometricState === 'scanning'
+                    ? colors.primary.active
+                    : colors.primary.default
+                }
+              />
+            </View>
+            <Text style={[
+              styles.biometricText,
+              biometricState === 'success' && { color: colors.semantic.taskSuccess, fontWeight: '600' },
+              biometricState === 'failed' && { color: colors.semantic.danger, fontWeight: '600' },
+            ]}>
+              {biometricFeedbackMsg || '点击使用指纹/面容解锁'}
+            </Text>
+          </Pressable>
+        </Animated.View>
       )}
     </View>
   );
@@ -259,7 +387,7 @@ export function SecurityUnlockModule({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    gap: spacing[6],
+    gap: spacing[4],
     width: '100%',
   },
   patternContainer: {
@@ -269,7 +397,30 @@ const styles = StyleSheet.create({
   biometricButton: {
     alignItems: 'center',
     gap: spacing[2],
-    padding: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+  },
+  biometricIconWrapper: {
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderColor: colors.border.default,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
+  },
+  biometricScanning: {
+    borderColor: colors.primary.active,
+    backgroundColor: colors.primary.weak,
+  },
+  biometricSuccess: {
+    borderColor: colors.semantic.taskSuccess,
+    backgroundColor: colors.semantic.successBackground,
+  },
+  biometricFailed: {
+    borderColor: colors.semantic.danger,
+    backgroundColor: colors.semantic.dangerBackground,
   },
   biometricText: {
     ...typography.textStyles.caption,

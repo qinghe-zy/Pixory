@@ -70,7 +70,7 @@ test('assistant message bubbles expose favorite action beside copy and regenerat
   assert.match(bubble, /favoritePending\?: boolean/);
   assert.match(bubble, /onToggleFavorite\?: \(message: AiMessageWithCitations\) => void/);
   assert.match(bubble, /accessibilityLabel=\{favorited \? '取消收藏 AI 消息' : '收藏 AI 消息'\}/);
-  assert.match(bubble, /name=\{favorited \? 'star' : 'star-outline'\}/);
+  assert.match(bubble, /FavoriteStarIcon[\s\S]*favorited=\{favorited\}/);
   assert.match(bubble, /onToggleFavorite\?\.\(message\)/);
   assert.match(bubble, /canFavorite/);
   assert.match(bubble, /!isUser/);

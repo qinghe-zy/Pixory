@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState, useContext } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 
 import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
@@ -26,6 +26,7 @@ import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 import { globalScrollState } from '../utils/scrollState';
 import { FloatingFooterContext } from '../components/AppScreen';
 import { AI_SYSTEM_AVATAR_B64 } from '../utils/aiSystemAvatarBase64';
+import { PersonalCredentialPrompt } from '../components/PersonalCredentialPrompt';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
@@ -41,6 +42,20 @@ function getCachedHomeThreads(space: PixorySpace): AiHomeThreadItem[] {
 
 function getCachedHomeRoleCards(space: PixorySpace): AiRoleCardRecord[] {
   return homeRoleCardCache[space] ?? [];
+}
+
+export async function preloadAiHomeData(space: PixorySpace): Promise<void> {
+  try {
+    const [threads, roleCards] = await Promise.all([
+      listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space }),
+      listRoleCards(space),
+    ]);
+    homeThreadCache[space] = threads;
+    homeRoleCardCache[space] = roleCards;
+    void ensureSystemAssistantThread(space).catch(() => undefined);
+  } catch {
+    // 忽略静默预热异常
+  }
 }
 
 interface AiHomeScreenProps {
@@ -104,6 +119,8 @@ export function AiHomeScreen({
   const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [authMethod, setAuthMethod] = useState<'password' | 'pattern'>('pattern');
+  const [patternError, setPatternError] = useState(false);
   const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
 
   async function reloadThreads() {
@@ -131,12 +148,13 @@ export function AiHomeScreen({
     }
   }
 
-  async function confirmMoveThread() {
+  async function confirmMoveThread(overrideSecret?: string) {
     if (!moveThread) return;
     setBusy(true);
     try {
+      const secretToUse = overrideSecret ?? personalPassword;
       await moveAiThreadsBetweenSpaces({
-        personalPassword,
+        personalPassword: secretToUse,
         sourceSpace: space,
         targetSpace,
         threadIds: [moveThread.id],
@@ -146,7 +164,12 @@ export function AiHomeScreen({
       setPersonalPassword('');
       await reloadThreads();
     } catch (error) {
-      // ignore
+      const msg = error instanceof Error ? error.message : '操作失败';
+      setPatternError(true);
+      setTimeout(() => setPatternError(false), 800);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(msg, ToastAndroid.SHORT);
+      }
     } finally {
       setBusy(false);
     }
@@ -168,15 +191,13 @@ export function AiHomeScreen({
   }
 
   useEffect(() => {
-    if (!isActive) return;
     const startedAt = Date.now();
     const traceId = 'ai-home-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     recordDiagnosticEvent({ eventType: 'home_load_started', space, traceId, payload: { refresh: refreshToken ?? 0 } });
     let isMounted = true;
     setErrorMessage(null);
     setLoadedThreads({ space, threads: getCachedHomeThreads(space) });
-    void ensureSystemAssistantThread(space)
-      .then(() => listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space }))
+    void listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space })
       .then((nextThreads) => {
         homeThreadCache[space] = nextThreads;
         if (isMounted) {
@@ -190,6 +211,7 @@ export function AiHomeScreen({
           setErrorMessage(error instanceof Error ? error.message : '读取 AI 工作台失败');
         }
       });
+    void ensureSystemAssistantThread(space).catch(() => undefined);
     return () => {
       isMounted = false;
     };
@@ -381,7 +403,6 @@ export function AiHomeScreen({
                         </Text>
                       </View>
                     </View>
-                    <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={metrics.iconSizeSm} />
                   </Pressable>
                 ))
               ) : (
@@ -445,33 +466,41 @@ export function AiHomeScreen({
             if (!busy) {
               setPendingAction(null);
               setPersonalPassword('');
+              setPatternError(false);
             }
           }}
           onPrimary={() => void confirmMoveThread()}
-          primaryDisabled={busy || (targetSpace === 'personal' && !personalPassword.trim())}
-          primaryLabel={busy ? '正在移动' : space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+          primaryDisabled={
+            busy ||
+            (targetSpace === 'personal' &&
+              (authMethod === 'pattern' ? true : !personalPassword.trim()))
+          }
+          primaryLabel={
+            busy
+              ? '正在移动'
+              : targetSpace === 'personal' && authMethod === 'pattern'
+              ? '请绘制图案'
+              : space === 'normal'
+              ? '移入隐私空间'
+              : '移出隐私空间'
+          }
           title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
           visible={pendingAction === 'move'}
         >
           {targetSpace === 'personal' ? (
-            <TextInput
-              editable={!busy}
-              onChangeText={setPersonalPassword}
-              placeholder="隐私密码"
-              placeholderTextColor={aiLightColors.mutedSoft}
-              secureTextEntry
-              selectionColor={aiLightColors.primary}
-              style={[{
-                backgroundColor: aiLightColors.surface,
-                borderColor: aiLightColors.hairline,
-                borderRadius: radius.md,
-                borderWidth: 1,
-                color: aiLightColors.ink,
-                fontSize: 16,
-                padding: 12,
-                marginTop: 12,
-              }]}
-              value={personalPassword}
+            <PersonalCredentialPrompt
+              disabled={busy}
+              isError={patternError}
+              onAuthMethodChange={setAuthMethod}
+              onBiometricSuccess={() => {
+                void confirmMoveThread('__BIOMETRIC_PASSTHROUGH__');
+              }}
+              onPasswordChange={setPersonalPassword}
+              onPatternSubmit={(pattern) => {
+                void confirmMoveThread(pattern);
+              }}
+              passwordValue={personalPassword}
+              theme="ai"
             />
           ) : null}
         </AppDialog>

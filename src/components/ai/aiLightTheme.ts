@@ -1,8 +1,12 @@
 import { Platform } from 'react-native';
 
 export const aiLightColors = {
-  canvas: '#EDEDED',
+  canvas: '#FFFFFF',
   surface: '#FFFFFF',
+  underlayCanvas: '#E7EAF0',
+  underlaySurface: '#F7F8FA',
+  cardBorder: 'rgba(0, 0, 0, 0.07)',
+  userBubble: '#F2F3F5',
   card: '#FFFFFF',
   cardWash: 'rgba(255, 255, 255, 0.72)',
   primary: '#5B9CF6',
@@ -18,8 +22,8 @@ export const aiLightColors = {
   mutedSoft: '#C7C7CC',
   onDark: '#FFFFFF',
   paperMark: 'rgba(91, 156, 246, 0.08)',
-  posterBottomFade: 'rgba(237, 237, 237, 0.92)',
-  posterRightFade: 'rgba(237, 237, 237, 0.82)',
+  posterBottomFade: 'rgba(255, 255, 255, 0.92)',
+  posterRightFade: 'rgba(255, 255, 255, 0.82)',
   posterWarmOverlay: 'rgba(0, 0, 0, 0.04)',
 } as const;
 

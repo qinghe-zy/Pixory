@@ -4,8 +4,10 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +21,7 @@ import type { AiThreadHistoryItem } from '../../database/repositories/aiThreadRe
 import { metrics, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import { formatAiHistoryMinute } from '../../utils/aiTimeFormatters';
 import { aiLightColors } from './aiLightTheme';
+import { LEFT_DRAWER_WIDTH } from './AiPushScaleDrawerStage';
 
 const DRAWER_WIDTH_RATIO = 0.86;
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -43,6 +46,8 @@ interface AiComprehensiveRecordDrawerProps {
    * 参数为按钮相对屏幕的 { x, y, width, height, borderRadius }。
    */
   onSettingsButtonLayout?: (rect: { x: number; y: number; width: number; height: number; borderRadius: number }) => void;
+  /** 侧边栏展开形态：classic 为传统浮层覆盖，push_scale 为底层画布推挤缩放 */
+  presentationMode?: 'classic' | 'push_scale';
 }
 
 export function AiComprehensiveRecordDrawer({
@@ -59,8 +64,17 @@ export function AiComprehensiveRecordDrawer({
   onRenameThread,
   onDeleteThread,
   onSettingsButtonLayout,
+  presentationMode = 'classic',
 }: AiComprehensiveRecordDrawerProps) {
+  const isPushScale = presentationMode === 'push_scale';
+  const isPushScaleRef = useRef(isPushScale);
+  isPushScaleRef.current = isPushScale;
+  const closedOffset = isPushScale ? -DRAWER_WIDTH * 0.22 : -DRAWER_WIDTH;
   const insets = useSafeAreaInsets();
+  const statusBarHeight =
+    Platform.OS === 'android'
+      ? Math.max(StatusBar.currentHeight ?? 0, insets.top)
+      : insets.top;
   const [mounted, setMounted] = useState(false);
   const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
@@ -74,7 +88,7 @@ export function AiComprehensiveRecordDrawer({
   const overlayRef = useRef<View>(null);
   const settingsBtnLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
-  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const slideAnim = useRef(new Animated.Value(closedOffset)).current;
   const scrimOpacity = useRef(new Animated.Value(0)).current;
   const drawerTranslateX = useRef(new Animated.Value(0)).current;
   const drawerAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -96,6 +110,73 @@ export function AiComprehensiveRecordDrawer({
 
   // Mount / unmount with animation
   useEffect(() => {
+    const reportFallbackLayoutIfNeeded = () => {
+      if (!onSettingsButtonLayout || !settingsBtnLayoutRef.current) {
+        return;
+      }
+      const { x, y, width, height } = settingsBtnLayoutRef.current;
+      if (width > 0 && height > 0) {
+        onSettingsButtonLayout({
+          x: spacing[5] + x,
+          y: (isPushScale ? statusBarHeight + spacing[3] : spacing[10]) + y,
+          width,
+          height,
+          borderRadius: radius.md,
+        });
+      }
+    };
+
+    const triggerSettingsButtonMeasure = () => {
+      if (!onSettingsButtonLayout) {
+        return;
+      }
+      if (!settingsButtonRef.current || !overlayRef.current) {
+        reportFallbackLayoutIfNeeded();
+        return;
+      }
+      const attemptMeasurement = (retries: number) => {
+        overlayRef.current?.measureInWindow((ox, oy, ow, oh) => {
+          settingsButtonRef.current?.measureInWindow((bx, by, width, height) => {
+            const invalidMeasure =
+              width <= 0 ||
+              height <= 0 ||
+              ow <= 0 ||
+              oh <= 0 ||
+              (bx === 0 && by === 0);
+            // In push_scale mode, wait until the underlay parallax spring settles near ox = 0
+            const springStillMoving = isPushScale && Math.abs(ox) > 1.5 && retries > 2;
+            if (invalidMeasure || springStillMoving) {
+              if (retries > 0) {
+                setTimeout(() => attemptMeasurement(retries - 1), 45);
+              } else {
+                reportFallbackLayoutIfNeeded();
+              }
+              return;
+            }
+            const pageX = bx - ox;
+            const pageY = by - oy;
+            onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: radius.md });
+          });
+        });
+      };
+      attemptMeasurement(10);
+    };
+
+    if (isPushScale) {
+      // push_scale 模式下，视差与透明度由外层 AiPushScaleDrawerStage 的 Reanimated progress 同源驱动，内部保持 0 位移预挂载
+      setMounted(true);
+      slideAnim.setValue(0);
+      drawerTranslateX.setValue(0);
+      scrimOpacity.setValue(0);
+      if (visible) {
+        // 先用已预挂载的静态布局立即提供兜底坐标，再在弹簧落定后精确复测
+        reportFallbackLayoutIfNeeded();
+        const timer = setTimeout(triggerSettingsButtonMeasure, 340);
+        return () => clearTimeout(timer);
+      }
+      return undefined;
+    }
+
     if (visible) {
       setMounted(true);
       drawerTranslateX.setValue(0);
@@ -103,44 +184,26 @@ export function AiComprehensiveRecordDrawer({
         Animated.spring(slideAnim, {
           toValue: 0,
           damping: 30,
-          stiffness: 180, // 原本 260，调小使动画更慢
+          stiffness: 180,
           mass: 1,
           useNativeDriver: true,
         }),
         Animated.timing(scrimOpacity, {
           toValue: 1,
-          duration: 350, // 原本 200，调长
+          duration: 350,
           useNativeDriver: true,
         }),
-      ]), () => {
-        // 使用双重 measureInWindow 获取绝对准确的相对坐标！
-        // 任何基于常量的推断都会被 React Native Android 的 padding/layout 各种怪异行为打破。
-        // 通过分别测算 overlay(根) 和 button，将两者的屏幕绝对坐标相减，得到 100% 精确的渲染偏移。
-        if (onSettingsButtonLayout && settingsButtonRef.current && overlayRef.current) {
-          const attemptMeasurement = (retries: number) => {
-            overlayRef.current?.measureInWindow((ox, oy) => {
-              settingsButtonRef.current?.measureInWindow((bx, by, width, height) => {
-                // 如果 measure 失败（Android 常见问题，尤其在动画刚结束时），重试
-                if ((bx === 0 && by === 0) || (ox === 0 && oy === 0) || width === 0) {
-                  if (retries > 0) {
-                    setTimeout(() => attemptMeasurement(retries - 1), 50);
-                  }
-                  return;
-                }
-                const pageX = bx - ox;
-                const pageY = by - oy;
-                onSettingsButtonLayout({ x: pageX, y: pageY, width, height, borderRadius: 18 });
-              });
-            });
-          };
-          attemptMeasurement(10); // 最多重试 10 次，等待 500ms
-        }
-      });
+      ]), triggerSettingsButtonMeasure);
     } else {
       drawerTranslateX.setValue(0);
+      if (!mounted) {
+        slideAnim.setValue(closedOffset);
+        scrimOpacity.setValue(0);
+        return;
+      }
       startDrawerAnimation(Animated.parallel([
         Animated.timing(slideAnim, {
-          toValue: -DRAWER_WIDTH,
+          toValue: closedOffset,
           duration: 220,
           useNativeDriver: true,
         }),
@@ -153,18 +216,21 @@ export function AiComprehensiveRecordDrawer({
         setMounted(false);
       });
     }
-  }, [visible]);
+    return undefined;
+  }, [visible, isPushScale, closedOffset]);
 
 
-  // Swipe-left-to-close pan responder on the drawer panel
+  // Swipe-left-to-close pan responder on the drawer panel (classic mode only; push_scale is unified in AiPushScaleDrawerStage)
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gs) =>
-        Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx < 0,
+        !isPushScaleRef.current &&
+        Math.abs(gs.dx) > 8 &&
+        Math.abs(gs.dx) > Math.abs(gs.dy) &&
+        gs.dx < 0,
       onPanResponderMove: (_evt, gs) => {
         const clampedDx = Math.min(0, gs.dx);
         drawerTranslateX.setValue(clampedDx);
-        // Fade scrim proportionally
         const progress = 1 + clampedDx / DRAWER_WIDTH;
         scrimOpacity.setValue(Math.max(0, progress));
       },
@@ -221,7 +287,7 @@ export function AiComprehensiveRecordDrawer({
     }),
   ).current;
 
-  if (!mounted && !visible) {
+  if (!isPushScale && !mounted && !visible) {
     return null;
   }
 
@@ -284,24 +350,38 @@ export function AiComprehensiveRecordDrawer({
 
   return (
     <>
-      <View ref={overlayRef} pointerEvents="box-none" style={styles.overlay} collapsable={false}>
-        {/* Animated scrim */}
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.scrimBase, { opacity: scrimOpacity }]}
-        />
-        <Pressable
-          accessibilityLabel="关闭综合记录"
-          accessibilityRole="button"
-          onPress={onClose}
-          style={styles.scrimTouchable}
-        />
+      <View
+        ref={overlayRef}
+        pointerEvents="box-none"
+        style={[styles.overlay, isPushScale && styles.overlayPushScale]}
+        collapsable={false}
+      >
+        {/* Animated scrim (classic overlay mode only; push_scale uses No Scrim) */}
+        {!isPushScale ? (
+          <>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.scrimBase, { opacity: scrimOpacity }]}
+            />
+            <Pressable
+              accessibilityLabel="关闭综合记录"
+              accessibilityRole="button"
+              onPress={onClose}
+              style={styles.scrimTouchable}
+            />
+          </>
+        ) : null}
         {/* Animated sliding drawer */}
         <Animated.View
+          renderToHardwareTextureAndroid={!isPushScale}
+          shouldRasterizeIOS={!isPushScale}
           style={[
             styles.drawer,
+            isPushScale && styles.drawerPushScale,
             {
-              paddingBottom: Math.max(insets.bottom, spacing[5]),
+              paddingTop: isPushScale ? statusBarHeight + spacing[3] : spacing[10],
+              // push_scale 模式下外层容器底部内边距归零，使滚动列表视口 100% 延伸至物理屏幕底边，消除底部截断
+              paddingBottom: isPushScale ? 0 : Math.max(insets.bottom, spacing[5]),
               transform: [
                 {
                   translateX: Animated.add(slideAnim, drawerTranslateX),
@@ -311,13 +391,17 @@ export function AiComprehensiveRecordDrawer({
           ]}
           {...panResponder.panHandlers}
         >
-          <LinearGradient
-            colors={[aiLightColors.canvas, '#E2E2E2']}
-            end={{ x: 1, y: 0 }}
-            start={{ x: 0, y: 0 }}
-            style={styles.drawerGradient}
-          />
-          <View pointerEvents="none" style={styles.drawerHighlight} />
+          {!isPushScale ? (
+            <>
+              <LinearGradient
+                colors={[aiLightColors.canvas, '#E2E2E2']}
+                end={{ x: 1, y: 0 }}
+                start={{ x: 0, y: 0 }}
+                style={styles.drawerGradient}
+              />
+              <View pointerEvents="none" style={styles.drawerHighlight} />
+            </>
+          ) : null}
           <View style={styles.brandRow}>
             <Text style={styles.brand}>Pixory AI</Text>
             <View
@@ -337,16 +421,23 @@ export function AiComprehensiveRecordDrawer({
               </Pressable>
             </View>
           </View>
-          <View style={styles.primaryActions}>
+          <View style={[styles.primaryActions, isPushScale && styles.primaryActionsIsland]}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
             <DrawerAction icon="person-circle-outline" label="角色库" onPress={onOpenRoleLibrary} />
             <DrawerAction icon="chatbubbles-outline" label="历史记录" onPress={onOpenHistory} />
             <DrawerAction icon="folder-open-outline" label="总资料库" onPress={onOpenGlobalMaterials} />
           </View>
-          <View style={styles.divider} />
+          {!isPushScale ? <View style={styles.divider} /> : null}
           <Text style={styles.sectionTitle}>最近</Text>
           {statusText ? <Text accessibilityLiveRegion="polite" style={styles.statusText}>{statusText}</Text> : null}
-          <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false} style={styles.recentScroller}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.recentList,
+              isPushScale && { paddingBottom: Math.max(insets.bottom + spacing[6], spacing[10]) },
+            ]}
+            showsVerticalScrollIndicator={false}
+            style={styles.recentScroller}
+          >
             {visibleRecents.length ? (
               visibleRecents.map((thread) => {
                 const isActiveThread = thread.id === activeThreadId;
@@ -422,19 +513,24 @@ export function AiComprehensiveRecordDrawer({
               <Text style={styles.emptyText}>暂无最近会话</Text>
             )}
           </ScrollView>
-          <Pressable
-            accessibilityLabel="收起面板"
-            accessibilityRole="button"
-            onPress={onClose}
-            style={({ pressed }) => [styles.closeButtonShell, pressed && styles.pressed]}
-          >
-            <Text style={styles.closeButtonText}>收起面板</Text>
-            <View style={styles.closeButtonArrows}>
-              <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} style={styles.stackedArrow} />
-              <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} style={styles.stackedArrow} />
-              <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} />
-            </View>
-          </Pressable>
+          {!isPushScale ? (
+            <Pressable
+              accessibilityLabel="收起面板"
+              accessibilityRole="button"
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.closeButtonShell,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.closeButtonText}>收起面板</Text>
+              <View style={styles.closeButtonArrows}>
+                <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} style={styles.stackedArrow} />
+                <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} style={styles.stackedArrow} />
+                <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} />
+              </View>
+            </Pressable>
+          ) : null}
         </Animated.View>
       </View>
       <AppDialog
@@ -491,6 +587,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     zIndex: 20,
   },
+  overlayPushScale: {
+    zIndex: 1,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: LEFT_DRAWER_WIDTH,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
+  },
   scrimBase: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(24, 23, 21, 0.28)',
@@ -510,6 +617,23 @@ const styles = StyleSheet.create({
     paddingTop: spacing[10],
     width: DRAWER_WIDTH,
     ...shadows.floating,
+  },
+  drawerPushScale: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: LEFT_DRAWER_WIDTH,
+    backgroundColor: 'transparent',
+    borderBottomRightRadius: 0,
+    borderTopRightRadius: 0,
+    borderWidth: 0,
+    borderRightWidth: 0,
+    borderColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
   },
   drawerGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -540,17 +664,26 @@ const styles = StyleSheet.create({
   settingsButton: {
     alignItems: 'center',
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
+    elevation: 0,
     height: 36,
     justifyContent: 'center',
     width: 36,
-    ...shadows.sm,
   },
   primaryActions: {
     gap: rhythm.cardContentGap,
     marginBottom: spacing[3],
+  },
+  primaryActionsIsland: {
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 0,
+    elevation: 0,
+    gap: spacing[1],
+    marginBottom: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   actionRow: {
     alignItems: 'center',
@@ -567,7 +700,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   divider: {
-    backgroundColor: aiLightColors.hairline,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     height: StyleSheet.hairlineWidth,
     marginBottom: spacing[3],
   },
@@ -587,9 +720,8 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   recentRow: {
-    borderColor: 'transparent',
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     gap: rhythm.microGap,
     minHeight: metrics.minTouchSize,
     justifyContent: 'center',
@@ -598,8 +730,8 @@ const styles = StyleSheet.create({
   },
   recentRowActive: {
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    ...shadows.sm,
+    borderWidth: 0,
+    elevation: 0,
   },
   recentTitleRow: {
     alignItems: 'center',
@@ -754,6 +886,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     ...shadows.sm,
+  },
+  closeButtonShellPushScale: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderWidth: 0,
+    marginTop: spacing[2],
+    minHeight: 36,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 0,
+    ...shadows.none,
   },
   closeButtonText: {
     ...typography.textStyles.bodyStrong,

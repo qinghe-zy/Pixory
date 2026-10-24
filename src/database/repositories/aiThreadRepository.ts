@@ -467,6 +467,7 @@ export interface CreateAiMessageInput {
   promptSnapshotJson?: string;
   continuityImportSessionId?: string | null;
   continuitySyntheticKind?: AiContinuitySyntheticMessageKind | null;
+  createdAt?: string;
   completedAt?: string | null;
 }
 
@@ -947,10 +948,13 @@ async function materializeMessagesForBranchScopes(
     return messages;
   }
   const versionByMessageId = new Map(versions.map((version) => [version.originalMessageId, version]));
-  return messages.map((message) => {
+  const materialized = messages.map((message) => {
     const version = versionByMessageId.get(message.id);
     return version ? applyBranchVersionContent(message, version) : message;
   });
+  return materialized.sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+  );
 }
 
 function buildBranchVersionSearchClause(branchScopes?: AiBranchScope[]): { clause: string; values: Array<string | number> } | null {
@@ -2683,7 +2687,8 @@ export const aiThreadRepository = {
   },
 
   async createMessage(db: SQLiteDatabase, input: CreateAiMessageInput): Promise<AiMessageRecord> {
-    const now = createTimestamp();
+    const createdAt = input.createdAt ?? createTimestamp();
+    const updatedAt = createTimestamp();
     await db.runAsync(
       `INSERT INTO ai_messages (
         id,
@@ -2720,8 +2725,8 @@ export const aiThreadRepository = {
       input.promptSnapshotJson ?? '{}',
       input.continuityImportSessionId ?? null,
       input.continuitySyntheticKind ?? null,
-      now,
-      now,
+      createdAt,
+      updatedAt,
       input.completedAt ?? null
     );
     const message = await db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', input.id);

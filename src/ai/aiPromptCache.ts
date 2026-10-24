@@ -14,6 +14,7 @@ export type AiPromptLayerName =
   | 'stable_material_rules'
   | 'stable_tool_definitions'
   | 'memory_snapshot'
+  | 'summary_archive'
   | 'history_window'
   | 'companion_runtime'
   | 'temporal_open_loops'
@@ -99,12 +100,13 @@ export interface AiProviderCacheDecisionInput {
   previousRequestAt?: string | null;
   requestedAt: string;
   scopeKey?: string | null;
+  requestEstimatedTokens?: number;
 }
 
-export const AI_PROMPT_VERSION = 1;
+export const AI_PROMPT_VERSION = 2;
 export const AI_PROMPT_LAYER_VERSIONS = {
   appPolicy: 1,
-  role: 3,
+  role: 4,
   materialRules: 1,
   toolDefinitions: 1,
   memorySnapshot: 1,
@@ -240,7 +242,7 @@ export function buildPromptCacheMetadata(input: {
   retrievalText: string;
 }): AiPromptCacheMetadata {
   const stableBlocks = stablePromptBlocks(input.blocks);
-  const coreBlocks = stableBlocks.filter((block) => block.name !== 'memory_snapshot');
+  const coreBlocks = stableBlocks.filter((block) => block.name !== 'memory_snapshot' && block.name !== 'summary_archive');
   const memoryBlock = stableBlocks.find((block) => block.name === 'memory_snapshot');
   return {
     promptVersion: AI_PROMPT_VERSION,
@@ -282,25 +284,26 @@ export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): A
     if (!input.provider.openAiUsageObservationEnabled) {
       return { requested: false, strategy: 'none', ttlMs };
     }
-    if (input.provider.providerType !== 'openai' || input.metadata.stablePrefixEstimatedTokens < OPENAI_CACHE_THRESHOLD_TOKENS) {
+    if (input.provider.providerType !== 'openai'
+      || Math.max(input.metadata.stablePrefixEstimatedTokens, input.requestEstimatedTokens ?? 0) < OPENAI_CACHE_THRESHOLD_TOKENS) {
       return { openAiIncludeUsage: true, requested: false, strategy: 'none', ttlMs };
     }
     const openAiPromptCacheKey = [
-      'pixory',
+
       `pv${input.metadata.promptVersion}`,
       input.provider.id,
       input.modelId,
       input.metadata.chatMode,
-      input.metadata.stablePrefixHash,
-      input.metadata.memoryEpoch,
+      input.metadata.stableCoreHash,
+      input.metadata.memorySnapshotHash,
       `rv${input.metadata.retrievalVersion}`,
       input.scopeKey ?? 'scope:unknown',
       input.branchRouteHash ?? 'branch:latest',
-      input.generationParamsHash ?? 'params:default',
+
     ].join(':');
     return {
       openAiIncludeUsage: input.provider.openAiUsageObservationEnabled,
-      openAiPromptCacheKey,
+      openAiPromptCacheKey: `pixory:${hashPromptCacheText(openAiPromptCacheKey).slice(0, 56)}`,
       requested: true,
       strategy: 'openai_prompt_cache_key',
       ttlMs,
@@ -308,12 +311,13 @@ export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): A
   }
 
   if (input.provider.protocol === 'anthropic') {
-    const coreBlocks = input.stableSystemBlocks.filter((block) => block.name !== 'memory_snapshot');
+    const coreBlocks = input.stableSystemBlocks.filter((block) => block.name !== 'memory_snapshot' && block.name !== 'summary_archive');
     const snapshotBlock = input.stableSystemBlocks.find((block) => block.name === 'memory_snapshot');
+    const summaryBlock = input.stableSystemBlocks.find((block) => block.name === 'summary_archive');
     const coreText = coreBlocks.map((block) => block.text).filter(Boolean).join('\n\n');
     const snapshotText = snapshotBlock?.text ?? '';
     const coreEstimatedTokens = estimatePromptTokens(coreText);
-    const prefixEstimatedTokens = estimatePromptTokens([coreText, snapshotText].filter(Boolean).join('\n\n'));
+    const prefixEstimatedTokens = estimatePromptTokens([coreText, snapshotText, summaryBlock?.text].filter(Boolean).join('\n\n'));
     const enableCore = shouldEnableAnthropicBreakpoint({
       breakpoint: 'core',
       coreEstimatedTokens,
@@ -329,6 +333,7 @@ export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): A
     const anthropicSystemBlocks = [
       coreText ? { cacheControl: enableCore, text: coreText } : null,
       snapshotText ? { cacheControl: enablePrefix, text: snapshotText } : null,
+      summaryBlock?.text ? { cacheControl: enablePrefix, text: summaryBlock.text } : null,
     ].filter((block): block is { text: string; cacheControl: boolean } => Boolean(block));
     const hasEnabledBreakpoint = anthropicSystemBlocks.some((block) => block.cacheControl);
     if (!hasEnabledBreakpoint) {
@@ -343,7 +348,7 @@ export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): A
   }
 
   if (input.provider.protocol === 'gemini') {
-    return input.metadata.stablePrefixEstimatedTokens >= GEMINI_IMPLICIT_THRESHOLD_TOKENS
+    return Math.max(input.metadata.stablePrefixEstimatedTokens, input.requestEstimatedTokens ?? 0) >= GEMINI_IMPLICIT_THRESHOLD_TOKENS
       ? { requested: true, strategy: 'gemini_implicit', ttlMs }
       : { requested: false, strategy: 'none', ttlMs };
   }

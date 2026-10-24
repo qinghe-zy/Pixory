@@ -49,7 +49,7 @@ import { AiChatScreen } from './src/screens/AiChatScreen';
 import { AiChatSearchScreen } from './src/screens/AiChatSearchScreen';
 import { AiDocumentReaderScreen } from './src/screens/AiDocumentReaderScreen';
 import { AiHistoryScreen } from './src/screens/AiHistoryScreen';
-import { AiHomeScreen } from './src/screens/AiHomeScreen';
+import { AiHomeScreen, preloadAiHomeData } from './src/screens/AiHomeScreen';
 import { AiIpPickerScreen } from './src/screens/AiIpPickerScreen';
 import { AiKnowledgeBaseScreen } from './src/screens/AiKnowledgeBaseScreen';
 import { AiMaterialImportScreen } from './src/screens/AiMaterialImportScreen';
@@ -90,6 +90,10 @@ import { MeScreen } from './src/screens/MeScreen';
 import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { AdvancedSettingsScreen } from './src/screens/AdvancedSettingsScreen';
+import { AppearanceSettingsScreen } from './src/screens/AppearanceSettingsScreen';
+import { ChatAppearanceSettingsScreen } from './src/screens/ChatAppearanceSettingsScreen';
+import { ProfileInfoScreen } from './src/screens/ProfileInfoScreen';
+import { PerformanceSettingsScreen } from './src/screens/PerformanceSettingsScreen';
 import { PasswordAndSecurityScreen } from './src/screens/PasswordAndSecurityScreen';
 import { DeveloperModeSettingsScreen } from './src/screens/DeveloperModeSettingsScreen';
 import { initializeDiagnostics } from './src/diagnostics/diagnosticLogger';
@@ -143,6 +147,7 @@ import { StorageUsageScreen } from './src/screens/StorageUsageScreen';
 import { ChatStorageUsageScreen } from './src/screens/ChatStorageUsageScreen';
 import { MilestonesDetailScreen } from './src/screens/MilestonesDetailScreen';
 import type { AiDocumentReaderLocator } from './src/ai/readers/readerTypes';
+import { getCachedAiSidebarStyleMode } from './src/services/aiChatPreferences';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -249,6 +254,10 @@ type AppRoute =
   | { name: 'settings'; space: PixorySpace }
   | { name: 'advanced-settings'; space: PixorySpace }
   | { name: 'password-security-settings'; space: PixorySpace }
+  | { name: 'performance-settings'; space: PixorySpace }
+  | { name: 'appearance-settings'; space: PixorySpace }
+  | { name: 'chat-appearance-settings'; space: PixorySpace }
+  | { name: 'profile-info-settings'; space: PixorySpace }
   | { name: 'developer-mode-settings'; space: PixorySpace }
   | { name: 'diagnostics-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
@@ -527,7 +536,10 @@ export default function App() {
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
 
   useEffect(() => {
-    if (isReady) void initializeDiagnostics(activeSpace).catch(() => undefined);
+    if (isReady) {
+      void initializeDiagnostics(activeSpace).catch(() => undefined);
+      void preloadAiHomeData(activeSpace);
+    }
   }, [activeSpace, isReady]);
 
   const currentRouteRef = useRef(currentRoute);
@@ -1095,11 +1107,14 @@ export default function App() {
   }
 
   function openNewAiChat(space: PixorySpace) {
+    const top = routeStackRef.current[routeStackRef.current.length - 1];
+    const routeKey = top?.name === 'ai-chat' && getCachedAiSidebarStyleMode() === 'push_scale' ? top.routeKey : undefined;
     openAiChatRoute({
       name: 'ai-chat',
       composerEntranceReason: 'new_chat',
       contextTitle: '普通聊天',
       contextType: 'normal',
+      routeKey,
       space,
     });
   }
@@ -1463,6 +1478,8 @@ export default function App() {
               onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
               onOpenAbout={() => pushRoute({ name: 'about', space: activeSpace })}
               onOpenSettings={() => pushRoute({ name: 'settings', space: activeSpace })}
+              onOpenProfileInfo={() => pushRoute({ name: 'profile-info-settings', space: activeSpace })}
+              onOpenChatAppearance={() => pushRoute({ name: 'chat-appearance-settings', space: activeSpace })}
               onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
               onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
               onLockPersonalSpace={() => {
@@ -2106,6 +2123,7 @@ export default function App() {
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onOpenDiary={(diaryId, versionId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId, versionId })}
         onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })}
+        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
           openAiChatRoute({
@@ -2116,6 +2134,7 @@ export default function App() {
             includeIpDocuments: thread.includeIpDocuments,
             ipId: thread.boundIpId ?? undefined,
             knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
+            routeKey: getCachedAiSidebarStyleMode() === 'push_scale' ? currentRoute.routeKey : undefined,
             space: currentRoute.space,
             threadId: thread.id,
           })
@@ -2200,8 +2219,22 @@ export default function App() {
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'advanced-settings') {
-      content = <AdvancedSettingsScreen space={currentRoute.space} onBack={popRoute} />;
-    } else if (currentRoute.name === 'settings') {
+    content = <AdvancedSettingsScreen space={currentRoute.space} onBack={popRoute} />;
+  } else if (currentRoute.name === 'performance-settings') {
+    content = <PerformanceSettingsScreen space={currentRoute.space} onBack={popRoute} />;
+  } else if (currentRoute.name === 'appearance-settings') {
+    content = (
+      <AppearanceSettingsScreen
+        space={currentRoute.space}
+        onBack={popRoute}
+        onOpenChatAppearance={() => pushRoute({ name: 'chat-appearance-settings', space: currentRoute.space })}
+      />
+    );
+  } else if (currentRoute.name === 'chat-appearance-settings') {
+    content = <ChatAppearanceSettingsScreen space={currentRoute.space} onBack={popRoute} />;
+  } else if (currentRoute.name === 'profile-info-settings') {
+    content = <ProfileInfoScreen space={currentRoute.space} onBack={popRoute} />;
+  } else if (currentRoute.name === 'settings') {
     content = (
       <SettingsScreen 
         space={currentRoute.space} 
@@ -2209,8 +2242,12 @@ export default function App() {
         onOpenDeveloperMode={() => pushRoute({ name: 'developer-mode-settings', space: currentRoute.space })} 
         onOpenDiagnostics={() => pushRoute({ name: 'diagnostics-settings', space: currentRoute.space })} 
         onOpenPasswordSecurity={() => pushRoute({ name: 'password-security-settings', space: currentRoute.space })}
-          onOpenAdvancedSettings={() => pushRoute({ name: 'advanced-settings', space: currentRoute.space })}
-        />
+        onOpenAdvancedSettings={() => pushRoute({ name: 'advanced-settings', space: currentRoute.space })}
+        onOpenPerformanceSettings={() => pushRoute({ name: 'performance-settings', space: currentRoute.space })}
+        onOpenAppearanceSettings={() => pushRoute({ name: 'appearance-settings', space: currentRoute.space })}
+        onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
+        onOpenProfileInfo={() => pushRoute({ name: 'profile-info-settings', space: currentRoute.space })}
+      />
     );
   } else if (currentRoute.name === 'password-security-settings') {
     content = <PasswordAndSecurityScreen onBack={popRoute} />;

@@ -56,7 +56,11 @@ import {
   AnchoredContextMenu,
   type AnchoredContextMenuAction,
 } from '../components/AnchoredContextMenu';
+import { AppActionSheet, type AppActionSheetItem } from "../components/AppActionSheet";
+import { useToast } from "../components/AppToast";
+import { pinDocumentToKnowledgeBase, unpinDocumentFromKnowledgeBase } from "../ai/aiDocumentPinService";
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
+import { AiPushScaleDrawerStage } from "../components/ai/AiPushScaleDrawerStage";
 import { AiChatGuideOverlay, type AiChatGuideStep, type GuideHighlightRect } from "../components/ai/AiChatGuideOverlay";
 import { AiChatNoKeyBanner } from "../components/ai/AiChatNoKeyBanner";
 import { SystemAssistantTaskCard } from "../components/ai/SystemAssistantTaskCard";
@@ -72,10 +76,20 @@ import { AiMemoryCaptureNotice } from "../components/ai/AiMemoryCaptureNotice";
 import { AiCitationList } from "../components/ai/AiCitationList";
 import { AiReplyAssistModal } from "../components/ai/AiReplyAssistModal";
 import { AiMessageBubble } from "../components/ai/AiMessageBubble";
+import { prewarmMarkdownContent } from "../components/ai/AiMessageContent";
 import {
   AiMessageContextMenu,
   type AiMessageContextMenuAction,
 } from "../components/ai/AiMessageContextMenu";
+import {
+  ContinueGenerationIcon,
+  ContinueReplyIcon,
+  CopyIcon,
+  EditIcon,
+  FavoriteStarIcon,
+  RegenerateIcon,
+  SelectTextIcon,
+} from "../components/ai/AiMessageActionIcons";
 import { AiMessageTextSelectionModal } from "../components/ai/AiMessageTextSelectionModal";
 import { mergeBufferedStreamingPatchIntoContextMenuTarget } from "../components/ai/aiMessageContextMenuTarget";
 import { AiStreamingTailSpacer } from "../components/ai/AiStreamingTailSpacer";
@@ -83,6 +97,10 @@ import { AiStreamingTailContinuationBubble } from "../components/ai/AiStreamingT
 import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailMessageSegment";
 import { SecureImage } from "../components/SecureImage";
 import { AiScrollToLatestButton } from "../components/ai/AiScrollToLatestButton";
+import { AiSandboxViewerModal } from "../components/common/AiSandboxViewerModal";
+import { applySearchReplacePatch, extractArtifactTitle } from "../services/sandbox/sandboxAssembler";
+import { extractSandboxExecutableCode } from "../services/sandbox/sandboxDetector";
+import { buildSandboxDynamicPromptSection } from "../services/sandbox/sandboxIntentRouter";
 import { AppScreen } from "../components/AppScreen";
 import {
   addNativeSpeechRecognitionListener,
@@ -248,6 +266,7 @@ import { presentDreamFailure } from '../ai/dream/dreamPolicy';
 import { loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
 import { hashBranchRoute } from '../ai/context/conversationCoverage';
 import { hashPromptCacheText } from '../ai/aiPromptCache';
+import { prewarmDefaultAiConnection } from '../ai/aiConnectionPrewarmer';
 import type {
   AiBranchScope,
   AiMessagePageCursor,
@@ -264,7 +283,6 @@ import {
   typography,
 } from "../design/tokens";
 import { formatAiMessageMinute } from "../utils/aiTimeFormatters";
-import { AiChatMessageSkeleton } from "../components/ai/AiChatMessageSkeleton";
 import { consumeThreadMessagePrefetch } from "../ai/aiThreadMessagePrefetch";
 import { mergeOrderedMessagePages } from "../ai/aiMessagePageMerge";
 import { validateAiChatAttachments } from "../ai/aiAttachmentPolicy";
@@ -273,6 +291,10 @@ import {
   loadPersistedAdoptedThreadBranchScopes,
 } from "../ai/aiThreadRouteSnapshotService";
 import { subscribeAiThreadPresentation } from "../ai/aiThreadPresentationEvents";
+import {
+  useAiSidebarSpatialPresetPreference,
+  useAiSidebarStylePreference,
+} from "../services/aiChatPreferences";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
@@ -446,7 +468,7 @@ function createStreamingAssistantMessage(
     status: 'generating',
     threadId,
     updatedAt: now,
-    versionIndex: 0,
+    versionIndex: 1,
     versionTotal: 1,
   };
 }
@@ -686,6 +708,7 @@ type VisibleMessageItem =
       id: string;
       type: 'message';
       message: AiMessageWithCitations;
+      isRoleTransition?: boolean;
       showAvatar: boolean;
       showUserAvatar: boolean;
     }
@@ -883,6 +906,7 @@ interface AiChatScreenProps {
     onCurrentThreadDeleted: (threadId: string) => void;
   onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
+  onStartChatWithRole?: (roleCardId: string) => void;
   onNewChat: () => void;
   onNavigateToGlobalRoute?: (route: string, params: Record<string, string | number>) => void;
   onNavigateToCreateIp?: () => void;
@@ -932,6 +956,7 @@ export function AiChatScreen({
     onCurrentThreadDeleted,
   onOpenDiary,
   onOpenDream,
+  onStartChatWithRole,
   onNewChat,
   onNavigateToGlobalRoute,
   onNavigateToCreateIp,
@@ -953,6 +978,10 @@ export function AiChatScreen({
   isSystemAssistantRef.current = isSystemAssistant;
 
   const initialBottomInsetRef = useRef(insets.bottom);
+  const { showToast, showUndoSnackbar } = useToast();
+  const [pinnedDocumentIds, setPinnedDocumentIds] = useState<Set<string>>(() => new Set());
+  const [pinningDocumentId, setPinningDocumentId] = useState<string | null>(null);
+  const [activeDocAction, setActiveDocAction] = useState<{ documentId: string; title: string } | null>(null);
   const statusBarHeight =
     Platform.OS === "android"
       ? Math.max(StatusBar.currentHeight ?? 0, insets.top)
@@ -984,15 +1013,21 @@ export function AiChatScreen({
     return () => clearInterval(interval);
   }, [isSystemAssistant]);
 
+  useEffect(() => {
+    void prewarmDefaultAiConnection(space);
+  }, [space]);
+
 
   const spaceRef = useRef(space);
   spaceRef.current = space;
+  const isPushScaleSidebarRef = useRef(true);
 
 
-  // Right-swipe opens the left record drawer; left-swipe opens the right config drawer.
+  // Right-swipe opens the left record drawer; left-swipe opens the right config drawer (classic mode; push_scale is handled interactively by AiPushScaleDrawerStage).
   const swipeDrawerPanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gs) =>
+        !isPushScaleSidebarRef.current &&
         Math.abs(gs.dx) > DRAWER_SWIPE_ACTIVATION_DISTANCE &&
         Math.abs(gs.dx) > Math.abs(gs.dy) * DRAWER_SWIPE_HORIZONTAL_RATIO,
       onPanResponderRelease: (_evt, gs) => {
@@ -1022,6 +1057,13 @@ export function AiChatScreen({
   const bottomLockedRef = useRef(true);
   const isUserDraggingRef = useRef(false);
   const isMomentumScrollingRef = useRef(false);
+  const [dynamicDecelerationRate, setDynamicDecelerationRate] = useState<number | 'normal' | 'fast'>(
+    Platform.OS === 'android' ? 0.995 : 'normal',
+  );
+  const dragStartYRef = useRef<number>(0);
+  const dragStartTimeRef = useRef<number>(0);
+  const lastFlingReleaseTimeRef = useRef<number>(0);
+  const wasCruisingAtDragStartRef = useRef<boolean>(false);
   const isNearBottomRef = useRef(true);
   const escapedFromLockRef = useRef(false);
   const lastUserScrollAtRef = useRef(0);
@@ -1283,8 +1325,8 @@ export function AiChatScreen({
       aiThreadRepository.findThreadById(db, activeThreadId),
     )
       .then((thread) => {
-        if (active && thread?.boundIpId != null) {
-          setThreadBoundIpId(thread.boundIpId);
+        if (active) {
+          setThreadBoundIpId(thread?.boundIpId ?? null);
         }
       })
       .catch(() => {});
@@ -1691,6 +1733,237 @@ export function AiChatScreen({
   const [activeAssistantId, setActiveAssistantId] = useState<string | null>(
     null,
   );
+  const activeAssistantIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeAssistantIdRef.current = activeAssistantId;
+  }, [activeAssistantId]);
+
+  const [sandboxViewerState, setSandboxViewerState] = useState<{
+    visible: boolean;
+    code: string;
+    language?: string;
+    title?: string;
+    artifactId?: string;
+    messageId?: string;
+  } | null>(null);
+
+  const [activeTweakArtifact, setActiveTweakArtifact] = useState<{
+    id: string;
+    title: string;
+    code: string;
+    language?: string;
+    version?: number;
+    messageId?: string;
+  } | null>(null);
+  const activeTweakArtifactRef = useRef(activeTweakArtifact);
+  useEffect(() => {
+    activeTweakArtifactRef.current = activeTweakArtifact;
+  }, [activeTweakArtifact]);
+
+  const handleOpenSandbox = useCallback(
+    (params: { code: string; language?: string; title?: string; messageId?: string }) => {
+      const artId = params.messageId ? `art_${params.messageId.slice(0, 12)}` : `art_${Date.now().toString(36)}`;
+      setSandboxViewerState({
+        visible: true,
+        code: params.code,
+        language: params.language,
+        title: params.title || extractArtifactTitle(params.code, params.language),
+        artifactId: artId,
+        messageId: params.messageId,
+      });
+    },
+    []
+  );
+
+  const handlePinDocument = useCallback(
+    async (documentId: string, _title: string) => {
+      const currentThreadId = activeThreadId ?? threadId ?? '';
+      try {
+        setPinningDocumentId(documentId);
+        const result = await pinDocumentToKnowledgeBase({
+          space,
+          documentId,
+          threadId: currentThreadId || undefined,
+        });
+        setPinnedDocumentIds((prev) => new Set([...prev, documentId]));
+        showUndoSnackbar({
+          message: `已固化到资料库「${result.knowledgeBaseName}」`,
+          undoLabel: '撤销',
+          durationMs: 5000,
+          onUndo: () => {
+            void (async () => {
+              try {
+                await unpinDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
+                setPinnedDocumentIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(documentId);
+                  return next;
+                });
+                showToast('已撤销固化');
+              } catch {
+                showToast('撤销失败');
+              }
+            })();
+          },
+        });
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '固化失败');
+      } finally {
+        setPinningDocumentId(null);
+      }
+    },
+    [space, threadId, activeThreadId, showToast, showUndoSnackbar]
+  );
+
+  const handleOpenDocumentActionSheet = useCallback((documentId: string, title: string) => {
+    setActiveDocAction({ documentId, title });
+  }, []);
+
+  const handleUnpinActiveDoc = useCallback(async () => {
+    if (!activeDocAction) return;
+    const { documentId } = activeDocAction;
+    const currentThreadId = activeThreadId ?? threadId ?? '';
+    try {
+      await unpinDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
+      setPinnedDocumentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
+      showToast('已从资料库移出（还原为临时文档）');
+    } catch {
+      showToast('移出失败');
+    } finally {
+      setActiveDocAction(null);
+    }
+  }, [activeDocAction, space, threadId, activeThreadId, showToast]);
+
+  // 从 SQLite 同步消息附件中已固化到资料库的文档状态
+  useEffect(() => {
+    const docIds: string[] = [];
+    for (const msg of messages) {
+      if (msg.attachments) {
+        for (const att of msg.attachments) {
+          if (att.kind === 'document' && att.documentId) {
+            docIds.push(att.documentId);
+          }
+        }
+      }
+    }
+    if (docIds.length === 0) return;
+
+    let cancelled = false;
+    void runWithDatabaseSpace(space, async (db) => {
+      try {
+        const uniqueDocIds = Array.from(new Set(docIds));
+        const placeholders = uniqueDocIds.map(() => '?').join(', ');
+        const rows = await db.getAllAsync<{ id: string }>(
+          `SELECT id FROM ai_documents WHERE id IN (${placeholders}) AND ownerType = 'knowledge_base' AND space = ?`,
+          [...uniqueDocIds, space]
+        );
+        if (!cancelled && rows.length > 0) {
+          setPinnedDocumentIds((prev) => {
+            const next = new Set(prev);
+            for (const r of rows) next.add(r.id);
+            return next;
+          });
+        }
+      } catch {
+        // 静默容错
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [messages, space]);
+
+  const docActionItems: AppActionSheetItem[] = useMemo(() => {
+    if (!activeDocAction) return [];
+    return [
+      {
+        key: 'view_doc',
+        label: '查看完整文档',
+        icon: 'document-text-outline',
+        onPress: () => {
+          const doc = activeDocAction;
+          setActiveDocAction(null);
+          onOpenSource(doc.documentId, doc.title);
+        },
+      },
+      {
+        key: 'unpin_doc',
+        label: '从资料库移出（还原为临时文档）',
+        icon: 'trash-outline',
+        danger: true,
+        onPress: () => {
+          void handleUnpinActiveDoc();
+        },
+      },
+    ];
+  }, [activeDocAction, onOpenSource, handleUnpinActiveDoc]);
+
+  const handleRequestTweak = useCallback(
+    (params: { code: string; language?: string; title?: string; messageId?: string }) => {
+      const artId = params.messageId ? `art_${params.messageId.slice(0, 12)}` : `art_${Date.now().toString(36)}`;
+      const artTitle = params.title || extractArtifactTitle(params.code, params.language);
+      setActiveTweakArtifact({
+        id: artId,
+        title: artTitle,
+        code: params.code,
+        language: params.language,
+        version: 1,
+        messageId: params.messageId,
+      });
+    },
+    []
+  );
+
+  const handleRequestAiFix = useCallback(
+    (errorReport: string) => {
+      if (sandboxViewerState) {
+        setActiveTweakArtifact({
+          id: sandboxViewerState.artifactId || `art_${Date.now().toString(36)}`,
+          title: sandboxViewerState.title || '交互式沙箱',
+          code: sandboxViewerState.code,
+          language: sandboxViewerState.language,
+          version: 1,
+          messageId: sandboxViewerState.messageId,
+        });
+        setComposerText(`运行报错了，请帮我修复一下：\n${errorReport}`);
+      }
+    },
+    [sandboxViewerState]
+  );
+
+  const reconcileActiveTweakPatch = useCallback(() => {
+    if (activeTweakArtifactRef.current) {
+      const currentTweak = activeTweakArtifactRef.current;
+      const currentMessages = messagesRef.current;
+      const lastAssistant = [...currentMessages].reverse().find((m) => m.role === 'assistant');
+      if (lastAssistant?.content && lastAssistant.content.includes('<<<<<<< SEARCH')) {
+        const patchResult = applySearchReplacePatch(currentTweak.code, lastAssistant.content);
+        if (patchResult.success) {
+          const nextVer = (currentTweak.version || 1) + 1;
+          const updatedArtifact = {
+            ...currentTweak,
+            code: patchResult.result,
+            version: nextVer,
+          };
+          setActiveTweakArtifact(updatedArtifact);
+          setSandboxViewerState((cur) => {
+            if (cur && cur.visible) {
+              return {
+                ...cur,
+                code: patchResult.result,
+                title: `${currentTweak.title} v${nextVer}`,
+              };
+            }
+            return cur;
+          });
+        }
+      }
+    }
+  }, []);
 
   const draftThreadKey = threadId ?? "new_chat";
   const isComposerDraftLoadedRef = useRef(false);
@@ -1783,6 +2056,10 @@ export function AiChatScreen({
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
   const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
+  const [sidebarStyleMode] = useAiSidebarStylePreference(space);
+  const [sidebarSpatialPreset] = useAiSidebarSpatialPresetPreference(space);
+  const isPushScaleSidebar = sidebarStyleMode === 'push_scale';
+  isPushScaleSidebarRef.current = isPushScaleSidebar;
   // ── 新手引导状态 ──
   const [guideStep, setGuideStep] = useState<AiChatGuideStep | null>(null);
   const [settingsButtonRect, setSettingsButtonRect] = useState<GuideHighlightRect | null>(null);
@@ -1799,15 +2076,7 @@ export function AiChatScreen({
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const inlineEditingActive = Boolean(editingUserMessageId);
-  // Keep the outer panel at opacity=1 so Android elevation/shadow renders
-  // correctly. Instead, fade out a canvas-colored reveal mask on top of the
-  // content (opacity 1 → 0) which avoids the shadow artifact caused by
-  // animating the container opacity directly.
-  const composerRevealMaskOpacity = composerEntranceProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0],
-  });
-  // composerEntranceStyle left empty – outer panel stays at full opacity.
+  // composerEntranceStyle left empty – outer panel stays transparent and floats cleanly.
   const composerEntranceStyle = {};
   const latestAssistantMessage = useMemo(
     () => findLatestAssistantMessage(messages),
@@ -2103,6 +2372,14 @@ export function AiChatScreen({
 
   const systemAssistantTasksSignature = isSystemAssistant ? Object.values(systemAssistant.tasks).map(t => `${t.taskId}:${t.status}:${t.updatedAt}`).join(',') : '';
 
+  const refreshSystemAssistantTask = (assistantMessageId?: string | null) => {
+    if (!isSystemAssistant) return;
+    const targetId = assistantMessageId ?? activeAssistantIdRef.current ?? activeAssistantId;
+    if (targetId) {
+      void systemAssistant.refreshTask(targetId);
+    }
+  };
+
   function getSelectedMessageVersionIndex(
     messageId: string,
     versionTotal: number,
@@ -2192,6 +2469,10 @@ export function AiChatScreen({
         versionIndex: selectedVersion.versionIndex,
       });
     }
+
+    nextVisibleMessages.sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+    );
 
     const tailState = streamingTailStateRef.current;
     const tailOverride =
@@ -2318,10 +2599,13 @@ export function AiChatScreen({
         });
         previousMessageDateKey = dateKey;
       }
+      const isRoleTransition =
+        previousMessage != null && previousMessage.role !== message.role;
       nextVisibleMessageItems.push({
         id: message.id,
         type: "message",
         message,
+        isRoleTransition,
         showAvatar:
           message.role === 'assistant' &&
           (startsNewDate ||
@@ -2332,7 +2616,8 @@ export function AiChatScreen({
           (startsNewDate || previousMessage?.role !== 'user'),
       });
       const systemTask = isSystemAssistant ? systemAssistant.tasks[message.id] : null;
-      if (systemTask && message.versionIndex === message.versionTotal) {
+      const isLatestOrGenerating = message.versionIndex === message.versionTotal || message.versionIndex === 0 || message.status === 'generating';
+      if (systemTask && isLatestOrGenerating) {
         nextVisibleMessageItems.push({ type: 'systemTask', id: systemTask.taskId, task: systemTask });
       }
       previousMessage = message;
@@ -2787,8 +3072,10 @@ export function AiChatScreen({
       createdAt: string;
       hasAttachments: boolean;
       resetContext?: boolean;
+      tempMessageId?: string;
     },
   ): AiGenerationSubscriber {
+    let currentAssistantMessageId: string | null = null;
     return {
       // prettier-ignore
       getStreamingVisibility: () => getActiveStreamingVisibility(targetThreadId, generation),
@@ -2796,6 +3083,8 @@ export function AiChatScreen({
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
+        currentAssistantMessageId = assistantMessageId;
+        activeAssistantIdRef.current = assistantMessageId;
         const streamingIdentity = {
           generationId,
           messageId: assistantMessageId,
@@ -2824,6 +3113,25 @@ export function AiChatScreen({
               if (branchIndex !== -1) {
                 nextMessages = nextMessages.slice(0, branchIndex + 1);
               }
+            }
+          }
+          if (pendingUserMessage?.tempMessageId && userMessageId) {
+            const tempIdx = nextMessages.findIndex((m) => m.id === pendingUserMessage.tempMessageId);
+            if (tempIdx !== -1) {
+              nextMessages = nextMessages.map((m, idx) =>
+                idx === tempIdx
+                  ? {
+                      ...m,
+                      id: userMessageId,
+                      threadId: targetThreadId,
+                      attachments: m.attachments?.map((att) => ({
+                        ...att,
+                        messageId: userMessageId,
+                        threadId: targetThreadId,
+                      })),
+                    }
+                  : m,
+              );
             }
           }
           if (
@@ -2893,28 +3201,21 @@ export function AiChatScreen({
         applyOrBufferStreamingMessagePatch(targetThreadId, generation, patch);
       },
       onSettled: () => {
-        if (
-          !isCurrentStream(targetThreadId, generation) ||
-          !screenMountedRef.current
-        ) {
-          return;
-        }
+        if (!isCurrentStream(targetThreadId, generation) || !screenMountedRef.current) return;
         if (generationStateRef.current && generationStateRef.current.phase !== 'terminal' && generationStateRef.current.phase !== 'final_persisted' && generationStateRef.current.phase !== 'ui_stable') {
           transitionGenerationPhase('terminal');
         }
         const terminalBufferedPatch = bufferedStreamingPatchRef.current;
-        if (terminalBufferedPatch && (terminalBufferedPatch.status === "completed" || terminalBufferedPatch.status === "failed" || terminalBufferedPatch.status === "stopped")) {
+        if (terminalBufferedPatch && (terminalBufferedPatch.status === 'completed' || terminalBufferedPatch.status === 'failed' || terminalBufferedPatch.status === 'stopped')) {
           applyStreamingMessagePatch(terminalBufferedPatch);
         }
         setGenerating(false);
+        refreshSystemAssistantTask(currentAssistantMessageId);
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         setPendingMessageActionId(null);
         clearGenerationSubscription();
-        if (
-          hasPendingStreamingReadBuffer() ||
-          !bottomLockedRef.current ||
-          userScrolledAwayFromBottomRef.current
-        ) {
+        if (hasPendingStreamingReadBuffer() || !bottomLockedRef.current || userScrolledAwayFromBottomRef.current) {
           streamingReadBufferActiveRef.current = true;
           pendingFinalReloadRef.current = true;
           pendingStreamingTailCommitRef.current = true;
@@ -2926,9 +3227,11 @@ export function AiChatScreen({
             forceRender: true,
             retainWindow: true,
           });
+          reconcileActiveTweakPatch();
           return;
         }
         void (async () => {
+          reconcileActiveTweakPatch();
           await reloadContinuityMilestones(targetThreadId);
           await reloadMemoryCaptures(targetThreadId);
           if (isCurrentStream(targetThreadId, generation)) {
@@ -2955,6 +3258,7 @@ export function AiChatScreen({
       createdAt: string;
       hasAttachments: boolean;
       resetContext?: boolean;
+      tempMessageId?: string;
     },
   ): {
     generation: number;
@@ -3254,6 +3558,9 @@ export function AiChatScreen({
 
   const handleMessageTouchStart = useCallback(
     (event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      if (Platform.OS === 'android') {
+        setDynamicDecelerationRate((prev) => (prev !== 0.995 ? 0.995 : prev));
+      }
       messageTouchStartYRef.current = event.nativeEvent.pageY;
       messageTouchDirectionRef.current = 'undetermined';
     },
@@ -3347,16 +3654,20 @@ export function AiChatScreen({
   );
 
   const preserveThinkingHeaderAnchor = useCallback((offsetDelta: number) => {
-    if (!screenMountedRef.current || isUserDraggingRef.current || !Number.isFinite(offsetDelta)) return;
-    const offset = Math.max(0, nativeMessageScrollOffsetRef.current + offsetDelta);
+    if (!screenMountedRef.current || !Number.isFinite(offsetDelta)) return;
+    const maxScrollOffset = Math.max(0, messageContentHeightRef.current - messageViewportHeightRef.current);
+    if (maxScrollOffset <= 0) {
+      return;
+    }
+    const offset = Math.min(maxScrollOffset, Math.max(0, nativeMessageScrollOffsetRef.current + offsetDelta));
     nativeMessageScrollOffsetRef.current = offset;
     messageScrollOffsetRef.current = offset;
     previousMessageScrollOffsetRef.current = offset;
     if (!thinkingHeaderReadingRef.current) {
       updateStreamingLockStateSnapshot(offset);
       userScrolledAwayFromBottomRef.current = !isNearBottomRef.current;
+      setScrollToLatestVisible(shouldShowScrollToLatest(offset));
     }
-    setScrollToLatestVisible(shouldShowScrollToLatest(offset));
     messageListRef.current?.scrollToOffset({ animated: false, offset });
   }, [updateStreamingLockStateSnapshot]);
 
@@ -3407,6 +3718,7 @@ export function AiChatScreen({
   }
 
   function handleComposerFocus() {
+    void prewarmDefaultAiConnection(space);
     if (editingUserMessageIdRef.current) {
       return;
     }
@@ -4206,6 +4518,26 @@ export function AiChatScreen({
         setHasEarlierMessages(page.hasEarlierMessages);
         replaceMessages(mergedMessages);
         recordDiagnosticEvent({ eventType: "chat_history_page_completed", space, traceId: diagnosticTraceIdRef.current, durationMs: Date.now() - startedAt, payload: { loadedCount: page.messages.length, totalCount: mergedMessages.length, hasEarlierMessages: page.hasEarlierMessages } });
+
+        if (page.messages.length > 0) {
+          const assistantContents = page.messages
+            .filter((m) => m.role === 'assistant' && m.content?.trim())
+            .map((m) => m.content);
+          if (assistantContents.length > 0) {
+            let prewarmIndex = 0;
+            const prewarmStep = () => {
+              if (prewarmIndex >= assistantContents.length) return;
+              const nextContent = assistantContents[prewarmIndex++];
+              if (nextContent) {
+                prewarmMarkdownContent(nextContent);
+              }
+              if (prewarmIndex < assistantContents.length) {
+                setTimeout(prewarmStep, 16);
+              }
+            };
+            setTimeout(prewarmStep, 80);
+          }
+        }
       } catch (error) {
         setMessageLoadError(
           error instanceof Error
@@ -4535,6 +4867,9 @@ export function AiChatScreen({
 
   const handleMessageScrollBeginDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      dragStartYRef.current = event.nativeEvent.contentOffset.y;
+      dragStartTimeRef.current = Date.now();
+      wasCruisingAtDragStartRef.current = isMomentumScrollingRef.current;
       thinkingHeaderReadingRef.current = null;
       nativeMessageScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
       isUserDraggingRef.current = true;
@@ -4581,6 +4916,28 @@ export function AiChatScreen({
   const handleMessageScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetY = event.nativeEvent.contentOffset.y;
+      if (Platform.OS === 'android') {
+        const dragDistance = Math.abs(offsetY - dragStartYRef.current);
+        const dragDuration = Math.max(1, Date.now() - dragStartTimeRef.current);
+        const dragVelocity = dragDistance / dragDuration;
+        const releaseVelocity = Math.abs(event.nativeEvent.velocity?.y ?? 0);
+        const isChainedFling =
+          wasCruisingAtDragStartRef.current &&
+          Date.now() - lastFlingReleaseTimeRef.current < 450;
+
+        const isLongGlideIntent =
+          releaseVelocity > 1.3 ||
+          dragVelocity > 1.1 ||
+          (dragDistance > 130 && (releaseVelocity > 0.7 || dragVelocity > 0.6)) ||
+          isChainedFling;
+
+        if (isLongGlideIntent) {
+          lastFlingReleaseTimeRef.current = Date.now();
+          setDynamicDecelerationRate((prev) => (prev !== 0.9982 ? 0.9982 : prev));
+        } else {
+          setDynamicDecelerationRate((prev) => (prev !== 0.995 ? 0.995 : prev));
+        }
+      }
       nativeMessageScrollOffsetRef.current = offsetY;
       scrollingTowardLatestRef.current =
         offsetY <= previousMessageScrollOffsetRef.current;
@@ -4621,6 +4978,9 @@ export function AiChatScreen({
   const handleMessageMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       isMomentumScrollingRef.current = false;
+      if (Platform.OS === 'android') {
+        setDynamicDecelerationRate((prev) => (prev !== 0.995 ? 0.995 : prev));
+      }
       handleMessageScrollEnd(event);
     },
     [handleMessageScrollEnd],
@@ -4660,9 +5020,9 @@ export function AiChatScreen({
     streamingTailStateRef.current.status !== "idle" &&
     tailViewportPolicy.shouldRelaxClipping;
   const shouldExpandRenderWindow = tailReplayReadinessActive;
-  const tailListMaxToRenderPerBatch = shouldExpandRenderWindow ? 16 : 8;
+  const tailListMaxToRenderPerBatch = shouldExpandRenderWindow ? 16 : 12;
   const tailListWindowSize = shouldExpandRenderWindow ? 15 : 11;
-  const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow ? 16 : 50;
+  const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow ? 16 : 30;
   useEffect(() => {
     if (Platform.OS !== "android") return;
     if (generating || shouldRelaxClipping || streamingTailStateRef.current.status !== "idle") {
@@ -4952,25 +5312,41 @@ export function AiChatScreen({
     if (!recordDrawerVisible) {
       return;
     }
-    void reloadRecentThreads();
+    // 借力内存已有的 recentThreads 快照在 0ms 首帧直接渲染抽屉，延后 280ms 待 Reanimated 展开弹簧完全落定后再静默刷新 SQLite，杜绝动画期间重渲染掉帧
+    const timer = setTimeout(() => {
+      void reloadRecentThreads();
+    }, 280);
+    return () => clearTimeout(timer);
   }, [recordDrawerVisible, reloadRecentThreads]);
 
-  // ── 新手引导：首次进入聊天页面时，检查是否已看过引导 ──
+  // ── 新手引导：首次进入聊天页面且未完成引导时触发 ──
+  const guideTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isFocused) return;
+    let cancelled = false;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
     void runWithDatabaseSpace(space, async (db) => {
       const seen = await settingsRepository.getAiChatGuideSeen(db);
-      if (!seen) {
-        // 延迟 1000ms 等页面完全渲染和动画结束后再展开左侧栏，避免太快突兀
-        const timer = setTimeout(() => {
+      if (!seen && !cancelled) {
+        // 延迟 700ms 等页面完全渲染和转场动画结束后展开左侧栏并进入步骤 1
+        openTimer = setTimeout(() => {
+          if (cancelled) return;
           setRecordDrawerVisible(true);
-          // 步骤 1 在左侧栏展开后显示（设置按钮坐标测量完毕后自动进入步骤 2）
+          // 步骤 1 在左侧栏展开后显示
           setGuideStep(1);
-        }, 1000);
-        return () => clearTimeout(timer);
+        }, 700);
       }
     });
-  // 只在首次聚焦时运行一次
+    return () => {
+      cancelled = true;
+      if (openTimer) {
+        clearTimeout(openTimer);
+      }
+      if (guideTransitionTimerRef.current) {
+        clearTimeout(guideTransitionTimerRef.current);
+        guideTransitionTimerRef.current = null;
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -5387,6 +5763,7 @@ export function AiChatScreen({
     onThreadReady?.(thread.id);
     void reloadModelLabel(thread.id);
     void reloadParticipantAppearance(thread.id);
+    void reloadRecentThreads();
     return thread.id;
   }
 
@@ -6040,6 +6417,7 @@ export function AiChatScreen({
     let unsubscribe: (() => void) | null = null;
     try {
       setGenerating(true);
+      activeAssistantIdRef.current = task.assistantMessageId;
       setActiveAssistantId(task.assistantMessageId);
       const managed = aiGenerationManager.startSystemAssistantTask({
         space, threadId: targetThreadId, assistantMessageId: task.assistantMessageId, subscriber,
@@ -6048,9 +6426,12 @@ export function AiChatScreen({
       generationSubscriptionRef.current = unsubscribe;
       await managed.promise;
     } finally {
+      refreshSystemAssistantTask(task.assistantMessageId);
       finishGenerationAction(actionToken);
       if (screenMountedRef.current && isCurrentStream(targetThreadId, generation)) {
         setGenerating(false);
+        refreshSystemAssistantTask(task.assistantMessageId);
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         if (generationSubscriptionRef.current === unsubscribe) clearGenerationSubscription();
       }
@@ -6068,7 +6449,16 @@ export function AiChatScreen({
     const typedText = composerText.trim();
     const diaryCommandRequested = isDiaryCreationRequest(typedText);
     const attachments = pendingAttachments;
-    const content = buildChatMessageContent(typedText, attachments);
+    let content = buildChatMessageContent(typedText, attachments);
+    if (activeTweakArtifact) {
+      const dynamicSection = buildSandboxDynamicPromptSection({
+        activeArtifact: activeTweakArtifact,
+        userMessage: typedText,
+      });
+      if (dynamicSection) {
+        content = `${content}\n\n<active_artifact_context>\n${dynamicSection}\n</active_artifact_context>`;
+      }
+    }
     const replyTarget = assistantReplyTarget;
     if ((!typedText && !attachments.length) || generating) {
       return;
@@ -6077,6 +6467,27 @@ export function AiChatScreen({
     const actionToken = beginGenerationAction();
     if (!actionToken) {
       return;
+    }
+    const tempUserMessageId = `optimistic_user_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
+    const optimisticInitialThreadId = activeThreadIdRef.current ?? threadId ?? 'draft_thread';
+    const optimisticUserMessage = createOptimisticUserMessage(
+      optimisticInitialThreadId,
+      tempUserMessageId,
+      content,
+      sendPressedAt,
+      activeBranch?.branchRootMessageId ?? null,
+      activeBranch?.branchVersionIndex ?? null,
+      attachments,
+      false,
+    );
+    function rollbackOptimisticSend() {
+      setMessages((current) => {
+        const next = current.filter((m) => m.id !== tempUserMessageId);
+        messagesRef.current = next;
+        rebuildMessageIndex(next);
+        return next;
+      });
     }
     let nextThreadId: string | null = null;
     let streamUnsubscribe: (() => void) | null = null;
@@ -6090,12 +6501,21 @@ export function AiChatScreen({
       setIsIpPickerOpen(false);
       setGenerating(true);
       setErrorMessage(null);
+      // Frame 0: immediate optimistic user bubble render
+      setMessages((current) => {
+        const next = [...current, optimisticUserMessage];
+        messagesRef.current = next;
+        rebuildMessageIndex(next);
+        return next;
+      });
       scheduleIntentionalLatestJump(false);
       nextThreadId = await ensureThread({ preserveComposerDraft: false });
       if (!nextThreadId || !screenMountedRef.current) {
+        rollbackOptimisticSend();
         return;
       }
       if (!isGenerationActionCurrent(actionToken)) {
+        rollbackOptimisticSend();
         return;
       }
       const targetThreadId = nextThreadId;
@@ -6113,7 +6533,6 @@ export function AiChatScreen({
           shouldOfferDiaryCreation = false;
         }
       }
-      const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
       const shouldResetContext = isSystemAssistant && visibleMessages.length > 0 && nowForSystemTask - new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > 10 * 60 * 1000 && new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > systemTaskContinuedTime;
       const streamRequest = beginStreamingRequest(
         targetThreadId,
@@ -6125,6 +6544,7 @@ export function AiChatScreen({
           createdAt: sendPressedAt,
           hasAttachments: attachments.length > 0,
           resetContext: shouldResetContext,
+          tempMessageId: tempUserMessageId,
         },
       );
       streamGeneration = streamRequest.generation;
@@ -6179,16 +6599,20 @@ export function AiChatScreen({
       setAssistantReplyTarget(null);
       await syncPersistedCurrentBranchRoute(targetThreadId, true);
     } catch (error) {
+      if (!streamUnsubscribe) {
+        rollbackOptimisticSend();
+        setComposerText(typedText);
+        setPendingAttachments(attachments);
+      }
       if (
         !screenMountedRef.current ||
         (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))
       ) {
         return;
       }
-      setComposerText(typedText);
-      setPendingAttachments(attachments);
       setErrorMessage(error instanceof Error ? error.message : "发送失败");
     } finally {
+      refreshSystemAssistantTask();
       finishGenerationAction(actionToken);
       if (!screenMountedRef.current) {
         return;
@@ -6199,6 +6623,8 @@ export function AiChatScreen({
           : true;
       if (stillCurrent) {
         setGenerating(false);
+        refreshSystemAssistantTask();
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         if (generationSubscriptionRef.current === streamUnsubscribe) {
           clearGenerationSubscription();
@@ -6277,6 +6703,8 @@ export function AiChatScreen({
       finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
+        refreshSystemAssistantTask();
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         if (generationSubscriptionRef.current === streamUnsubscribe) {
           clearGenerationSubscription();
@@ -6290,7 +6718,7 @@ export function AiChatScreen({
   }: {
     reloadAfterStop: boolean;
   }) {
-    const targetAssistantId = activeAssistantId;
+    const targetAssistantId = activeAssistantIdRef.current ?? activeAssistantId;
     const targetThreadId = activeThreadIdRef.current;
     cancelGenerationAction();
     abortActiveStreamingRequest();
@@ -6341,6 +6769,7 @@ export function AiChatScreen({
       await flushBufferedStreamingState({ followLatest: false });
       setPendingMessageActionId(targetMessageId);
       setGenerating(true);
+      activeAssistantIdRef.current = targetMessageId;
       setActiveAssistantId(targetMessageId);
       setErrorMessage(null);
       showLatestMessageVersion(targetMessageId);
@@ -6367,6 +6796,8 @@ export function AiChatScreen({
       finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
+        refreshSystemAssistantTask(targetMessageId);
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         if (generationSubscriptionRef.current === streamUnsubscribe) {
           clearGenerationSubscription();
@@ -6405,6 +6836,7 @@ export function AiChatScreen({
       await flushBufferedStreamingState({ followLatest: false });
       setPendingMessageActionId(messageId);
       setGenerating(true);
+      activeAssistantIdRef.current = messageId;
       setActiveAssistantId(messageId);
       setErrorMessage(null);
       showLatestMessageVersion(messageId);
@@ -6465,6 +6897,8 @@ export function AiChatScreen({
       finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
+        refreshSystemAssistantTask(messageId);
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         if (generationSubscriptionRef.current === streamUnsubscribe) {
           clearGenerationSubscription();
@@ -6565,6 +6999,8 @@ export function AiChatScreen({
       finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
+        refreshSystemAssistantTask(messageId);
+        activeAssistantIdRef.current = null;
         setActiveAssistantId(null);
         if (generationSubscriptionRef.current === streamUnsubscribe) {
           clearGenerationSubscription();
@@ -6964,6 +7400,7 @@ export function AiChatScreen({
         onPress: () => {
           void copyMessageContent(message);
         },
+        renderIcon: ({ color, size }) => <CopyIcon color={color} size={size} />,
       },
       {
         disabled: !selectableContent.trim(),
@@ -6975,8 +7412,29 @@ export function AiChatScreen({
           content: selectableContent,
           role: message.role,
         }),
+        renderIcon: ({ color, size }) => <SelectTextIcon color={color} size={size} />,
       },
     );
+
+    const executableSandboxTarget = extractSandboxExecutableCode(message.content);
+    if (executableSandboxTarget) {
+      messageContextMenuActions.push({
+        disabled: false,
+        icon: "play-circle-outline",
+        key: "sandbox-run",
+        label: "沙箱运行",
+        onPress: () => {
+          handleOpenSandbox({
+            code: executableSandboxTarget.code,
+            language: executableSandboxTarget.language,
+            messageId: message.id,
+          });
+        },
+        renderIcon: ({ color, size }) => (
+          <Ionicons color={color} name="play-circle-outline" size={size} />
+        ),
+      });
+    }
 
     if (message.role === "user") {
       messageContextMenuActions.push({
@@ -6985,6 +7443,7 @@ export function AiChatScreen({
         key: "edit",
         label: "修改",
         onPress: () => handleEditUserMessage(message.id),
+        renderIcon: ({ color, size }) => <EditIcon color={color} size={size} />,
       });
     } else {
       const favoriteIdentity =
@@ -7029,20 +7488,22 @@ export function AiChatScreen({
           onPress: () => {
             void handleToggleMessageFavorite(message);
           },
+          renderIcon: ({ color, size }) => <FavoriteStarIcon color={color} favorited={favorited} size={size} />,
           selected: favorited,
         },
         {
           disabled: !canContinueGeneration,
           icon: "play-forward-outline",
           key: "continue-generation",
-          label: "继续生成",
+          label: "断点接续",
           onPress: () => handleContinueAssistantMessage(message.id),
+          renderIcon: ({ color, size }) => <ContinueGenerationIcon color={color} size={size} />,
         },
         {
           disabled: !canContinueOrReply,
           icon: "chatbubble-ellipses-outline",
           key: "continue-or-reply",
-          label: replyActionMode === "reply" ? "回复" : "续答",
+          label: replyActionMode === "reply" ? "AI续写" : "续答",
           onPress: () => {
             if (replyActionMode === "reply") {
               handleReplyToAssistant(message.id);
@@ -7050,6 +7511,7 @@ export function AiChatScreen({
             }
             handleContinueAssistantReply(message.id);
           },
+          renderIcon: ({ color, size }) => <ContinueReplyIcon color={color} size={size} />,
         },
         {
           disabled: !canRegenerate,
@@ -7059,6 +7521,7 @@ export function AiChatScreen({
           onPress: () => {
             void handleRegenerate(message.id);
           },
+          renderIcon: ({ color, size }) => <RegenerateIcon color={color} size={size} />,
         },
       );
     }
@@ -7073,7 +7536,7 @@ export function AiChatScreen({
   );
 
   const renderMessageItem = useCallback(
-    ({ item }: { item: VisibleMessageItem }) => {
+    ({ item, index }: { item: VisibleMessageItem; index: number }) => {
       if (item.type === 'systemTask') {
         return <SystemAssistantTaskCard task={item.task} ips={systemAssistant.ips} disabled={generating && item.task.status !== 'planning'}
           onSelectIp={ipId => { void systemAssistant.runtime?.resolveInput(item.task.assistantMessageId, ipId); }}
@@ -7085,7 +7548,8 @@ export function AiChatScreen({
           }}
           onUndo={() => { void systemAssistant.runtime?.undo(item.task.assistantMessageId); }}
           onCreateIp={() => onNavigateToCreateIp?.()}
-          onOpenRole={roleCardId => onNavigateToGlobalRoute?.('ai-role-card-detail', { roleCardId })} />;
+          onOpenRole={roleCardId => onNavigateToGlobalRoute?.('ai-role-card-detail', { roleCardId })}
+          onStartChat={roleCardId => onStartChatWithRole?.(roleCardId)} />;
       }
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
@@ -7279,15 +7743,14 @@ export function AiChatScreen({
       return (
         <>
           <View
-            style={
-              searchHighlightMessageId === message.id
-                ? styles.searchHighlightWrap
-                : undefined
-            }
+            style={[
+              searchHighlightMessageId === message.id && styles.searchHighlightWrap,
+              item.isRoleTransition && styles.roleTransitionSpacing,
+            ]}
           >
             <AiMessageBubble
               isSystemAssistant={isSystemAssistant}
-              systemTask={isSystemAssistant && message.versionIndex === message.versionTotal ? systemAssistant.tasks[message.id] : null}
+              systemTask={isSystemAssistant && (message.versionIndex === message.versionTotal || message.versionIndex === 0 || message.status === 'generating') ? systemAssistant.tasks[message.id] : null}
               assistantAvatar={{
                 avatarEnabled: isSystemAssistant ? true : participantAppearance.assistantAvatarEnabled,
                 avatarUri: isSystemAssistant ? null : participantAppearance.assistantAvatarUri,
@@ -7314,7 +7777,14 @@ export function AiChatScreen({
               hideFooterActions={
                 singleBubbleTailMessage ? !baseTailFooterVisible : false
               }
+              isLatestMessage={message.id === latestVisibleMessageId}
+              isSandboxModalOpen={Boolean(sandboxViewerState?.visible)}
+              isDeepHistory={index >= 8}
               message={message}
+              pinnedDocumentIds={pinnedDocumentIds}
+              pinningDocumentId={pinningDocumentId}
+              onPinDocument={handlePinDocument}
+              onOpenDocumentActionSheet={handleOpenDocumentActionSheet}
               onAttachmentPress={(attachment) => {
                 if (attachment.kind === "document" && attachment.documentId) {
                   onOpenSource(attachment.documentId, attachment.name);
@@ -7328,12 +7798,18 @@ export function AiChatScreen({
               showActionButtons={message.role === "assistant" && message.id === latestVisibleMessageId}
               showUserAvatar={item.showUserAvatar}
               space={space}
+              onOpenSandbox={handleOpenSandbox}
+              onRequestTweak={handleRequestTweak}
+              onToggleFavorite={(targetMessage) => {
+                void handleToggleMessageFavorite(targetMessage);
+              }}
               streaming={streamingRendererActive}
               streamingIdentity={streamingIdentity}
               thinkingExpected={thinkingExpected}
               // prettier-ignore
               thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
               onThinkingHeaderAnchorShift={preserveThinkingHeaderAnchor}
+              onAnchorShift={preserveThinkingHeaderAnchor}
               onCopy={(targetMessage) => {
                 void copyMessageContent(targetMessage);
               }}
@@ -7352,16 +7828,20 @@ export function AiChatScreen({
                 void handleSubmitInlineRewrite(messageId, content);
               }}
               onThinkingExpandedChange={(messageId, expanded) => {
+                clearLatestJumpTimeouts();
+                clearComposerFocusVisibilityTimeouts();
                 thinkingExpandedByMessageIdRef.current.set(messageId, expanded);
                 // Reading a header pauses auto-follow without swapping live text for detached replay.
-                thinkingHeaderReadingRef.current = messageId;
+                thinkingHeaderReadingRef.current = expanded
+                  ? messageId
+                  : (thinkingHeaderReadingRef.current === messageId ? null : thinkingHeaderReadingRef.current);
                 if (Platform.OS === 'android') setClippingEnabled(false);
                 const sameTailMessage =
                   streamingTailStateRef.current.messageId === messageId &&
                   streamingTailStateRef.current.status !== "idle";
                 if (sameTailMessage) scheduleStreamingTailReconcile("thinking-expanded", {
                   allowFollowLatest: false,
-                  forceRender: true,
+                  forceRender: false,
                   retainWindow: sameTailMessage,
                 });
               }}
@@ -7438,38 +7918,29 @@ export function AiChatScreen({
     ],
   );
 
-  return (
-    <AppScreen
-      backgroundColor={aiLightColors.canvas}
-      contentStyle={[
-        styles.drawerHost,
-        {
-          paddingBottom:
-            initialBottomInsetRef.current +
-            layout.pageBottomOffset -
-            spacing[2],
-        },
-      ]}
+  const mainBottomPadding =
+    initialBottomInsetRef.current + layout.pageBottomOffset - spacing[2];
+
+  const mainChatContentNode = (
+    /* prettier-ignore */
+    /* Uses react-native-keyboard-controller's KeyboardAvoidingView which tracks
+         keyboard frames via WindowInsetsAnimationCompat on Android 14+ edge-to-edge,
+         eliminating the stuck-height / residual-padding bugs of the RN built-in KAV. */
+    <KeyboardAvoidingView
+      behavior="padding"
+      style={styles.keyboardAvoidingHost}
     >
       {/* prettier-ignore */}
-      {/* Uses react-native-keyboard-controller's KeyboardAvoidingView which tracks
-           keyboard frames via WindowInsetsAnimationCompat on Android 14+ edge-to-edge,
-           eliminating the stuck-height / residual-padding bugs of the RN built-in KAV. */}
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.keyboardAvoidingHost}
+      <View
+        style={[
+          styles.screenContent,
+          {
+            paddingTop:
+              statusBarHeight + spacing[1.5],
+          },
+        ]}
+        {...swipeDrawerPanResponder.panHandlers}
       >
-        {/* prettier-ignore */}
-        <View
-          style={[
-            styles.screenContent,
-            {
-              paddingTop:
-                statusBarHeight + spacing[1.5],
-            },
-          ]}
-          {...swipeDrawerPanResponder.panHandlers}
-        >
           <View style={styles.header}>
             {/* Left: drawer + search */}
             <View style={styles.headerSide}>
@@ -7566,6 +8037,7 @@ export function AiChatScreen({
                 ref={messageListRef}
                 data={invertedMessageItems}
                 inverted
+                decelerationRate={dynamicDecelerationRate}
                 initialNumToRender={10}
                 keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 keyboardShouldPersistTaps="handled"
@@ -7647,13 +8119,6 @@ export function AiChatScreen({
                 viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairsRef.current}
               />
             </View>
-            {/* Skeleton shares the list slot and stays until the first
-                non-empty FlatList layout commits, so no correction frame is visible. */}
-            {!isMessageListReady ? (
-              <View style={styles.skeletonOverlay} pointerEvents="none">
-                <AiChatMessageSkeleton />
-              </View>
-            ) : null}
             {invertedMessageItems.length === 0 && isMessageListReady && !errorMessage && !messageLoadError ? (
               <View style={styles.starterOverlay}>
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
@@ -7781,6 +8246,26 @@ export function AiChatScreen({
                   }
                 />
               ) : null}
+              {activeTweakArtifact ? (
+                <View style={styles.tweakReferenceBar}>
+                  <View style={styles.tweakReferenceLeft}>
+                    <Ionicons color="#4B5563" name="code-slash-outline" size={13} />
+                    <Text numberOfLines={1} style={styles.tweakReferenceText}>
+                      正在调整：{activeTweakArtifact.title} {activeTweakArtifact.version ? `v${activeTweakArtifact.version}` : 'v1'}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityLabel="取消微调"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => setActiveTweakArtifact(null)}
+                    style={({ pressed }) => [styles.tweakCancelButton, pressed && styles.pressed]}
+                  >
+                    <Ionicons color="#6B7280" name="close-outline" size={15} />
+                    <Text style={styles.tweakCancelText}>取消</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <AiChatComposer
                 attachments={pendingAttachments}
                 generating={generating}
@@ -7843,9 +8328,9 @@ export function AiChatScreen({
                   visible={isIpPickerOpen}
                 />
               ) : null}
-              <Animated.View
+              <View
                 pointerEvents="none"
-                style={[styles.composerRevealMask, { opacity: composerRevealMaskOpacity }]}
+                style={styles.composerBottomMask}
               />
             </Animated.View>
           )}
@@ -7857,138 +8342,203 @@ export function AiChatScreen({
           />
         </View>
       </KeyboardAvoidingView>
-      <AiSessionConfigScreen
-          contextTitle={contextTitle}
-          contextType={contextType}
-          onBack={() => {
-            setConfigDrawerVisible(false);
-            if (activeThreadId) {
-              void reloadParticipantAppearance(activeThreadId);
-              void reloadThreadTitle(activeThreadId);
-            }
-          }}
-          onCurrentThreadDeleted={() => {
-            if (activeThreadId) {
-              onCurrentThreadDeleted(activeThreadId);
-            }
-            setConfigDrawerVisible(false);
-          }}
-          onOpenProviderSettings={() => {
-            setConfigDrawerVisible(false);
-            onOpenProviderSettings();
-          }}
-          onOpenRoleLibrary={() => {
-            setConfigDrawerVisible(false);
-            onOpenRoleLibrary();
-          }}
-          onOpenBranchTree={() => {
-            if (activeThreadId) {
-              setConfigDrawerVisible(false);
-              onOpenBranchTree(activeThreadId);
-            }
-          }}
-          onOpenChatSearch={() => {
-            if (activeThreadId) {
-              setConfigDrawerVisible(false);
-              onOpenChatSearch(activeThreadId);
-            }
-          }}
-          onOpenThreadMaterials={() => {
-            if (activeThreadId) {
-              setConfigDrawerVisible(false);
-              onOpenThreadMaterials(activeThreadId);
-            }
-          }}
-          onOpenMemoryBoard={() => {
-            if (activeThreadId) {
-              setConfigDrawerVisible(false);
-              onOpenMemoryBoard(activeThreadId);
-            }
-          }}
-          onOpenInnerLife={() => {
-            if (activeThreadId) {
-              setConfigDrawerVisible(false);
-              onOpenInnerLife(activeThreadId);
-            }
-          }}
-          onOpenCompanionRuntime={() => {
-            if (activeThreadId) {
-              setConfigDrawerVisible(false);
-              onOpenCompanionRuntime(activeThreadId);
-            }
-          }}
-          onSettingsChanged={() => {
-            if (activeThreadId) {
-              void reloadParticipantAppearance(activeThreadId);
-              void reloadThreadTitle(activeThreadId);
-            }
-          }}
-          onStartChat={() => {
-            setConfigDrawerVisible(false);
-            if (activeThreadId) {
-              void reloadParticipantAppearance(activeThreadId);
-              void reloadThreadTitle(activeThreadId);
-            }
-          }}
-          space={space}
-          threadId={activeThreadId ?? undefined}
-          visible={configDrawerVisible}
-        />
-        <AiComprehensiveRecordDrawer
-          activeThreadId={activeThreadId}
-        recentThreads={recentThreads}
-        visible={recordDrawerVisible}
-        onClose={() => setRecordDrawerVisible(false)}
-        onOpenProviderSettings={() => {
+  );
+
+  const rightConfigDrawerNode = (
+    <AiSessionConfigScreen
+      contextTitle={contextTitle}
+      contextType={contextType}
+      presentationMode={sidebarStyleMode}
+      onBack={() => {
+        setConfigDrawerVisible(false);
+        if (activeThreadId) {
+          const tid = activeThreadId;
+          setTimeout(() => {
+            void reloadParticipantAppearance(tid);
+            void reloadThreadTitle(tid);
+          }, 280);
+        }
+      }}
+      onCurrentThreadDeleted={() => {
+        if (activeThreadId) {
+          onCurrentThreadDeleted(activeThreadId);
+        }
+        setConfigDrawerVisible(false);
+      }}
+      onOpenProviderSettings={() => {
+        setConfigDrawerVisible(false);
+        onOpenProviderSettings();
+      }}
+      onOpenRoleLibrary={() => {
+        setConfigDrawerVisible(false);
+        onOpenRoleLibrary();
+      }}
+      onOpenBranchTree={() => {
+        if (activeThreadId) {
+          setConfigDrawerVisible(false);
+          onOpenBranchTree(activeThreadId);
+        }
+      }}
+      onOpenChatSearch={() => {
+        if (activeThreadId) {
+          setConfigDrawerVisible(false);
+          onOpenChatSearch(activeThreadId);
+        }
+      }}
+      onOpenThreadMaterials={() => {
+        if (activeThreadId) {
+          setConfigDrawerVisible(false);
+          onOpenThreadMaterials(activeThreadId);
+        }
+      }}
+      onOpenMemoryBoard={() => {
+        if (activeThreadId) {
+          setConfigDrawerVisible(false);
+          onOpenMemoryBoard(activeThreadId);
+        }
+      }}
+      onOpenInnerLife={() => {
+        if (activeThreadId) {
+          setConfigDrawerVisible(false);
+          onOpenInnerLife(activeThreadId);
+        }
+      }}
+      onOpenCompanionRuntime={() => {
+        if (activeThreadId) {
+          setConfigDrawerVisible(false);
+          onOpenCompanionRuntime(activeThreadId);
+        }
+      }}
+      onSettingsChanged={() => {
+        if (activeThreadId) {
+          void reloadParticipantAppearance(activeThreadId);
+          void reloadThreadTitle(activeThreadId);
+        }
+      }}
+      onStartChat={() => {
+        setConfigDrawerVisible(false);
+        if (activeThreadId) {
+          void reloadParticipantAppearance(activeThreadId);
+          void reloadThreadTitle(activeThreadId);
+        }
+      }}
+      space={space}
+      threadId={activeThreadId ?? undefined}
+      visible={configDrawerVisible}
+    />
+  );
+
+  const leftRecordDrawerNode = (
+    <AiComprehensiveRecordDrawer
+      activeThreadId={activeThreadId}
+      presentationMode={sidebarStyleMode}
+      recentThreads={recentThreads}
+      visible={recordDrawerVisible}
+      onClose={() => setRecordDrawerVisible(false)}
+      onOpenProviderSettings={() => {
+        setRecordDrawerVisible(false);
+        onOpenProviderSettings();
+      }}
+      onNewChat={() => {
+        if (!isPushScaleSidebar) {
           setRecordDrawerVisible(false);
-          onOpenProviderSettings();
-        }}
-        onNewChat={() => {
+        }
+        handleNewChatPress();
+      }}
+      onOpenRoleLibrary={() => {
+        setRecordDrawerVisible(false);
+        onOpenRoleLibrary();
+      }}
+      onOpenHistory={() => {
+        setRecordDrawerVisible(false);
+        onOpenHistory();
+      }}
+      onOpenGlobalMaterials={() => {
+        setRecordDrawerVisible(false);
+        onOpenGlobalMaterials();
+      }}
+      onOpenThread={(thread) => {
+        if (!isPushScaleSidebar) {
           setRecordDrawerVisible(false);
-          handleNewChatPress();
-        }}
-        onOpenRoleLibrary={() => {
-          setRecordDrawerVisible(false);
-          onOpenRoleLibrary();
-        }}
-        onOpenHistory={() => {
-          setRecordDrawerVisible(false);
-          onOpenHistory();
-        }}
-        onOpenGlobalMaterials={() => {
-          setRecordDrawerVisible(false);
-          onOpenGlobalMaterials();
-        }}
-        onOpenThread={(thread) => {
-          setRecordDrawerVisible(false);
-          onOpenThread(thread);
-        }}
-        onRenameThread={(thread, title) => renameRecentThread(thread, title)}
-        onDeleteThread={(thread) => deleteRecentThread(thread)}
-        onSettingsButtonLayout={(rect) => {
-          setSettingsButtonRect(rect);
-        }}
-      />
+        }
+        onOpenThread(thread);
+      }}
+      onRenameThread={(thread, title) => renameRecentThread(thread, title)}
+      onDeleteThread={(thread) => deleteRecentThread(thread)}
+      onSettingsButtonLayout={(rect) => {
+        setSettingsButtonRect(rect);
+      }}
+    />
+  );
+
+  return (
+    <AppScreen
+      backgroundColor={isPushScaleSidebar ? aiLightColors.underlayCanvas : aiLightColors.canvas}
+      contentStyle={[
+        styles.drawerHost,
+        {
+          paddingBottom: initialBottomInsetRef.current
+            ? (isPushScaleSidebar ? 0 : mainBottomPadding)
+            : 0,
+        },
+      ]}
+    >
+      {isPushScaleSidebar ? (
+        <AiPushScaleDrawerStage
+          canOpenRightDrawer={activeThreadId !== 'pixory-system-assistant'}
+          leftDrawer={leftRecordDrawerNode}
+          leftDrawerVisible={recordDrawerVisible}
+          mainCardContentStyle={{ paddingBottom: mainBottomPadding }}
+          onCloseLeftDrawer={() => setRecordDrawerVisible(false)}
+          onCloseRightDrawer={() => setConfigDrawerVisible(false)}
+          onOpenLeftDrawer={() => setRecordDrawerVisible(true)}
+          onOpenRightDrawer={() => {
+            if (activeThreadId !== 'pixory-system-assistant') {
+              setConfigDrawerVisible(true);
+            }
+          }}
+          rightDrawer={rightConfigDrawerNode}
+          rightDrawerVisible={configDrawerVisible}
+          spatialPreset={sidebarSpatialPreset}
+        >
+          {mainChatContentNode}
+        </AiPushScaleDrawerStage>
+      ) : (
+        <>
+          {mainChatContentNode}
+          {rightConfigDrawerNode}
+          {leftRecordDrawerNode}
+        </>
+      )}
       {/* 新手引导遮罩层：完全独立，不影响现有逻辑 */}
       <AiChatGuideOverlay
         settingsButtonRect={settingsButtonRect}
         step={guideStep}
         onNext={() => {
           if (guideStep === 2) {
-            // 步骤 2 → 步骤 3：关左侧栏，展开右侧会话控制台
+            if (guideTransitionTimerRef.current) {
+              return;
+            }
+            // 步骤 2 → 步骤 3：立即收起镂空高亮框并关左侧栏，随后展开右侧会话控制台
+            setSettingsButtonRect(null);
             setRecordDrawerVisible(false);
-            setTimeout(() => {
+            guideTransitionTimerRef.current = setTimeout(() => {
+              guideTransitionTimerRef.current = null;
               setConfigDrawerVisible(true);
               setGuideStep(3);
-            }, 300);
+            }, 260);
           } else {
             setGuideStep((s) => (s !== null && s < 3 ? ((s + 1) as AiChatGuideStep) : s));
           }
         }}
         onDone={() => {
+          if (guideTransitionTimerRef.current) {
+            clearTimeout(guideTransitionTimerRef.current);
+            guideTransitionTimerRef.current = null;
+          }
           setGuideStep(null);
           setConfigDrawerVisible(false);
-          // 持久化：以后不再触发引导
+          // 完成新手引导：标记为已读，单次呈现限制生效
           void runWithDatabaseSpace(space, (db) =>
             settingsRepository.setAiChatGuideSeen(db, true)
           );
@@ -8059,6 +8609,12 @@ export function AiChatScreen({
             }
           }
         }}
+        onOpenSandbox={(params) => {
+          handleOpenSandbox({
+            ...params,
+            messageId: params.messageId || messageTextSelectionContent?.messageId,
+          });
+        }}
         visible={messageTextSelectionContent !== null}
       />
       <Modal
@@ -8094,6 +8650,20 @@ export function AiChatScreen({
           </View>
         </View>
       </Modal>
+      <AiSandboxViewerModal
+        artifactId={sandboxViewerState?.artifactId}
+        code={sandboxViewerState?.code || ''}
+        generating={generating}
+        language={sandboxViewerState?.language}
+        messageId={sandboxViewerState?.messageId}
+        onClose={() => setSandboxViewerState(null)}
+        onRequestAiFix={handleRequestAiFix}
+        onRegenerate={(msgId) => {
+          void handleRegenerate(msgId);
+        }}
+        title={sandboxViewerState?.title}
+        visible={Boolean(sandboxViewerState?.visible)}
+      />
       <ParallaxLightSweep
         active={showSweep && appIsActive}
         color1="#A7F3D0"
@@ -8102,6 +8672,13 @@ export function AiChatScreen({
         opacity={0.65}
         variant="edges"
         visible={showSweep}
+      />
+      <AppActionSheet
+        items={docActionItems}
+        message={activeDocAction?.title}
+        onClose={() => setActiveDocAction(null)}
+        title="资料库文档设置"
+        visible={Boolean(activeDocAction)}
       />
     </AppScreen>
   );
@@ -8118,25 +8695,62 @@ const styles = StyleSheet.create({
   },
   screenContent: {
     flex: 1,
-    gap: rhythm.cardContentGap,
+    gap: 0,
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   composerPanel: {
-    backgroundColor: aiLightColors.canvas,
+    backgroundColor: 'transparent',
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     paddingBottom: spacing[3],
-    paddingTop: spacing[2],
+    paddingTop: 0,
     ...shadows.none,
   },
-  composerRevealMask: {
+  tweakReferenceBar: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing[1],
+    marginHorizontal: spacing[1],
+    paddingHorizontal: spacing[3],
+    paddingVertical: 6,
+  },
+  tweakReferenceLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    marginRight: spacing[2],
+  },
+  tweakReferenceText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  tweakCancelButton: {
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 4,
+    flexDirection: 'row',
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  tweakCancelText: {
+    color: '#6B7280',
+    fontSize: 11,
+  },
+  composerBottomMask: {
     backgroundColor: aiLightColors.canvas,
-    bottom: 0,
-    left: 0,
+    bottom: -160,
+    height: 160,
+    left: -layout.pagePaddingHorizontal,
     position: 'absolute',
-    right: 0,
-    top: 0,
-    zIndex: 3,
+    right: -layout.pagePaddingHorizontal,
   },
   diaryHint: {
     alignItems: 'center',
@@ -8154,6 +8768,7 @@ const styles = StyleSheet.create({
     borderBottomColor: aiLightColors.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
+    marginBottom: spacing[2],
     minHeight: spacing[10],
   },
   headerSide: {
@@ -8282,9 +8897,12 @@ const styles = StyleSheet.create({
   },
   messageScrollContent: {
     flexGrow: 1,
-    gap: spacing[2],
-    paddingBottom: spacing[2],
-    paddingTop: spacing[3],
+    gap: 14,
+    paddingBottom: spacing[3],
+    paddingTop: spacing[2],
+  },
+  roleTransitionSpacing: {
+    marginTop: 4,
   },
   starterOverlay: {
     bottom: 0,

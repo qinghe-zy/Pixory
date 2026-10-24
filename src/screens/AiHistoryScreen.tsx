@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, FlatList, PanResponder, Platform, Pressable, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
 
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { AppDialog } from '../components/AppDialog';
@@ -17,6 +17,7 @@ import { GalleryNormalHeader, GalleryCompactHeader } from '../components/Gallery
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
+import { PersonalCredentialPrompt } from '../components/PersonalCredentialPrompt';
 
 interface AiHistoryScreenProps {
   space: PixorySpace;
@@ -87,6 +88,8 @@ export function AiHistoryScreen({
   const [swipedThreadId, setSwipedThreadId] = useState<string | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [authMethod, setAuthMethod] = useState<'password' | 'pattern'>('pattern');
+  const [patternError, setPatternError] = useState(false);
   const swipeAnimatedValuesRef = useRef(new Map<string, Animated.Value>());
   const historyRequestGenerationRef = useRef(0);
   const historyPageRequestInFlightRef = useRef(false);
@@ -333,12 +336,13 @@ export function AiHistoryScreen({
     }
   }
 
-  async function confirmMoveSelected() {
+  async function confirmMoveSelected(overrideSecret?: string) {
     const threadIds = moveThread ? [moveThread.id] : selectedIds;
     setBusy(true);
     try {
+      const secretToUse = overrideSecret ?? personalPassword;
       const count = await moveAiThreadsBetweenSpaces({
-        personalPassword,
+        personalPassword: secretToUse,
         sourceSpace: space,
         targetSpace,
         threadIds,
@@ -350,7 +354,13 @@ export function AiHistoryScreen({
       setPersonalPassword('');
       await reload();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '移动失败');
+      setPatternError(true);
+      setTimeout(() => setPatternError(false), 800);
+      const msg = error instanceof Error ? error.message : '移动失败';
+      setStatus(msg);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(msg, ToastAndroid.SHORT);
+      }
     } finally {
       setBusy(false);
     }
@@ -582,29 +592,46 @@ export function AiHistoryScreen({
 
       <AppDialog
         accent="ai"
-        message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${selectedIds.length} 条。移动会保留聊天、角色卡及头像、角色与线程记忆、附件、收藏和摘要；仍处于续聊导入回退窗口的会话，移动后会结束该回退窗口。IP/知识库绑定会话暂不支持跨空间移动。`}
+        message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${moveThread ? 1 : selectedIds.length} 条。移动会保留聊天、角色卡及头像、角色与线程记忆、附件、收藏和摘要；仍处于续聊导入回退窗口的会话，移动后会结束该回退窗口。IP/知识库绑定会话暂不支持跨空间移动。`}
         onClose={() => {
           if (!busy) {
             setPendingAction(null);
             setPersonalPassword('');
+            setPatternError(false);
           }
         }}
         onPrimary={() => void confirmMoveSelected()}
-        primaryDisabled={busy || (targetSpace === 'personal' && !personalPassword.trim())}
-        primaryLabel={busy ? '正在移动' : space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+        primaryDisabled={
+          busy ||
+          (targetSpace === 'personal' &&
+            (authMethod === 'pattern' ? true : !personalPassword.trim()))
+        }
+        primaryLabel={
+          busy
+            ? '正在移动'
+            : targetSpace === 'personal' && authMethod === 'pattern'
+            ? '请绘制图案'
+            : space === 'normal'
+            ? '移入隐私空间'
+            : '移出隐私空间'
+        }
         title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
         visible={pendingAction === 'move'}
       >
         {targetSpace === 'personal' ? (
-          <TextInput
-            editable={!busy}
-            onChangeText={setPersonalPassword}
-            placeholder="隐私密码"
-            placeholderTextColor={aiLightColors.mutedSoft}
-            secureTextEntry
-            selectionColor={aiLightColors.primary}
-            style={styles.passwordInput}
-            value={personalPassword}
+          <PersonalCredentialPrompt
+            disabled={busy}
+            isError={patternError}
+            onAuthMethodChange={setAuthMethod}
+            onBiometricSuccess={() => {
+              void confirmMoveSelected('__BIOMETRIC_PASSTHROUGH__');
+            }}
+            onPasswordChange={setPersonalPassword}
+            onPatternSubmit={(pattern) => {
+              void confirmMoveSelected(pattern);
+            }}
+            passwordValue={personalPassword}
+            theme="ai"
           />
         ) : (
           <Text style={{ color: aiLightColors.mutedReadable, marginTop: 8, fontSize: 14 }}>移出后，普通空间下任何人可见，无需密码即可查看，确定要移出吗？</Text>

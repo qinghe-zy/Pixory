@@ -5,9 +5,9 @@ import katex from 'katex';
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
-const MATH_BLOCK_MIN_HEIGHT = 48;
+const MATH_BLOCK_MIN_HEIGHT = 24;
 const MATH_BLOCK_MAX_HEIGHT = 400;
-const MATH_BLOCK_VERTICAL_PADDING = spacing[3] * 2;
+const MATH_BLOCK_VERTICAL_PADDING = 6;
 const KATEX_CORE_CSS = `
 .katex{font:normal 1.12em KaTeX_Main,Times New Roman,serif;line-height:1.2;position:relative;text-indent:0;text-rendering:auto}
 .katex *{border-color:currentColor}.katex-display{display:block;margin:0;text-align:center}.katex-display>.katex{display:block;text-align:center;white-space:nowrap}.katex-display>.katex>.katex-html{display:block;position:relative}
@@ -51,9 +51,13 @@ function buildMathHtmlDocument(mathHtml: string): string {
           -webkit-text-size-adjust: 100%;
         }
         body {
-          padding: ${spacing[3]}px;
+          padding: 2px 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         #math-container {
+          display: inline-block;
           max-width: 100%;
           overflow-x: auto;
           overflow-y: hidden;
@@ -62,6 +66,7 @@ function buildMathHtmlDocument(mathHtml: string): string {
         }
         .katex-display {
           margin: 0;
+          padding: 0;
           max-width: 100%;
           overflow-x: auto;
           overflow-y: hidden;
@@ -69,8 +74,8 @@ function buildMathHtmlDocument(mathHtml: string): string {
         .katex {
           display: inline-block;
           max-width: 100%;
-          font-size: 1.08em;
-          line-height: 1.35;
+          font-size: 1.12em;
+          line-height: 1.25;
           text-rendering: optimizeLegibility;
         }
         .katex-html {
@@ -90,8 +95,21 @@ function buildMathHtmlDocument(mathHtml: string): string {
     <body>
       <div id="math-container">${mathHtml}</div>
       <script>
-        const container = document.getElementById('math-container');
-        window.ReactNativeWebView.postMessage(Math.ceil(container.getBoundingClientRect().height));
+        function sendHeight() {
+          var el = document.getElementById('math-container') || document.body;
+          var h = Math.ceil(el.getBoundingClientRect().height || el.offsetHeight || 28);
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(String(h));
+          } else {
+            setTimeout(sendHeight, 30);
+          }
+        }
+        if (document.readyState === 'complete') {
+          sendHeight();
+        } else {
+          window.addEventListener('load', sendHeight);
+          setTimeout(sendHeight, 20);
+        }
       </script>
     </body>
     </html>
@@ -99,7 +117,7 @@ function buildMathHtmlDocument(mathHtml: string): string {
 }
 
 export function AiMathBlock({ math }: { math: string }) {
-  const [height, setHeight] = useState(60);
+  const [height, setHeight] = useState(32);
 
   const compiled = useMemo(() => {
     try {
@@ -129,19 +147,22 @@ export function AiMathBlock({ math }: { math: string }) {
       <WebView
         allowFileAccess={false}
         allowFileAccessFromFileURLs={false}
+        androidLayerType="hardware"
         bounces={false}
+        containerStyle={styles.webviewContainer}
         domStorageEnabled={false}
         javaScriptCanOpenWindowsAutomatically={false}
         javaScriptEnabled
         mixedContentMode="never"
         onMessage={(event) => {
           const h = Number(event.nativeEvent.data);
-          if (h && !isNaN(h)) setHeight(h);
+          if (h && !isNaN(h) && h > 0) setHeight(h);
         }}
         originWhitelist={['about:blank']}
         scrollEnabled={height + MATH_BLOCK_VERTICAL_PADDING > MATH_BLOCK_MAX_HEIGHT}
         setSupportMultipleWindows={false}
         showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
         source={{ html: compiled.html, baseUrl: 'about:blank' }}
         style={styles.webview}
       />
@@ -152,13 +173,15 @@ export function AiMathBlock({ math }: { math: string }) {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginVertical: rhythm.microGap,
-    backgroundColor: aiLightColors.card,
-    borderRadius: radius.md,
+    marginVertical: spacing[1],
+    backgroundColor: 'transparent',
     overflow: 'hidden',
   },
+  webviewContainer: {
+    backgroundColor: 'transparent',
+  },
   errorContainer: {
-    backgroundColor: aiLightColors.card,
+    backgroundColor: 'transparent',
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,

@@ -6,24 +6,26 @@ import { systemActionTitle } from '../../ai/systemAssistant/systemAssistantRegis
 import { SystemActionConfirmCard, SystemIpSelectCard } from './SystemActionCards';
 import { SystemAssistantTaskDetailsDialog } from './SystemAssistantTaskDetails';
 
-export function SystemAssistantTaskCard({ task, ips, disabled, onSelectIp, onConfirm, onCancel, onUndo, onCreateIp, onOpenRole }: {
+export function SystemAssistantTaskCard({ task, ips, disabled, onSelectIp, onConfirm, onCancel, onRetry, onUndo, onCreateIp, onOpenRole, onStartChat }: {
   task: SystemTaskSnapshot; ips: IpRecord[]; disabled: boolean;
   onSelectIp(ipId: number): void; onConfirm(): void; onCancel(): void;
   onRetry(): void; onUndo(): void; onCreateIp(): void; onOpenRole?(roleCardId: string): void;
+  onStartChat?(roleCardId: string): void;
 }) {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const details = () => setDetailsVisible(true);
-  const waiting = task.status === 'waiting_for_ip';
   const ended = ['completed', 'cancelled', 'undone'].includes(task.status);
   const processing = ['planning', 'executing', 'undoing'].includes(task.status);
   const action = task.action;
+  const waiting = (task.status === 'waiting_for_ip' || task.action?.type === 'select_ip') && !ended;
   const isNavigate = action?.type === 'navigate';
   const isRename = action?.type === 'rename-thread';
   const createdRole = task.status === 'completed' ? task.createdRoleCard : null;
+  const isFailed = (task.status === 'failed' || task.status === 'expired') && Boolean(action);
+  const isSelectIpEnded = task.action?.type === 'select_ip' && ended;
 
-  // Progress-only tasks stay in the timeline; operations use the original cards.
-  if (task.status === 'failed' || task.status === 'expired'
-    || (!waiting && !isNavigate && !isRename && !createdRole)) return null;
+  // Pure chat text without action, waiting, role or failure has no card.
+  if (!waiting && !isNavigate && !isRename && !createdRole && !isFailed && !isSelectIpEnded) return null;
 
   let title = systemActionTitle(action);
   let description = task.error ?? undefined;
@@ -32,20 +34,37 @@ export function SystemAssistantTaskCard({ task, ips, disabled, onSelectIp, onCon
   let handleConfirm = onConfirm;
   let handleCancel: (() => void) | undefined;
 
-  if (waiting) {
+  if (isFailed && !waiting) {
+    const actionName = action ? systemActionTitle(action) : '操作';
+    title = task.status === 'expired' ? `${actionName}已过期` : `${actionName}未能完成`;
+    description = description || '任务未能完成，可点击重试。';
+    confirmLabel = '重试';
+    cancelLabel = '取消';
+    handleConfirm = onRetry;
+    handleCancel = onCancel;
+  } else if (waiting) {
     title = '暂无目标 IP';
     description = '请先创建一个 IP 资产';
     confirmLabel = '新建 IP';
     handleConfirm = onCreateIp;
     handleCancel = onCancel;
   } else if (createdRole) {
-    title = '角色卡已创建';
-    confirmLabel = onOpenRole ? '查看角色' : '查看详情';
-    handleConfirm = onOpenRole ? () => onOpenRole(createdRole.id) : details;
-    if (Date.parse(createdRole.expiresAt) > Date.now()) {
+    title = `已创建角色卡「${createdRole.name}」`;
+    description = description || '设定已成功保存至角色库，可直接开启对话或查看详情。';
+    confirmLabel = onStartChat ? '直接开聊' : onOpenRole ? '查看角色' : '查看详情';
+    handleConfirm = onStartChat ? () => onStartChat(createdRole.id) : onOpenRole ? () => onOpenRole(createdRole.id) : details;
+    if (onOpenRole && onStartChat) {
+      cancelLabel = '查看详情';
+      handleCancel = () => onOpenRole(createdRole.id);
+    } else if (Date.parse(createdRole.expiresAt) > Date.now()) {
       cancelLabel = '撤销';
       handleCancel = onUndo;
     }
+  } else if (isSelectIpEnded) {
+    title = task.status === 'completed' ? '已选择 IP' : '已取消选择';
+    description = task.selectedIp ? `已选择「${task.selectedIp.ipNameSnapshot}」` : description || '已结束 IP 选择';
+    confirmLabel = '查看详情';
+    handleConfirm = details;
   } else {
     if (isRename) {
       title = ended ? '已修改昵称' : processing ? '正在修改昵称' : '确认修改昵称';

@@ -187,7 +187,10 @@ function fixture() {
   const stores = { normal, personal };
   const events = [];
   const load = loader({
-    '../../database': { runWithDatabaseSpace: (space, fn) => fn(stores[space].db) },
+    '../../database': {
+      runWithDatabaseSpace: (space, fn) => fn(stores[space].db),
+      runWithTransactionRetry: (db, fn) => db.withTransactionAsync ? db.withTransactionAsync(() => fn(db)) : fn(db),
+    },
     './systemAssistantEvents': { publishSystemTask: value => events.push(value) },
     './systemAssistantExecutor': {},
   });

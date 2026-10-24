@@ -1,4 +1,4 @@
-import { type ComponentProps, useEffect, useMemo, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -17,7 +17,8 @@ import { resolveContextMenuPosition } from './contextMenuPosition';
 export type AnchoredContextMenuAction = {
   danger?: boolean;
   disabled?: boolean;
-  icon: ComponentProps<typeof Ionicons>['name'];
+  icon?: ComponentProps<typeof Ionicons>['name'];
+  renderIcon?: (props: { color: string; size: number }) => ReactNode;
   key: string;
   label: string;
   onPress: () => void;
@@ -145,11 +146,22 @@ export function AnchoredContextMenu({
                   pressed && !action.disabled && styles.pressed,
                 ]}
               >
-                <Ionicons
-                  color={action.danger ? colors.semantic.danger : (action.selected ? colors.primary.active : colors.text.primary)}
-                  name={action.icon}
-                  size={metrics.iconSizeMd}
-                />
+                {action.renderIcon ? (
+                  action.renderIcon({
+                    color: action.danger
+                      ? colors.semantic.danger
+                      : (action.selected
+                        ? (action.key === 'favorite' ? '#F59E0B' : colors.primary.active)
+                        : colors.text.secondary),
+                    size: metrics.iconSizeMd,
+                  })
+                ) : action.icon ? (
+                  <Ionicons
+                    color={action.danger ? colors.semantic.danger : (action.selected ? colors.primary.active : colors.text.primary)}
+                    name={action.icon}
+                    size={metrics.iconSizeMd}
+                  />
+                ) : null}
                 <Text
                   style={[
                     styles.actionLabel,

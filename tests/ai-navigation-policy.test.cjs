@@ -105,9 +105,9 @@ test('AI chat uses the design.md light mode surface', () => {
   const content = chat();
   const theme = fs.readFileSync(path.join(root, 'src/components/ai/aiLightTheme.ts'), 'utf8');
 
-  assert.match(content, /backgroundColor=\{aiLightColors\.canvas\}/);
+  assert.match(content, /backgroundColor=\{(?:isPushScaleSidebar\s*\?\s*aiLightColors\.underlayCanvas\s*:\s*)?aiLightColors\.canvas\}/);
   assert.match(content, /aiLightDisplayFont/);
-  assert.match(theme, /canvas:\s*'#EDEDED'/);
+  assert.match(theme, /canvas:\s*'#FFFFFF'/);
   assert.match(theme, /surface:\s*'#FFFFFF'/);
   assert.match(theme, /card:\s*'#FFFFFF'/);
   assert.match(theme, /primary:\s*'#5B9CF6'/);
@@ -394,7 +394,7 @@ test.skip('AI route screens use the AI light scaffold and avoid global green con
     assert.doesNotMatch(content, /from '\.\.\/components\/FormTextareaRow'/, file);
     assert.doesNotMatch(content, /from '\.\.\/components\/SearchBar'/, file);
     assert.doesNotMatch(content, /from '\.\.\/components\/FeedbackBanner'/, file);
-    assert.ok(/AiLightScaffold/.test(content) || /backgroundColor=\{aiLightColors\.canvas\}/.test(content), file);
+    assert.ok(/AiLightScaffold/.test(content) || /backgroundColor=\{(?:isPushScaleSidebar\s*\?\s*aiLightColors\.underlayCanvas\s*:\s*)?aiLightColors\.canvas\}/.test(content), file);
   }
 });
 
@@ -766,11 +766,11 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
   assert.match(chat, /Animated\.timing\(composerEntranceProgress/);
   assert.match(chat, /Easing\.out\(Easing\.cubic\)/);
   assert.match(chat, /useNativeDriver: true/);
-  assert.match(chat, /const composerRevealMaskOpacity = composerEntranceProgress\.interpolate\(\{[\s\S]{0,120}outputRange: \[1, 0\]/);
-  assert.match(chat, /styles\.composerRevealMask, \{ opacity: composerRevealMaskOpacity \}/);
+  assert.match(chat, /styles\.composerBottomMask/);
   assert.doesNotMatch(chat, /const composerEntranceStyle = \{\s*opacity: composerEntranceProgress/);
   // assert.match(chat, /outputRange: \[spacing\[5\], 0\]/);
-  assert.match(chat, /composerPanel:\s*\{[\s\S]{0,120}backgroundColor:\s*aiLightColors\.canvas/);
+  assert.match(chat, /composerPanel:\s*\{[\s\S]{0,120}backgroundColor:\s*'transparent'/);
+  assert.match(chat, /composerBottomMask:\s*\{[\s\S]{0,120}backgroundColor:\s*aiLightColors\.canvas/);
   // assert.match(chat, /translateY: composerEntranceTranslateY/);
   assert.match(chat, /<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}/);
   assert.match(app, /composerEntranceKey=\{currentRoute\.routeKey\}/);

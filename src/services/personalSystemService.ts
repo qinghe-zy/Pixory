@@ -101,12 +101,20 @@ export async function getPersonalCredentialConfig(): Promise<PersonalCredentialC
       hasRecoveryKey: false,
     };
   }
+  const hasPassword = Boolean(cred.hash);
+  const hasPattern = Boolean(cred.patternHash);
+  let defaultMethod = cred.defaultMethod || 'password';
+  if (!hasPassword && hasPattern) {
+    defaultMethod = 'pattern';
+  } else if (hasPassword && !hasPattern) {
+    defaultMethod = 'password';
+  }
   return {
     hasCredential: true,
-    hasPassword: !!cred.hash,
-    hasPattern: !!cred.patternHash,
+    hasPassword,
+    hasPattern,
     fingerprintEnabled: cred.fingerprintEnabled ?? false,
-    defaultMethod: cred.defaultMethod || 'password',
+    defaultMethod,
     hasRecoveryKey: !!cred.recoveryKeyHash,
   };
 }
@@ -156,7 +164,7 @@ export async function setPersonalPattern(patternStr: string): Promise<void> {
     hash: cred?.hash,
     patternHash: newHash,
     fingerprintEnabled: cred?.fingerprintEnabled,
-    defaultMethod: cred?.defaultMethod ?? 'pattern',
+    defaultMethod: cred?.hash ? (cred.defaultMethod ?? 'pattern') : 'pattern',
     failedAttempts: 0,
     lockedUntil: null,
     updatedAt: nowIso(),
@@ -180,6 +188,12 @@ export async function setPersonalFingerprintEnabled(enabled: boolean): Promise<v
 export async function setDefaultUnlockMethod(method: 'password' | 'pattern'): Promise<void> {
   const cred = await readCredential();
   if (!cred) throw new Error('请先设置隐私系统密码。');
+  if (method === 'password' && !cred.hash) {
+    throw new Error('未设置数字/字母密码，无法设为默认解锁方式。');
+  }
+  if (method === 'pattern' && !cred.patternHash) {
+    throw new Error('未设置图案密码，无法设为默认解锁方式。');
+  }
   
   await writeCredential({
     ...cred,
@@ -340,11 +354,8 @@ export async function verifyRecoveryKey(recoveryKey: string): Promise<boolean> {
   const credential = await readCredential();
   if (!credential || !credential.recoveryKeyHash) return false;
   
-  if (isLocked(credential)) {
-    throw new Error('输入错误次数过多，已被锁定');
-  }
-  
-  const inputHash = await hashPersonalSecret(recoveryKey, credential.salt);
+  const cleanKey = recoveryKey.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const inputHash = await hashPersonalSecret(cleanKey, credential.salt);
   if (inputHash === credential.recoveryKeyHash) {
     credential.failedAttempts = 0;
     credential.lockedUntil = null;
@@ -353,11 +364,23 @@ export async function verifyRecoveryKey(recoveryKey: string): Promise<boolean> {
   } else {
     credential.failedAttempts += 1;
     if (credential.failedAttempts >= MAX_PERSONAL_UNLOCK_FAILURES) {
-      credential.lockedUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      credential.lockedUntil = new Date(Date.now() + PERSONAL_LOCK_MS).toISOString();
     }
     await writeCredential(credential);
     return false;
   }
+}
+
+export async function resetPasswordWithRecoveryKey(
+  recoveryKey: string,
+  newSecret: string,
+  method: 'password' | 'pattern' = 'pattern'
+): Promise<void> {
+  const verified = await verifyRecoveryKey(recoveryKey);
+  if (!verified) {
+    throw new Error('恢复密钥不正确。');
+  }
+  await forceResetPersonalPassword(newSecret, method);
 }
 
 export async function forceResetPersonalPassword(newSecret: string, method: 'password' | 'pattern' = 'password'): Promise<void> {
@@ -367,9 +390,11 @@ export async function forceResetPersonalPassword(newSecret: string, method: 'pas
   const hash = await hashPersonalSecret(newSecret, credential.salt);
   if (method === 'pattern') {
     credential.patternHash = hash;
+    credential.hash = undefined;
     credential.defaultMethod = 'pattern';
   } else {
     credential.hash = hash;
+    credential.patternHash = undefined;
     credential.defaultMethod = 'password';
   }
   

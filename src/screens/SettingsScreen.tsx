@@ -18,9 +18,24 @@ interface SettingsScreenProps {
   onOpenDiagnostics: () => void;
   onOpenPasswordSecurity: () => void;
   onOpenAdvancedSettings: () => void;
+  onOpenPerformanceSettings?: () => void;
+  onOpenAppearanceSettings?: () => void;
+  onOpenProviderSettings?: () => void;
+  onOpenProfileInfo?: () => void;
 }
 
-export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagnostics, onOpenPasswordSecurity, onOpenAdvancedSettings }: SettingsScreenProps) {
+export function SettingsScreen({
+  space,
+  onBack,
+  onOpenDeveloperMode,
+  onOpenDiagnostics,
+  onOpenPasswordSecurity,
+  onOpenAdvancedSettings,
+  onOpenPerformanceSettings,
+  onOpenAppearanceSettings,
+  onOpenProviderSettings,
+  onOpenProfileInfo,
+}: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
   const [diagnosticsEnabled, setDiagnosticsEnabledState] = useState(false);
   const [showSecurityRedDot, setShowSecurityRedDot] = useState(false);
@@ -46,44 +61,79 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
   }, [space]);
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title="设置">
+    <ScreenScaffold
+      contentContainerStyle={styles.scrollContent}
+      onBack={onBack}
+      scrollable
+      title="设置"
+    >
       <View style={styles.container}>
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>基础设置</Text>
-          <View style={styles.card}>
+        {onOpenProfileInfo ? (
+          <View style={styles.insetGroup}>
             <SettingsRow
-              icon="shield-checkmark-outline"
-              title="密码与安全"
-              onPress={onOpenPasswordSecurity}
-              showBorder
-              showRedDot={showSecurityRedDot}
-            />
-            <SettingsRow
-              icon="options-outline"
-              title="更多设置"
-              onPress={onOpenAdvancedSettings}
+              icon="person-circle-outline"
+              onPress={onOpenProfileInfo}
+              title="个人信息"
+              valueText="头像、昵称与圆角"
             />
           </View>
+        ) : null}
+
+        <View style={styles.insetGroup}>
+          <SettingsRow
+            icon="shield-checkmark-outline"
+            title="密码与安全"
+            onPress={onOpenPasswordSecurity}
+            showBorder
+            showRedDot={showSecurityRedDot}
+          />
+          <SettingsRow
+            icon="options-outline"
+            title="更多设置"
+            onPress={onOpenAdvancedSettings}
+          />
+        </View>
+
+        <View style={styles.insetGroup}>
+          {onOpenProviderSettings ? (
+            <SettingsRow
+              icon="hardware-chip-outline"
+              title="全局默认模型"
+              onPress={onOpenProviderSettings}
+              showBorder={Boolean(onOpenPerformanceSettings || onOpenAppearanceSettings)}
+            />
+          ) : null}
+          {onOpenPerformanceSettings ? (
+            <SettingsRow
+              icon="speedometer-outline"
+              title="性能设置"
+              onPress={onOpenPerformanceSettings}
+              showBorder={Boolean(onOpenAppearanceSettings)}
+            />
+          ) : null}
+          {onOpenAppearanceSettings ? (
+            <SettingsRow
+              icon="color-palette-outline"
+              title="外观设置"
+              onPress={onOpenAppearanceSettings}
+            />
+          ) : null}
         </View>
 
         {developerMode && (
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>开发者模式</Text>
-            <View style={styles.card}>
-              <SettingsRow
-                icon="code-slash-outline"
-                title="开发者工具"
-                description="数据库调试、临时缓存清理与重置工具"
-                onPress={onOpenDeveloperMode}
-                showBorder
-              />
-              <SettingsRow
-                icon="bug-outline"
-                title="诊断与日志"
-                description={diagnosticsEnabled ? '诊断记录已开启，包含重要文件活动' : '启用或导出本地运行日志，排查错误'}
-                onPress={onOpenDiagnostics}
-              />
-            </View>
+          <View style={styles.insetGroup}>
+            <SettingsRow
+              icon="code-slash-outline"
+              title="开发者工具"
+              onPress={onOpenDeveloperMode}
+              showBorder
+            />
+            <SettingsRow
+              icon="bug-outline"
+              title="诊断与日志"
+              valueText={diagnosticsEnabled ? '已开启' : undefined}
+              onPress={onOpenDiagnostics}
+            />
           </View>
         )}
       </View>
@@ -94,94 +144,104 @@ export function SettingsScreen({ space, onBack, onOpenDeveloperMode, onOpenDiagn
 function SettingsRow({
   icon,
   title,
-  description,
+  valueText,
   onPress,
   showBorder,
   showRedDot,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  description?: string;
+  valueText?: string;
   onPress: () => void;
   showBorder?: boolean;
   showRedDot?: boolean;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, showBorder && styles.rowBorder, pressed && styles.rowPressed]}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={onPress}
     >
       <View style={styles.rowIcon}>
-        <Ionicons name={icon} size={20} color={colors.text.primary} />
+        <Ionicons name={icon} size={20} color="#1A1C1C" />
         {showRedDot && <View style={styles.redDot} />}
       </View>
-      <View style={styles.rowContent}>
+      <View style={[styles.rowContent, showBorder && styles.rowContentBorder]}>
         <Text style={styles.rowTitle}>{title}</Text>
-        {description && <Text style={styles.rowDescription}>{description}</Text>}
+        <View style={styles.rowRight}>
+          {valueText ? <Text style={styles.rowValue}>{valueText}</Text> : null}
+          <Ionicons name="chevron-forward" size={17} color="#C4C7C7" />
+        </View>
       </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    paddingHorizontal: 0,
+  },
   container: {
-    padding: spacing[6],
-    gap: spacing[6],
+    paddingVertical: 10,
+    backgroundColor: '#F9F9F9',
+    gap: 10,
   },
-  section: {
-    gap: spacing[3],
-  },
-  sectionHeader: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    paddingLeft: spacing[1.5],
-  },
-  card: {
-    backgroundColor: colors.background.surface,
-    borderRadius: radius.lg,
+  insetGroup: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    marginHorizontal: 8,
     overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing[4],
-    minHeight: 56,
+    paddingLeft: spacing[4],
+    minHeight: 50,
+    backgroundColor: '#FFFFFF',
   },
   rowPressed: {
-    backgroundColor: colors.background.soft,
-  },
-  rowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.subtle,
+    backgroundColor: '#F3F3F4',
   },
   rowIcon: {
-    width: 32,
+    width: 28,
     alignItems: 'flex-start',
     position: 'relative',
+    marginRight: spacing[1],
   },
   redDot: {
     position: 'absolute',
     top: -2,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    right: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: colors.semantic.danger,
-    borderWidth: 1,
-    borderColor: colors.background.surface,
   },
   rowContent: {
     flex: 1,
-    paddingRight: spacing[3],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: spacing[4],
+    paddingVertical: 14,
+    minHeight: 50,
+  },
+  rowContentBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
   },
   rowTitle: {
     ...typography.textStyles.body,
-    color: colors.text.primary,
+    fontSize: 15,
+    color: '#1A1C1C',
+    fontWeight: '500',
   },
-  rowDescription: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    marginTop: 2,
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rowValue: {
+    fontSize: 13,
+    color: '#8E8E93',
   },
 });

@@ -39,13 +39,17 @@ test('Pixory system assistant keeps thinking content hidden without changing oth
 test('AI regenerated and rewritten replies reset the thinking timer for the new generation', () => {
   const service = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const metrics = read('src/ai/aiGenerationMetrics.ts');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const resetBlock = /const resetPatch = mode === 'continue'[\s\S]*?: \{([\s\S]*?)\n        \};/.exec(service)?.[1] ?? '';
   const regenerateResetBlock = /await aiThreadRepository\.updateMessage\(db, input\.assistantMessageId, \{([\s\S]*?)\n      \}\);/.exec(service)?.[1] ?? '';
 
   assert.match(service, /const startedAt = new Date\(\)\.toISOString\(\)/);
   assert.match(resetBlock, /status:\s*'generating'/);
-  assert.match(resetBlock, /createdAt:\s*startedAt/);
+  assert.doesNotMatch(resetBlock, /createdAt:\s*startedAt/);
   assert.match(resetBlock, /completedAt:\s*null/);
+  assert.match(metrics, /export function readThinkingStartedAt/);
+  assert.match(bubble, /readThinkingStartedAt\(message\.promptSnapshotJson\)/);
   assert.match(regenerateResetBlock, /status:\s*'generating'/);
   assert.match(regenerateResetBlock, /promptSnapshotJson:\s*buildGenerationGuardSnapshotJson\(generationMetrics\)/);
   assert.match(regenerateResetBlock, /completedAt:\s*null/);
@@ -81,8 +85,8 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   assert.match(bubble, /onSelectVersion/);
   assert.match(bubble, /versionTotal/);
   assert.match(bubble, /AiVersionStepper/);
-  assert.match(read('src\/components\/ai\/AiVersionStepper.tsx'), /chevron-back/);
-  assert.match(read('src\/components\/ai\/AiVersionStepper.tsx'), /chevron-forward/);
+  assert.match(read('src\/components\/ai\/AiVersionStepper.tsx'), /ChevronLeftIcon/);
+  assert.match(read('src\/components\/ai\/AiVersionStepper.tsx'), /ChevronRightIcon/);
 });
 
 test('AI chat exposes direct cancellable Android speech recognition', () => {
@@ -1295,7 +1299,7 @@ test('AI user text supports selection while assistant markdown stays Android lay
   const content = read('src/components/ai/AiMessageContent.tsx');
   const assistantRender = /const trailingTargetIndex[\s\S]*?return \([\s\S]*?\n  \);/m.exec(content)?.[0] ?? '';
 
-  assert.match(bubble, /<Text selectable=\{false\} style=\{\[styles\.content, styles\.userText\]\}/);
+  assert.match(bubble, /<Text[\s\S]*?selectable=\{false\}[\s\S]*?styles\.content[\s\S]*?styles\.userText/);
   assert.match(content, /return <Text selectable=\{false\} style=\{\[styles\.body, styles\.userText\]\}>\{content\}<\/Text>/);
   assert.doesNotMatch(assistantRender, /<Text selectable/);
   assert.match(content, /type: 'hr'/);
@@ -1328,11 +1332,18 @@ test('AI markdown tables render in bounded views without horizontal scroll on An
 
 test('AI thinking toggles preserve the header without global layout animations or live timers', () => {
   const thinking = read('src/components/ai/AiThinkingBlock.tsx');
+  const chatScreen = read('src/screens/AiChatScreen.tsx');
 
   assert.doesNotMatch(thinking, /LayoutAnimation|Animated\.timing|setInterval/);
   assert.match(thinking, /measureInWindow/);
   assert.match(thinking, /anchor\.y - y/);
   assert.match(thinking, /revision !== toggleRevisionRef\.current/);
+
+  // Guard against phantom headroom and rogue scroll jumps
+  assert.doesNotMatch(chatScreen, /hasExpandedThinking/);
+  assert.doesNotMatch(chatScreen, /pendingThinkingAnchorOffsetRef/);
+  assert.match(chatScreen, /const maxScrollOffset = Math\.max\(0, messageContentHeightRef\.current - messageViewportHeightRef\.current\);/);
+  assert.match(chatScreen, /if \(maxScrollOffset <= 0\) \{\s*return;\s*\}/);
 });
 
 test('AI thinking block keeps a five-line auto-scrolling preview and fully expands in the page', () => {
@@ -1343,7 +1354,7 @@ test('AI thinking block keeps a five-line auto-scrolling preview and fully expan
   assert.match(thinking, /const hasReasoningText = Boolean\(reasoningText\?\.trim\(\)\)/);
   assert.match(thinking, /const waitingForReasoningText = thinking && expanded && !hasReasoningText/);
   assert.match(thinking, /const bodyVisible = expanded && \(hasReasoningText \|\| thinking\)/);
-  assert.match(thinking, /THINKING_PREVIEW_LINES = 5/);
+  assert.match(thinking, /THINKING_PREVIEW_LINES = 7/);
   assert.match(thinking, /THINKING_PREVIEW_MAX_HEIGHT/);
   assert.match(thinking, /maxHeight:\s*THINKING_PREVIEW_MAX_HEIGHT/);
   assert.match(thinking, /flexShrink: 0/);
@@ -1362,13 +1373,13 @@ test('AI thinking block keeps a five-line auto-scrolling preview and fully expan
   assert.doesNotMatch(thinking, /maxHeight:\s*expandedProgress\.interpolate/);
 });
 
-test('AI thinking content has no panel chrome and only expanded text has a guide line', () => {
+test('AI thinking content has no panel chrome and has a guide line', () => {
   const thinking = read('src/components/ai/AiThinkingBlock.tsx');
   const wrap = /wrap:\s*\{[\s\S]*?\n  \}/.exec(thinking)?.[0] ?? '';
   const body = /bodyContent:\s*\{[\s\S]*?\n  \}/.exec(thinking)?.[0] ?? '';
   assert.doesNotMatch(wrap, /backgroundColor|borderTop|borderBottom/);
   assert.doesNotMatch(body, /border|backgroundColor/);
-  assert.match(thinking, /expanded && bodyRenderable \? <View pointerEvents="none" style=\{styles\.expandedGuide\}/);
+  assert.match(thinking, /bodyRenderable \? <View pointerEvents="none" style=\{styles\.verticalGuide\}/);
   assert.match(thinking, /previewOverflowing \? \(/);
   assert.match(thinking, /LinearGradient/);
   assert.match(thinking, /bodySpacing:\s*\{\s*marginBottom:\s*spacing\[3\]/);

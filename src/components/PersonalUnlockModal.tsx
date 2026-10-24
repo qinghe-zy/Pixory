@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View, ToastAndroid, Platform } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View, ToastAndroid, Platform, ActivityIndicator } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -9,7 +9,14 @@ import { AppDialog } from './AppDialog';
 import { PasswordInput } from './PasswordInput';
 import { PrimaryButton } from './PrimaryButton';
 import { SecurityUnlockModule } from './SecurityUnlockModule';
-import { getPersonalCredentialConfig, PersonalCredentialConfig, setPersonalFingerprintEnabled, verifyPersonalPassword } from '../services/personalSystemService';
+import {
+  getPersonalCredentialConfig,
+  PersonalCredentialConfig,
+  resetPasswordWithRecoveryKey,
+  setPersonalFingerprintEnabled,
+  verifyPersonalPassword,
+  verifyRecoveryKey,
+} from '../services/personalSystemService';
 
 const unlockPatternImage = require('../../docs/black.png');
 
@@ -69,6 +76,16 @@ export function PersonalUnlockModal({
   const [changePasswordMethod, setChangePasswordMethod] = useState<'password' | 'pattern'>('password');
   const [changePasswordFirstPattern, setChangePasswordFirstPattern] = useState('');
 
+  // Recovery flow states
+  type RecoveryStep = 'enter_key' | 'enter_new_pattern' | 'confirm_new_pattern';
+  const [recoveryModalVisible, setRecoveryModalVisible] = useState(false);
+  const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
+  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>('enter_key');
+  const [recoveryFirstPattern, setRecoveryFirstPattern] = useState('');
+  const [recoveryErrorMessage, setRecoveryErrorMessage] = useState<string | null>(null);
+  const [recoveryPatternError, setRecoveryPatternError] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+
   useEffect(() => {
     LocalAuthentication.hasHardwareAsync().then(setBiometricSupported);
     SecureStore.getItemAsync('pixory.personal.fingerprintPromptSeen').then(val => {
@@ -86,6 +103,12 @@ export function PersonalUnlockModal({
       setChangePasswordErrorMessage(null);
       setChangePasswordVisible(false);
       setResetConfirmVisible(false);
+      setRecoveryModalVisible(false);
+      setRecoveryKeyInput('');
+      setRecoveryStep('enter_key');
+      setRecoveryFirstPattern('');
+      setRecoveryErrorMessage(null);
+      setRecoveryPatternError(false);
       setShowPassword(false);
       setUnlockMethod('pattern');
       setPatternError(false);
@@ -226,9 +249,32 @@ export function PersonalUnlockModal({
     setChangePasswordFirstPattern('');
     setChangePasswordErrorMessage(null);
     setPatternError(false);
-    setChangePasswordOldMethod(config?.defaultMethod || 'pattern');
+    const preferredOld = (config?.hasPattern && !config?.hasPassword)
+      ? 'pattern'
+      : (config?.defaultMethod || 'pattern');
+    setChangePasswordOldMethod(preferredOld);
     setChangePasswordStep('verify_old');
     setChangePasswordVisible(true);
+  }
+
+  function openRecoveryModal() {
+    setRecoveryKeyInput('');
+    setRecoveryStep('enter_key');
+    setRecoveryFirstPattern('');
+    setRecoveryErrorMessage(null);
+    setRecoveryPatternError(false);
+    setRecoveryLoading(false);
+    setRecoveryModalVisible(true);
+  }
+
+  function closeRecoveryModal() {
+    setRecoveryModalVisible(false);
+    setRecoveryKeyInput('');
+    setRecoveryStep('enter_key');
+    setRecoveryFirstPattern('');
+    setRecoveryErrorMessage(null);
+    setRecoveryPatternError(false);
+    setRecoveryLoading(false);
   }
 
   return (
@@ -287,13 +333,21 @@ export function PersonalUnlockModal({
             ) : (
               <>
                 <SecurityUnlockModule 
+                  key={firstPattern ? 'setup-confirm' : 'setup-first'}
                   onUnlockAttempt={handlePatternUnlock}
                   onBiometricSuccess={handleBiometricUnlock}
+                  onUnlockErrorHint={(hint) => setErrorMessage(hint)}
                   isError={patternError}
                   size={260}
                   disableBiometric={true}
                 />
-                {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+                {errorMessage ? (
+                  <Text style={styles.errorText}>{errorMessage}</Text>
+                ) : (
+                  <Text style={{ marginTop: spacing[2], ...typography.textStyles.caption, color: colors.text.secondary, textAlign: 'center' }}>
+                    {firstPattern ? '请再次绘制以确认' : '请连接至少 4 个点'}
+                  </Text>
+                )}
               </>
             )
           ) : (
@@ -317,30 +371,31 @@ export function PersonalUnlockModal({
                       void submitPrimary();
                     }}
                   />
+                  {hasCredential && config?.fingerprintEnabled ? (
+                    <View style={{ alignItems: 'center', marginTop: spacing[2] }}>
+                      <Pressable onPress={triggerBiometric} style={({pressed}) => [{ alignItems: 'center', gap: spacing[1], padding: spacing[2] }, pressed && { opacity: 0.7 }]}>
+                        <Ionicons name="finger-print" size={42} color={colors.primary.default} />
+                        <Text style={{ ...typography.textStyles.caption, color: colors.text.secondary }}>使用指纹/面容解锁</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </>
               ) : (
                 <>
                   <SecurityUnlockModule 
+                    key="unlock-pattern"
                     onUnlockAttempt={handlePatternUnlock}
                     onBiometricSuccess={handleBiometricUnlock}
+                    onUnlockErrorHint={(hint) => setErrorMessage(hint)}
                     isError={patternError}
                     size={260}
-                    disableBiometric={true}
+                    disableBiometric={!config?.fingerprintEnabled}
                   />
                   {errorMessage && !patternError ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
                 </>
               )}
 
-              {hasCredential && config?.fingerprintEnabled ? (
-            <View style={{ alignItems: 'center', marginTop: spacing[2] }}>
-              <Pressable onPress={triggerBiometric} style={({pressed}) => [{ alignItems: 'center', gap: spacing[1], padding: spacing[2] }, pressed && { opacity: 0.7 }]}>
-                <Ionicons name="finger-print" size={48} color={colors.primary.default} />
-                <Text style={{ ...typography.textStyles.caption, color: colors.text.secondary }}>使用指纹/面容解锁</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {biometricSupported && !config?.fingerprintEnabled ? (
+              {biometricSupported && !config?.fingerprintEnabled ? (
                 <Pressable
                   onPress={async () => {
                     if (!promptSeen) {
@@ -365,14 +420,16 @@ export function PersonalUnlockModal({
                 </Pressable>
               ) : null}
 
-              <Pressable 
-                onPress={() => setUnlockMethod(m => m === 'pattern' ? 'password' : 'pattern')}
-                style={styles.toggleMethodButton}
-              >
-                <Text style={styles.toggleMethodText}>
-                  {unlockMethod === 'pattern' ? '切换为数字/字母密码' : '切换为图案解锁'}
-                </Text>
-              </Pressable>
+              {config?.hasPassword && config?.hasPattern ? (
+                <Pressable
+                  onPress={() => setUnlockMethod(m => m === 'pattern' ? 'password' : 'pattern')}
+                  style={styles.toggleMethodButton}
+                >
+                  <Text style={styles.toggleMethodText}>
+                    {unlockMethod === 'pattern' ? '切换为数字/字母密码' : '切换为图案解锁'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </>
           )}
 
@@ -397,9 +454,7 @@ export function PersonalUnlockModal({
                 accessibilityRole="button"
                 disabled={loading}
                 hitSlop={8}
-                onPress={() => {
-                  setResetConfirmVisible(true);
-                }}
+                onPress={openRecoveryModal}
                 style={({ pressed }) => [styles.textActionButton, pressed && styles.pressed]}
               >
                 <Text style={styles.forgotPasswordText}>忘记密码</Text>
@@ -434,7 +489,7 @@ export function PersonalUnlockModal({
 
           {changePasswordStep === 'verify_old' && (
             <>
-              {changePasswordOldMethod === 'password' ? (
+              {changePasswordOldMethod === 'password' && config?.hasPassword ? (
                 <>
                   <PasswordInput
                     onChangeText={setCurrentSecret}
@@ -461,7 +516,7 @@ export function PersonalUnlockModal({
                       }).catch(() => setChangePasswordErrorMessage('验证失败'));
                     }}
                   />
-                  {config?.hasPattern || config?.defaultMethod === 'pattern' ? (
+                  {config?.hasPattern ? (
                     <Pressable onPress={() => setChangePasswordOldMethod('pattern')} style={{ marginTop: spacing[2], alignItems: 'center' }}>
                       <Text style={styles.toggleMethodText}>切换为图案验证</Text>
                     </Pressable>
@@ -470,11 +525,17 @@ export function PersonalUnlockModal({
               ) : (
                 <View style={{ alignItems: 'center' }}>
                   <SecurityUnlockModule 
+                    key="change-verify-old-pattern"
                     onUnlockAttempt={(str) => {
                       verifyPersonalPassword(str).then(result => {
                         if (result.ok) {
                           setCurrentSecret(str);
-                          setChangePasswordStep('choose_new');
+                          if (!config?.hasPassword) {
+                            setChangePasswordMethod('pattern');
+                            setChangePasswordStep('enter_new_pattern');
+                          } else {
+                            setChangePasswordStep('choose_new');
+                          }
                           setChangePasswordErrorMessage(null);
                           setPatternError(false);
                         } else {
@@ -485,7 +546,12 @@ export function PersonalUnlockModal({
                     }}
                     onBiometricSuccess={() => {
                        setCurrentSecret('__BIOMETRIC_PASSTHROUGH__');
-                       setChangePasswordStep('choose_new');
+                       if (!config?.hasPassword) {
+                         setChangePasswordMethod('pattern');
+                         setChangePasswordStep('enter_new_pattern');
+                       } else {
+                         setChangePasswordStep('choose_new');
+                       }
                        setChangePasswordErrorMessage(null);
                        setPatternError(false);
                     }} 
@@ -494,9 +560,11 @@ export function PersonalUnlockModal({
                     size={260} 
                   />
                   {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
-                  <Pressable onPress={() => setChangePasswordOldMethod('password')} style={{ marginTop: spacing[3], alignItems: 'center' }}>
-                    <Text style={styles.toggleMethodText}>切换为数字验证</Text>
-                  </Pressable>
+                  {config?.hasPassword ? (
+                    <Pressable onPress={() => setChangePasswordOldMethod('password')} style={{ marginTop: spacing[3], alignItems: 'center' }}>
+                      <Text style={styles.toggleMethodText}>切换为数字验证</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               )}
             </>
@@ -532,12 +600,14 @@ export function PersonalUnlockModal({
           {changePasswordStep === 'enter_new_pattern' && (
             <View style={{ alignItems: 'center' }}>
               <SecurityUnlockModule 
+                key="change-enter-new-pattern"
                 onUnlockAttempt={(str) => {
                   setChangePasswordFirstPattern(str);
                   setChangePasswordStep('confirm_new_pattern');
                   setChangePasswordErrorMessage(null);
                   setPatternError(false);
                 }} 
+                onUnlockErrorHint={(hint) => setChangePasswordErrorMessage(hint)}
                 onBiometricSuccess={() => {}} 
                 disableBiometric 
                 size={260} 
@@ -549,12 +619,16 @@ export function PersonalUnlockModal({
           {changePasswordStep === 'confirm_new_pattern' && (
             <View style={{ alignItems: 'center' }}>
               <SecurityUnlockModule 
+                key="change-confirm-new-pattern"
                 onUnlockAttempt={(str) => {
                   if (str === changePasswordFirstPattern) {
                     setNextSecret(str);
                     setChangePasswordErrorMessage(null);
                     onChangePassword(currentSecret, str, 'pattern')
-                      .then(() => closeChangePasswordDialog())
+                      .then(() => {
+                        closeChangePasswordDialog();
+                        getPersonalCredentialConfig().then(setConfig);
+                      })
                       .catch((err) => {
                         setChangePasswordErrorMessage(err instanceof Error ? err.message : '修改密码失败');
                         setPatternError(true);
@@ -566,6 +640,7 @@ export function PersonalUnlockModal({
                     setChangePasswordStep('enter_new_pattern');
                   }
                 }} 
+                onUnlockErrorHint={(hint) => setChangePasswordErrorMessage(hint)}
                 onBiometricSuccess={() => {}} 
                 disableBiometric 
                 isError={patternError}
@@ -573,6 +648,143 @@ export function PersonalUnlockModal({
               />
               {changePasswordErrorMessage ? (
                 <Text style={styles.errorText}>{changePasswordErrorMessage}</Text>
+              ) : (
+                <Text style={{ marginTop: spacing[2], ...typography.textStyles.caption, color: colors.text.secondary }}>请再次绘制图案以确认</Text>
+              )}
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+    <Modal animationType="fade" onRequestClose={closeRecoveryModal} transparent visible={recoveryModalVisible}>
+      <View style={styles.backdrop}>
+        <View style={styles.panel}>
+          <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
+          <View style={styles.header}>
+            <View style={styles.iconWrap}>
+              <Ionicons color={colors.primary.active} name="key-outline" size={22} />
+            </View>
+            <View style={styles.titleCopy}>
+              <Text style={styles.title}>
+                {recoveryStep === 'enter_key' ? '找回隐私密码' :
+                 recoveryStep === 'enter_new_pattern' ? '设置新图案密码' : '请再次绘制确认'}
+              </Text>
+              <Text style={styles.description}>
+                {recoveryStep === 'enter_key' ? '请输入 6 位恢复密钥以重置图案密码。' : '请绘制新的隐私空间图案密码。'}
+              </Text>
+            </View>
+            <Pressable hitSlop={10} onPress={closeRecoveryModal} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+              <Ionicons color={colors.text.secondary} name="close" size={18} />
+            </Pressable>
+          </View>
+
+          {recoveryStep === 'enter_key' && (
+            <View style={{ gap: spacing[3] }}>
+              <TextInput
+                autoCapitalize="characters"
+                maxLength={7}
+                onChangeText={(text) => {
+                  setRecoveryKeyInput(text.toUpperCase());
+                  setRecoveryErrorMessage(null);
+                }}
+                placeholder="6 位恢复密钥（如 AB2-C3D）"
+                placeholderTextColor={colors.text.placeholder}
+                style={[styles.input, { letterSpacing: 2, textAlign: 'center', fontSize: 18, fontWeight: '600' }]}
+                value={recoveryKeyInput}
+              />
+              {recoveryErrorMessage ? <Text style={styles.errorText}>{recoveryErrorMessage}</Text> : null}
+              <PrimaryButton
+                disabled={recoveryLoading || !recoveryKeyInput.trim()}
+                label="验证恢复密钥"
+                loading={recoveryLoading}
+                onPress={async () => {
+                  setRecoveryLoading(true);
+                  setRecoveryErrorMessage(null);
+                  try {
+                    const ok = await verifyRecoveryKey(recoveryKeyInput);
+                    if (ok) {
+                      setRecoveryStep('enter_new_pattern');
+                    } else {
+                      setRecoveryErrorMessage('恢复密钥不正确，请重新输入');
+                    }
+                  } catch (e) {
+                    setRecoveryErrorMessage(e instanceof Error ? e.message : '验证失败');
+                  } finally {
+                    setRecoveryLoading(false);
+                  }
+                }}
+              />
+              <Pressable
+                onPress={() => {
+                  closeRecoveryModal();
+                  setResetConfirmVisible(true);
+                }}
+                style={{ alignItems: 'center', marginTop: spacing[1] }}
+              >
+                <Text style={{ ...typography.textStyles.caption, color: colors.semantic.danger }}>
+                  遗失了恢复密钥？清空并重置隐私数据
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {recoveryStep === 'enter_new_pattern' && (
+            <View style={{ alignItems: 'center' }}>
+              <SecurityUnlockModule
+                key="rec-enter-new-pattern"
+                onUnlockAttempt={(str) => {
+                  setRecoveryFirstPattern(str);
+                  setRecoveryStep('confirm_new_pattern');
+                  setRecoveryErrorMessage(null);
+                  setRecoveryPatternError(false);
+                }}
+                onUnlockErrorHint={(hint) => setRecoveryErrorMessage(hint)}
+                onBiometricSuccess={() => {}}
+                disableBiometric
+                size={260}
+              />
+              <Text style={{ marginTop: spacing[2], ...typography.textStyles.caption, color: colors.text.secondary }}>请绘制新图案</Text>
+            </View>
+          )}
+
+          {recoveryStep === 'confirm_new_pattern' && (
+            <View style={{ alignItems: 'center' }}>
+              <SecurityUnlockModule
+                key="rec-confirm-new-pattern"
+                isError={recoveryPatternError}
+                onUnlockAttempt={async (str) => {
+                  if (str === recoveryFirstPattern) {
+                    setRecoveryLoading(true);
+                    setRecoveryErrorMessage(null);
+                    try {
+                      await resetPasswordWithRecoveryKey(recoveryKeyInput, str, 'pattern');
+                      closeRecoveryModal();
+                      const cfg = await getPersonalCredentialConfig();
+                      setConfig(cfg);
+                      if (Platform.OS === 'android') {
+                        ToastAndroid.show('图案密码已重置', ToastAndroid.SHORT);
+                      }
+                      await onUnlock(str);
+                    } catch (err) {
+                      setRecoveryErrorMessage(err instanceof Error ? err.message : '重置失败');
+                      setRecoveryPatternError(true);
+                    } finally {
+                      setRecoveryLoading(false);
+                    }
+                  } else {
+                    setRecoveryErrorMessage('两次绘制的图案不一致，请重试');
+                    setRecoveryPatternError(true);
+                    setRecoveryFirstPattern('');
+                    setRecoveryStep('enter_new_pattern');
+                  }
+                }}
+                onUnlockErrorHint={(hint) => setRecoveryErrorMessage(hint)}
+                onBiometricSuccess={() => {}}
+                disableBiometric
+                size={260}
+              />
+              {recoveryErrorMessage ? (
+                <Text style={styles.errorText}>{recoveryErrorMessage}</Text>
               ) : (
                 <Text style={{ marginTop: spacing[2], ...typography.textStyles.caption, color: colors.text.secondary }}>请再次绘制图案以确认</Text>
               )}

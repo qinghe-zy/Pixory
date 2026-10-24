@@ -38,6 +38,22 @@ export const VIDEO_MEDIA_PICKER_SOURCE_KEY = 'videoMediaPickerSource';
 export const MOVE_IMPORT_WARNING_DISMISSED_KEY = 'moveImportWarningDismissed';
 export const VIDEO_PREVIEW_MODE_KEY = 'videoPreviewMode';
 export const AI_CHAT_GUIDE_SEEN_KEY = 'aiChatGuideSeen';
+export const AI_CHAT_GUIDE_SEEN_EPOCH = 'push_scale_always_on_20261023';
+export const AI_HISTORY_LONG_MESSAGE_FOLDING_ENABLED_KEY = 'aiHistoryLongMessageFoldingEnabled';
+export const AI_STREAMING_PACING_MODE_KEY = 'aiStreamingPacingMode';
+export const AI_SIDEBAR_STYLE_MODE_KEY = 'aiSidebarStyleMode';
+export const AI_SIDEBAR_SPATIAL_PRESET_KEY = 'aiSidebarSpatialPreset';
+export const PROFILE_PAGE_STYLE_MODE_KEY = 'profilePageStyleMode';
+export const PROFILE_AVATAR_RADIUS_KEY = 'profileAvatarRadius';
+export const PROFILE_AVATAR_FRAME_ENABLED_KEY = 'profileAvatarFrameEnabled';
+export const CHAT_AVATAR_RADIUS_KEY = 'chatAvatarRadius';
+export const CHAT_BUBBLE_RADIUS_KEY = 'chatBubbleRadius';
+export const CHAT_USER_BUBBLE_COLOR_KEY = 'chatUserBubbleColor';
+export const CHAT_ASSISTANT_BUBBLE_COLOR_KEY = 'chatAssistantBubbleColor';
+export const CHAT_FONT_SIZE_GEAR_KEY = 'chatFontSizeGear';
+export const CHAT_LETTER_SPACING_GEAR_KEY = 'chatLetterSpacingGear';
+export const CHAT_LINE_HEIGHT_GEAR_KEY = 'chatLineHeightGear';
+export const CHAT_PARAGRAPH_SPACING_GEAR_KEY = 'chatParagraphSpacingGear';
 
 export type AssetListViewMode = 'grid' | 'detail' | 'justified';
 export type ImageImportSourceMode = 'copy' | 'move';
@@ -45,6 +61,35 @@ export type MediaPickerSource = 'album' | 'files';
 export type VideoImportNamingMode = 'generated' | 'preserveOriginal';
 export type VideoPreviewMode = 'list' | 'grid';
 export type MemoryMaintenanceMode = 'auto' | 'follow_chat' | 'deepseek_flash' | 'custom';
+export type AiStreamingPacingMode = 'continuous' | 'typewriter';
+export type AiSidebarStyleMode = 'classic' | 'push_scale';
+export type AiSidebarSpatialPreset = 'level_1' | 'level_2' | 'level_3' | 'level_4' | 'level_5';
+export type ProfilePageStyleMode = 'minimalist' | 'classic';
+export type TypographyGear = 'gear_1' | 'gear_2' | 'gear_3' | 'gear_4' | 'gear_5';
+
+const VALID_TYPOGRAPHY_GEARS: TypographyGear[] = [
+  'gear_1',
+  'gear_2',
+  'gear_3',
+  'gear_4',
+  'gear_5',
+];
+
+function isTypographyGear(value: string | null | undefined): value is TypographyGear {
+  return Boolean(value && VALID_TYPOGRAPHY_GEARS.includes(value as TypographyGear));
+}
+
+const VALID_SIDEBAR_SPATIAL_PRESETS: AiSidebarSpatialPreset[] = [
+  'level_1',
+  'level_2',
+  'level_3',
+  'level_4',
+  'level_5',
+];
+
+function isAiSidebarSpatialPreset(value: string | null | undefined): value is AiSidebarSpatialPreset {
+  return Boolean(value && VALID_SIDEBAR_SPATIAL_PRESETS.includes(value as AiSidebarSpatialPreset));
+}
 
 export interface MemoryMaintenanceSettingsRecord {
   memoryMaintenanceMode: MemoryMaintenanceMode;
@@ -432,11 +477,11 @@ export const settingsRepository = {
 
   async getAiChatGuideSeen(db: SQLiteDatabase): Promise<boolean> {
     const value = await this.getValue(db, AI_CHAT_GUIDE_SEEN_KEY);
-    return value === 'true';
+    return value === AI_CHAT_GUIDE_SEEN_EPOCH;
   },
 
   async setAiChatGuideSeen(db: SQLiteDatabase, seen: boolean): Promise<void> {
-    await this.setValue(db, AI_CHAT_GUIDE_SEEN_KEY, seen ? 'true' : 'false');
+    await this.setValue(db, AI_CHAT_GUIDE_SEEN_KEY, seen ? AI_CHAT_GUIDE_SEEN_EPOCH : 'false');
   },
 
   async getSystemAssistantEnabled(db: SQLiteDatabase): Promise<boolean> {
@@ -446,6 +491,151 @@ export const settingsRepository = {
 
   async setSystemAssistantEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
     await this.setValue(db, SYSTEM_ASSISTANT_ENABLED_KEY, enabled ? 'true' : 'false');
+  },
+
+  async getAiHistoryLongMessageFoldingEnabled(db: SQLiteDatabase): Promise<boolean> {
+    const value = await this.getValue(db, AI_HISTORY_LONG_MESSAGE_FOLDING_ENABLED_KEY);
+    return value !== 'false';
+  },
+
+  async setAiHistoryLongMessageFoldingEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
+    await this.setValue(db, AI_HISTORY_LONG_MESSAGE_FOLDING_ENABLED_KEY, enabled ? 'true' : 'false');
+  },
+
+  async getAiStreamingPacingMode(db: SQLiteDatabase): Promise<AiStreamingPacingMode> {
+    const value = await this.getValue(db, AI_STREAMING_PACING_MODE_KEY);
+    return value === 'typewriter' ? 'typewriter' : 'continuous';
+  },
+
+  async setAiStreamingPacingMode(db: SQLiteDatabase, mode: AiStreamingPacingMode): Promise<void> {
+    await this.setValue(db, AI_STREAMING_PACING_MODE_KEY, mode);
+  },
+
+  async getAiSidebarStyleMode(db: SQLiteDatabase): Promise<AiSidebarStyleMode> {
+    const value = await this.getValue(db, AI_SIDEBAR_STYLE_MODE_KEY);
+    return value === 'classic' ? 'classic' : 'push_scale';
+  },
+
+  async setAiSidebarStyleMode(db: SQLiteDatabase, mode: AiSidebarStyleMode): Promise<void> {
+    await this.setValue(db, AI_SIDEBAR_STYLE_MODE_KEY, mode === 'classic' ? 'classic' : 'push_scale');
+  },
+
+  async getAiSidebarSpatialPreset(db: SQLiteDatabase): Promise<AiSidebarSpatialPreset> {
+    const value = await this.getValue(db, AI_SIDEBAR_SPATIAL_PRESET_KEY);
+    return isAiSidebarSpatialPreset(value) ? value : 'level_2';
+  },
+
+  async setAiSidebarSpatialPreset(db: SQLiteDatabase, preset: AiSidebarSpatialPreset): Promise<void> {
+    await this.setValue(
+      db,
+      AI_SIDEBAR_SPATIAL_PRESET_KEY,
+      isAiSidebarSpatialPreset(preset) ? preset : 'level_2'
+    );
+  },
+
+  async getProfilePageStyleMode(db: SQLiteDatabase): Promise<ProfilePageStyleMode> {
+    const value = await this.getValue(db, PROFILE_PAGE_STYLE_MODE_KEY);
+    return value === 'classic' ? 'classic' : 'minimalist';
+  },
+
+  async setProfilePageStyleMode(db: SQLiteDatabase, mode: ProfilePageStyleMode): Promise<void> {
+    await this.setValue(db, PROFILE_PAGE_STYLE_MODE_KEY, mode === 'classic' ? 'classic' : 'minimalist');
+  },
+
+  async getProfileAvatarRadius(db: SQLiteDatabase): Promise<number> {
+    const value = await this.getValue(db, PROFILE_AVATAR_RADIUS_KEY);
+    if (!value) return 34;
+    const num = Number.parseFloat(value);
+    return Number.isFinite(num) ? Math.min(34, Math.max(0, num)) : 34;
+  },
+
+  async setProfileAvatarRadius(db: SQLiteDatabase, radius: number): Promise<void> {
+    await this.setValue(db, PROFILE_AVATAR_RADIUS_KEY, String(Math.min(34, Math.max(0, radius))));
+  },
+
+  async getProfileAvatarFrameEnabled(db: SQLiteDatabase): Promise<boolean> {
+    const value = await this.getValue(db, PROFILE_AVATAR_FRAME_ENABLED_KEY);
+    return value === '1' || value === 'true';
+  },
+
+  async setProfileAvatarFrameEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
+    await this.setValue(db, PROFILE_AVATAR_FRAME_ENABLED_KEY, enabled ? '1' : '0');
+  },
+
+  async getChatAvatarRadius(db: SQLiteDatabase): Promise<number> {
+    const value = await this.getValue(db, CHAT_AVATAR_RADIUS_KEY);
+    if (!value) return 6;
+    const num = Number.parseFloat(value);
+    return Number.isFinite(num) ? Math.min(20, Math.max(0, num)) : 6;
+  },
+
+  async setChatAvatarRadius(db: SQLiteDatabase, radius: number): Promise<void> {
+    await this.setValue(db, CHAT_AVATAR_RADIUS_KEY, String(Math.min(20, Math.max(0, radius))));
+  },
+
+  async getChatBubbleRadius(db: SQLiteDatabase): Promise<number> {
+    const value = await this.getValue(db, CHAT_BUBBLE_RADIUS_KEY);
+    if (!value) return 16;
+    const num = Number.parseFloat(value);
+    return Number.isFinite(num) ? Math.min(28, Math.max(4, num)) : 16;
+  },
+
+  async setChatBubbleRadius(db: SQLiteDatabase, radius: number): Promise<void> {
+    await this.setValue(db, CHAT_BUBBLE_RADIUS_KEY, String(Math.min(28, Math.max(4, radius))));
+  },
+
+  async getChatUserBubbleColor(db: SQLiteDatabase): Promise<string> {
+    const value = await this.getValue(db, CHAT_USER_BUBBLE_COLOR_KEY);
+    return value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : '#95EC69';
+  },
+
+  async setChatUserBubbleColor(db: SQLiteDatabase, color: string): Promise<void> {
+    await this.setValue(db, CHAT_USER_BUBBLE_COLOR_KEY, color);
+  },
+
+  async getChatAssistantBubbleColor(db: SQLiteDatabase): Promise<string> {
+    const value = await this.getValue(db, CHAT_ASSISTANT_BUBBLE_COLOR_KEY);
+    return value || 'transparent';
+  },
+
+  async setChatAssistantBubbleColor(db: SQLiteDatabase, color: string): Promise<void> {
+    await this.setValue(db, CHAT_ASSISTANT_BUBBLE_COLOR_KEY, color);
+  },
+
+  async getChatFontSizeGear(db: SQLiteDatabase): Promise<TypographyGear> {
+    const value = await this.getValue(db, CHAT_FONT_SIZE_GEAR_KEY);
+    return isTypographyGear(value) ? value : 'gear_2';
+  },
+
+  async setChatFontSizeGear(db: SQLiteDatabase, gear: TypographyGear): Promise<void> {
+    await this.setValue(db, CHAT_FONT_SIZE_GEAR_KEY, isTypographyGear(gear) ? gear : 'gear_2');
+  },
+
+  async getChatLetterSpacingGear(db: SQLiteDatabase): Promise<TypographyGear> {
+    const value = await this.getValue(db, CHAT_LETTER_SPACING_GEAR_KEY);
+    return isTypographyGear(value) ? value : 'gear_2';
+  },
+
+  async setChatLetterSpacingGear(db: SQLiteDatabase, gear: TypographyGear): Promise<void> {
+    await this.setValue(db, CHAT_LETTER_SPACING_GEAR_KEY, isTypographyGear(gear) ? gear : 'gear_2');
+  },
+
+  async getChatLineHeightGear(db: SQLiteDatabase): Promise<TypographyGear> {
+    const value = await this.getValue(db, CHAT_LINE_HEIGHT_GEAR_KEY);
+    return isTypographyGear(value) ? value : 'gear_2';
+  },
+
+  async setChatLineHeightGear(db: SQLiteDatabase, gear: TypographyGear): Promise<void> {
+    await this.setValue(db, CHAT_LINE_HEIGHT_GEAR_KEY, isTypographyGear(gear) ? gear : 'gear_2');
+  },
+
+  async getChatParagraphSpacingGear(db: SQLiteDatabase): Promise<TypographyGear> {
+    const value = await this.getValue(db, CHAT_PARAGRAPH_SPACING_GEAR_KEY);
+    return isTypographyGear(value) ? value : 'gear_2';
+  },
+
+  async setChatParagraphSpacingGear(db: SQLiteDatabase, gear: TypographyGear): Promise<void> {
+    await this.setValue(db, CHAT_PARAGRAPH_SPACING_GEAR_KEY, isTypographyGear(gear) ? gear : 'gear_2');
   },
 };
 

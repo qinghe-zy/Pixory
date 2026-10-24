@@ -38,7 +38,7 @@ test('normal prompt preserves role card prompt text without importing greeting f
   assert.match(prompt.system, /Mira keeps careful notes/);
   assert.match(prompt.system, /Remember facts/);
   assert.match(prompt.system, /沉浸式对话框架/);
-  assert.equal(prompt.cacheMetadata.promptLayerVersions.role, 3);
+  assert.equal(prompt.cacheMetadata.promptLayerVersions.role, 4);
   assert.doesNotMatch(prompt.system, /下一条回复要求/);
   assert.doesNotMatch(prompt.user, /Mira keeps careful notes/);
   assert.match(prompt.user, /下一条回复要求/);

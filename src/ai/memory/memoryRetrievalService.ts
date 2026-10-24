@@ -35,6 +35,7 @@ export interface RetrievalScoreInput {
   stalePenalty: number;
   conflictPenalty: number;
   redundancyPenalty: number;
+  wastePenalty?: number;
 }
 
 export interface RetrievalScoreResult {
@@ -59,7 +60,8 @@ export function scoreMemoryClaim(
     + 0.10 * calibratedConfidence
     - 0.40 * input.stalePenalty
     - 0.50 * input.conflictPenalty
-    - 0.25 * input.redundancyPenalty;
+    - 0.50 * input.redundancyPenalty
+    - (input.wastePenalty ?? 0);
   return {
     embeddingAvailable: options.embeddingAvailable,
     value: Math.max(0, Math.min(1, value)),
@@ -70,10 +72,11 @@ export function shouldAdmitMemoryCandidate(
   input: Pick<RetrievalScoreInput, 'lexical' | 'semantic'>,
   options: { embeddingAvailable: boolean }
 ): boolean {
-  if (input.lexical > 0) {
-    return true;
+  if (options.embeddingAvailable) {
+    const baseRelevance = 0.30 * input.lexical + 0.20 * input.semantic;
+    return baseRelevance >= 0.12 || input.semantic >= 0.45;
   }
-  return options.embeddingAvailable && input.semantic >= 0.45;
+  return input.lexical >= 0.20;
 }
 
 function queryTerms(query: string): string[] {
@@ -268,6 +271,7 @@ export async function retrieveMemoryClaimsWithDiagnostics(
     limit?: number;
     embeddingAvailable?: boolean;
     excludedClaimIds?: string[];
+    historyMessageIds?: string[];
     includeStale?: boolean;
   }
 ): Promise<MemoryRetrievalDiagnostics> {
@@ -309,7 +313,8 @@ export async function retrieveMemoryClaimsWithDiagnostics(
   const embeddingAvailable = input.embeddingAvailable ?? false;
   const grouped = new Set<string>();
   const excluded = new Set(input.excludedClaimIds ?? []);
-  const ranked = rows
+  const historyMessageIdsSet = new Set(input.historyMessageIds ?? []);
+  const candidates = rows
     .map(mapClaimRow)
     .filter((claim) => scopeAllowed(claim, input.thread, input.branchScopes) && !excluded.has(claim.id))
     .map((claim) => ({
@@ -317,8 +322,38 @@ export async function retrieveMemoryClaimsWithDiagnostics(
       lexical: lexicalScore(claim, terms),
       semantic: 0,
     }))
-    .filter((item) => shouldAdmitMemoryCandidate(item, { embeddingAvailable }))
+    .filter((item) => shouldAdmitMemoryCandidate(item, { embeddingAvailable }));
+
+  const admittedClaimIds = candidates.map((item) => item.claim.id);
+  const feedbackMap = new Map<string, { injectedCount: number; usedCount: number }>();
+  if (admittedClaimIds.length > 0) {
+    try {
+      const placeholders = admittedClaimIds.map(() => '?').join(', ');
+      const feedbackRows = await db.getAllAsync<{ claimId: string; injectedCount: number; usedCount: number }>(
+        `SELECT claimId, injectedCount, usedCount
+         FROM memory_claim_feedback
+         WHERE space = ? AND claimId IN (${placeholders})`,
+        input.space,
+        ...admittedClaimIds
+      );
+      for (const fb of feedbackRows) {
+        feedbackMap.set(fb.claimId, {
+          injectedCount: Number(fb.injectedCount ?? 0),
+          usedCount: Number(fb.usedCount ?? 0),
+        });
+      }
+    } catch {
+      // Feedback table might be unavailable in memory-only test mocks
+    }
+  }
+
+  const ranked = candidates
     .map(({ claim, lexical, semantic }) => {
+      const feedback = feedbackMap.get(claim.id);
+      const wastedCount = feedback ? Math.max(0, feedback.injectedCount - 2 * feedback.usedCount) : 0;
+      const wastePenalty = Math.min(0.40, wastedCount * 0.08);
+      const inHistoryWindow = claim.sourceMessageId ? historyMessageIdsSet.has(claim.sourceMessageId) : false;
+      const redundancyPenalty = inHistoryWindow ? 1 : 0;
       const score = scoreMemoryClaim({
         conflictPenalty: claim.status === 'conflicted' ? 1 : 0,
         continuityFit: continuityScore(claim, input.thread),
@@ -326,10 +361,11 @@ export async function retrieveMemoryClaimsWithDiagnostics(
         confidenceCalibrated: claim.confidenceCalibrated,
         importance: importanceScore(claim),
         lexical,
-        redundancyPenalty: grouped.has(claim.canonicalClaimId) ? 1 : 0,
+        redundancyPenalty,
         semantic,
         stalePenalty: claim.status === 'stale' ? 1 : 0,
         temporalFit: claim.validTo && claim.validTo < new Date().toISOString() ? 0 : 1,
+        wastePenalty,
       }, { embeddingAvailable });
       return {
         claim,

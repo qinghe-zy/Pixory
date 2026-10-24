@@ -49,78 +49,91 @@ export function AdvancedSettingsScreen({ space, onBack }: AdvancedSettingsScreen
   }
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title="更多设置">
-      <View style={styles.list}>
-        <Pressable
-          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-          onPress={handleExportIdentity}
-        >
-          <View style={styles.iconContainer}>
-            <Ionicons name="id-card-outline" size={20} color={colors.text.primary} />
-          </View>
-          <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>导出数字身份凭证</Text>
-            <Text style={styles.rowDescription}>生成带私钥防伪签名的 .pixoryid 文件</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-        </Pressable>
+    <ScreenScaffold
+      contentContainerStyle={styles.scrollContent}
+      onBack={onBack}
+      scrollable
+      title="更多设置"
+    >
+      <View style={styles.container}>
+        <View style={styles.insetGroup}>
+          <Pressable
+            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+            onPress={handleExportIdentity}
+          >
+            <View style={styles.iconContainer}>
+              <Ionicons name="id-card-outline" size={20} color="#1A1C1C" />
+            </View>
+            <View style={[styles.rowContent, styles.rowContentBorder]}>
+              <Text style={styles.rowTitle}>导出数字身份凭证</Text>
+              <Ionicons name="chevron-forward" size={17} color="#C4C7C7" />
+            </View>
+          </Pressable>
 
-        <View style={styles.divider} />
-
-        <Pressable
-          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-          onPress={handleImportIdentity}
-        >
-          <View style={styles.iconContainer}>
-            <Ionicons name="download-outline" size={20} color={colors.text.primary} />
-          </View>
-          <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>载入数字身份凭证</Text>
-            <Text style={styles.rowDescription}>跨设备或卸载重装后恢复身份</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-        </Pressable>
-        <View style={styles.divider} />
+          <Pressable
+            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+            onPress={handleImportIdentity}
+          >
+            <View style={styles.iconContainer}>
+              <Ionicons name="download-outline" size={20} color="#1A1C1C" />
+            </View>
+            <View style={styles.rowContent}>
+              <Text style={styles.rowTitle}>载入数字身份凭证</Text>
+              <Ionicons name="chevron-forward" size={17} color="#C4C7C7" />
+            </View>
+          </Pressable>
+        </View>
       </View>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  list: {
-    paddingTop: spacing[4],
-    backgroundColor: colors.background.surface,
+  scrollContent: {
+    paddingHorizontal: 0,
+  },
+  container: {
+    paddingVertical: 10,
+    backgroundColor: '#F9F9F9',
+  },
+  insetGroup: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    marginHorizontal: 8,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing[4],
-    paddingHorizontal: spacing[6],
-    backgroundColor: colors.background.surface,
+    paddingLeft: spacing[4],
+    minHeight: 50,
+    backgroundColor: '#FFFFFF',
   },
   rowPressed: {
-    backgroundColor: colors.background.soft,
+    backgroundColor: '#F3F3F4',
   },
   iconContainer: {
-    width: 32,
+    width: 28,
     alignItems: 'flex-start',
+    marginRight: spacing[1],
   },
   rowContent: {
     flex: 1,
-    paddingRight: spacing[3],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: spacing[4],
+    paddingVertical: 14,
+    minHeight: 50,
+  },
+  rowContentBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
   },
   rowTitle: {
     ...typography.textStyles.body,
-    color: colors.text.primary,
-  },
-  rowDescription: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    marginTop: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border.subtle,
-    marginLeft: spacing[6] + 32,
+    fontSize: 15,
+    color: '#1A1C1C',
+    fontWeight: '500',
   },
 });

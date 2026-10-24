@@ -5,7 +5,7 @@ import { settingsRepository } from '../../database/repositories/settingsReposito
 import { publishSystemTask } from './systemAssistantEvents';
 import { saveSystemTaskInDatabase } from './systemAssistantPersistence';
 import { normalizeSystemAssistantAction } from './systemAssistantRegistry';
-import { isSystemRoleCreationQuestion, nextSystemRoleSession } from './systemAssistantRolePolicy';
+import { detectSystemRoleIntent, isSystemRoleCreationQuestion, nextSystemRoleSession } from './systemAssistantRolePolicy';
 import { withSystemTaskStep } from './systemAssistantRuntime';
 import type { SystemRoleCreationSession, SystemRoleDraft, SystemTaskSnapshot } from './systemAssistantTypes';
 
@@ -75,7 +75,7 @@ ${session.draft ? JSON.stringify(session.draft) : '尚未确定设定。先问�
 每轮讨论后，将完整的最新草稿放在回复末尾，严格使用：
 <system_action type="role-draft" name="角色名称，尚未确定可为空" description="简短简介" prompt="完整角色设定与相处方式，尚未确定可为空" firstMessage="开场白，尚未确定可为空" />
 属性中的双引号用 &quot;，单引号用 &apos;，换行用 &#10;，尖括号用 &lt; / &gt;，& 用 &amp;。不得输出其他动作或多条动作。
-${canCreate ? '用户本轮明确要求保存创建。根据前面的讨论整理完整角色卡，补齐非关键缺项并输出草稿动作，不再要求用户填写表单。保存结果由客户端提供，绝不能提前声称已创建。' : '当前只能讨论和更新草稿，不能保存角色卡。设定足够后用“现在创建角色卡吗？”结束正文；此时用户可以简短确认。其他讨论问题不得当作创建确认。'}
+${canCreate ? '用户本轮明确要求保存创建。根据前面的讨论整理完整终版角色卡，补齐名称、人设提示词与开场白并输出草稿动作，客户端将立即执行建卡入库并展示开聊卡片，绝不能提前声称已创建。' : '围绕设定自然讨论，每轮回复末尾附带最新草稿动作。若设定关键要素已齐备，在正文末尾自然提示用户可以创建角色卡并开聊（例如：“现在为你创建角色卡吗？”）；用户表达认可或直接要求生成时，客户端将自动执行入库建卡。'}
 不得读取其他伙伴、个人记忆或其他空间的设定。用户临时询问系统操作时简短处理，不强行追问角色；任务取消后恢复普通管家口吻。`;
 }
 
@@ -115,7 +115,9 @@ export async function applySystemRoleDraft(task: SystemTaskSnapshot, draft: Syst
       if (!Object.values(draft).some(Boolean) && session.draft) draft = session.draft;
       const updated = { ...session, draft, awaitingConfirmation: Boolean(draft.name && draft.prompt)
         && isSystemRoleCreationQuestion(replyText), updatedAt: new Date().toISOString() };
-      if (session.authorizedMessageId !== task.originMessageId) {
+      const isAuthorizedToCreate = session.authorizedMessageId === task.originMessageId
+        || (!session.paused && detectSystemRoleIntent(task.requestText) === 'finish');
+      if (!isAuthorizedToCreate) {
         result = withSystemTaskStep(task, 'waiting_for_user', Object.values(draft).some(Boolean) ? '设定已记录' : '等待补充设定');
         await writeSession(db, updated);
         await saveSystemTaskInDatabase(db, result);

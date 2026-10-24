@@ -168,8 +168,8 @@ test('user and assistant long-press menus keep their distinct existing actions',
   assert.match(chat, /label: "复制"/);
   assert.match(chat, /label: "选择文本"/);
   assert.match(chat, /label: "修改"/);
-  assert.match(chat, /label: "继续生成"/);
-  assert.match(chat, /label: replyActionMode === "reply" \? "回复" : "续答"/);
+  assert.match(chat, /label: "断点接续"/);
+  assert.match(chat, /label: replyActionMode === "reply" \? "AI续写" : "续答"/);
   assert.match(chat, /label: "重新生成"/);
   assert.match(
     chat,

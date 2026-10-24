@@ -51,115 +51,103 @@ export function DeveloperModeSettingsScreen({ onBack, space }: { onBack: () => v
   }
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title="开发者模式">
-      <View style={styles.card}>
-        <Text style={styles.title}>开发者模式</Text>
-        <Text style={styles.description}>
-          用于查看性能与诊断数据。关闭后只隐藏开发者专用入口，不会删除任何业务数据。
-        </Text>
-        <View style={styles.statusRow}>
-          <Text style={styles.label}>开发者模式状态</Text>
-          <Text style={styles.status}>{developerMode || isDeveloperModeEnabled() ? '已开启' : '已关闭'}</Text>
-        </View>
-        <View style={styles.monitorRow}>
-          <View style={styles.monitorCopy}>
-            <Text style={styles.label}>启用性能监测</Text>
-            <Text style={styles.monitorDescription}>首次默认关闭。开启后才会显示“性能与诊断”入口并记录诊断数据。</Text>
-            <Text style={[styles.monitorStatus, diagnostics.enabled ? styles.enabledStatus : styles.disabledStatus]}>
-              性能监测：{diagnostics.enabled ? '已开启' : '已关闭'}
-            </Text>
+    <ScreenScaffold
+      contentContainerStyle={styles.scrollContent}
+      onBack={onBack}
+      scrollable
+      title="开发者模式"
+    >
+      <View style={styles.container}>
+        <View style={styles.insetGroup}>
+          <View style={[styles.row, styles.rowBorder]}>
+            <Text style={styles.rowTitle}>开发者模式状态</Text>
+            <Text style={styles.statusText}>{developerMode || isDeveloperModeEnabled() ? '已开启' : '已关闭'}</Text>
           </View>
-          <Switch value={diagnostics.enabled} onValueChange={(enabled) => { void toggleDiagnostics(enabled); }} />
+
+          <View style={styles.row}>
+            <View style={styles.copy}>
+              <Text style={styles.rowTitle}>启用性能监测</Text>
+              <Text style={styles.monitorStatus}>
+                性能监测：{diagnostics.enabled ? '已开启' : '已关闭'}
+              </Text>
+            </View>
+            <Switch
+              value={diagnostics.enabled}
+              onValueChange={(enabled) => { void toggleDiagnostics(enabled); }}
+              thumbColor="#FFFFFF"
+              trackColor={{ true: '#1A1C1C', false: colors.border.subtle }}
+            />
+          </View>
         </View>
-        <Pressable onPress={confirmDisable} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-          <Text style={styles.buttonText}>关闭开发者模式</Text>
-        </Pressable>
+
+        <View style={styles.insetGroup}>
+          <Pressable onPress={confirmDisable} style={({ pressed }) => [styles.dangerRow, pressed && styles.pressed]}>
+            <Text style={styles.dangerButtonText}>关闭开发者模式</Text>
+          </Pressable>
+        </View>
       </View>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    margin: spacing[6],
-    padding: spacing[6],
+  scrollContent: {
+    paddingHorizontal: 0,
   },
-  title: {
-    color: colors.text.primary,
-    fontSize: typography.size.sectionTitle,
-    fontWeight: '700',
+  container: {
+    paddingVertical: 10,
+    backgroundColor: '#F9F9F9',
+    gap: 10,
   },
-  description: {
-    color: colors.text.secondary,
-    fontSize: typography.size.body,
-    lineHeight: 21,
-    marginTop: spacing[3],
+  insetGroup: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    marginHorizontal: 8,
+    overflow: 'hidden',
   },
-  statusRow: {
-    alignItems: 'center',
-    borderTopColor: colors.border.subtle,
-    borderTopWidth: StyleSheet.hairlineWidth,
+  row: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing[5],
-    paddingTop: spacing[4],
+    paddingHorizontal: spacing[4],
+    minHeight: 50,
+    backgroundColor: '#FFFFFF',
   },
-  label: {
-    color: colors.text.primary,
-    fontSize: typography.size.body,
+  rowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
   },
-  status: {
-    color: colors.primary.active,
-    fontSize: typography.size.body,
-    fontWeight: '700',
-  },
-  monitorRow: {
-    alignItems: 'center',
-    borderTopColor: colors.border.subtle,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[3],
-    marginTop: spacing[5],
-    paddingTop: spacing[4],
-  },
-  monitorCopy: {
+  copy: {
     flex: 1,
-    gap: spacing[1],
+    paddingVertical: 10,
   },
-  monitorDescription: {
-    color: colors.text.secondary,
-    fontSize: typography.size.caption,
-    lineHeight: 18,
+  rowTitle: {
+    ...typography.textStyles.body,
+    fontSize: 15,
+    color: '#1A1C1C',
+    fontWeight: '500',
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#8E8E93',
   },
   monitorStatus: {
-    fontSize: typography.size.caption,
-    fontWeight: '600',
-    lineHeight: 18,
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 2,
   },
-  enabledStatus: {
-    color: colors.primary.active,
-  },
-  disabledStatus: {
-    color: colors.text.secondary,
-  },
-  button: {
+  dangerRow: {
     alignItems: 'center',
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    marginTop: spacing[5],
-    padding: spacing[4],
+    justifyContent: 'center',
+    minHeight: 50,
+    backgroundColor: '#FFFFFF',
   },
-  buttonText: {
+  dangerButtonText: {
     color: colors.semantic.danger,
-    fontSize: typography.size.body,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
   },
   pressed: {
-    opacity: 0.78,
+    backgroundColor: '#F3F3F4',
   },
 });

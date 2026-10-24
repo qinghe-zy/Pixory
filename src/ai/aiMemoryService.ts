@@ -131,6 +131,7 @@ async function listV1MemoryBoardItems(
     `SELECT c.*
      FROM memory_claims c
      WHERE c.space = ?
+       AND COALESCE(c.stability, 'long') <> 'ephemeral'
        ${statusClause}
        ${laneClause}
        ${excludedClause}

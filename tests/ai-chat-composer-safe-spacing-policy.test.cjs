@@ -13,7 +13,7 @@ test('AI chat keeps bottom safe-area spacing stable and reduces only the externa
   assert.match(chat, /const initialBottomInsetRef = useRef\(insets\.bottom\)/);
   assert.match(
     chat,
-    /paddingBottom:\s*initialBottomInsetRef\.current\s*\+\s*layout\.pageBottomOffset\s*-\s*spacing\[2\]/,
+    /(?:paddingBottom|mainBottomPadding)\s*[:=]\s*initialBottomInsetRef\.current\s*\+\s*layout\.pageBottomOffset\s*-\s*spacing\[2\]/,
   );
   assert.match(
     chat,

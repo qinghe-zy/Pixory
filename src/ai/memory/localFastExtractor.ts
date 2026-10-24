@@ -1,6 +1,7 @@
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../../database';
 import type { AiBranchScope } from '../../database/repositories/aiThreadRepository';
 import { MemoryFacade } from './memoryFacade';
+import { hasCitationLexicalSupport } from '../aiCitationProtocol';
 import { detectMemoryIntent, type MemoryIntentObservation } from './memoryIntentDetector';
 import {
   consumeCurrentTurnObservation,
@@ -25,6 +26,7 @@ export interface LocalFastExtractorInput {
   branchScopes?: AiBranchScope[];
   reasoningText?: string | null;
   thinking?: string | null;
+  companionSignalWeight?: number;
 }
 
 export interface LocalFastExtractionResult {
@@ -35,6 +37,24 @@ export interface LocalFastExtractionResult {
 
 function isClearlyNonFactual(text: string): boolean {
   return /开玩笑|哈哈|如果|假设|引用|据说|可能吧|也许|角色扮演/u.test(text);
+}
+
+export function shouldExtractMemory(text: string): boolean {
+  const normalized = text.replace(/\s+/gu, ' ').trim();
+  if (normalized.length < 4 || isClearlyNonFactual(normalized)) {
+    return false;
+  }
+  if (/(?:请记住|记住|以后默认|之后默认|不要给我|我忌口|我过敏|纠正一下|更正)/u.test(normalized)) {
+    return true;
+  }
+  if (/^(?:哈哈|嗯嗯|好的|好呀|行|哦哦|好吧|谢谢|早安|晚安|拜拜|再见|在吗|去吧)+[。！!？?~～\s]*$/u.test(normalized)) {
+    return false;
+  }
+  const transientPatterns = /(?:洗澡|洗漱|吃饭|吃午饭|吃晚饭|吃早饭|吃个饭|(?:去)?(?:拿|取)(?:个)?(?:外卖|快递)|去上厕所|上个厕所|去睡觉|睡觉了|睡了|午睡|躺着|醒了|刚醒|起床|好困|太困|困死|好饿|肚子饿|好撑|好累|太累|头痛|头晕|好冷|好热|在等车|在坐车|在上车|在排队|刚到家|先走了|我出门了|在地铁上|在路上)/u;
+  if (transientPatterns.test(normalized) && !/(?:喜欢|偏好|习惯|通常|一直|长期|希望)/u.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function candidate(
@@ -57,17 +77,24 @@ function candidate(
 
 export function extractLocalClaimCandidates(
   message: string,
-  defaultScope: { scopeType: MemoryScopeType; scopeId: string | null } = { scopeId: null, scopeType: 'thread' }
+  defaultScope: { scopeType: MemoryScopeType; scopeId: string | null } = { scopeId: null, scopeType: 'thread' },
+  options: { companionSignalWeight?: number } = {}
 ): MemoryClaimCandidate[] {
   const normalized = message.replace(/\s+/gu, ' ').trim();
-  if (normalized.length < 4 || isClearlyNonFactual(normalized)) {
+  if (!shouldExtractMemory(normalized)) {
     return [];
   }
   const result: MemoryClaimCandidate[] = [];
+  const signalWeight = options.companionSignalWeight ?? 0;
+  const importanceBoost = Math.round(signalWeight * 20);
+
   const push = (item: MemoryClaimCandidate): void => {
     const meaningful = item.valueNormalized.length >= 2 || /[\u4e00-\u9fff]/u.test(item.valueNormalized);
     if (result.length < 6 && meaningful && item.valueNormalized.length <= 180) {
-      result.push(item);
+      result.push({
+        ...item,
+        importance: Math.min(100, (item.importance ?? 30) + importanceBoost),
+      });
     }
   };
 
@@ -166,10 +193,42 @@ async function writeCandidates(
   candidates: MemoryClaimCandidate[]
 ): Promise<number> {
   let written = 0;
+  const predicates = [...new Set(candidates.map((c) => c.predicate))];
+  const existingClaims = predicates.length > 0
+    ? await runWithDatabaseSpace(input.space, async (db) => {
+        const placeholders = predicates.map(() => '?').join(', ');
+        return db.getAllAsync<{ canonicalClaimId: string; predicate: string; scopeType: string; scopeId: string | null; valueNormalized: string; valueDisplay: string }>(
+          `SELECT canonicalClaimId, predicate, scopeType, scopeId, valueNormalized, valueDisplay FROM memory_claims
+           WHERE space = ? AND predicate IN (${placeholders})
+             AND status IN ('tentative', 'committed', 'confirmed') AND deletedAt IS NULL
+           LIMIT 64`,
+          input.space,
+          ...predicates
+        ).catch(() => []);
+      })
+    : [];
+
   for (const item of candidates) {
     try {
+      let canonicalClaimId: string | undefined;
+      const relevantExisting = existingClaims.filter(
+        (existing) => existing.predicate === item.predicate
+          && existing.scopeType === item.scopeType
+          && (existing.scopeId ?? null) === (item.scopeId ?? null)
+      );
+      for (const existing of relevantExisting) {
+        if (
+          hasCitationLexicalSupport(existing.valueNormalized, item.valueNormalized)
+          || hasCitationLexicalSupport(item.valueNormalized, existing.valueNormalized)
+        ) {
+          canonicalClaimId = existing.canonicalClaimId;
+          break;
+        }
+      }
+
       await MemoryFacade.createClaim({
         actor: item.actor,
+        canonicalClaimId,
         confidenceBand: item.confidenceBand,
         confidenceRaw: item.confidenceRaw,
         importance: item.importance,
@@ -254,7 +313,7 @@ export async function runLocalFastExtraction(input: LocalFastExtractorInput): Pr
   const candidates = extractLocalClaimCandidates(input.messageContent, {
     scopeId: branchScopeId ?? input.threadId,
     scopeType: branchScopeId ? 'branch' : 'thread',
-  });
+  }, { companionSignalWeight: input.companionSignalWeight });
   const observation = await runWithDatabaseSpace(input.space, (db) =>
     writeCurrentTurnObservation(db, {
       branchRootMessageId: input.branchRootMessageId,

@@ -17,6 +17,7 @@ export interface MemoryContextPlan {
   projectionVersion: number;
   lineageVersion: number;
   candidateClaimIds: string[];
+  selectedClaimIds?: string[];
   selectedEvidenceIds: string[];
   omittedClaimIds: string[];
   segmentHashes: string[];
@@ -82,6 +83,7 @@ export async function compileMemoryContextPlan(
     branchScopes?: AiBranchScope[];
     embeddingAvailable?: boolean;
     excludedClaimIds?: string[];
+    historyMessageIds?: string[];
   }
 ): Promise<CompiledMemoryContext> {
   const [meta, lineageVersion, retrieval] = await Promise.all([
@@ -90,6 +92,7 @@ export async function compileMemoryContextPlan(
     retrieveMemoryClaimsWithDiagnostics(db, {
       embeddingAvailable: input.embeddingAvailable ?? false,
       excludedClaimIds: input.excludedClaimIds,
+      historyMessageIds: input.historyMessageIds,
       branchScopes: input.branchScopes,
       query: input.query,
       space: input.thread.space,
@@ -123,6 +126,7 @@ export async function compileMemoryContextPlan(
       providerCachedTokens: null,
       retrievalScorerVersion: RETRIEVAL_SCORER_VERSION,
       segmentHashes,
+      selectedClaimIds: retrieval.selected.map((item) => item.claim.id),
       selectedEvidenceIds: evidenceIds,
     },
   };

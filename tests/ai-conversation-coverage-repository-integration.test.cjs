@@ -83,10 +83,18 @@ class AsyncDatabase {
   close() {
     this.db.close();
   }
+
+  async withExclusiveTransactionAsync(task) {
+    this.db.exec('BEGIN');
+    try { await task(this); this.db.exec('COMMIT'); }
+    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
 }
 
 function createSchema(db) {
   db.exec(`
+    CREATE TABLE ai_threads (id TEXT PRIMARY KEY);
+    INSERT INTO ai_threads VALUES ('thread-1');
     CREATE TABLE ai_messages (
       id TEXT PRIMARY KEY, threadId TEXT NOT NULL, branchRootMessageId TEXT,
       branchVersionIndex INTEGER, role TEXT, status TEXT, content TEXT,
@@ -108,6 +116,8 @@ function createSchema(db) {
       status TEXT NOT NULL DEFAULT 'stale', createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
     );
   `);
+  const source = fs.readFileSync(path.join(root, 'src/database/schema.ts'), 'utf8');
+  db.exec(source.match(/export const MIGRATION_STATEMENTS_V66 = `([\s\S]*?)`;/)[1]);
 }
 
 function insertMessage(db, input) {
@@ -132,10 +142,70 @@ function insertMessage(db, input) {
     );
 }
 
+for (const [failedTable, delayedTable] of [
+  ['ai_messages', 'ai_thread_summary_segments'],
+  ['ai_thread_summary_segments', 'ai_messages'],
+  ['ai_context_windows', 'ai_thread_summary_segments'],
+]) {
+  test(`coverage rolls back ${failedTable} failures without closing over pending reads`, async () => {
+    const db = new AsyncDatabase();
+    createSchema(db);
+    insertMessage(db, { id: 'anchor', role: 'user', content: 'keep original request' });
+    const failure = new Error(`injected ${failedTable} prepare failure`);
+    let releaseRead;
+    const readGate = new Promise(resolve => { releaseRead = resolve; });
+    let pendingReads = 0;
+    let pendingAtClose = null;
+    let transactionClosed = false;
+    for (const method of ['getFirstAsync', 'getAllAsync']) {
+      const read = db[method].bind(db);
+      db[method] = async (sql, ...params) => {
+        if (sql.includes(`FROM ${failedTable}`)) throw failure;
+        if (!sql.includes(`FROM ${delayedTable}`)) return read(sql, ...params);
+        pendingReads += 1;
+        try {
+          await readGate;
+          assert.equal(transactionClosed, false, 'native read outlived its transaction connection');
+          return await read(sql, ...params);
+        } finally {
+          pendingReads -= 1;
+        }
+      };
+    }
+    const transaction = db.withExclusiveTransactionAsync.bind(db);
+    db.withExclusiveTransactionAsync = async task => {
+      try { return await transaction(task); }
+      finally {
+        pendingAtClose = pendingReads;
+        transactionClosed = true;
+      }
+    };
+    const { compileConversationCoverage } = loadCoverageService();
+    const outcome = compileConversationCoverage(db, {
+      thread: { id: 'thread-1', space: 'normal', lineageVersion: 0 },
+      anchorMessageId: 'anchor', historyRoundLimit: 5, branchScopes: [],
+    }).then(() => null, error => error);
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      const closedWithPendingRead = transactionClosed && pendingReads > 0;
+      releaseRead();
+      assert.equal(await outcome, failure, 'the original query failure must reach the caller');
+      assert.equal(closedWithPendingRead, false);
+      assert.equal(pendingAtClose, 0);
+      assert.equal(db.db.prepare('SELECT content FROM ai_messages WHERE id = ?').get('anchor').content, 'keep original request');
+      assert.equal(db.db.prepare('SELECT COUNT(*) AS total FROM ai_context_windows').get().total, 0);
+    } finally {
+      releaseRead();
+      await outcome;
+      db.close();
+    }
+  });
+}
+
 test('V51 exact summary provenance remains declared and ordered before later migrations', () => {
   const schema = fs.readFileSync(path.join(root, 'src/database/schema.ts'), 'utf8');
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.match(schema, /DATABASE_VERSION = (?:5[4-9]|6[0-9])/);
+  assert.ok(Number(schema.match(/DATABASE_VERSION\s*=\s*(\d+)/)?.[1]) >= 54);
   assert.match(schema, /MIGRATION_STATEMENTS_V51/);
   for (const field of [
     'sourceMessageIdsJson',
@@ -249,13 +319,15 @@ test('SQLite coverage compiler materializes all completed rounds before the anch
     historyRoundLimit: 5,
     branchScopes: [],
   });
-  assert.deepEqual(compiled.plan.recentMessageIds, [
-    'm15', 'm16', 'm17', 'm18', 'm19', 'm20', 'm21', 'm22', 'm23', 'm24',
-  ]);
-  assert.deepEqual(compiled.plan.bridgeMessageIds, [
-    'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10', 'm11', 'm12', 'm13', 'm14',
-  ]);
+  assert.deepEqual(compiled.plan.recentMessageIds, Array.from({ length: 24 }, (_, index) => `m${index + 1}`));
+  assert.deepEqual(compiled.plan.bridgeMessageIds, []);
+  assert.equal(db.db.prepare('SELECT windowTarget FROM ai_context_windows').get().windowTarget, 5);
   assert.equal(compiled.plan.coverageComplete, true);
+  const rollback = await compileConversationCoverage(db, { thread: { id: 'thread-1', space: 'normal', lineageVersion: 4 },
+    anchorMessageId: 'm25', historyRoundLimit: 30, contextPlanning: false, branchScopes: [] });
+  assert.deepEqual(rollback.plan.recentMessageIds, compiled.plan.recentMessageIds);
+  assert.equal(rollback.plan.summarySegmentIds.length, 0);
+  assert.equal(db.db.prepare('SELECT windowTarget FROM ai_context_windows').get().windowTarget, 5);
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/ai/context/conversationCoverageService.ts'), 'utf8'), /callMemoryMaintenanceModel|callProvider|fetch\(/);
   db.close();
 });

@@ -104,3 +104,57 @@ test('generation diagnostics record ContextPlan retrieval and projection metadat
   assert.match(chat, /memoryContextPlan\.retrievalScorerVersion/);
   assert.match(chat, /memoryContextPlan\.candidateClaimIds\.length/);
 });
+
+test('retrieval admission rejects weak lexical matches under 0.20 when embeddings unavailable', () => {
+  const retrieval = loadTypeScriptModule(retrievalPath);
+  assert.equal(retrieval.shouldAdmitMemoryCandidate({ lexical: 0.15, semantic: 0 }, { embeddingAvailable: false }), false);
+  assert.equal(retrieval.shouldAdmitMemoryCandidate({ lexical: 0.20, semantic: 0 }, { embeddingAvailable: false }), true);
+});
+
+test('retrieval score applies wastePenalty for neglected claims and redundancy penalty for context history', () => {
+  const retrieval = loadTypeScriptModule(retrievalPath);
+  const baseScore = retrieval.scoreMemoryClaim({
+    lexical: 0.8,
+    semantic: 0,
+    temporalFit: 1.0,
+    continuityFit: 1.0,
+    importance: 0.8,
+    confidenceCalibrated: null,
+    confidenceBand: 'high',
+    stalePenalty: 0,
+    conflictPenalty: 0,
+    redundancyPenalty: 0,
+    wastePenalty: 0,
+  }, { embeddingAvailable: false });
+
+  const penalizedScore = retrieval.scoreMemoryClaim({
+    lexical: 0.8,
+    semantic: 0,
+    temporalFit: 1.0,
+    continuityFit: 1.0,
+    importance: 0.8,
+    confidenceCalibrated: null,
+    confidenceBand: 'high',
+    stalePenalty: 0,
+    conflictPenalty: 0,
+    redundancyPenalty: 1,
+    wastePenalty: 0.24,
+  }, { embeddingAvailable: false });
+
+  assert.ok(penalizedScore.value < baseScore.value);
+  assert.ok(baseScore.value - penalizedScore.value >= 0.70);
+});
+
+test('feedback service inspectClaimAdoption identifies adopted claims via normalized substring and 2-gram overlap', () => {
+  const protocolPath = path.join(root, 'src/ai/aiCitationProtocol.ts');
+  const protocol = loadTypeScriptModule(protocolPath);
+  assert.equal(protocol.hasCitationLexicalSupport('不吃香菜', '好的，我记住了，做菜绝不吃香菜'), true);
+  assert.equal(protocol.hasCitationLexicalSupport('喜欢喝冰美式', '今天天气真好，出去散步吧'), false);
+});
+
+test('memory cluster consolidation preserves independent facts under same predicate', () => {
+  const calibrationSource = fs.readFileSync(path.join(root, 'src/ai/memory/memoryCalibrationService.ts'), 'utf8');
+  assert.match(calibrationSource, /hasCitationLexicalSupport/);
+  assert.match(calibrationSource, /workingByScopeAndPredicate/);
+  assert.match(calibrationSource, /sameCanonical \|\| sameGroup \|\| lexicalOverlap/);
+});

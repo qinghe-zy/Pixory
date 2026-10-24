@@ -30,6 +30,6 @@ test('coverage repair remains local and does not add a pre-send remote call', ()
   const compiler = read('src/ai/context/conversationCoverageService.ts');
   const pure = read('src/ai/context/conversationCoverage.ts');
   assert.doesNotMatch(compiler + pure, /callMemoryMaintenanceModel|callProvider|fetch\(/);
-  assert.match(pure, /buildProvisionalSummary/);
-  assert.match(pure, /PROVISIONAL_SUMMARY_CHAR_LIMIT/);
+  assert.match(pure, /buildSkeletonBridge/);
+  assert.match(compiler, /rollback path rehydrates originals/);
 });

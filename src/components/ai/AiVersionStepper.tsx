@@ -1,8 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 
-import { radius, spacing, typography } from '../../design/tokens';
-import { aiLightColors } from './aiLightTheme';
+import { ChevronLeftIcon, ChevronRightIcon } from './AiMessageActionIcons';
 
 export function AiVersionStepper({
   currentIndex,
@@ -28,7 +26,7 @@ export function AiVersionStepper({
         accessibilityLabel={previousAccessibilityLabel}
         accessibilityRole="button"
         disabled={atFirst}
-        hitSlop={8}
+        hitSlop={6}
         onPress={onPrevious}
         style={({ pressed }) => [
           styles.versionButton,
@@ -36,14 +34,14 @@ export function AiVersionStepper({
           pressed && !atFirst && styles.pressed,
         ]}
       >
-        <Ionicons color={aiLightColors.muted} name="chevron-back" size={14} />
+        <ChevronLeftIcon color={atFirst ? '#CBD5E1' : '#64748B'} size={14} />
       </Pressable>
       <Text style={styles.versionText}>{currentIndex}/{total}</Text>
       <Pressable
         accessibilityLabel={nextAccessibilityLabel}
         accessibilityRole="button"
         disabled={atLast}
-        hitSlop={8}
+        hitSlop={6}
         onPress={onNext}
         style={({ pressed }) => [
           styles.versionButton,
@@ -51,7 +49,7 @@ export function AiVersionStepper({
           pressed && !atLast && styles.pressed,
         ]}
       >
-        <Ionicons color={aiLightColors.muted} name="chevron-forward" size={14} />
+        <ChevronRightIcon color={atLast ? '#CBD5E1' : '#64748B'} size={14} />
       </Pressable>
     </View>
   );
@@ -60,31 +58,29 @@ export function AiVersionStepper({
 const styles = StyleSheet.create({
   versionControl: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    gap: 4,
     minHeight: 28,
-    paddingHorizontal: spacing[1],
   },
   versionButton: {
     alignItems: 'center',
+    borderRadius: 4,
     height: 24,
     justifyContent: 'center',
-    width: 22,
+    width: 24,
   },
   versionText: {
-    ...typography.textStyles.micro,
-    color: aiLightColors.muted,
-    fontWeight: '700',
-    minWidth: 28,
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '500',
+    fontVariant: ['tabular-nums'],
+    paddingHorizontal: 2,
     textAlign: 'center',
   },
   disabled: {
-    opacity: 0.36,
+    opacity: 0.3,
   },
   pressed: {
-    opacity: 0.78,
+    backgroundColor: '#F1F5F9',
   },
 });

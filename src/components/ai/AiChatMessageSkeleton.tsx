@@ -61,11 +61,11 @@ export function AiChatMessageSkeleton() {
           ]}
         >
           {row.assistant && <Animated.View style={[styles.avatar, { opacity }]} />}
-          <View style={styles.bubble}>
+          <View style={[styles.bubble, { width: `${Math.round(row.widthFraction * 100)}%` }]}>
             {Array.from({ length: row.lines }).map((_, li) => {
               // Last line of multi-line bubbles is shorter for realism.
               const isLastLine = li === row.lines - 1 && row.lines > 1;
-              const frac = isLastLine ? row.widthFraction * 0.55 : row.widthFraction;
+              const frac = isLastLine ? 0.62 : 1;
               return (
                 <Animated.View
                   key={li}

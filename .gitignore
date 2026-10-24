@@ -11,6 +11,9 @@ expo-env.d.ts
 /output/builds/
 /output/release/
 /output/doc/
+/output/test/
+/output/*.png
+/output/*.html
 
 # Native signing material and generated metadata
 .kotlin/

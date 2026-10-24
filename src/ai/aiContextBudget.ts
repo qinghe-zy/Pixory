@@ -45,6 +45,42 @@ export function estimatePromptTokens(value: string): number {
   return estimatePromptTokensFromCounts(cjkChars, value.length);
 }
 
+export interface TokenCalibrationOptions {
+  isDeepSeek?: boolean;
+  providerProtocol?: string;
+  providerType?: string;
+  safetyMargin?: number;
+}
+
+export function estimateCalibratedPromptTokens(
+  value: string,
+  options?: TokenCalibrationOptions
+): number {
+  if (!value) {
+    return 0;
+  }
+  const isDeepSeek = Boolean(
+    options?.isDeepSeek ||
+    options?.providerProtocol === 'deepseek' ||
+    options?.providerType === 'deepseek'
+  );
+  const cjkMultiplier = isDeepSeek ? 0.85 : 1.25;
+  const nonCjkMultiplier = isDeepSeek ? 0.25 : 0.26;
+  const safetyMargin = typeof options?.safetyMargin === 'number' && Number.isFinite(options.safetyMargin)
+    ? options.safetyMargin
+    : (isDeepSeek ? 0.02 : 0.06);
+
+  let cjkChars = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (isCjkCodeUnit(value.charCodeAt(index))) {
+      cjkChars += 1;
+    }
+  }
+  const nonCjkChars = Math.max(0, value.length - cjkChars);
+  const base = Math.ceil(cjkChars * cjkMultiplier) + Math.ceil(nonCjkChars * nonCjkMultiplier);
+  return Math.max(1, Math.ceil(base * (1 + safetyMargin)));
+}
+
 function findMaxPrefixForTokenBudget(value: string, maxTokens: number): number {
   let cjkChars = 0;
   let acceptedLength = 0;

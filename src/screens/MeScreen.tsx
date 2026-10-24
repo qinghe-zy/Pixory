@@ -46,6 +46,10 @@ import { UidService } from "../services/uidService";
 import { ProfileRenameDialog } from "../components/ProfileRenameDialog";
 import { OrbitalSpectralRing } from "../components/OrbitalSpectralRing";
 import { MagneticLiquidContainer } from "../components/MagneticLiquidContainer";
+import {
+  useProfileInfoPreferences,
+  useProfilePageStylePreference,
+} from "../services/aiChatPreferences";
 
 interface MeScreenProps {
   refreshToken: number;
@@ -63,6 +67,8 @@ interface MeScreenProps {
   onOpenSettings: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
+  onOpenProfileInfo?: () => void;
+  onOpenChatAppearance?: () => void;
 }
 
 type PersonalSessionState = "locked" | "unlocking" | "unlocked" | "locking";
@@ -224,8 +230,13 @@ export function MeScreen({
   onOpenSettings,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
+  onOpenProfileInfo,
+  onOpenChatAppearance,
 }: MeScreenProps) {
   const { showToast } = useToast();
+  const [profileStyleMode] = useProfilePageStylePreference(space);
+  const { avatarRadius: profileAvatarRadius, avatarFrameEnabled: profileAvatarFrameEnabled } =
+    useProfileInfoPreferences(space);
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(
     null,
   );
@@ -418,11 +429,186 @@ export function MeScreen({
   return (
     <ScreenScaffold
       backgroundColor="#f9f9f9"
+      contentContainerStyle={profileStyleMode === 'minimalist' ? styles.minimalistScrollContent : undefined}
       errorMessage={errorMessage}
       footer={footer}
       scrollable
       showHeader={false}
     >
+      {profileStyleMode === 'minimalist' ? (
+        <View style={styles.minimalistContainer}>
+          {/* Group 1: 个人资料 */}
+          <View style={styles.minimalistInsetGroup}>
+            <Pressable
+              accessibilityLabel="个人信息"
+              accessibilityRole="button"
+              onPress={() => {
+                if (onOpenProfileInfo) {
+                  onOpenProfileInfo();
+                } else {
+                  setIsRenameDialogVisible(true);
+                }
+              }}
+              style={({ pressed }) => [
+                styles.minimalistProfileRow,
+                pressed && styles.minimalistRowPressed,
+              ]}
+            >
+              <View style={styles.minimalistAvatarWrap}>
+                <View
+                  style={[
+                    styles.minimalistAvatar,
+                    { borderRadius: profileAvatarRadius },
+                  ]}
+                >
+                  {avatarUri ? (
+                    <Image
+                      resizeMode="cover"
+                      source={{ uri: avatarUri }}
+                      style={[
+                        styles.minimalistAvatarImage,
+                        { borderRadius: profileAvatarRadius },
+                      ]}
+                    />
+                  ) : (
+                    <Ionicons
+                      color={colors.primary.active}
+                      name="person"
+                      size={28}
+                    />
+                  )}
+                </View>
+                {profileAvatarFrameEnabled ? (
+                  <OrbitalSpectralRing
+                    avatarSize={52}
+                    isActive={false}
+                    padding={2}
+                  />
+                ) : null}
+              </View>
+
+              <View style={styles.minimalistProfileInfo}>
+                <Text numberOfLines={1} style={styles.minimalistNickname}>
+                  {data?.profileNickname || "本地空间"}
+                </Text>
+                {data?.uid ? (
+                  <Text numberOfLines={1} style={styles.minimalistUid}>
+                    UID: {data.uid}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.minimalistProfileRight}>
+                <Ionicons color="#C4C7C7" name="chevron-forward" size={17} />
+              </View>
+            </Pressable>
+          </View>
+
+          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
+          <View style={styles.minimalistGap} />
+
+          {/* Group 2: 独立隐私空间通道 */}
+          <View style={styles.minimalistInsetGroup}>
+            <MinimalistRow
+              icon={isPersonalMode ? "lock-open-outline" : "lock-closed-outline"}
+              iconColor={isPersonalMode ? colors.primary.active : "#1A1C1C"}
+              onPress={handlePersonalToggle}
+              showBorder
+              title={isPersonalMode ? "隐私空间 (已解锁)" : "隐私空间"}
+              valueText={isPersonalMode ? "轻触返回普通空间" : "轻触解锁进入"}
+            />
+          </View>
+
+          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
+          <View style={styles.minimalistGap} />
+
+          {/* Group 3: 聊天视觉与排版定制（单独占一行，上下空10px，无副标题解释） */}
+          <View style={styles.minimalistInsetGroup}>
+            <MinimalistRow
+              icon="chatbubble-ellipses-outline"
+              onPress={() => {
+                if (onOpenChatAppearance) onOpenChatAppearance();
+              }}
+              showBorder
+              title="聊天视觉与排版定制"
+            />
+          </View>
+
+          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
+          <View style={styles.minimalistGap} />
+
+          {/* Group 4: 核心素材 (收藏图片、最近查看) */}
+          <View style={styles.minimalistInsetGroup}>
+            <MinimalistRow
+              icon="heart-outline"
+              onPress={() => handleEntryPress("favorites")}
+              showBorder
+              title="收藏图片"
+              valueText={String(data?.favoriteImageCount ?? 0)}
+            />
+            <MinimalistRow
+              icon="time-outline"
+              onPress={() => handleEntryPress("recent")}
+              showBorder
+              title="最近查看"
+              valueText={String(data?.recentViewedCount ?? 0)}
+            />
+          </View>
+
+          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
+          <View style={styles.minimalistGap} />
+
+          {/* Group 5: 常用工具 (回收站、备份导出、重复检测、存储占用) */}
+          <View style={styles.minimalistInsetGroup}>
+            <MinimalistRow
+              icon="trash-outline"
+              onPress={() => handleEntryPress("trash")}
+              showBorder
+              title="回收站"
+              valueText={data?.deletedImageCount ? String(data.deletedImageCount) : undefined}
+            />
+            <MinimalistRow
+              icon="archive-outline"
+              onPress={() => handleEntryPress("backup")}
+              showBorder
+              title="备份导出"
+            />
+            <MinimalistRow
+              icon="copy-outline"
+              onPress={() => handleEntryPress("duplicate-review")}
+              showBorder
+              title="重复检测"
+            />
+            <MinimalistRow
+              icon="pie-chart-outline"
+              onPress={() => handleEntryPress("storage-usage")}
+              showBorder
+              title="存储占用"
+              valueText={formatFileSize(imageBytes + videoBytes)}
+            />
+          </View>
+
+          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
+          <View style={styles.minimalistGap} />
+
+          {/* Group 6: 系统设置 (关于、设置) */}
+          <View style={styles.minimalistInsetGroup}>
+            <MinimalistRow
+              icon="information-circle-outline"
+              onPress={() => handleEntryPress("about")}
+              showBorder
+              title="关于"
+            />
+            <MinimalistRow
+              icon="settings-outline"
+              onPress={() => handleEntryPress("settings")}
+              showBorder
+              title="设置"
+            />
+          </View>
+        </View>
+      ) : (
+        <>
       <MagneticLiquidContainer
         damping={16}
         magneticStrength={0.15}
@@ -880,6 +1066,8 @@ export function MeScreen({
           </ContentCard>
         </MagneticLiquidContainer>
       </View>
+      </>
+      )}
 
       {isLoading ? (
         <Text style={styles.loadingText}>正在刷新本地统计…</Text>
@@ -1527,4 +1715,161 @@ const styles = StyleSheet.create({
     color: colors.primary.default,
     textAlign: "center",
   },
+  // ── 简约模式视觉样式 ──
+  minimalistScrollContent: {
+    paddingHorizontal: 0,
+    paddingVertical: 10,
+    gap: 0,
+  },
+  minimalistContainer: {
+    backgroundColor: '#F9F9F9',
+  },
+  minimalistGap: {
+    height: 10,
+  },
+  minimalistInsetGroup: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    marginHorizontal: 8,
+    overflow: 'hidden',
+  },
+  minimalistProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 76,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  minimalistAvatarWrap: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginRight: 12,
+  },
+  minimalistAvatar: {
+    width: 52,
+    height: 52,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  minimalistAvatarImage: {
+    width: 52,
+    height: 52,
+  },
+  minimalistProfileInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  minimalistNickname: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1C1C',
+  },
+  minimalistUid: {
+    fontSize: 12,
+    color: '#8E8E93',
+    fontFamily: typography.family.brand,
+  },
+  minimalistProfileRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  minimalistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 16,
+    minHeight: 58,
+    backgroundColor: '#FFFFFF',
+  },
+  minimalistRowPressed: {
+    backgroundColor: '#F3F3F4',
+  },
+  minimalistRowIcon: {
+    width: 28,
+    alignItems: 'flex-start',
+    marginRight: 4,
+  },
+  minimalistRowContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 16,
+    paddingVertical: 16,
+    minHeight: 58,
+  },
+  minimalistRowContentBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  minimalistRowTitle: {
+    fontSize: 15,
+    color: '#1A1C1C',
+    fontWeight: '500',
+  },
+  minimalistRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  minimalistRowValue: {
+    fontSize: 13,
+    color: '#8E8E93',
+  },
 });
+
+function MinimalistRow({
+  icon,
+  iconColor,
+  title,
+  valueText,
+  onPress,
+  showBorder = true,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor?: string;
+  title: string;
+  valueText?: string;
+  onPress: () => void;
+  showBorder?: boolean;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.minimalistRow,
+        pressed && styles.minimalistRowPressed,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.minimalistRowIcon}>
+        {iconColor ? (
+          <Ionicons color={iconColor} name={icon} size={20} />
+        ) : (
+          <Ionicons color="#1A1C1C" name={icon} size={20} />
+        )}
+      </View>
+      <View
+        style={[
+          styles.minimalistRowContent,
+          showBorder && styles.minimalistRowContentBorder,
+        ]}
+      >
+        <Text style={styles.minimalistRowTitle}>{title}</Text>
+        <View style={styles.minimalistRowRight}>
+          {valueText ? (
+            <Text style={styles.minimalistRowValue}>{valueText}</Text>
+          ) : null}
+          <Ionicons color="#C4C7C7" name="chevron-forward" size={17} />
+        </View>
+      </View>
+    </Pressable>
+  );
+}

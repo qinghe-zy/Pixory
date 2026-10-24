@@ -5,6 +5,7 @@ export {
   resetDatabaseSpaceCache,
   runMigrations,
   runWithDatabaseSpace,
+  runWithTransactionRetry,
   type PixorySpace,
 } from './db';
 export { DATABASE_NAME, PERSONAL_DATABASE_NAME, DATABASE_VERSION } from './schema';
@@ -20,6 +21,14 @@ export { aiThreadRepository } from './repositories/aiThreadRepository';
 export { aiKnowledgeRepository } from './repositories/aiKnowledgeRepository';
 export { importTemplateRepository } from './repositories/importTemplateRepository';
 export { ipRepository } from './repositories/ipRepository';
-export { settingsRepository } from './repositories/settingsRepository';
+export {
+  settingsRepository,
+  AI_SIDEBAR_SPATIAL_PRESET_KEY,
+  type AiSidebarSpatialPreset,
+  type AiSidebarStyleMode,
+  type AiStreamingPacingMode,
+  type ProfilePageStyleMode,
+  type TypographyGear,
+} from './repositories/settingsRepository';
 export { tagRepository } from './repositories/tagRepository';
 export type * from './types';

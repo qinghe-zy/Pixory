@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -24,9 +24,38 @@ interface AiThinkingBlockProps {
   onHeaderAnchorShift?: (offsetDelta: number) => void;
 }
 
-const THINKING_LINE_HEIGHT = 18;
-const THINKING_PREVIEW_LINES = 5;
+const THINKING_LINE_HEIGHT = 23;
+const THINKING_PREVIEW_LINES = 7;
 const THINKING_PREVIEW_MAX_HEIGHT = THINKING_LINE_HEIGHT * THINKING_PREVIEW_LINES;
+const THINKING_FADE_HEIGHT = 24;
+const PREVIEW_WINDOW_CHAR_THRESHOLD = 800;
+const PREVIEW_WINDOW_TAIL_CHARS = 500;
+const PREVIEW_WINDOW_STEP_CHARS = 300;
+
+function getPreviewTailText(fullText: string): { text: string; hasPrecedingText: boolean } {
+  if (!fullText || fullText.length <= PREVIEW_WINDOW_CHAR_THRESHOLD) {
+    return { text: fullText ?? '', hasPrecedingText: false };
+  }
+  const rawStart = fullText.length - PREVIEW_WINDOW_TAIL_CHARS;
+  const sliceStart = Math.max(
+    1,
+    Math.floor(rawStart / PREVIEW_WINDOW_STEP_CHARS) * PREVIEW_WINDOW_STEP_CHARS,
+  );
+  const newlineIndex = fullText.indexOf('\n', sliceStart);
+  let safeStart = newlineIndex !== -1 && newlineIndex < sliceStart + 80
+    ? newlineIndex + 1
+    : sliceStart;
+  if (safeStart > 0 && safeStart < fullText.length) {
+    const code = fullText.charCodeAt(safeStart);
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      safeStart += 1;
+    }
+  }
+  return {
+    text: fullText.slice(safeStart),
+    hasPrecedingText: true,
+  };
+}
 
 function elapsedSeconds(createdAt: string, completedAt: string | null | undefined, now: number): number {
   const startedAt = Date.parse(createdAt);
@@ -54,7 +83,13 @@ export function AiThinkingBlock({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const requestedExpandedRef = useRef(defaultExpanded);
   const [thinkingEndedAt, setThinkingEndedAt] = useState<string | null>(null);
-  const [contentLayout, setContentLayout] = useState({ createdAt, height: 0, previewHeight: THINKING_PREVIEW_MAX_HEIGHT });
+  const [contentLayout, setContentLayout] = useState({
+    createdAt,
+    height: 0,
+    isTailSlice: false,
+    lineCount: 0,
+    previewHeight: THINKING_PREVIEW_MAX_HEIGHT,
+  });
   const layoutGenerationRef = useRef<string | null>(createdAt);
   const headerRef = useRef<View>(null);
   const headerAnchorRef = useRef<{ y: number; revision: number } | null>(null);
@@ -70,9 +105,26 @@ export function AiThinkingBlock({
   const bodyVisible = expanded && (hasReasoningText || thinking);
   const previewVisible = thinking && !expanded;
   const bodyRenderable = bodyVisible || previewVisible;
+  const previewTail = useMemo(
+    () => (previewVisible && reasoningText ? getPreviewTailText(reasoningText) : null),
+    [previewVisible, reasoningText]
+  );
+  const isTailSlice = previewVisible && Boolean(previewTail?.hasPrecedingText);
+  const displayText = previewVisible && previewTail ? previewTail.text : reasoningText;
+
+  // Single-stage expansion lock: when user expands while streaming a long tail slice,
+  // hold container locked at previewHeight until onTextLayout measures the full reasoningText.
+  const waitingForFullTextLayout =
+    expanded &&
+    Boolean(reasoningText && reasoningText.length > PREVIEW_WINDOW_CHAR_THRESHOLD) &&
+    contentLayout.createdAt === createdAt &&
+    contentLayout.isTailSlice;
+
+  const clampToPreviewViewport = previewVisible || waitingForFullTextLayout;
   const contentHeight = contentLayout.createdAt === createdAt ? contentLayout.height : 0;
   const previewHeight = contentLayout.createdAt === createdAt ? contentLayout.previewHeight : THINKING_PREVIEW_MAX_HEIGHT;
-  const previewOffset = previewVisible ? Math.max(0, contentHeight - previewHeight) : 0;
+  const previewOffset = clampToPreviewViewport ? Math.max(0, contentHeight - previewHeight) : 0;
+  const topFadeVisible = previewVisible && (previewOffset > 0 || Boolean(previewTail?.hasPrecedingText));
   const previewOverflowing = previewVisible && previewOffset > 0;
 
   useLayoutEffect(() => {
@@ -104,15 +156,37 @@ export function AiThinkingBlock({
   useLayoutEffect(() => {
     const anchor = headerAnchorRef.current;
     if (!anchor) return;
+    const layoutSettled = !waitingForFullTextLayout && contentLayout.height > 0;
     // Fabric measures and corrects in the layout phase, before displaying an intermediate frame.
     headerRef.current?.measureInWindow((_x, y) => {
-      if (headerAnchorRef.current !== anchor || anchor.revision !== toggleRevisionRef.current) return;
-      headerAnchorRef.current = null;
+      if (!headerAnchorRef.current || anchor.revision !== toggleRevisionRef.current) return;
       // Inverted lists grow upward; compensate only the measured shift of this header.
       const delta = anchor.y - y;
-      if (Number.isFinite(delta) && Math.abs(delta) >= 1) onHeaderAnchorShift?.(delta);
+      if (Number.isFinite(delta) && Math.abs(delta) >= 1) {
+        onHeaderAnchorShift?.(delta);
+        anchor.y = y;
+        if (!expanded || layoutSettled) {
+          headerAnchorRef.current = null;
+        }
+      } else if (!expanded) {
+        headerAnchorRef.current = null;
+      }
     });
-  }, [expanded, onHeaderAnchorShift]);
+  }, [expanded, contentLayout.height, waitingForFullTextLayout, onHeaderAnchorShift]);
+
+  const handleBodyContentLayout = () => {
+    const anchor = headerAnchorRef.current;
+    if (!anchor || !expanded || waitingForFullTextLayout || contentLayout.height <= 0) return;
+    headerRef.current?.measureInWindow((_x, y) => {
+      if (!headerAnchorRef.current || anchor.revision !== toggleRevisionRef.current) return;
+      const delta = anchor.y - y;
+      if (Number.isFinite(delta) && Math.abs(delta) >= 1) {
+        onHeaderAnchorShift?.(delta);
+        anchor.y = y;
+      }
+      headerAnchorRef.current = null;
+    });
+  };
 
   useEffect(() => () => {
     toggleRevisionRef.current += 1;
@@ -148,7 +222,7 @@ export function AiThinkingBlock({
       >
         <Text style={styles.label}>{label}</Text>
         {!thinking ? <Text style={styles.duration}>（用时 {duration.toFixed(1)} 秒）</Text> : null}
-        <Ionicons color={aiLightColors.mutedReadable} name={expanded ? 'chevron-up' : 'chevron-down'} size={20} />
+        <Ionicons color={aiLightColors.mutedReadable} name={expanded ? 'chevron-up' : 'chevron-down'} size={18} />
       </Pressable>
       <View
         accessibilityElementsHidden={!bodyRenderable}
@@ -157,52 +231,76 @@ export function AiThinkingBlock({
         style={[
           styles.thinkingAnimatedBody,
           !bodyRenderable && styles.hiddenBody,
-          previewVisible && [styles.previewBody, { maxHeight: previewHeight }],
+          clampToPreviewViewport && [styles.previewBody, { maxHeight: previewHeight }],
           bodyRenderable && styles.bodySpacing,
         ]}
       >
         <View
           collapsable={false}
+          onLayout={handleBodyContentLayout}
           style={[
             styles.bodyContent,
-            previewVisible && contentHeight > 0 && { height: contentHeight },
+            clampToPreviewViewport && contentHeight > 0 && { height: contentHeight },
             { transform: [{ translateY: -previewOffset }] },
           ]}
         >
-          {expanded && bodyRenderable ? <View pointerEvents="none" style={styles.expandedGuide} /> : null}
+          {bodyRenderable ? <View pointerEvents="none" style={styles.verticalGuide} /> : null}
           <Text
             onTextLayout={({ nativeEvent: { lines } }) => {
               if (layoutGenerationRef.current !== createdAt || !lines.length) return;
-              // Android can clamp the container to five lines; native line metrics still describe all text.
+              // Android can clamp the container to seven lines; native line metrics still describe all text.
               const lastLine = lines[lines.length - 1];
               const firstVisibleLine = lines[Math.max(0, lines.length - THINKING_PREVIEW_LINES)];
-              const height = lastLine.y + lastLine.height;
-              const nextPreviewHeight = height - firstVisibleLine.y;
+              const height = Math.round(lastLine.y + lastLine.height);
+              const lineCount = lines.length;
+              let nextPreviewHeight = Math.round(height - firstVisibleLine.y);
               if (!Number.isFinite(height) || !Number.isFinite(nextPreviewHeight)
                 || height <= 0 || nextPreviewHeight <= 0 || nextPreviewHeight > height) return;
-              setContentLayout(previous => previous.createdAt === createdAt && previous.height === height
-                && previous.previewHeight === nextPreviewHeight
-                ? previous
-                : { createdAt, height, previewHeight: nextPreviewHeight });
+              setContentLayout(previous => {
+                let resolvedPreviewHeight = nextPreviewHeight;
+                if (
+                  previous.createdAt === createdAt &&
+                  previous.lineCount >= THINKING_PREVIEW_LINES &&
+                  lineCount >= THINKING_PREVIEW_LINES &&
+                  Math.abs(previous.previewHeight - nextPreviewHeight) <= 4
+                ) {
+                  resolvedPreviewHeight = previous.previewHeight;
+                }
+                if (
+                  previous.createdAt === createdAt &&
+                  Math.abs(previous.height - height) < 1 &&
+                  previous.previewHeight === resolvedPreviewHeight &&
+                  previous.isTailSlice === isTailSlice
+                ) {
+                  return previous;
+                }
+                return {
+                  createdAt,
+                  height,
+                  isTailSlice,
+                  lineCount,
+                  previewHeight: resolvedPreviewHeight,
+                };
+              });
             }}
             style={styles.text}
           >
-            {waitingForReasoningText || waitingForReasoningPreviewText ? '正在等待思考内容…' : reasoningText}
+            {waitingForReasoningText || waitingForReasoningPreviewText ? '正在等待思考内容…' : displayText}
           </Text>
         </View>
+        {topFadeVisible ? (
+          <LinearGradient
+            pointerEvents="none"
+            colors={['#FFFFFF', 'rgba(255, 255, 255, 0.85)', 'rgba(255, 255, 255, 0)']}
+            style={styles.previewFadeTop}
+          />
+        ) : null}
         {previewOverflowing ? (
-          <>
-            <LinearGradient
-              pointerEvents="none"
-              colors={[aiLightColors.canvas, `${aiLightColors.canvas}00`]}
-              style={[styles.previewFade, styles.previewFadeTop]}
-            />
-            <LinearGradient
-              pointerEvents="none"
-              colors={[`${aiLightColors.canvas}00`, aiLightColors.canvas]}
-              style={[styles.previewFade, styles.previewFadeBottom]}
-            />
-          </>
+          <LinearGradient
+            pointerEvents="none"
+            colors={['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.85)', '#FFFFFF']}
+            style={styles.previewFadeBottom}
+          />
         ) : null}
       </View>
     </View>
@@ -252,35 +350,40 @@ const styles = StyleSheet.create({
   bodyContent: {
     // Preserve the native text subtree and move its full measured height inside the compact viewport.
     flexShrink: 0,
-    paddingLeft: spacing[3],
+    paddingLeft: 14,
   },
-  expandedGuide: {
+  verticalGuide: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: spacing[1],
-    borderLeftColor: 'rgba(0, 0, 0, 0.18)',
+    top: 2,
+    bottom: 2,
+    left: 2,
+    borderLeftColor: 'rgba(0, 0, 0, 0.12)',
     // A narrow reading guide, independent of text width when switching presentation.
     borderLeftWidth: 2,
   },
-  previewFade: {
+  previewFadeTop: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: spacing[1.5],
-  },
-  previewFadeTop: {
     top: 0,
+    height: THINKING_FADE_HEIGHT,
+    zIndex: 2,
   },
   previewFadeBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     bottom: 0,
+    height: THINKING_FADE_HEIGHT,
+    zIndex: 2,
   },
   text: {
-    ...typography.textStyles.caption,
-    flexShrink: 0,
+    ...typography.textStyles.body,
+    fontSize: 14,
+    lineHeight: THINKING_LINE_HEIGHT,
     color: aiLightColors.mutedReadable,
     includeFontPadding: false,
-    lineHeight: THINKING_LINE_HEIGHT,
+    flexShrink: 0,
   },
   pressed: {
     opacity: 0.72,

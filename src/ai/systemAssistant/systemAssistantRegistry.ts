@@ -1,43 +1,68 @@
 import type { SystemAssistantAction } from './systemAssistantTypes';
+import {
+  buildIpScopedSystemRoutesSet,
+  buildSystemAssistantRouteAliasesMap,
+  buildSystemAssistantRoutesMap,
+} from '../../services/searchActionCatalog';
 
-// Keep this list limited to the system assistant prompt, not every application route.
-export const SYSTEM_ASSISTANT_ROUTES: Readonly<Record<string, string>> = {
-  'lock-personal-space': '锁定隐私空间', 'storage-usage': '存储空间', trash: '回收站',
-  'create-ip': '新建 IP', 'ip-detail': '打开 IP', 'import-images': '导入素材',
-  'duplicate-review': '检查重复素材', 'quick-organize': '未整理素材',
-  'batch-manage-images': '批量管理', 'tags-overview': '标签管理',
-  'global-groups': '全部分组', favorites: '我的收藏', 'all-images': '全部素材',
-  'ai-role-card-editor': '新建角色卡', 'ai-role-library': '角色库',
-  'ai-provider-settings': '模型与 API 设置', backup: '数据备份',
-  'import-batch-history': '导入记录', settings: '系统设置',
-  'product-doc': '产品说明', about: '关于',
-};
+// Derived automatically from SEARCHABLE_FEATURE_CATALOG so global search and system assistant stay in sync.
+export const SYSTEM_ASSISTANT_ROUTES: Readonly<Record<string, string>> = buildSystemAssistantRoutesMap();
 
-export const IP_SCOPED_SYSTEM_ROUTES = new Set(['ip-detail', 'import-images', 'all-images',
-  'quick-organize', 'batch-manage-images', 'import-batch-history']);
+export const SYSTEM_ASSISTANT_ROUTE_ALIASES: Readonly<Record<string, string>> = buildSystemAssistantRouteAliasesMap();
+
+const HARMLESS_EXTRA_KEYS = new Set(['label', 'action', 'title', 'desc', 'summary', 'reason', 'text', 'comment']);
+
+export const IP_SCOPED_SYSTEM_ROUTES = buildIpScopedSystemRoutesSet();
 
 export function normalizeSystemAssistantAction(input: Record<string, string>): SystemAssistantAction | null {
-  const allowed = input.type === 'select_ip' ? ['type']
-    : input.type === 'role-draft' ? ['type', 'name', 'description', 'prompt', 'firstMessage']
-    : input.type === 'rename-thread' ? ['type', 'newTitle', 'confirmed'] : ['type', 'route', 'ipName', 'ipId'];
-  if (Object.keys(input).some(field => !allowed.includes(field))) return null;
-  if (input.type === 'select_ip') return { type: 'select_ip' };
-  if (input.type === 'role-draft') {
-    const name = input.name?.trim() ?? '';
-    const description = input.description?.trim() ?? '';
-    const prompt = input.prompt?.trim() ?? '';
-    const firstMessage = input.firstMessage?.trim() ?? '';
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const k = key.toLowerCase().replace(/[-_]/g, '');
+    if (k === 'type') normalized.type = value;
+    else if (k === 'route' || k === 'routename' || k === 'targetroute') normalized.route = value;
+    else if (k === 'ipname' || k === 'targetip' || k === 'ip') normalized.ipName = value;
+    else if (k === 'ipid') normalized.ipId = value;
+    else if (k === 'newtitle' || (k === 'title' && input.type === 'rename-thread') || (k === 'name' && input.type === 'rename-thread')) normalized.newTitle = value;
+    else if (k === 'name') normalized.name = value;
+    else if (k === 'description') normalized.description = value;
+    else if (k === 'prompt') normalized.prompt = value;
+    else if (k === 'firstmessage') normalized.firstMessage = value;
+    else if (k === 'confirmed') normalized.confirmed = value;
+    else normalized[key] = value;
+  }
+  const allowed = normalized.type === 'select_ip' ? ['type']
+    : normalized.type === 'role-draft' ? ['type', 'name', 'description', 'prompt', 'firstMessage']
+    : normalized.type === 'rename-thread' ? ['type', 'newTitle', 'confirmed'] : ['type', 'route', 'ipName', 'ipId'];
+
+  for (const key of Object.keys(normalized)) {
+    if (HARMLESS_EXTRA_KEYS.has(key.toLowerCase()) && !allowed.includes(key)) {
+      delete normalized[key];
+    }
+  }
+
+  if (Object.keys(normalized).some(field => !allowed.includes(field))) return null;
+  if (normalized.type === 'select_ip') return { type: 'select_ip' };
+  if (normalized.type === 'role-draft') {
+    const name = normalized.name?.trim() ?? '';
+    const description = normalized.description?.trim() ?? '';
+    const prompt = normalized.prompt?.trim() ?? '';
+    const firstMessage = normalized.firstMessage?.trim() ?? '';
     if (name.length > 80 || description.length > 1000 || prompt.length > 6000 || firstMessage.length > 2000) return null;
     // An initial question can legitimately have no established role details yet.
     return { type: 'role-draft', name, description, prompt, firstMessage };
   }
-  if (input.type === 'rename-thread' && input.newTitle?.trim() && input.newTitle.length <= 80) {
-    return { type: 'rename-thread', newTitle: input.newTitle.trim() };
+  if (normalized.type === 'rename-thread' && normalized.newTitle?.trim() && normalized.newTitle.length <= 80) {
+    return { type: 'rename-thread', newTitle: normalized.newTitle.trim() };
   }
-  if (input.type !== 'navigate' || !Object.hasOwn(SYSTEM_ASSISTANT_ROUTES, input.route)) return null;
-  const ipId = input.ipId ? Number(input.ipId) : undefined;
+  if (normalized.type !== 'navigate') return null;
+  if (normalized.route) {
+    const raw = normalized.route.replace(/^\/+/, '').trim().toLowerCase();
+    normalized.route = SYSTEM_ASSISTANT_ROUTE_ALIASES[raw] ?? raw;
+  }
+  if (!Object.hasOwn(SYSTEM_ASSISTANT_ROUTES, normalized.route)) return null;
+  const ipId = normalized.ipId ? Number(normalized.ipId) : undefined;
   if (ipId !== undefined && (!Number.isSafeInteger(ipId) || ipId <= 0)) return null;
-  return { type: 'navigate', route: input.route, ipId, ipName: input.ipName?.trim() || undefined };
+  return { type: 'navigate', route: normalized.route, ipId, ipName: normalized.ipName?.trim() || undefined };
 }
 
 export function systemActionTitle(action: SystemAssistantAction | null): string {

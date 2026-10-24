@@ -2,7 +2,8 @@ import { normalizeSystemAssistantAction } from './systemAssistantRegistry';
 import type { SystemAssistantAction } from './systemAssistantTypes';
 
 const MARKER = '<system_action';
-const HIDDEN_MARKERS = [MARKER, '<tool_call', '<function_call', '<think', '```', '{', '['];
+const HIDDEN_MARKERS = [MARKER, '<tool_call', '<function_call', '<think', '{"tool_call', '```json'];
+const LONGEST_MARKER = Math.max(...HIDDEN_MARKERS.map(m => m.length));
 
 function decodeXmlAttribute(value: string): string {
   return value.replace(/&(?:quot|apos|lt|gt|amp|#10|#13);/g, entity => ({
@@ -14,6 +15,7 @@ function decodeXmlAttribute(value: string): string {
 export class SystemAssistantProtocol {
   private pending = '';
   private hidden = false;
+  private inThink = false;
   private sawAction = false;
   private rejectedEnvelope = false;
   readonly actions: SystemAssistantAction[] = [];
@@ -24,6 +26,21 @@ export class SystemAssistantProtocol {
     this.pending += delta;
     let visible = '';
     while (this.pending) {
+      if (this.inThink) {
+        const lower = this.pending.toLowerCase();
+        const endThink = lower.indexOf('</think>');
+        if (endThink >= 0) {
+          this.inThink = false;
+          this.pending = this.pending.slice(endThink + 8);
+          continue;
+        }
+        let held = 0;
+        for (let length = 1; length < 8 && length <= this.pending.length; length++) {
+          if ('</think>'.startsWith(this.pending.slice(-length).toLowerCase())) held = length;
+        }
+        this.pending = this.pending.slice(this.pending.length - held);
+        break;
+      }
       if (this.hidden) {
         const end = this.pending.indexOf('>');
         if (end < 0) {
@@ -51,6 +68,11 @@ export class SystemAssistantProtocol {
       const start = found?.index ?? -1;
       if (start >= 0) {
         visible += this.pending.slice(0, start);
+        if (found.marker === '<think') {
+          this.inThink = true;
+          this.pending = this.pending.slice(start + 6);
+          continue;
+        }
         if (found.marker !== MARKER) {
           this.invalid = true;
           this.rejectedEnvelope = true;
@@ -62,7 +84,7 @@ export class SystemAssistantProtocol {
         continue;
       }
       let held = 0;
-      for (let length = 1; length < MARKER.length && length <= this.pending.length; length++) {
+      for (let length = 1; length < LONGEST_MARKER && length <= this.pending.length; length++) {
         if (HIDDEN_MARKERS.some(marker => marker.startsWith(this.pending.slice(-length).toLowerCase()))) held = length;
       }
       visible += this.pending.slice(0, this.pending.length - held);
@@ -73,6 +95,12 @@ export class SystemAssistantProtocol {
   }
 
   finish(): string {
+    if (this.inThink) {
+      this.inThink = false;
+      this.pending = '';
+      if (!this.sawAction) this.invalid = true;
+      return '';
+    }
     if (this.hidden) {
       if (!this.sawAction) this.invalid = true;
       this.pending = '';

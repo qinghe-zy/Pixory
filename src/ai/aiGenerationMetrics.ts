@@ -290,6 +290,20 @@ export function readThinkingEndedAt(promptSnapshotJson: string | null | undefine
   }
 }
 
+export function readThinkingStartedAt(promptSnapshotJson: string | null | undefined): string | null {
+  try {
+    const timestamps = JSON.parse(promptSnapshotJson || '{}')?.generationMetrics?.timestamps;
+    const value: unknown =
+      timestamps?.thinkingStartedAt ??
+      timestamps?.generationStartAt ??
+      timestamps?.sendPressedAt ??
+      timestamps?.assistantPlaceholderPersistStartAt;
+    return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export function assertContentFreeGenerationMetrics(metrics: unknown): void {
   const serialized = JSON.stringify(metrics);
   for (const key of FORBIDDEN_GENERATION_METRIC_KEYS) {

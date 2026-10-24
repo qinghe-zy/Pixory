@@ -73,6 +73,7 @@ import {
   MIGRATION_STATEMENTS_V63,
   MIGRATION_STATEMENTS_V64,
   MIGRATION_STATEMENTS_V65,
+  MIGRATION_STATEMENTS_V66,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -106,8 +107,9 @@ async function openPixoryDatabase(space: PixorySpace = 'normal'): Promise<SQLite
 }
 
 async function configureDatabase(db: SQLiteDatabase): Promise<void> {
-  await db.execAsync('PRAGMA journal_mode = WAL;');
-  await db.execAsync('PRAGMA foreign_keys = ON;');
+  await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 10000; PRAGMA cache_size = -32000; PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456;');
+
+
 }
 
 async function ensureImportTemplatesSchema(db: SQLiteDatabase): Promise<void> {
@@ -145,6 +147,30 @@ async function ensureAiBranchSchema(db: SQLiteDatabase): Promise<void> {
 
   if (!(await hasTable(db, 'ai_branch_route_metadata'))) {
     await db.execAsync(MIGRATION_STATEMENTS_V35);
+  }
+
+  if (await hasTable(db, 'ai_messages') && (await hasTable(db, 'ai_message_versions'))) {
+    await db.execAsync(`
+      UPDATE ai_messages
+      SET createdAt = (
+        SELECT v.messageCreatedAt
+        FROM ai_message_versions v
+        WHERE v.originalMessageId = ai_messages.id
+          AND v.versionIndex = 1
+      )
+      WHERE id IN (
+        SELECT v.originalMessageId
+        FROM ai_message_versions v
+        WHERE v.versionIndex = 1
+          AND v.messageCreatedAt IS NOT NULL
+      )
+      AND createdAt != (
+        SELECT v.messageCreatedAt
+        FROM ai_message_versions v
+        WHERE v.originalMessageId = ai_messages.id
+          AND v.versionIndex = 1
+      );
+    `);
   }
 }
 
@@ -280,6 +306,25 @@ async function ensureMemoryAggregateSchema(db: SQLiteDatabase): Promise<void> {
     `);
   } else if (!(await hasColumn(db, 'memory_profiles', 'scopeType'))) {
     await db.execAsync(`ALTER TABLE memory_profiles ADD COLUMN scopeType TEXT NOT NULL DEFAULT 'thread';`);
+  }
+
+  // memory_claim_feedback
+  if (!(await hasTable(db, 'memory_claim_feedback'))) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS memory_claim_feedback (
+        claimId TEXT PRIMARY KEY NOT NULL,
+        space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+        injectedCount INTEGER NOT NULL DEFAULT 0,
+        usedCount INTEGER NOT NULL DEFAULT 0,
+        lastInjectedAt TEXT,
+        lastUsedAt TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (claimId) REFERENCES memory_claims(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_claim_feedback_space
+        ON memory_claim_feedback(space, usedCount, injectedCount);
+    `);
   }
 }
 
@@ -584,6 +629,10 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       }
     }
 
+    if (currentVersion < 66) {
+      await database.execAsync(MIGRATION_STATEMENTS_V66);
+    }
+
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
     await ensureAiMemoryLineageSchema(database);
@@ -626,6 +675,43 @@ export async function runWithDatabaseSpace<T>(
 ): Promise<T> {
   const db = await getDatabase(space);
   return task(db);
+}
+
+export async function runWithTransactionRetry<T>(
+  db: SQLiteDatabase,
+  fn: (txn: SQLiteDatabase) => Promise<T>,
+  maxRetries = 3,
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      let result: T;
+      if (typeof db.withExclusiveTransactionAsync === 'function') {
+        await db.withExclusiveTransactionAsync(async (txn: unknown) => {
+          result = await fn(txn as SQLiteDatabase);
+        });
+      } else {
+        await db.withTransactionAsync(async () => {
+          result = await fn(db);
+        });
+      }
+      return result!;
+    } catch (error: any) {
+      attempt += 1;
+      const message = String(error?.message || '');
+      const isLockError =
+        message.includes('database is locked') ||
+        message.includes('cannot rollback') ||
+        message.includes('finalizeAsync') ||
+        message.includes('SQLITE_BUSY') ||
+        message.includes('SQLITE_LOCKED');
+      if (isLockError && attempt <= maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 60 * Math.pow(2, attempt - 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 export async function checkpointDatabase(space: PixorySpace): Promise<void> {

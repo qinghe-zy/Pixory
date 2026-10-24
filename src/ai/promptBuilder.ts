@@ -69,6 +69,12 @@ const SILLYTAVERN_IMMERSIVE_ROLEPLAY_FRAME = [
   '保持语言有节奏变化，避免机械问答、重复套话和过度总结。',
 ].join('\n');
 
+export const STABLE_INTERACTIVE_GIFT_POLICY = [
+  '补充输出约定：日常交流、Markdown 排版、普通代码示范或 HTML/CSS/JS 局部教学片段均按常规方式自由输出，局部代码或教学示例无需包裹完整的 <!DOCTYPE html> 外壳。',
+  '仅在制作完整的交互式网页项目、实用小工具、小游戏、数据可视化或独立矢量图时，才输出单文件自包含的完整代码：完整 HTML5 项目以 <!DOCTYPE html> 开头并闭合 </html>（将 CSS 与 JS 内联在同一文件中，保证逻辑完整可用、不省略核心实现），独立矢量图输出完整闭合的 <svg>...</svg>。',
+  '在对话正文中请保持自然交流，无需提及任何底层渲染容器、运行环境或技术机制名称。',
+].join('\n');
+
 function frameRoleInstruction(prompt: string, weight: AiRoleInstructionWeight = 'default'): string {
   const trimmed = prompt.trim();
   if (!trimmed) {
@@ -255,7 +261,11 @@ function compileUserObservation(input: {
   dynamicSegments?: AiDynamicContextSegment[];
 }): string {
   return [
-    input.companionMemoryPrefix,
+    (() => {
+      const dynamicObservations = compileDynamicSegments(input.dynamicSegments, 'user_observation');
+      const companionPrefix = input.companionMemoryPrefix?.trim();
+      return companionPrefix && !dynamicObservations.includes(companionPrefix) ? companionPrefix : '';
+    })(),
     input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
     compileDynamicSegments(input.dynamicSegments, 'user_observation'),
   ].filter(Boolean).join('\n\n');
@@ -298,6 +308,9 @@ function promptBlockPriority(name: AiPromptBlock['name']): 'dynamic' | 'protecte
   }
   if (name === 'memory_snapshot') {
     return 'protected';
+  }
+  if (name === 'summary_archive') {
+    return 'stable';
   }
   if (
     name === 'companion_runtime'
@@ -352,12 +365,13 @@ function buildPromptFromLayers(input: {
 export function fitBuiltPromptToContextBudget(input: {
   modelContextWindowTokens?: number | null;
   prompt: BuiltPrompt;
+  preserveBlockNames?: AiPromptBlock['name'][];
 }): BuiltPrompt {
   const budgeted = fitPromptBlocksToContextBudget({
     blocks: input.prompt.promptLayers.map((layer) => ({
       key: layer.name,
       minChars: promptBlockMinChars(layer.name),
-      priority: promptBlockPriority(layer.name),
+      priority: input.preserveBlockNames?.includes(layer.name) ? 'required' : promptBlockPriority(layer.name),
       text: layer.text,
     })),
     modelContextWindowTokens: input.modelContextWindowTokens,
@@ -368,7 +382,8 @@ export function fitBuiltPromptToContextBudget(input: {
   const textByName = new Map(budgeted.blocks.map((item) => [item.key, item.text]));
   const promptLayers = input.prompt.promptLayers.map((layer) => ({
     ...layer,
-    text: textByName.get(layer.name) ?? layer.text,
+    text: layer.name === 'dynamic_memory' && textByName.get(layer.name) !== layer.text
+      ? '' : textByName.get(layer.name) ?? layer.text,
   }));
   return {
     ...buildPromptFromLayers({
@@ -405,10 +420,10 @@ export function buildNormalChatPrompt(input: {
   const baseRolePrompt = stripStructuredSillyTavernSections(input.systemPrompt, input.roleCardContext);
   const materialSection = buildCitationMaterialSection('当前会话资料：', input.materialSnippets);
   const retrievalContext = [materialSection, input.attachmentPromptContext].filter(Boolean).join('\n\n');
-  const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
+  const stableSummarySnapshot = (input.stableSummarySnapshot ?? input.summarySegments ?? '').trim();
 
   const stableBlocks = [
-    block('stable_app_policy', '', true),
+    block('stable_app_policy', STABLE_INTERACTIVE_GIFT_POLICY, true),
     block('stable_role', frameRoleInstruction([
       baseRolePrompt,
       useRoleplayFrame ? SILLYTAVERN_IMMERSIVE_ROLEPLAY_FRAME : '',
@@ -418,10 +433,10 @@ export function buildNormalChatPrompt(input: {
     ].filter(Boolean).join('\n\n'), input.roleInstructionWeight), true, AI_PROMPT_LAYER_VERSIONS.role),
     block('stable_material_rules', '', true),
     block('stable_tool_definitions', '', true),
-    block('memory_snapshot', [
-      stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '',
-      input.stableMemoryPrefix,
-    ].filter(Boolean).join('\n\n'), true),
+    block('memory_snapshot', input.stableMemoryPrefix, true),
+    block('summary_archive', stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '', true),
+
+
   ];
   const dynamicBlocks = [
     block('history_window', '', false),
@@ -478,9 +493,9 @@ export function buildMaterialBoundPrompt(input: {
     buildCitationMaterialSection('可引用资料片段：', input.snippets),
     input.attachmentPromptContext,
   ].filter(Boolean).join('\n\n');
-  const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
+  const stableSummarySnapshot = (input.stableSummarySnapshot ?? input.summarySegments ?? '').trim();
   const stableBlocks = [
-    block('stable_app_policy', '', true),
+    block('stable_app_policy', STABLE_INTERACTIVE_GIFT_POLICY, true),
     block('stable_role', frameRoleInstruction([
       baseRolePrompt,
       useRoleplayFrame ? SILLYTAVERN_IMMERSIVE_ROLEPLAY_FRAME : '',
@@ -489,10 +504,10 @@ export function buildMaterialBoundPrompt(input: {
     ].filter(Boolean).join('\n\n'), input.roleInstructionWeight), true, AI_PROMPT_LAYER_VERSIONS.role),
     block('stable_material_rules', ['资料规则：', materialRules].join('\n'), true),
     block('stable_tool_definitions', '', true),
-    block('memory_snapshot', [
-      stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '',
-      input.stableMemoryPrefix,
-    ].filter(Boolean).join('\n\n'), true),
+    block('memory_snapshot', input.stableMemoryPrefix, true),
+    block('summary_archive', stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '', true),
+
+
   ];
   const dynamicBlocks = [
     block('history_window', '', false),

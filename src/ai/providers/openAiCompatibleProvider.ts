@@ -214,6 +214,25 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   let buffer = '';
   let rawText = '';
   let sawStreamPayload = false;
+
+  const consumeBufferLines = async (): Promise<void> => {
+    let newlineIndex: number;
+    while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+      if (signal?.aborted) return;
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      const parsedLine = parseOpenAiStreamLine(line, sawStreamPayload);
+      if (parsedLine.isStreamPayload) {
+        sawStreamPayload = true;
+      }
+      if (sawStreamPayload) {
+        rawText = '';
+      }
+      const pending = dispatchEvents(parsedLine.events);
+      if (pending) await pending;
+    }
+  };
+
   while (true) {
     if (signal?.aborted) {
       return false;
@@ -230,19 +249,7 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
       rawText += chunk;
     }
     buffer += chunk;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const parsedLine = parseOpenAiStreamLine(line, sawStreamPayload);
-      if (parsedLine.isStreamPayload) {
-        sawStreamPayload = true;
-      }
-      if (sawStreamPayload) {
-        rawText = '';
-      }
-      const pending = dispatchEvents(parsedLine.events);
-      if (pending) await pending;
-    }
+    await consumeBufferLines();
   }
   const trailing = decoder.decode();
   if (trailing) {
@@ -250,19 +257,7 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
       rawText += trailing;
     }
     buffer += trailing;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const parsedLine = parseOpenAiStreamLine(line, sawStreamPayload);
-      if (parsedLine.isStreamPayload) {
-        sawStreamPayload = true;
-      }
-      if (sawStreamPayload) {
-        rawText = '';
-      }
-      const pending = dispatchEvents(parsedLine.events);
-      if (pending) await pending;
-    }
+    await consumeBufferLines();
   }
   if (buffer) {
     const parsedLine = parseOpenAiStreamLine(buffer, sawStreamPayload);

@@ -1,6 +1,7 @@
 import { runWithDatabaseSpace, type PixorySpace } from '../../database';
 import { resolveCalibratedConfidence, type MemoryClaimRecord } from './memoryTypes';
 import { MemoryFacade } from './memoryFacade';
+import { hasCitationLexicalSupport } from '../aiCitationProtocol';
 
 export const MEMORY_CONFIDENCE_PRIORS = {
   high: 0.95,
@@ -75,7 +76,24 @@ export async function runMemoryLifecycleMaintenance(
       space
     )
   );
+  const neglectedClaimIds = await runWithDatabaseSpace(space, async (db) => {
+    const rows = await db.getAllAsync<{ claimId: string }>(
+      `SELECT claimId FROM memory_claim_feedback WHERE space = ? AND injectedCount >= 5 AND usedCount = 0`,
+      space
+    ).catch(() => []);
+    return new Set(rows.map((r) => r.claimId));
+  });
+
   for (const claim of claims) {
+    if (neglectedClaimIds.has(claim.id) && !claim.manualLocked && claim.safetyState === 'none' && claim.lane === 'working') {
+      await MemoryFacade.staleClaim({ claimId: claim.id, space }, {
+        commandId: `lifecycle:neglected:${claim.id}:${claim.version}`,
+        source: 'memory_lifecycle',
+        expectedVersion: claim.version,
+      }).catch(() => undefined);
+      staled += 1;
+      continue;
+    }
     const ageDays = Math.max(0, (now - Date.parse(claim.updatedAt)) / 86_400_000);
     if (
       claim.lane === 'working'
@@ -101,6 +119,70 @@ export async function runMemoryLifecycleMaintenance(
       promoted += 1;
     }
   }
+
+  const workingByScopeAndPredicate = new Map<string, MemoryClaimRecord[]>();
+  for (const claim of claims.filter((item) => item.lane === 'working' && item.status !== 'stale' && !item.manualLocked)) {
+    const key = [claim.scopeType, claim.scopeId ?? '∅', claim.predicate].join(':');
+    const list = workingByScopeAndPredicate.get(key) ?? [];
+    list.push(claim);
+    workingByScopeAndPredicate.set(key, list);
+  }
+  for (const group of workingByScopeAndPredicate.values()) {
+    if (group.length < 3) {
+      continue;
+    }
+    const clusters: MemoryClaimRecord[][] = [];
+    for (const claim of group) {
+      let matchedCluster: MemoryClaimRecord[] | undefined;
+      for (const cluster of clusters) {
+        const representative = cluster[0];
+        const sameCanonical = Boolean(claim.canonicalClaimId && representative.canonicalClaimId && claim.canonicalClaimId === representative.canonicalClaimId);
+        const sameGroup = Boolean(claim.relatedClaimGroupId && representative.relatedClaimGroupId && claim.relatedClaimGroupId === representative.relatedClaimGroupId);
+        const lexicalOverlap = hasCitationLexicalSupport(claim.valueNormalized, representative.valueNormalized)
+          || hasCitationLexicalSupport(representative.valueNormalized, claim.valueNormalized);
+        if (sameCanonical || sameGroup || lexicalOverlap) {
+          matchedCluster = cluster;
+          break;
+        }
+      }
+      if (matchedCluster) {
+        matchedCluster.push(claim);
+      } else {
+        clusters.push([claim]);
+      }
+    }
+
+    for (const cluster of clusters) {
+      if (cluster.length >= 3) {
+        const sorted = [...cluster].sort((a, b) => b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt));
+        const primary = sorted[0];
+        const fragments = sorted.slice(1);
+        await MemoryFacade.confirmClaim({ claimId: primary.id, space }, {
+          commandId: `lifecycle:consolidate-primary:${primary.id}:${primary.version}`,
+          source: 'memory_lifecycle',
+          expectedVersion: primary.version,
+        }).catch(() => undefined);
+        promoted += 1;
+        for (const fragment of fragments) {
+          await MemoryFacade.staleClaim({ claimId: fragment.id, space }, {
+            commandId: `lifecycle:consolidate-stale:${fragment.id}:${fragment.version}`,
+            source: 'memory_lifecycle',
+            expectedVersion: fragment.version,
+          }).catch(() => undefined);
+          staled += 1;
+        }
+      }
+    }
+  }
+
+  await runWithDatabaseSpace(space, async (db) => {
+    await db.runAsync(
+      `DELETE FROM memory_claim_feedback
+       WHERE space = ? AND claimId NOT IN (SELECT id FROM memory_claims WHERE space = ?)`,
+      space,
+      space
+    ).catch(() => undefined);
+  });
 
   const grouped = new Map<string, MemoryClaimRecord[]>();
   for (const claim of claims.filter((item) => item.lane === 'confirmed' && item.status === 'confirmed')) {

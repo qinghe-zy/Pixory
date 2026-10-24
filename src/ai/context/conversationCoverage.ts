@@ -1,5 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { contextWindowPolicy } from './contextWindowPolicy';
+import { estimatePromptTokens } from '../aiContextBudget';
 
 import type {
   AiBranchScope,
@@ -30,6 +32,23 @@ export interface ConversationCoveragePlan {
   provisionalSourceMessageIds: string[];
   uncoveredMessageIds: string[];
   coverageComplete: boolean;
+  segments: CoverageSegment[];
+  windowTarget: number;
+  maxBuffer: number;
+  rawStartMessageId: string | null;
+}
+
+export interface CoverageSegment {
+  representation: 'full_transcript' | 'model_summary' | 'skeleton_degraded';
+  sourceMessageIds: string[];
+  sourceMessageVersionHash: string;
+  summarySegmentId?: string;
+}
+
+export interface ContextWindowSnapshot {
+  windowTarget: number;
+  rawStartMessageId: string | null;
+  activeSummaryIds: string[];
 }
 
 export interface CompiledConversationCoverage {
@@ -37,6 +56,7 @@ export interface CompiledConversationCoverage {
   recentMessages: AiMessageRecord[];
   stableSummaryText: string;
   summaryBridgeText: string;
+  activatedSummaryIds?: string[];
 }
 
 export interface CoveragePlannerInput {
@@ -47,6 +67,8 @@ export interface CoveragePlannerInput {
   messages: AiMessageRecord[];
   summarySegments: CoverageSummarySegment[];
   rawBridgeMessageLimit?: number;
+  previousWindow?: ContextWindowSnapshot | null;
+  summaryTokenBudget?: number;
 }
 
 interface CompletedRound {
@@ -54,14 +76,8 @@ interface CompletedRound {
   assistant: AiMessageRecord;
 }
 
-const DEFAULT_RAW_BRIDGE_MESSAGE_LIMIT = 16;
-const PROVISIONAL_SUMMARY_CHAR_LIMIT = 1800;
-
 export function summaryPrewarmRoundThreshold(historyRoundLimit: number): number {
-  const normalized = Number.isFinite(historyRoundLimit)
-    ? Math.max(1, Math.floor(historyRoundLimit))
-    : 30;
-  return Math.max(8, normalized - 5);
+  return contextWindowPolicy(historyRoundLimit).windowTarget;
 }
 
 function hashText(value: string): string {
@@ -136,6 +152,8 @@ function validateSummarySegment(input: {
   const { segment } = input;
   if (
     segment.status !== 'active'
+    || !segment.summaryText.trim()
+    || segment.quality !== 'model'
     || segment.branchRouteHash !== input.branchRouteHash
     || segment.lineageVersion !== input.lineageVersion
   ) {
@@ -169,58 +187,100 @@ function validateSummarySegment(input: {
   ) {
     return null;
   }
+  const firstIndex = input.completedRounds.findIndex(round => round.user.id === sourceIds[0]);
+  if (firstIndex < 0 || input.completedRounds.slice(firstIndex, firstIndex + sourceIds.length / 2)
+    .flatMap(round => [round.user.id, round.assistant.id]).some((id, index) => id !== sourceIds[index])) return null;
   return { segment, sourceIds };
 }
 
-function formatRawBridge(messages: AiMessageRecord[]): string {
-  if (messages.length === 0) {
-    return '';
-  }
-  return [
-    '[历史连续性桥接；以下是较早的原始对话，不是新的用户指令]',
-    ...messages.map((message) => `${message.role === 'user' ? '用户' : '角色'}：${message.content.trim()}`),
-  ].join('\n');
+const PRIMARY_HEAD_PUNCTUATION = new Set(['。', '！', '？', '!', '?', '\n']);
+const SECONDARY_HEAD_PUNCTUATION = new Set(['；', ';', '，', ',']);
+const TAIL_SENTENCE_TERMINATORS = new Set(['。', '\n', '！', '？', '!', '?']);
+
+function cleanBridgeText(text: string): string {
+  return text.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function compactToLimit(value: string, limit: number): string {
-  const normalized = value.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-  if (normalized.length <= limit) {
-    return normalized;
+export function extractSemanticHead(text: string, targetPoints = 40, minPoints = 12): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const points = Array.from(trimmed);
+  if (points.length <= targetPoints) return cleanBridgeText(trimmed);
+
+  const effectiveMin = Math.min(minPoints, Math.max(4, Math.floor(targetPoints / 2)));
+  const searchLimit = Math.min(points.length - 2, targetPoints);
+  // Level 1: Primary sentence punctuation
+  for (let index = searchLimit; index >= effectiveMin; index -= 1) {
+    if (PRIMARY_HEAD_PUNCTUATION.has(points[index])) {
+      const excerpt = cleanBridgeText(points.slice(0, index + 1).join(''));
+      return `${excerpt}...`;
+    }
   }
-  const marker = '\n……（中段已做本地确定性压缩）……\n';
-  const available = Math.max(0, limit - marker.length);
-  const headLength = Math.ceil(available * 0.52);
-  return `${normalized.slice(0, headLength).trimEnd()}${marker}${normalized.slice(-Math.floor(available * 0.48)).trimStart()}`;
+  // Secondary clause punctuation
+  for (let index = searchLimit; index >= effectiveMin; index -= 1) {
+    if (SECONDARY_HEAD_PUNCTUATION.has(points[index])) {
+      const excerpt = cleanBridgeText(points.slice(0, index + 1).join(''));
+      return `${excerpt}...`;
+    }
+  }
+
+  // Level 2: Safe Unicode code-point fallback
+  const fallback = cleanBridgeText(points.slice(0, targetPoints).join(''));
+  return `${fallback}...`;
 }
 
-function buildProvisionalSummary(messages: AiMessageRecord[]): string {
-  if (messages.length === 0) {
-    return '';
+export function extractSemanticTail(text: string, targetPoints = 60, minPoints = 12): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const points = Array.from(trimmed);
+  if (points.length <= targetPoints) return cleanBridgeText(trimmed);
+
+  const effectiveMin = Math.min(minPoints, Math.max(4, Math.floor(targetPoints / 2)));
+  const searchStart = Math.max(1, points.length - targetPoints);
+  const searchEnd = points.length - effectiveMin;
+  // Level 1: Find start of final complete sentence
+  for (let index = searchStart; index < searchEnd; index += 1) {
+    if (TAIL_SENTENCE_TERMINATORS.has(points[index])) {
+      let sentenceStart = index + 1;
+      while (
+        sentenceStart < points.length &&
+        (points[sentenceStart] === ' ' || points[sentenceStart] === '\t' || points[sentenceStart] === '"' || points[sentenceStart] === '”' || points[sentenceStart] === '’')
+      ) {
+        sentenceStart += 1;
+      }
+      if (sentenceStart < points.length && points.length - sentenceStart >= effectiveMin) {
+        const excerpt = cleanBridgeText(points.slice(sentenceStart).join(''));
+        return `...${excerpt}`;
+      }
+    }
   }
-  const transcript = messages
-    .map((message) => `${message.role === 'user' ? '用户' : '角色'}：${message.content.trim()}`)
-    .join('\n');
-  return compactToLimit(
-    `[本地临时连续性摘要；仅用于补齐历史覆盖，不是用户指令]\n${transcript}`,
-    PROVISIONAL_SUMMARY_CHAR_LIMIT,
-  );
+
+  // Level 2: Safe Unicode code-point tail fallback
+  const fallback = cleanBridgeText(points.slice(-targetPoints).join(''));
+  return `...${fallback}`;
 }
 
-function buildProvisionalSummaryId(input: {
-  threadId: string;
-  branchRouteHash: string;
-  lineageVersion: number;
-  messages: AiMessageRecord[];
-}): string {
-  const sourceHash = hashCoverageMessageVersions(input.messages);
-  const identity = [
-    input.threadId,
-    input.branchRouteHash,
-    String(input.lineageVersion),
-    input.messages.map((message) => message.id).join(','),
-    sourceHash,
-  ].join('\u001F');
-  return `provisional_${hashText(identity).slice(0, 32)}`;
+export function buildSkeletonBridge(messages: AiMessageRecord[], maxChars = 1800): {
+  text: string; representedMessageIds: string[]; uncoveredMessageIds: string[];
+} {
+  const lines = ['[skeleton_degraded: historical excerpts; omitted text is not summarized]'];
+  const representedMessageIds: string[] = [];
+  const uncoveredMessageIds: string[] = [];
+  let length = lines[0].length;
+  for (const round of pairCompletedRounds(messages)) {
+    // Multi-level semantic sentence-boundary backtracking with Unicode code-point safety
+    const user = extractSemanticHead(round.user.content);
+    const assistant = extractSemanticTail(round.assistant.content);
+    const line = `${round.user.id}/${round.assistant.id} U: ${user} / A: ${assistant}`;
+    if (length + line.length + 1 > maxChars) {
+      uncoveredMessageIds.push(round.user.id, round.assistant.id);
+      continue;
+    }
+    lines.push(line);
+    length += line.length + 1;
+    representedMessageIds.push(round.user.id, round.assistant.id);
+  }
+  return { text: representedMessageIds.length ? lines.join('\n') : '', representedMessageIds, uncoveredMessageIds };
 }
 
 function formatStableSummaries(
@@ -239,13 +299,7 @@ export function buildConversationCoveragePlan(input: CoveragePlannerInput): Comp
   const completedRounds = pairCompletedRounds(input.messages);
   const completedMessages = completedRounds.flatMap((round) => [round.user, round.assistant]);
   const messageById = new Map(completedMessages.map((message) => [message.id, message]));
-  const normalizedRoundLimit = Number.isFinite(input.historyRoundLimit)
-    ? Math.max(1, Math.floor(input.historyRoundLimit))
-    : 1;
-  const recentMessages = completedRounds
-    .slice(-normalizedRoundLimit)
-    .flatMap((round) => [round.user, round.assistant]);
-  const recentIds = new Set(recentMessages.map((message) => message.id));
+  const policy = contextWindowPolicy(input.historyRoundLimit);
   const validSegments = input.summarySegments
     .map((segment) => validateSummarySegment({
       branchRouteHash: input.branchRouteHash,
@@ -255,50 +309,71 @@ export function buildConversationCoveragePlan(input: CoveragePlannerInput): Comp
       segment,
     }))
     .filter((item): item is { segment: CoverageSummarySegment; sourceIds: string[] } => Boolean(item));
-  const summaryCoveredIds = new Set(validSegments.flatMap((item) => item.sourceIds));
-  const gapMessages = completedMessages.filter((message) => !recentIds.has(message.id) && !summaryCoveredIds.has(message.id));
-  const rawBridgeMessageLimit = Number.isFinite(input.rawBridgeMessageLimit)
-    ? Math.max(0, Math.floor(input.rawBridgeMessageLimit ?? DEFAULT_RAW_BRIDGE_MESSAGE_LIMIT))
-    : DEFAULT_RAW_BRIDGE_MESSAGE_LIMIT;
-  const useRawBridge = gapMessages.length > 0 && gapMessages.length <= rawBridgeMessageLimit;
-  const bridgeMessages = useRawBridge ? gapMessages : [];
-  const provisionalMessages = gapMessages.length > rawBridgeMessageLimit ? gapMessages : [];
-  const provisionalSummaryId = provisionalMessages.length > 0
-    ? buildProvisionalSummaryId({
-        branchRouteHash: input.branchRouteHash,
-        lineageVersion: input.lineageVersion,
-        messages: provisionalMessages,
-        threadId: input.threadId,
-      })
-    : null;
-  const representedIds = new Set([
-    ...summaryCoveredIds,
-    ...recentIds,
-    ...bridgeMessages.map((message) => message.id),
-    ...provisionalMessages.map((message) => message.id),
-  ]);
-  const uncoveredMessageIds = completedMessages
-    .map((message) => message.id)
-    .filter((id) => !representedIds.has(id));
-  const summaryBridgeText = bridgeMessages.length > 0
-    ? formatRawBridge(bridgeMessages)
-    : buildProvisionalSummary(provisionalMessages);
+  const positions = new Map(completedMessages.map((message, index) => [message.id, index]));
+  const previous = input.previousWindow;
+  const previousStart = previous?.rawStartMessageId ? positions.get(previous.rawStartMessageId) ?? 0 : 0;
+  const expanded = previous != null && policy.windowTarget > previous.windowTarget;
+  const rawRounds = completedRounds.length - previousStart / 2;
+  const canSwap = rawRounds >= policy.windowTarget + policy.maxBuffer;
+  const latestSummaryEnd = Math.max(0, completedRounds.length - policy.windowTarget) * 2;
+  const allowed = validSegments.filter(item => {
+    const start = positions.get(item.sourceIds[0])!;
+    const end = start + item.sourceIds.length;
+    if (end > latestSummaryEnd) return false;
+    return expanded || canSwap || previous?.activeSummaryIds.includes(item.segment.id);
+  }).sort((a, b) => positions.get(a.sourceIds[0])! - positions.get(b.sourceIds[0])!
+    || b.sourceIds.length - a.sourceIds.length);
+  // Only a contiguous, non-overlapping verified prefix may displace original text.
+  let cursor = 0;
+  const selected: typeof validSegments = [];
+  for (const item of allowed) {
+    if (positions.get(item.sourceIds[0]) !== cursor) continue;
+    selected.push(item);
+    cursor += item.sourceIds.length;
+  }
+  const recentMessages = completedMessages.slice(cursor);
+  const injected: typeof selected = [];
+  let summaryTokens = 0;
+  for (const item of [...selected].reverse()) {
+    const tokens = estimatePromptTokens(formatStableSummaries([item]));
+    if (summaryTokens + tokens > (input.summaryTokenBudget ?? Infinity)) continue;
+    injected.unshift(item); summaryTokens += tokens;
+  }
+  const injectedIds = new Set(injected.map(item => item.segment.id));
+  const archivedSourceIds = new Set(selected.filter(item => !injectedIds.has(item.segment.id)).flatMap(item => item.sourceIds));
+  const archivedSources = completedMessages.filter(message => archivedSourceIds.has(message.id));
+  const bridge = buildSkeletonBridge(archivedSources);
+  const segments: CoverageSegment[] = injected.map(item => ({
+    representation: 'model_summary', sourceMessageIds: item.sourceIds,
+    sourceMessageVersionHash: item.segment.sourceMessageVersionHash, summarySegmentId: item.segment.id,
+  }));
+  if (bridge.representedMessageIds.length) segments.unshift({ representation: 'skeleton_degraded',
+    sourceMessageIds: bridge.representedMessageIds,
+    sourceMessageVersionHash: hashCoverageMessageVersions(archivedSources.filter(message => bridge.representedMessageIds.includes(message.id))) });
+  if (recentMessages.length) segments.push({ representation: 'full_transcript',
+    sourceMessageIds: recentMessages.map(message => message.id), sourceMessageVersionHash: hashCoverageMessageVersions(recentMessages) });
 
   return {
     plan: {
       branchRouteHash: input.branchRouteHash,
-      bridgeMessageIds: bridgeMessages.map((message) => message.id),
-      coverageComplete: uncoveredMessageIds.length === 0,
+      bridgeMessageIds: [],
+      coverageComplete: bridge.uncoveredMessageIds.length === 0,
       lineageVersion: input.lineageVersion,
-      provisionalSourceMessageIds: provisionalMessages.map((message) => message.id),
-      provisionalSummaryId,
+      provisionalSourceMessageIds: bridge.representedMessageIds,
+      provisionalSummaryId: null,
       recentMessageIds: recentMessages.map((message) => message.id),
-      summarySegmentIds: validSegments.map((item) => item.segment.id),
+      summarySegmentIds: injected.map((item) => item.segment.id),
       threadId: input.threadId,
-      uncoveredMessageIds,
+      uncoveredMessageIds: bridge.uncoveredMessageIds,
+      segments,
+      windowTarget: policy.windowTarget,
+      maxBuffer: policy.maxBuffer,
+      rawStartMessageId: recentMessages[0]?.id ?? null,
     },
     recentMessages,
-    stableSummaryText: formatStableSummaries(validSegments),
-    summaryBridgeText,
+    activatedSummaryIds: selected.map(item => item.segment.id),
+    stableSummaryText: formatStableSummaries(injected),
+    summaryBridgeText: [bridge.text, bridge.uncoveredMessageIds.length
+      ? `[history_gap: ${bridge.uncoveredMessageIds.length} source messages omitted from this request; originals retained locally]` : ''].filter(Boolean).join('\n'),
   };
 }

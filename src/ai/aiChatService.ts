@@ -26,6 +26,8 @@ import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepos
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { settleWithConcurrency } from './aiBoundedConcurrency';
 import { assertAiChatAttachments } from './aiAttachmentPolicy';
+import { executeTwoStepDocQuery } from '../services/docQuery/aiDocQueryCoordinator';
+import { detectDocQueryIntent } from '../services/docQuery/docQueryIntentDetector';
 import { AI_CHAT_ATTACHMENT_READ_CONCURRENCY } from '../constants/limits';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
@@ -72,10 +74,14 @@ import {
   type MemoryContextPlan,
 } from './memory/memoryContextPlanService';
 import { resolveMemoryIntentTargetClaimIds } from './memory/memoryRetrievalService';
+import {
+  MemoryFeedbackService,
+} from './memory/memoryFeedbackService';
 import { resolveMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import { compileConversationCoverage } from './context/conversationCoverageService';
 import type { CompiledConversationCoverage } from './context/conversationCoverage';
+import { finalizeContextRequest, type ContextPlan } from './context/contextPlanner';
 import { compileCompanionContext, type CompanionContextPlan } from './companion/companionContextCompiler';
 import { markCompanionOpenLoopMentioned, markCompanionTemporalAnchorMentioned, recordCompanionContextTrace } from './companion/companionEventRepository';
 import { deriveCompanionTraceId } from './companion/companionDiagnostics';
@@ -142,6 +148,7 @@ import {
   takeStreamingPerformanceSnapshot,
   type StreamingPerformanceIdentity,
 } from './aiStreamingPerformanceDiagnostics';
+import { dehydrateHistoricalMessageContent } from '../services/sandbox/sandboxContextDehydrator';
 import {
   deleteThreadProviderApiKey,
   getProviderApiKeyForSpace,
@@ -1259,6 +1266,7 @@ function buildPromptSnapshotJson(input: {
   messageDisplayKind?: AiMessageDisplayKind | null;
   normalizedUsage: NormalizedProviderUsage | null;
   memoryContextPlan: MemoryContextPlan;
+  contextPlan?: ContextPlan;
   providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
   space: PixorySpace;
   stopReason?: string | null;
@@ -1278,6 +1286,7 @@ function buildPromptSnapshotJson(input: {
     contextTrimmed: input.contextTrimmed,
     contextTrimmedByBudget: input.contextTrimmedByBudget,
     contextTrimmedByCount: input.contextTrimmedByCount,
+    contextPlan: input.contextPlan ?? null,
     materialRules: input.materialRules,
     messageDisplayKind: input.messageDisplayKind ?? null,
     system: input.space === 'personal' ? null : input.system,
@@ -1477,6 +1486,9 @@ async function prepareOutgoingAttachments(input: {
   validateDeepSeekVision?: boolean;
   visionModelId?: string;
   visionModel?: { supportsVision: boolean } | null;
+  userQuestion?: string;
+  callStep1?: (prompt: string, signal?: AbortSignal) => Promise<string>;
+  abortSignal?: AbortSignal;
 }): Promise<{ promptContext: string; providerAttachments: AiChatAttachment[] }> {
   const attachments = input.attachments ?? [];
   if (attachments.length === 0) {
@@ -1509,7 +1521,30 @@ async function prepareOutgoingAttachments(input: {
   if (input.visionEnabled && imageAttachments.length > 0) {
     assertDeepSeekVisionRequest({ imageSizes: imageAttachments.map((attachment) => attachment.size ?? -1), model: input.visionModel, modelId: input.visionModelId ?? '' });
   }
-  const [imageResults, documentContexts] = await Promise.all([
+
+  const tableAttachment = resolvedAttachments.find(
+    (a) => a.kind === 'document' && detectDocQueryIntent(a).mode === 'two_step_sql'
+  );
+
+  let docQueryContextText: string | null = null;
+  if (tableAttachment && input.userQuestion && input.callStep1) {
+    try {
+      const docQueryResult = await executeTwoStepDocQuery({
+        attachment: tableAttachment,
+        callStep1: input.callStep1,
+        space: input.space,
+        userQuestion: input.userQuestion,
+        abortSignal: input.abortSignal,
+      });
+      if (docQueryResult.mode === 'two_step_sql' && docQueryResult.queryPromptContext) {
+        docQueryContextText = docQueryResult.queryPromptContext;
+      }
+    } catch {
+      // 容错降级
+    }
+  }
+
+  const [imageResults, standardDocumentContexts] = await Promise.all([
     input.visionEnabled
       ? settleWithConcurrency(
           imageAttachments,
@@ -1519,6 +1554,10 @@ async function prepareOutgoingAttachments(input: {
       : Promise.resolve([]),
     buildDocumentAttachmentContext({ attachments: resolvedAttachments, space: input.space, threadId: input.threadId }),
   ]);
+
+  const documentContexts = docQueryContextText
+    ? [docQueryContextText, ...standardDocumentContexts]
+    : standardDocumentContexts;
   const providerAttachments = imageResults
     .filter((result): result is PromiseFulfilledResult<AiChatAttachment> => result.status === 'fulfilled')
     .map((result) => result.value);
@@ -2352,6 +2391,7 @@ async function buildPromptForThread(
         const compiledMemory = await compileMemoryContextPlan(db, {
           branchScopes,
           excludedClaimIds,
+          historyMessageIds: coverage.plan.recentMessageIds,
           query: memorySettings.deepMemoryEnabled ? userMessage : '',
           thread,
         });
@@ -2792,7 +2832,7 @@ async function hydrateThreadMessagesInDatabase(
   const selectedVersionsByMessageId = selectedVersionEntries.length > 0
     ? await aiThreadRepository.listMessageVersionsByIndexForMessages(db, selectedVersionEntries)
     : {};
-  return messagesWithBranchRoots.map((message) => {
+  const hydrated = messagesWithBranchRoots.map((message) => {
     const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
     const selectedVersion = selectedVersionsByMessageId[message.id] ?? null;
     return {
@@ -2810,6 +2850,9 @@ async function hydrateThreadMessagesInDatabase(
       versionTotal,
     };
   });
+  return hydrated.sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+  );
 }
 
 export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
@@ -4120,6 +4163,7 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
   historyRoundLimit?: number;
   modelContextWindowTokens?: number | null;
   protectedPrompt?: string;
+  preservePlannedHistory?: boolean;
 }): {
   contextTrimmedByCount: boolean;
   contextTrimmedByBudget: boolean;
@@ -4130,6 +4174,15 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
   const previousMessages = userIndex >= 0 ? messages.slice(0, userIndex) : messages;
   const completedMessages = previousMessages
     .filter((message) => message.role !== 'system' && message.status === 'completed')
+  if (options?.preservePlannedHistory) return {
+    contextTrimmedByCount: false,
+    contextTrimmedByBudget: false,
+    historyMessageIds: completedMessages.map((message) => message.id),
+    history: completedMessages.map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: dehydrateHistoricalMessageContent(message.content),
+    })),
+  };
   const roundSelected = selectRecentMessagesByRound(
     completedMessages,
     options?.historyRoundLimit ?? AI_CONTEXT_DEFAULTS.historyRoundLimit,
@@ -4146,7 +4199,7 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
     history: budgeted.messages
       .map((message) => ({
         role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
-        content: message.content,
+        content: dehydrateHistoricalMessageContent(message.content),
       })),
   };
 }
@@ -4427,6 +4480,43 @@ async function stageExplicitMemoryIntentObservation(input: {
   });
 }
 
+async function runWithTransactionRetry<T>(
+  db: SQLiteDatabase,
+  fn: (txn: SQLiteDatabase) => Promise<T>,
+  maxRetries = 3,
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      let result: T;
+      if (typeof db.withExclusiveTransactionAsync === 'function') {
+        await db.withExclusiveTransactionAsync(async (txn) => {
+          result = await fn(txn as unknown as SQLiteDatabase);
+        });
+      } else {
+        await db.withTransactionAsync(async () => {
+          result = await fn(db);
+        });
+      }
+      return result!;
+    } catch (error: any) {
+      attempt += 1;
+      const message = String(error?.message || '');
+      const isLockError =
+        message.includes('database is locked') ||
+        message.includes('cannot rollback') ||
+        message.includes('finalizeAsync') ||
+        message.includes('SQLITE_BUSY') ||
+        message.includes('SQLITE_LOCKED');
+      if (isLockError && attempt <= maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 60 * Math.pow(2, attempt - 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 async function streamAssistantReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -4700,7 +4790,6 @@ async function streamAssistantReply(input: {
             generationMetrics,
             messageDisplayKind,
           ),
-          createdAt: startedAt,
           completedAt: null,
         };
     const resetMessage = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, resetPatch);
@@ -4725,8 +4814,10 @@ async function streamAssistantReply(input: {
     providerId: null,
     modelId: null,
     modelSnapshotJson: '{}',
-    promptSnapshotJson: '{}',
-    createdAt: mode === 'continue' ? undefined : startedAt,
+    promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(
+      generationMetrics,
+      messageDisplayKind,
+    ),
     completedAt: null,
     citations: retainedCitations,
   });
@@ -4748,6 +4839,7 @@ async function streamAssistantReply(input: {
   let contextTrimmedByBudget = false;
   let contextTrimmedByCount = false;
   let coverage: CompiledConversationCoverage;
+  let contextPlan: ContextPlan | undefined;
   let history: Array<{ role: 'assistant' | 'user'; content: string }> = [];
   let historyMessageIds: string[] = [];
   let deepSeekLedgerRequestId: string | null = null;
@@ -4767,6 +4859,9 @@ async function streamAssistantReply(input: {
   const requestedAt = startedAt;
 
   try {
+    const resolvedModelPromise = !systemProtocol
+      ? resolveThreadChatModel(input.space, input.thread).catch((error) => error as Error)
+      : null;
     markGenerationMetric(generationMetrics, 'branchResolveStartAt');
     branchScopes = await runWithDatabaseSpace(input.space, (db) =>
       resolveStreamingBranchScopes(db, {
@@ -4849,19 +4944,21 @@ async function streamAssistantReply(input: {
     });
     observeThoughtScope(input.space, { branchRouteHash: hashBranchRoute(branchScopes), roleCardId: input.thread.roleCardId, threadId: input.thread.id });
     if (input.thread.roleCardId) {
-      try {
-        const recentMessages = await runWithDatabaseSpace(input.space, (db) =>
-          aiThreadRepository.listSnapshotCandidateMessages(db, input.thread.id, 20, branchScopes));
-        await detectAndCreateManualDreamRequest({
-          branchRouteHash: hashBranchRoute(branchScopes),
-          recentMessages,
-          space: input.space,
-          threadId: input.thread.id,
-          userMessageId: input.userMessage.id,
-        });
-      } catch {
-        // Manual dream affordance is recoverable and must not block chat generation.
-      }
+      void (async () => {
+        try {
+          const recentMessages = await runWithDatabaseSpace(input.space, (db) =>
+            aiThreadRepository.listSnapshotCandidateMessages(db, input.thread.id, 20, branchScopes));
+          await detectAndCreateManualDreamRequest({
+            branchRouteHash: hashBranchRoute(branchScopes),
+            recentMessages,
+            space: input.space,
+            threadId: input.thread.id,
+            userMessageId: input.userMessage.id,
+          });
+        } catch {
+          // Manual dream affordance is recoverable and must not block chat generation.
+        }
+      })();
     }
     try {
       const observed = await observeCompanionCurrentTurn({
@@ -4900,7 +4997,7 @@ async function streamAssistantReply(input: {
       generationMetrics.context.companionProjectionVersion = compiledPlan.projectionVersion;
       generationMetrics.context.companionStanceLabel = compiledPlan.stanceLabel;
       generationMetrics.context.companionSelectedTopicType = compiledPlan.selectedTopicType;
-      await runWithDatabaseSpace(input.space, (db) => recordCompanionContextTrace(db, {
+      void runWithDatabaseSpace(input.space, (db) => recordCompanionContextTrace(db, {
         branchRouteHash: observed.branchRouteHash,
         compilerDurationMs: generationMetrics.context.companionCompilerDurationMs,
         diagnosticCandidateCount: observed.diagnosticCandidateCount,
@@ -4920,13 +5017,19 @@ async function streamAssistantReply(input: {
         sourceMessageId: input.userMessage.id,
         space: input.space,
         threadId: input.thread.id,
-      }));
+      })).catch(() => undefined);
     } catch {
       companionContextPlan = null;
     }
     markGenerationMetric(generationMetrics, 'providerResolveStartAt');
-    const resolvedModel = await resolveThreadChatModel(input.space, input.thread);
+    const resolvedModelOrError = resolvedModelPromise
+      ? await resolvedModelPromise
+      : await resolveThreadChatModel(input.space, input.thread);
     markGenerationMetric(generationMetrics, 'providerResolveEndAt');
+    if (resolvedModelOrError instanceof Error) {
+      throw resolvedModelOrError;
+    }
+    const resolvedModel = resolvedModelOrError;
     if (await stopForAbort()) {
       return;
     }
@@ -5006,6 +5109,7 @@ async function streamAssistantReply(input: {
         return;
       }
     }
+    const step1Adapter = getAdapterForProvider(provider);
     const preparedAttachments = await prepareOutgoingAttachments({
       attachments: input.attachments,
       space: input.space,
@@ -5014,6 +5118,29 @@ async function streamAssistantReply(input: {
       validateDeepSeekVision: isDeepSeek,
       visionModelId: isDeepSeek ? modelId : undefined,
       visionModel: isDeepSeek ? resolvedModel.model : undefined,
+      userQuestion: requestContent,
+      abortSignal: input.signal,
+      callStep1: async (step1Prompt, signal) => {
+        let text = '';
+        let step1Error: string | null = null;
+        await step1Adapter.streamChat(
+          {
+            apiKey: apiKey ?? '',
+            baseUrl: provider.baseUrl ?? '',
+            history: [],
+            modelId,
+            signal,
+            systemPrompt: '你是 SQL 查询生成器，请根据表结构和用户问题生成标准 SQLite 的 SELECT 语句，只输出单行 SQL 本身。',
+            userPrompt: step1Prompt,
+          },
+          (event) => {
+            if (event.type === 'answer_delta') text += event.text;
+            if (event.type === 'error') step1Error = event.message;
+          }
+        );
+        if (step1Error) throw new Error(step1Error);
+        return text;
+      },
     });
     outgoingAttachments = preparedAttachments.providerAttachments;
     const attachmentPromptContext = preparedAttachments.promptContext;
@@ -5031,7 +5158,11 @@ async function streamAssistantReply(input: {
       historyRoundLimit,
       systemAssistantRoleContext,
     }));
-    prompt = fitBuiltPromptToContextBudget({ modelContextWindowTokens, prompt });
+    prompt = fitBuiltPromptToContextBudget({
+      modelContextWindowTokens,
+      prompt,
+      preserveBlockNames: ['memory_snapshot', 'summary_archive', 'stable_role', 'stable_app_policy', 'stable_material_rules'],
+    });
     snippets = filterSnippetsPresentInPrompt(snippets, prompt);
     citationRegistry = snippets;
     generationMetrics.context.chatMode = prompt.cacheMetadata.chatMode;
@@ -5063,7 +5194,7 @@ async function streamAssistantReply(input: {
       return;
     }
     if (!coverage.plan.coverageComplete) {
-      throw new Error('Conversation coverage is incomplete.');
+      /* degraded coverage handled by context planner */
     }
     const historyMessages = coverage.recentMessages;
     const protectedPrompt = [
@@ -5079,6 +5210,7 @@ async function streamAssistantReply(input: {
       historyRoundLimit,
       modelContextWindowTokens,
       protectedPrompt,
+      preservePlannedHistory: true,
     }));
     if (isOfficialDeepSeekProvider({ baseUrl: provider.baseUrl, providerType: provider.providerType }) && mode !== 'continue' && mode !== 'followup') {
       const snapshotsByAssistantId = await runWithDatabaseSpace(input.space, (db) =>
@@ -5111,6 +5243,35 @@ async function streamAssistantReply(input: {
     } else {
       userPrompt = prompt.user;
     }
+    const finalizedContext = finalizeContextRequest({
+      space: input.space,
+      coverage: coverage.plan,
+      sourceMessages: historyMessages,
+      systemPrompt: prompt.system,
+      userPrompt,
+      history,
+      attachmentCount: outgoingAttachments.length,
+      // budgetPolicy: { modelContextWindowTokens }
+      budgetPolicy: { isDeepSeek, modelContextWindowTokens, providerProtocol: provider.protocol },
+      sources: {
+        providerId: provider.id,
+        modelId,
+        roleCardId: input.thread.roleCardId,
+        roleVersionHash: hashPromptCacheText(input.thread.roleSnapshotJson),
+        memoryProjectionVersion: memoryContextPlan.projectionVersion,
+        memorySegmentHashes: memoryContextPlan.segmentHashes,
+        selectedEvidenceIds: memoryContextPlan.selectedEvidenceIds,
+        retrieval: snippets.map((snippet) => ({ chunkId: snippet.chunkId, documentVersion: snippet.documentVersion ?? null })),
+        attachmentIds: (input.attachments ?? []).map((attachment) => attachment.id),
+      },
+    });
+    contextPlan = finalizedContext.plan;
+    history = finalizedContext.history;
+    historyMessageIds = finalizedContext.historyMessageIds;
+    userPrompt = finalizedContext.userPrompt;
+    contextTrimmedByBudget = contextPlan.degradationReason !== null;
+    generationMetrics.context.coverageComplete = contextPlan.coverage.coverageComplete;
+    generationMetrics.context.coverageProvisionalMessageCount = contextPlan.coverage.provisionalSourceMessageIds.length;
     generationMetrics.context.loadedMessageCountAtSend = coverage.recentMessages.length;
     generationMetrics.context.historyMessageCount = history.length;
     contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget || Boolean(prompt.contextBudgetTrimmed);
@@ -5131,6 +5292,7 @@ async function streamAssistantReply(input: {
         openAiUsageObservationEnabled: openAiUsageObservationEnabled(provider),
       },
       requestedAt,
+      requestEstimatedTokens: contextPlan.budget.estimatedInputTokens,
       settings: promptCacheSettings,
       scopeKey: buildPromptScopeKey(input.thread),
       stableSystemBlocks: prompt.stableSystemBlocks,
@@ -5212,6 +5374,7 @@ async function streamAssistantReply(input: {
       contextTrimmedByCount,
       failureReason: snapshotOptions?.failureReason ?? null,
       generationMetrics,
+      contextPlan,
       materialRules: prompt.materialRules ?? null,
       memoryContextPlan,
       messageDisplayKind,
@@ -5308,7 +5471,7 @@ async function streamAssistantReply(input: {
       visibleChars: answerText.length + reasoningText.length,
     });
     const effectivePatchIntervalMs = backlogChars >= displayStep && displayStep > 0
-      ? Math.max(16, Math.floor(patchIntervalMs / 2))
+      ? Math.max(8, Math.floor(patchIntervalMs / 2))
       : patchIntervalMs;
     if (!force && now - lastUiPatchAt < effectivePatchIntervalMs) {
       generationMetrics.counters.streamSkippedUiPatchCount += 1;
@@ -5375,22 +5538,30 @@ async function streamAssistantReply(input: {
     lastPersistedThinkingEndedAt = generationMetrics.timestamps.thinkingEndedAt;
     generationMetrics.counters.streamPersistCount += 1;
     const persistStartedAt = Date.now();
-    await runWithDatabaseSpace(input.space, async (db) => {
-      await db.withTransactionAsync(async () => {
-        await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
-          content: answerText,
-          reasoningText: reasoningText || null,
-          promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(generationMetrics, messageDisplayKind),
-        }, { syncFts: false });
-        await persistGenerationPartial(db, {
-          content: answerText,
-          generationId,
-          now: new Date().toISOString(),
-          reasoning: reasoningText || null,
+    try {
+      await runWithDatabaseSpace(input.space, async (db) => {
+        await runWithTransactionRetry(db, async (txn) => {
+          await updateAssistantMessageForGeneration(txn, input.assistantMessageId, generationId, {
+            content: answerText,
+            reasoningText: reasoningText || null,
+            promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(generationMetrics, messageDisplayKind),
+          }, { syncFts: false });
+          await persistGenerationPartial(txn, {
+            content: answerText,
+            generationId,
+            now: new Date().toISOString(),
+            reasoning: reasoningText || null,
+          });
         });
       });
-    });
-    recordStreamingPersistence(Date.now() - persistStartedAt);
+      recordStreamingPersistence(Date.now() - persistStartedAt);
+    } catch (error) {
+      if (!force) {
+        console.warn('Intermediate streaming snapshot persistence deferred due to lock/busy.', error);
+        return;
+      }
+      throw error;
+    }
   };
   let persistInFlight = false;
   let persistPending = false;
@@ -5646,7 +5817,13 @@ async function streamAssistantReply(input: {
     return;
   }
 
-  if (systemProtocol && (systemProtocol.actions.length || systemProtocol.invalid || systemAssistantRoleContext)) {
+  const canAttemptSystemAction = Boolean(systemProtocol && (
+    systemProtocol.actions.length
+    || systemProtocol.invalid
+    || systemAssistantRoleContext
+    || answerText
+  ));
+  if (canAttemptSystemAction && systemProtocol) {
     const operationReply = await ingestSystemAssistantAction({
       space: input.space,
       assistantMessageId: input.assistantMessageId,
@@ -5660,14 +5837,27 @@ async function streamAssistantReply(input: {
       canExecute: db => !input.signal?.aborted
         ? isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId) : Promise.resolve(false),
     }).catch(error => {
-      if (!systemAssistantRoleContext) throw error;
-      // Draft maintenance is best effort; never interrupt a natural collection turn.
-      return systemRoleSaveAuthorized ? '角色卡暂未保存，请稍后再试。' : undefined;
+      if (systemAssistantRoleContext) {
+        // Draft maintenance is best effort; never interrupt a natural collection turn.
+        return systemRoleSaveAuthorized ? '角色卡暂未保存，请稍后再试。' : undefined;
+      }
+      const rawMessage = error instanceof Error ? error.message : '此操作暂不可用，请稍后重试。';
+      const isInternalDatabaseCrash = /database is locked|finalizeAsync|SQLITE_BUSY|cannot rollback/i.test(rawMessage);
+      if (isInternalDatabaseCrash) {
+        console.warn('System assistant action ingestion encountered database lock, suppressing leak:', error);
+        return undefined;
+      }
+      return `操作暂未能完成：${rawMessage}`;
     });
     flushStreamingTextChunks();
     if (operationReply) answerText = operationReply;
     if (!answerText.trim()) answerText = systemAssistantRoleContext
       ? '你希望这个角色是什么样的？' : systemProtocol.invalid ? '此操作暂不可用。' : '请在任务卡中继续。';
+    const task = await loadSystemTask(input.space, input.assistantMessageId);
+    if (task?.status === 'planning') {
+      await settleSystemTaskGeneration({ space: input.space, assistantMessageId: input.assistantMessageId,
+        generationId, status: 'completed', roleCollecting: Boolean(systemAssistantRoleContext) });
+    }
   } else if (systemProtocol) {
     const task = await loadSystemTask(input.space, input.assistantMessageId);
     if (task?.status === 'planning') {
@@ -5721,7 +5911,7 @@ async function streamAssistantReply(input: {
   let queuedDreamJobId: string | null = null;
   let completedThoughtSession: Awaited<ReturnType<typeof recordCompanionThoughtRound>> = null;
   await runWithDatabaseSpace(input.space, async (db) => {
-    await db.withTransactionAsync(async () => {
+    await runWithTransactionRetry(db, async () => {
       const current = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
         status: answerText ? 'completed' : 'failed',
         content: answerText,
@@ -5923,6 +6113,13 @@ async function streamAssistantReply(input: {
       threadId: input.thread.id,
       userMessage: input.userMessage,
     });
+    const injectedClaimIds = memoryContextPlan?.selectedClaimIds ?? [];
+    if (injectedClaimIds.length > 0 && answerText) {
+      void MemoryFeedbackService.recordAssistantReplyFeedback(input.space, {
+        answerText,
+        injectedClaimIds,
+      });
+    }
     if (input.space === 'personal') {
       const resumeAt = new Date().toISOString();
       await runWithDatabaseSpace(input.space, async (db) => {
@@ -6830,6 +7027,9 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
       });
       markGenerationMetric(generationMetrics, 'userMessagePersistEndAt');
       markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
+      const assistantCreatedAt = new Date(
+        Date.parse(userMessage.createdAt) + 1000
+      ).toISOString();
       await aiThreadRepository.createMessage(db, {
         id: assistantMessageId,
         threadId: thread.id,
@@ -6838,6 +7038,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
         role: 'assistant',
         status: 'generating',
         content: '',
+        createdAt: assistantCreatedAt,
         promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
       });
       markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistEndAt');

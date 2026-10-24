@@ -130,8 +130,28 @@ export function buildCitationRegistry<T extends {
   text: string;
   locator: Record<string, unknown>;
   documentVersion?: string | null;
+  score?: number;
 }>(snippets: T[]): Array<T & CitationRegistryEntry> {
-  return snippets.map((snippet, index) => ({
+  const sorted = [...snippets].sort((left, right) => {
+    const leftScore = typeof left.score === 'number' ? left.score : -1;
+    const rightScore = typeof right.score === 'number' ? right.score : -1;
+    if (leftScore !== rightScore) {
+      return rightScore - leftScore;
+    }
+    const leftSourceType = left.sourceType ?? 'document_chunk';
+    const rightSourceType = right.sourceType ?? 'document_chunk';
+    if (leftSourceType !== rightSourceType) {
+      return leftSourceType.localeCompare(rightSourceType);
+    }
+    const leftSourceId = left.sourceId ?? left.chunkId;
+    const rightSourceId = right.sourceId ?? right.chunkId;
+    if (leftSourceId !== rightSourceId) {
+      return leftSourceId.localeCompare(rightSourceId);
+    }
+    return left.chunkId.localeCompare(right.chunkId);
+  });
+
+  return sorted.map((snippet, index) => ({
     ...snippet,
     chunkId: snippet.chunkId,
     documentVersion: snippet.documentVersion ?? null,
