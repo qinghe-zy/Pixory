@@ -20,6 +20,7 @@ interface AiRoleCardDetailScreenProps {
   onBack: () => void;
   onEditRole: (roleCardId: string) => void;
   onStartChatWithRole: (roleCardId: string) => Promise<void> | void;
+  onStartImChat?: (roleCardId: string) => Promise<void> | void;
   onApplyRoleToThread?: (roleCardId: string) => Promise<void> | void;
 }
 
@@ -53,6 +54,7 @@ export function AiRoleCardDetailScreen({
   onBack,
   onEditRole,
   onStartChatWithRole,
+  onStartImChat,
   onApplyRoleToThread,
 }: AiRoleCardDetailScreenProps) {
   const [card, setCard] = useState<AiRoleCardRecord | null>(null);
@@ -84,6 +86,25 @@ export function AiRoleCardDetailScreen({
     } catch (error) {
       const action = mode === 'apply_to_thread' ? '应用角色失败' : '开始对话失败';
       setStatus(error instanceof Error ? `${action}：${error.message}` : action);
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function startImChat() {
+    if (!card) {
+      return;
+    }
+    setStarting(true);
+    setStatus(null);
+    try {
+      if (onStartImChat) {
+        await onStartImChat(card.id);
+      } else {
+        await onStartChatWithRole(card.id);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? `开始伴侣对话失败：${error.message}` : '开始伴侣对话失败');
     } finally {
       setStarting(false);
     }
@@ -155,8 +176,47 @@ export function AiRoleCardDetailScreen({
           </View>
 
           <View style={styles.heroActionWrap}>
-            <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
-            <Pressable accessibilityLabel="导出角色卡和连续性文本" accessibilityRole="button" disabled={exporting} onPress={() => void exportRoleCard()} style={({ pressed }) => [styles.exportButton, exporting && styles.roundButtonDisabled, pressed && styles.pressed]}>
+            <AiLightButton
+              disabled={starting}
+              label={
+                starting
+                  ? mode === 'apply_to_thread'
+                    ? '正在应用'
+                    : '正在进入'
+                  : mode === 'apply_to_thread'
+                  ? '应用到当前会话'
+                  : '发消息 (伴侣IM)'
+              }
+              loading={starting}
+              onPress={() => void (mode === 'apply_to_thread' ? startChat() : startImChat())}
+            />
+            {mode !== 'apply_to_thread' && (
+              <Pressable
+                accessibilityLabel="开启长文本剧情对话"
+                accessibilityRole="button"
+                disabled={starting}
+                onPress={() => void startChat()}
+                style={({ pressed }) => [
+                  styles.exportButton,
+                  starting && styles.roundButtonDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons color={aiLightColors.ink} name="sparkles-outline" size={15} />
+                <Text style={styles.exportButtonText}>长文本剧情</Text>
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityLabel="导出角色卡和连续性文本"
+              accessibilityRole="button"
+              disabled={exporting}
+              onPress={() => void exportRoleCard()}
+              style={({ pressed }) => [
+                styles.exportButton,
+                exporting && styles.roundButtonDisabled,
+                pressed && styles.pressed,
+              ]}
+            >
               <Ionicons color={aiLightColors.ink} name="download-outline" size={16} />
               <Text style={styles.exportButtonText}>{exporting ? '正在导出' : '导出角色包'}</Text>
             </Pressable>

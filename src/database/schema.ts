@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 66;
+export const DATABASE_VERSION = 70;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -421,6 +421,13 @@ CREATE TABLE IF NOT EXISTS ai_threads (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL,
   archivedAt TEXT,
+  chat_mode TEXT NOT NULL DEFAULT 'standard' CHECK (chat_mode IN ('standard', 'im')),
+  background_image_uri TEXT,
+  nudge_text TEXT,
+  context_window_n INTEGER DEFAULT 20,
+  heartbeat_enabled INTEGER DEFAULT 1,
+  proactive_enabled INTEGER DEFAULT 1,
+  im_settings_json TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (boundKnowledgeBaseId) REFERENCES ai_knowledge_bases(id) ON DELETE SET NULL
 );
 
@@ -442,6 +449,8 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   updatedAt TEXT NOT NULL,
   completedAt TEXT,
   FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  visible_at INTEGER,
+  burst_group_id TEXT,
   FOREIGN KEY (branchRootMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
 );
 
@@ -546,6 +555,11 @@ CREATE INDEX IF NOT EXISTS idx_ai_threads_context ON ai_threads(space, contextTy
 CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
   ON ai_threads(space, archivedAt, roleCardId, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_threads_unique_im_role 
+  ON ai_threads(roleCardId, space) 
+  WHERE chat_mode = 'im' AND roleCardId IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_messages_visible_at ON ai_messages(threadId, visible_at);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_burst_group ON ai_messages(threadId, burst_group_id);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_branch ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
 CREATE INDEX IF NOT EXISTS idx_ai_message_attachments_message ON ai_message_attachments(messageId, createdAt);
@@ -2342,4 +2356,61 @@ CREATE TABLE IF NOT EXISTS ai_context_maintenance_samples (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_context_maintenance_samples_scope
   ON ai_context_maintenance_samples(space, threadId, branchRouteHash, lineageVersion, createdAt DESC);
+`;
+
+export const MIGRATION_STATEMENTS_V67 = `
+ALTER TABLE ai_threads ADD COLUMN chat_mode TEXT NOT NULL DEFAULT 'standard';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_threads_unique_im_role 
+  ON ai_threads(roleCardId, space) 
+  WHERE chat_mode = 'im' AND roleCardId IS NOT NULL;
+
+ALTER TABLE ai_messages ADD COLUMN visible_at INTEGER;
+ALTER TABLE ai_messages ADD COLUMN burst_group_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_ai_messages_visible_at 
+  ON ai_messages(threadId, visible_at);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_burst_group 
+  ON ai_messages(threadId, burst_group_id);
+`;
+
+export const MIGRATION_STATEMENTS_V68 = `
+CREATE TABLE IF NOT EXISTS ai_companion_memories (
+  id TEXT PRIMARY KEY NOT NULL,
+  role_card_id TEXT NOT NULL,
+  space TEXT NOT NULL DEFAULT 'normal',
+  tier TEXT NOT NULL CHECK (tier IN ('L1_SLOT', 'L1_SUMMARY', 'L2_EPISODIC')),
+  category TEXT NOT NULL,
+  content TEXT NOT NULL,
+  trigger_keywords TEXT,
+  entities TEXT,
+  importance INTEGER NOT NULL DEFAULT 5,
+  hit_count INTEGER NOT NULL DEFAULT 0,
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  last_accessed_at INTEGER NOT NULL,
+  source_mode TEXT DEFAULT 'im'
+);
+CREATE INDEX IF NOT EXISTS idx_companion_mem_role_tier
+  ON ai_companion_memories(role_card_id, space, tier);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS ai_companion_memories_fts USING fts5(
+  memory_id UNINDEXED,
+  content,
+  trigger_keywords
+);
+`;
+
+export const MIGRATION_STATEMENTS_V69 = `
+ALTER TABLE ai_threads ADD COLUMN background_image_uri TEXT;
+ALTER TABLE ai_threads ADD COLUMN nudge_text TEXT;
+ALTER TABLE ai_threads ADD COLUMN context_window_n INTEGER DEFAULT 20;
+ALTER TABLE ai_threads ADD COLUMN heartbeat_enabled INTEGER DEFAULT 1;
+ALTER TABLE ai_threads ADD COLUMN proactive_enabled INTEGER DEFAULT 1;
+ALTER TABLE ai_threads ADD COLUMN im_settings_json TEXT NOT NULL DEFAULT '{}';
+`;
+
+export const MIGRATION_STATEMENTS_V70 = `
+ALTER TABLE ai_threads ADD COLUMN living_state_json TEXT;
+ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';
+CREATE INDEX IF NOT EXISTS idx_ai_messages_delivery_status
+  ON ai_messages(threadId, delivery_status);
 `;

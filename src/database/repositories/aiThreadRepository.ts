@@ -2477,6 +2477,7 @@ export const aiThreadRepository = {
     const rows = await db.getAllAsync<AiThreadRow>(
       `SELECT * FROM ai_threads
        WHERE space = ? AND archivedAt IS NULL
+         AND (chat_mode IS NULL OR chat_mode != 'im')
        ORDER BY updatedAt DESC, createdAt DESC
        LIMIT ?`,
       space,
@@ -2489,6 +2490,7 @@ export const aiThreadRepository = {
     const rows = await db.getAllAsync<AiThreadRow>(
       `SELECT * FROM ai_threads
        WHERE space = ? AND archivedAt IS NULL
+         AND (chat_mode IS NULL OR chat_mode != 'im')
          AND roleCardId IS NOT NULL AND TRIM(roleCardId) <> ''
        ORDER BY updatedAt DESC, createdAt DESC, id ASC`,
       space,
@@ -2506,6 +2508,8 @@ export const aiThreadRepository = {
     if (!query.includeArchived) {
       clauses.push('archivedAt IS NULL');
     }
+    // 隔离短聊天：排除 chat_mode = 'im' 的短聊天会话
+    clauses.push("(chat_mode IS NULL OR chat_mode != 'im')");
     const rows = await db.getAllAsync<AiThreadRow>(
       `SELECT * FROM ai_threads
        WHERE ${clauses.join(' AND ')}
@@ -2532,6 +2536,8 @@ export const aiThreadRepository = {
     const limit = Math.min(Math.max(input.limit ?? 40, 1), 100);
     const clauses = ['ai_threads.space = ?'];
     const values: (string | number)[] = [space];
+    // 隔离短聊天：长聊天历史侧边栏严格排除 chat_mode = 'im' 的短会话
+    clauses.push("(ai_threads.chat_mode IS NULL OR ai_threads.chat_mode != 'im')");
     const normalizedSearch = input.searchText?.trim().toLocaleLowerCase() ?? '';
     if (filter === 'archived') {
       clauses.push('ai_threads.archivedAt IS NOT NULL');

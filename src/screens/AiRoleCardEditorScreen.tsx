@@ -24,6 +24,7 @@ interface AiRoleCardEditorScreenProps {
   space: PixorySpace;
   roleCardId?: string;
   threadId?: string;
+  autoImport?: boolean;
   onBack: () => void;
   onApplyRoleCard: (roleCardId?: string | null) => void;
   onStartChatWithRole?: (roleCardId: string) => Promise<void> | void;
@@ -65,6 +66,7 @@ export function AiRoleCardEditorScreen({
   space,
   roleCardId,
   threadId,
+  autoImport,
   onBack,
   onApplyRoleCard,
   onStartChatWithRole,
@@ -227,6 +229,12 @@ export function AiRoleCardEditorScreen({
       setImporting(false);
     }
   }
+
+  useEffect(() => {
+    if (autoImport) {
+      void importRoleCard();
+    }
+  }, [autoImport]);
 
   async function saveImported(startChat: boolean) {
     if (!importedRole || saving || savingImportedRef.current) return null;

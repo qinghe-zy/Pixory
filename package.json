@@ -1,6 +1,6 @@
 {
   "name": "pixory",
-  "version": "2.8.10",
+  "version": "2.8.10.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "check:boundaries": "node scripts/check-architecture-boundaries.cjs",
     "test": "node --test tests/*.test.cjs",
     "bench:ai-chat": "node scripts/benchmark-ai-chat-performance.cjs",
     "bench:chat-db": "node scripts/benchmark-ai-message-repository.cjs",
@@ -24,6 +25,7 @@
     "@expo-google-fonts/zcool-xiaowei": "^0.4.1",
     "@lobehub/icons-rn": "^2.8.1",
     "@noble/hashes": "^2.2.0",
+    "@shopify/flash-list": "2.0.2",
     "date-fns": "^4.4.0",
     "expo": "~54.0.35",
     "expo-blur": "~15.0.8",

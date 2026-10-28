@@ -60,6 +60,12 @@ import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
+import { ImChatScreen } from './src/im/screens/ImChatScreen';
+import { ImHomeScreen } from './src/im/screens/ImHomeScreen';
+import { ImCompanionSettingsScreen } from './src/im/screens/ImCompanionSettingsScreen';
+import { getOrCreateImThread } from './src/im/repository/imThreadRepository';
+import { exportRoleContinuityPackage } from './src/ai/aiRoleCardContinuityExportService';
+import { listRoleCards } from './src/ai/aiRoleCardService';
 import { DiaryReaderScreen } from './src/screens/DiaryReaderScreen';
 import { DreamReaderScreen } from './src/screens/DreamReaderScreen';
 import { CompanionInnerLifeScreen } from './src/screens/CompanionInnerLifeScreen';
@@ -229,6 +235,20 @@ type AppRoute =
       };
     }
   | {
+      name: 'im-chat';
+      space: PixorySpace;
+      threadId: string;
+      roleCardId: string;
+      roleName: string;
+      roleAvatarUri?: string | null;
+      initialLeftOpen?: boolean;
+      initialRightOpen?: boolean;
+    }
+  | {
+      name: 'im-companion-settings';
+      space: PixorySpace;
+    }
+  | {
       name: 'ai-branch-tree';
       space: PixorySpace;
       threadId: string;
@@ -262,7 +282,7 @@ type AppRoute =
   | { name: 'diagnostics-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string; threadId?: string; mode?: 'library' | 'apply_to_thread' }
-  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
+  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string; autoImport?: boolean }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string; initialSource?: 'ip' | 'file' | 'manual_text' }
@@ -286,7 +306,7 @@ type SpaceSession = {
 };
 
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
-const ROOT_TABS: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
+const ROOT_TABS: RootTabKey[] = ['home', 'organize', 'im', 'ai', 'me'];
 
 function buildRootTabWarmupOrder(activeTab: RootTabKey): RootTabKey[] {
   const activeIndex = ROOT_TABS.indexOf(activeTab);
@@ -1135,6 +1155,7 @@ export default function App() {
     const current = routeStackRef.current;
     if (current.length > 1) {
       scheduleAiChatMemoryMaintenanceForRoute(current[current.length - 1], 'leave_chat');
+      setAiHomeRefreshToken((c) => c + 1);
     }
     setRouteStack((currentStack) => (currentStack.length > 1 ? popRouteStack(currentStack) : currentStack));
   }
@@ -1330,6 +1351,62 @@ export default function App() {
     });
   }
 
+  async function handleExportRole() {
+    try {
+      const cards = await listRoleCards(activeSpace);
+      if (!cards.length) {
+        Alert.alert('提示', '当前空间暂无角色卡可供导出。');
+        return;
+      }
+      if (cards.length === 1) {
+        const card = cards[0];
+        Alert.alert('导出角色卡', `确定要导出伴侣角色【${card.name}】吗？`, [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '导出',
+            onPress: async () => {
+              try {
+                await exportRoleContinuityPackage({
+                  space: activeSpace,
+                  roleCardId: card.id,
+                  includeMarkdown: true,
+                });
+                Alert.alert('导出成功', `已将【${card.name}】导出至系统目录。`);
+              } catch (e: any) {
+                Alert.alert('导出失败', e?.message || '导出过程出现异常');
+              }
+            },
+          },
+        ]);
+        return;
+      }
+      Alert.alert(
+        '导出角色卡',
+        '请选择要导出的伴侣角色：',
+        [
+          ...cards.slice(0, 6).map((c) => ({
+            text: c.name,
+            onPress: async () => {
+              try {
+                await exportRoleContinuityPackage({
+                  space: activeSpace,
+                  roleCardId: c.id,
+                  includeMarkdown: true,
+                });
+                Alert.alert('导出成功', `已将【${c.name}】导出至系统目录。`);
+              } catch (e: any) {
+                Alert.alert('导出失败', e?.message || '导出过程出现异常');
+              }
+            },
+          })),
+          { text: '取消', style: 'cancel' },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert('导出失败', e?.message || '读取角色卡失败');
+    }
+  }
+
   function dismissAvailableAnnouncement() {
     const announcement = availableAnnouncement;
     setAvailableAnnouncement(null);
@@ -1431,6 +1508,31 @@ export default function App() {
           ) : null}
         </View>
         <View style={{ width: sw, flex: 1 }}>
+          {renderedTabs.has('im') ? (
+            <ImHomeScreen
+              isActive={currentTab === 'im'}
+              onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}
+              onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, autoImport: true })}
+              onOpenImChat={async (thread) => {
+                const effective = await getOrCreateImThread(activeSpace, thread.roleCardId, {
+                  defaultTitle: thread.title,
+                });
+                pushRoute({
+                  name: 'im-chat',
+                  space: activeSpace,
+                  threadId: effective.id,
+                  roleCardId: thread.roleCardId,
+                  roleName: thread.title,
+                  roleAvatarUri: effective.avatarUri ?? thread.avatarUri,
+                });
+              }}
+              onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
+              refreshToken={aiHomeRefreshToken}
+              space={activeSpace}
+            />
+          ) : null}
+        </View>
+        <View style={{ width: sw, flex: 1 }}>
           {renderedTabs.has('ai') ? (
             <AiHomeScreen
               isActive={currentTab === 'ai'}
@@ -1463,6 +1565,9 @@ export default function App() {
                 })
               }
               onStartChatWithRole={(roleCardId) => startChatWithRoleCard(activeSpace, roleCardId)}
+              onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}
+              onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, autoImport: true })}
+              onExportRole={() => void handleExportRole()}
               refreshToken={aiHomeRefreshToken}
               space={activeSpace}
             />
@@ -2247,8 +2352,11 @@ export default function App() {
         onOpenAppearanceSettings={() => pushRoute({ name: 'appearance-settings', space: currentRoute.space })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenProfileInfo={() => pushRoute({ name: 'profile-info-settings', space: currentRoute.space })}
+        onOpenImCompanionSettings={() => pushRoute({ name: 'im-companion-settings', space: currentRoute.space })}
       />
     );
+  } else if (currentRoute.name === 'im-companion-settings') {
+    content = <ImCompanionSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'password-security-settings') {
     content = <PasswordAndSecurityScreen onBack={popRoute} />;
   } else if (currentRoute.name === 'developer-mode-settings') {
@@ -2264,6 +2372,19 @@ export default function App() {
         onApplyRoleToThread={(roleCardId) => applyRoleToCurrentThread(currentRoute.space, currentRoute.threadId, roleCardId)}
         onOpenRoleDetail={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space, threadId: currentRoute.threadId, mode: currentRoute.mode })}
         onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        onStartImChat={async (card) => {
+          const thread = await getOrCreateImThread(currentRoute.space, card.id, {
+            defaultTitle: card.name,
+          });
+          pushRoute({
+            name: 'im-chat',
+            space: currentRoute.space,
+            threadId: thread.id,
+            roleCardId: card.id,
+            roleName: card.name,
+            roleAvatarUri: card.avatarUri ?? thread.avatarUri,
+          });
+        }}
         mode={currentRoute.mode ?? 'library'}
         space={currentRoute.space}
       />
@@ -2275,14 +2396,77 @@ export default function App() {
         onEditRole={(roleCardId) => pushRoute({ name: 'ai-role-card-editor', roleCardId, space: currentRoute.space, threadId: currentRoute.threadId })}
         onApplyRoleToThread={(roleCardId) => applyRoleToCurrentThread(currentRoute.space, currentRoute.threadId, roleCardId)}
         onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        onStartImChat={async (roleCardId) => {
+          const thread = await getOrCreateImThread(currentRoute.space, roleCardId);
+          pushRoute({
+            name: 'im-chat',
+            space: currentRoute.space,
+            threadId: thread.id,
+            roleCardId,
+            roleName: thread.title,
+            roleAvatarUri: thread.avatarUri,
+          });
+        }}
         mode={currentRoute.mode ?? 'library'}
         roleCardId={currentRoute.roleCardId}
         space={currentRoute.space}
       />
     );
+  } else if (currentRoute.name === 'im-chat') {
+    content = (
+      <ImChatScreen
+        initialLeftOpen={currentRoute.initialLeftOpen}
+        initialRightOpen={currentRoute.initialRightOpen}
+        key={`im-chat-${currentRoute.threadId}-${currentRoute.roleCardId}`}
+        onBack={popRoute}
+        onImportRole={() =>
+          pushRoute({
+            name: 'ai-role-card-editor',
+            space: currentRoute.space,
+            autoImport: true,
+          })
+        }
+        onNewRole={() =>
+          pushRoute({
+            name: 'ai-role-card-editor',
+            space: currentRoute.space,
+          })
+        }
+        onOpenRoleDetail={(roleCardId) => {
+          setRouteStack((prev) => {
+            const updated = [...prev];
+            const top = updated[updated.length - 1];
+            if (top && top.name === 'im-chat') {
+              updated[updated.length - 1] = { ...top, initialRightOpen: true };
+            }
+            return [...updated, { name: 'ai-role-card-detail', roleCardId, space: currentRoute.space }];
+          });
+        }}
+        onSwitchCompanion={async (newRoleCardId, newRoleName, newAvatarUri) => {
+          const thread = await getOrCreateImThread(currentRoute.space, newRoleCardId, {
+            defaultTitle: newRoleName,
+          });
+          replaceCurrentRoute({
+            initialLeftOpen: true,
+            name: 'im-chat',
+            roleAvatarUri: newAvatarUri ?? thread.avatarUri,
+            roleCardId: newRoleCardId,
+            roleName: newRoleName,
+            space: currentRoute.space,
+            threadId: thread.id,
+          });
+        }}
+        roleAvatarUri={currentRoute.roleAvatarUri}
+        roleCardId={currentRoute.roleCardId}
+        roleName={currentRoute.roleName}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
+      />
+    );
   } else if (currentRoute.name === 'ai-role-card-editor') {
     content = (
       <AiRoleCardEditorScreen
+        autoImport={currentRoute.autoImport}
         onApplyRoleCard={popRoute}
         onBack={popRoute}
         onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
@@ -2465,8 +2649,8 @@ export default function App() {
           {availableUpdate?.releaseNotes.length ? (
             <View style={styles.updateNotes}>
               <Text style={styles.updateVersion}>最新版本 {availableUpdate.version}</Text>
-              {availableUpdate.releaseNotes.map((note) => (
-                <Text key={note} style={styles.updateNote}>
+              {availableUpdate.releaseNotes.map((note, index) => (
+                <Text key={`${note}-${index}`} style={styles.updateNote}>
                   {note}
                 </Text>
               ))}
@@ -2486,8 +2670,8 @@ export default function App() {
         >
           {availableAnnouncement?.detailLines.length ? (
             <View style={styles.updateNotes}>
-              {availableAnnouncement.detailLines.map((line) => (
-                <Text key={line} style={styles.updateNote}>
+              {availableAnnouncement.detailLines.map((line, index) => (
+                <Text key={`${line}-${index}`} style={styles.updateNote}>
                   {line}
                 </Text>
               ))}

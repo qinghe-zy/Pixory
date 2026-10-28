@@ -6,13 +6,13 @@
   <title>Pixory — 为你偏爱的角色，留一间安静的画室</title>
 
   <!-- SEO & Favicon -->
-  <link rel="icon" type="image/png" href="assets/app-icon.png">
-  <link rel="apple-touch-icon" href="assets/app-icon.png">
+  <link rel="icon" type="image/png" href="https://mist01.com/assets/app-icon.png">
+  <link rel="apple-touch-icon" href="https://mist01.com/assets/app-icon.png">
   <meta name="description" content="Pixory — 为你偏爱的角色，留一间安静的画室。沉浸式角色陪伴、原画设定典藏、平行故事分岔与100%本地私密守护。">
   <meta name="keywords" content="Pixory, AI陪伴, 角色画室, 原画典藏, 平行手稿, 本地优先, Android">
   <meta property="og:title" content="Pixory — 掌心里的角色与画集">
   <meta property="og:description" content="为你偏爱的角色，留一间安静的画室。">
-  <meta property="og:image" content="assets/app-icon.png">
+  <meta property="og:image" content="https://mist01.com/assets/app-icon.png">
   <meta name="theme-color" content="#F4F1EA">
 
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
@@ -73,17 +73,17 @@
       background-image: radial-gradient(rgba(30, 29, 26, 0.028) 1px, transparent 0);
       background-size: 24px 24px;
     }
-    /* Delicate slanted gallery light beam — transparent so colors & text stay clear */
+    /* Delicate slanted gallery natural light beam — dynamic angle, color & softness across day/blue-hour/night */
     .artistic-light-beam {
       background:
         linear-gradient(122deg,
-          rgba(255, 251, 242, 0) 32%,
-          rgba(255, 249, 236, 0.22) 49%,
-          rgba(255, 245, 226, 0.08) 62%,
-          rgba(244, 241, 234, 0) 76%);
-      filter: blur(26px);
+          rgba(255, 251, 242, 0) 24%,
+          rgba(255, 249, 236, 0.24) 46%,
+          rgba(255, 245, 226, 0.10) 64%,
+          rgba(244, 241, 234, 0) 80%);
+      filter: blur(28px);
       mix-blend-mode: soft-light;
-      transition: background 1.5s ease;
+      transition: background 1.5s ease, filter 1.5s ease, opacity 1.5s ease;
     }
     .artistic-edge-vignette {
       box-shadow: inset 0 0 85px rgba(218, 210, 195, 0.32);
@@ -109,11 +109,13 @@
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
+      border-radius: 4px;
     }
     .mobile-tab-btn.active {
       background: #1E1D1A;
       color: #FAF8F5;
       box-shadow: 0 2px 8px rgba(30, 29, 26, 0.16);
+      border-radius: 4px;
     }
     @keyframes gentleFade {
       from { opacity: 0; transform: translateY(4px); }
@@ -147,9 +149,9 @@
   <div class="fixed inset-0 artistic-edge-vignette z-10 pointer-events-none"></div>
 
   <!-- ==========================================
-       MOBILE-FIRST IMMERSIVE CURATORIAL SHELL (100dvh)
+       MOBILE-FIRST IMMERSIVE CURATORIAL SHELL (Fixed Viewport Bound)
        ========================================== -->
-  <div class="relative z-20 h-screen h-[100dvh] w-full max-w-[540px] mx-auto px-4 pt-3 pb-[env(safe-area-inset-bottom,16px)] flex flex-col justify-between pointer-events-none select-none">
+  <div class="fixed inset-0 z-20 w-full max-w-[540px] mx-auto px-3.5 sm:px-4 pt-2.5 pb-[max(env(safe-area-inset-bottom,16px),16px)] flex flex-col justify-between pointer-events-none select-none">
 
     <!-- 1. COMPACT TOP CURATORIAL BAR -->
     <header class="flex items-center justify-between pointer-events-auto h-11 px-1">
@@ -159,73 +161,63 @@
         <span class="text-[11px] text-muted tracking-wider">掌心画室</span>
       </a>
 
-      <div class="flex items-center gap-1.5 sm:gap-2">
-        <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noopener noreferrer"
-           class="w-8 h-8 rounded-full border border-ink/12 bg-white/50 text-ink/80 hover:text-ink hover:bg-white flex items-center justify-center transition-all cursor-pointer"
-           title="访问 GitHub" aria-label="GitHub">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
-        </a>
-        <a href="https://mist01.com/manual.html?doc=manual" target="_blank" rel="noopener noreferrer"
-           class="text-[11px] text-body/80 hover:text-ink px-2.5 py-1.5 rounded-full border border-ink/10 bg-white/40 transition-colors">
+      <div class="flex items-center gap-2 sm:gap-2.5">
+        <!-- Delicate Circle + Triangle Play Button (置于使用手记左侧，淡雅克制) -->
+        <button type="button"
+                class="video-play-trigger w-7 h-7 flex items-center justify-center text-ink/35 hover:text-ink/80 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                title="放映叙事电影短片 (100s)"
+                aria-label="播放视频">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <!-- Right half solid: from (12,2) to (12,22) -->
+            <path d="M 12 2 A 10 10 0 0 1 12 22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <!-- Left half dashed: from (12,22) to (12,2) -->
+            <path d="M 12 22 A 10 10 0 0 1 12 2" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3.2 2.8" stroke-linecap="round" />
+            <!-- Triangle inside -->
+            <polygon points="10,7.5 16.5,12 10,16.5" fill="currentColor" />
+          </svg>
+        </button>
+        <a href="https://mist01.com/manual.html?doc=manual"
+           class="whitespace-nowrap text-[11px] text-body/80 hover:text-ink px-2.5 py-1 rounded-[4px] border border-ink/10 bg-white/45 transition-colors">
           使用手记
         </a>
         <button type="button"
-                class="download-modal-trigger px-3.5 py-1.5 rounded-full bg-ink text-[#F9F7F2] text-[11px] font-medium hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer shadow-sm">
+                class="download-modal-trigger whitespace-nowrap px-3 py-1 rounded-[4px] bg-ink text-[#F9F7F2] text-[11px] font-medium hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer shadow-sm">
           下载 App
         </button>
       </div>
     </header>
 
     <!-- 2. UNOBSTRUCTED 3D STAGE SPACER (The 3D card floats here in upper center of viewport) -->
-    <div class="flex-1 min-h-0 relative pointer-events-none flex items-start justify-center pt-2">
-      <!-- Subtle interaction guide chip -->
-      <div id="guide-chip" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/45 backdrop-blur-md border border-ink/8 text-[10px] text-body/75 shadow-xs pointer-events-auto transition-all duration-300">
-        <span class="w-1.5 h-1.5 rounded-full bg-accent/80"></span>
-        <span id="guide-chip-text">左右滑动换卷 · 轻触画幅端详</span>
-      </div>
-    </div>
+    <div class="flex-1 min-h-0 pointer-events-none"></div>
 
-    <!-- 3. BOTTOM STREAMLINED CURATORIAL NOTE (Pinned to bottom) -->
-    <div class="pointer-events-auto w-full pb-2 sm:pb-3">
+    <!-- 3. BOTTOM STREAMLINED CURATORIAL NOTE (Pinned to bottom, fully visible within safe area) -->
+    <div class="pointer-events-auto w-full pt-1">
 
       <!-- Synchronized Compact Curatorial Card -->
-      <div id="active-caption-box" class="rounded-2xl bg-[#F9F7F2]/94 border border-ink/10 p-3.5 sm:p-4 shadow-[0_10px_28px_rgba(30,29,26,0.07)] backdrop-blur-md transition-all duration-400 ease-out">
+      <div id="active-caption-box" class="rounded-2xl bg-[#FCFAF5]/96 border border-ink/10 p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(30,29,26,0.06)] backdrop-blur-md transition-all duration-400 ease-out">
         <!-- Title & Badge Row -->
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0">
-            <span id="chapter-badge" class="shrink-0 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-ink/6 text-accent">卷一 · 01/04</span>
-            <h2 id="chapter-title" class="editorial-serif text-[14px] sm:text-[15.5px] font-medium text-ink leading-tight">会记事的陪伴，也会写下悄悄话</h2>
-          </div>
-          <!-- Top-Right Delicate Video Play Badge ("圆圈里面一个三角形，圆圈一半实线一半虚线") -->
-          <button type="button" class="video-play-trigger shrink-0 w-7 h-7 -mr-1 flex items-center justify-center text-ink/45 hover:text-ink hover:scale-110 active:scale-95 transition-all cursor-pointer" title="点击播放叙事电影短片 (100s)" aria-label="播放视频">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <!-- Right half solid: from (12,2) to (12,22) -->
-              <path d="M 12 2 A 10 10 0 0 1 12 22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-              <!-- Left half dashed: from (12,22) to (12,2) -->
-              <path d="M 12 22 A 10 10 0 0 1 12 2" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3.2 2.8" stroke-linecap="round" />
-              <!-- Triangle inside -->
-              <polygon points="10,7.5 16.5,12 10,16.5" fill="currentColor" />
-            </svg>
-          </button>
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span id="chapter-badge" class="shrink-0 px-1.5 py-0.5 rounded-[3px] text-[9.5px] font-mono font-medium bg-ink/6 text-accent">卷一 · 01/04</span>
+          <span id="chapter-footnote" class="hidden" aria-hidden="true"></span><span id="hero-ver-num" class="hidden" aria-hidden="true"></span><h2 id="chapter-title" class="editorial-serif text-[13px] sm:text-[14px] font-medium text-ink leading-tight truncate">会记事的陪伴，也会写下悄悄话</h2>
         </div>
 
         <!-- Curatorial Quote/Desc -->
-        <p id="chapter-desc" class="text-[12px] sm:text-[13px] text-body leading-[1.65] mt-2 line-clamp-2">
-          你随口提过的喜好与约定，TA 都会慢慢记在心里。聊完天合上手机后，TA 还会像真实的朋友一样，在日记本里写下对今天相处的悄悄话。
+        <p id="chapter-desc" class="text-[11px] sm:text-[12px] text-body leading-[1.5] mt-1 line-clamp-2">
+          你随口提过的喜好与约定，TA 都会记在心里；合上手机后，还会像真朋友一样在日记本里写下对你的悄悄话。
         </p>
 
         <!-- 4 Compact Scroll Tabs (1-touch switch, non-wrapping) -->
-        <div class="grid grid-cols-4 gap-1.5 pt-3 mt-2.5 border-t border-ink/6">
-          <button type="button" data-slide="0" class="mobile-tab-btn active py-1.5 px-1 rounded-lg text-center transition-all">
+        <div class="grid grid-cols-4 gap-1.5 pt-1.5 mt-1.5 border-t border-ink/6">
+          <button type="button" data-slide="0" class="mobile-tab-btn active py-1.5 px-0.5 rounded-[4px] text-center transition-all">
             <div class="text-[11px] font-medium tracking-tight">01 朝夕</div>
           </button>
-          <button type="button" data-slide="1" class="mobile-tab-btn py-1.5 px-1 rounded-lg text-center transition-all">
+          <button type="button" data-slide="1" class="mobile-tab-btn py-1.5 px-0.5 rounded-[4px] text-center transition-all">
             <div class="text-[11px] font-medium tracking-tight">02 分岔</div>
           </button>
-          <button type="button" data-slide="2" class="mobile-tab-btn py-1.5 px-1 rounded-lg text-center transition-all">
+          <button type="button" data-slide="2" class="mobile-tab-btn py-1.5 px-0.5 rounded-[4px] text-center transition-all">
             <div class="text-[11px] font-medium tracking-tight">03 原画</div>
           </button>
-          <button type="button" data-slide="3" class="mobile-tab-btn py-1.5 px-1 rounded-lg text-center transition-all">
+          <button type="button" data-slide="3" class="mobile-tab-btn py-1.5 px-0.5 rounded-[4px] text-center transition-all">
             <div class="text-[11px] font-medium tracking-tight">04 私藏</div>
           </button>
         </div>
@@ -259,28 +251,25 @@
       <!-- 16:9 Video Player Viewport Container -->
       <div class="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
         <video id="pixory-main-video" class="w-full h-full object-contain block" playsinline controls muted preload="metadata">
-          <source src="assets/videos/Pixory-Story-100s.mp4" type="video/mp4">
-          <source src="../pixory-video/out/Pixory-Story-100s.mp4" type="video/mp4">
-          <source src="../../pixory-video/out/Pixory-Story-100s.mp4" type="video/mp4">
+          <source src="https://mist01.com/assets/videos/Pixory-Story-100s.mp4" type="video/mp4">
           您的浏览器暂不支持直接播放该视频。
         </video>
-        <!-- Floating Exposed Sound/Volume Toggle Button (默认静音，显式露出发声控制图标) -->
-        <button id="video-sound-toggle" type="button" class="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/75 hover:bg-black/90 active:scale-95 backdrop-blur-md border border-white/25 text-white text-[11px] sm:text-xs shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-all cursor-pointer group" title="点击切换声音">
-          <span id="sound-icon-muted" class="flex items-center text-white/90">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- Floating Exposed Sound/Volume Toggle Button (默认静音，纯净图标按钮，无常驻文字) -->
+        <button id="video-sound-toggle" type="button" class="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/65 hover:bg-black/85 active:scale-95 backdrop-blur-md border border-white/25 text-white flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.4)] transition-all cursor-pointer group" title="切换声音" aria-label="切换声音">
+          <span id="sound-icon-muted" class="flex items-center justify-center text-white/90">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
               <line x1="23" y1="9" x2="17" y2="15"/>
               <line x1="17" y1="9" x2="23" y2="15"/>
             </svg>
           </span>
-          <span id="sound-icon-unmuted" class="hidden items-center text-[#D4A840]">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <span id="sound-icon-unmuted" class="hidden items-center justify-center text-[#D4A840]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
               <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
               <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
             </svg>
           </span>
-          <span id="sound-label" class="font-sans font-medium tracking-wide">已静音 · 点击开启声音</span>
         </button>
       </div>
 
@@ -311,7 +300,7 @@
       <!-- Body -->
       <div class="relative z-10 px-6 sm:px-12 py-6 sm:py-10">
         <div class="flex items-center space-x-4 sm:space-x-5 mb-5 sm:mb-8">
-          <img src="assets/app-icon.png" alt="Pixory" class="w-14 h-14 sm:w-16 sm:h-16 rounded-[14px] sm:rounded-[16px] shadow-[0_8px_24px_rgba(23,43,40,0.15)] flex-shrink-0">
+          <img src="https://mist01.com/assets/app-icon.png" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%231E1D1A%22/><text x=%2250%25%22 y=%2254%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23FAF8F5%22 font-family=%22Georgia,serif%22 font-size=%2232%22>P</text></svg>';" alt="Pixory" class="w-14 h-14 sm:w-16 sm:h-16 rounded-[14px] sm:rounded-[16px] shadow-[0_8px_24px_rgba(23,43,40,0.15)] flex-shrink-0">
           <div>
             <h2 class="editorial-serif text-[22px] sm:text-[28px] text-[#172B28] leading-tight tracking-[-0.02em]">下载 Pixory</h2>
             <p class="font-serif text-[12px] sm:text-[13px] text-[#39665F] mt-1 tracking-[0.06em]" id="dl-version-subtitle">当前版本：<span id="dl-ver-num">2.8.10</span> · 最新 Android 稳定包</p>
@@ -362,7 +351,7 @@
           folio: '卷一 · 朝夕相伴',
           stamp: '林汐的手札 · 第 128 天',
           title: '会记事的陪伴，也会写下悄悄话',
-          desc: '你随口提过的喜好与约定，TA 都会慢慢记在心里。聊完天合上手机后，TA 还会像真实的朋友一样，在日记本里写下对今天相处的悄悄话。',
+          desc: '你随口提过的喜好与约定，TA 都会记在心里；合上手机后，还会像真朋友一样在日记本里写下对你的悄悄话。',
           footnote: '画框内附：角色在相处后写下的睡前日记便签',
           imgId: 'art-src-0',
           wallGlow: 'rgba(196, 206, 220, 0.36)',
@@ -429,8 +418,8 @@
       var activeIndex = 0;
       var isZoomedIn = false;
       var canvas = document.getElementById('canvas-3d');
-      var scene, camera, renderer, galleryGroup, artSpotLight, warmPointLight, goboPlane;
-      var daySunLight, dayArtLight;
+      var scene, camera, renderer, galleryGroup, ambientLight, artSpotLight, warmPointLight, goboPlane;
+      var daySunLight, dayArtLight, naturalSkyLight, rimLight;
       var beamOverlayEl = document.getElementById('artistic-beam-overlay');
       var frameMeshes = [];
       var frameRefs = [];
@@ -439,6 +428,259 @@
       var mouseX = 0, mouseY = 0;
       var isPointerDown = false, startX = 0;
       var wheelCooldown = false;
+      var lastLightPhaseKey = '';
+
+      function getEffectiveHour() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var forcedHour = urlParams.get('hour');
+        if (forcedHour !== null && !isNaN(parseFloat(forcedHour))) {
+          var fh = parseFloat(forcedHour);
+          return ((fh % 24) + 24) % 24;
+        }
+        var now = new Date();
+        return now.getHours() + now.getMinutes() / 60;
+      }
+
+      // ==========================================
+      // 全天候自然光与蓝调时刻计算引擎 · 24-Hour Natural Light & Blue Hour Profile
+      // 根据一天不同时间段（破晓蓝调、晨雾柔光、晴昼柔光、落日余晖、暮色蓝调、静夜月华）
+      // 动态调节自然光的：角度 (Angle)、颜色 (Color)、柔和度 (Softness) 与受光区色彩通透度
+      // ==========================================
+      function getNaturalLightProfile(hour) {
+        var h = ((hour % 24) + 24) % 24;
+
+        if (h >= 5.0 && h < 6.75) {
+          // 1. 破晓蓝调时刻 · Dawn Blue Hour (05:00 - 06:45)
+          var p = (h - 5.0) / 1.75;
+          return {
+            phaseKey: 'dawn-blue-' + Math.round(p * 3),
+            phaseName: 'dawn-blue',
+            beamAngleDeg: Math.round(108 + p * 6),
+            beamBlurPx: Math.round(35 - p * 4),
+            penumbra: 0.96 - p * 0.03,
+            ambientHex: 0xecf1fa,
+            ambientIntensity: 0.49 + p * 0.03,
+            skyHex: 0xd4e2fa,
+            skyIntensity: 0.15 + p * 0.02,
+            sunHex: 0xc8dcf8,
+            sunPos: [-4.1 + p * 0.5, 3.4 + p * 0.8, 4.7 + p * 0.2],
+            sunIntensity: 0.16 + p * 0.03,
+            artHex: 0xd2e2fa,
+            artPos: [-3.4 + p * 0.4, 3.6 + p * 0.6, 4.9],
+            artIntensity: 0.19 + p * 0.02,
+            warmPointHex: 0xffe8cc,
+            warmPointIntensity: 0.12,
+            litColorFilter: 'contrast(1.22) saturate(1.25) brightness(0.94)',
+            litSoftHazeAlpha: 0.28,
+            litSoftHazeBlurPx: 2.2,
+            mistVeilTint: 'rgba(226, 235, 248, 0.34)',
+            mistSoftEdgeTint: 'rgba(216, 227, 244, 0.27)',
+            mistBlurPx: 11.5,
+            mistClearAlpha: 0.82,
+            mistClearCenter: [0.31, 0.34],
+            mistClearRadius: 0.72,
+            softLightStop0: 'rgba(206, 226, 255, 0.42)',
+            softLightStop1: 'rgba(228, 238, 255, 0.18)',
+            softLightStop2: 'rgba(24, 34, 52, 0.10)',
+            tyndallSheenStop0: 'rgba(222, 236, 255, 0.10)',
+            tyndallSheenStop1: 'rgba(222, 236, 255, 0.03)',
+            cssBeam: 'linear-gradient(' + Math.round(108 + p * 6) + 'deg, rgba(198, 218, 248, 0.05) 16%, rgba(212, 228, 252, 0.28) 42%, rgba(235, 226, 238, 0.12) 64%, rgba(238, 241, 246, 0) 82%)',
+            wallFilter: 'brightness(0.95) saturate(0.97) hue-rotate(-4deg)'
+          };
+        } else if (h >= 6.75 && h < 10.5) {
+          // 2. 晨曦薄雾柔光 · Morning Sunlight Through Thin Mist (06:45 - 10:30)
+          var p = (h - 6.75) / 3.75;
+          return {
+            phaseKey: 'morning-' + Math.round(p * 3),
+            phaseName: 'morning',
+            beamAngleDeg: Math.round(114 + p * 8),
+            beamBlurPx: Math.round(30 - p * 4),
+            penumbra: 0.93 - p * 0.04,
+            ambientHex: 0xfffaf2,
+            ambientIntensity: 0.52 + p * 0.02,
+            skyHex: 0xfff5e8,
+            skyIntensity: 0.16,
+            sunHex: 0xffeed6,
+            sunPos: [-3.6 + p * 0.7, 4.2 + p * 1.0, 4.9 + p * 0.2],
+            sunIntensity: 0.18 + p * 0.02,
+            artHex: 0xffe9cf,
+            artPos: [-3.0 + p * 0.5, 4.2 + p * 0.7, 5.0],
+            artIntensity: 0.20 + p * 0.02,
+            warmPointHex: 0xffefd8,
+            warmPointIntensity: 0.13,
+            litColorFilter: 'contrast(1.24) saturate(1.28) brightness(0.94)',
+            litSoftHazeAlpha: 0.26,
+            litSoftHazeBlurPx: 2.0,
+            mistVeilTint: 'rgba(250, 246, 238, 0.33)',
+            mistSoftEdgeTint: 'rgba(244, 239, 229, 0.25)',
+            mistBlurPx: 10.8,
+            mistClearAlpha: 0.85,
+            mistClearCenter: [0.34 + p * 0.04, 0.34 + p * 0.03],
+            mistClearRadius: 0.75,
+            softLightStop0: 'rgba(255, 242, 216, 0.44)',
+            softLightStop1: 'rgba(255, 236, 204, 0.18)',
+            softLightStop2: 'rgba(34, 28, 22, 0.08)',
+            tyndallSheenStop0: 'rgba(255, 248, 234, 0.09)',
+            tyndallSheenStop1: 'rgba(255, 244, 224, 0.03)',
+            cssBeam: 'linear-gradient(' + Math.round(114 + p * 8) + 'deg, rgba(255, 248, 235, 0.05) 18%, rgba(255, 241, 220, 0.26) 45%, rgba(255, 234, 208, 0.11) 64%, rgba(244, 241, 234, 0) 80%)',
+            wallFilter: 'brightness(1.0) saturate(1.0)'
+          };
+        } else if (h >= 10.5 && h < 15.5) {
+          // 3. 晴昼柔光 · Midday Soft Skylight (10:30 - 15:30)
+          var p = (h - 10.5) / 5.0;
+          return {
+            phaseKey: 'midday-' + Math.round(p * 3),
+            phaseName: 'midday',
+            beamAngleDeg: Math.round(122 + p * 8),
+            beamBlurPx: Math.round(25 + Math.abs(p - 0.5) * 4),
+            penumbra: 0.88,
+            ambientHex: 0xfffbf4,
+            ambientIntensity: 0.53,
+            skyHex: 0xfff7ec,
+            skyIntensity: 0.16,
+            sunHex: 0xfff6e6,
+            sunPos: [-2.8 + p * 0.4, 5.3 - p * 0.3, 5.1],
+            sunIntensity: 0.18,
+            artHex: 0xfff2de,
+            artPos: [-2.5 + p * 0.3, 4.9 - p * 0.2, 5.1],
+            artIntensity: 0.20,
+            warmPointHex: 0xfff0d8,
+            warmPointIntensity: 0.12,
+            litColorFilter: 'contrast(1.25) saturate(1.28) brightness(0.93)',
+            litSoftHazeAlpha: 0.25,
+            litSoftHazeBlurPx: 1.9,
+            mistVeilTint: 'rgba(249, 246, 239, 0.32)',
+            mistSoftEdgeTint: 'rgba(242, 238, 229, 0.24)',
+            mistBlurPx: 10.5,
+            mistClearAlpha: 0.86,
+            mistClearCenter: [0.38 + p * 0.04, 0.36],
+            mistClearRadius: 0.76,
+            softLightStop0: 'rgba(255, 246, 226, 0.40)',
+            softLightStop1: 'rgba(255, 240, 214, 0.16)',
+            softLightStop2: 'rgba(32, 28, 22, 0.08)',
+            tyndallSheenStop0: 'rgba(255, 250, 238, 0.08)',
+            tyndallSheenStop1: 'rgba(255, 246, 228, 0.02)',
+            cssBeam: 'linear-gradient(' + Math.round(122 + p * 8) + 'deg, rgba(255, 252, 242, 0.04) 22%, rgba(255, 248, 232, 0.24) 48%, rgba(255, 242, 220, 0.10) 66%, rgba(244, 241, 234, 0) 80%)',
+            wallFilter: 'brightness(1.0) saturate(1.0)'
+          };
+        } else if (h >= 15.5 && h < 17.75) {
+          // 4. 落日余晖 · Golden Hour Sunset (15:30 - 17:45)
+          var p = (h - 15.5) / 2.25;
+          return {
+            phaseKey: 'sunset-' + Math.round(p * 3),
+            phaseName: 'sunset',
+            beamAngleDeg: Math.round(130 + p * 10),
+            beamBlurPx: Math.round(28 + p * 5),
+            penumbra: 0.91 + p * 0.04,
+            ambientHex: 0xfef6ec,
+            ambientIntensity: 0.52 - p * 0.03,
+            skyHex: 0xffe8cc,
+            skyIntensity: 0.16,
+            sunHex: 0xffdba6,
+            sunPos: [-2.8 - p * 1.1, 4.9 - p * 1.2, 5.0 - p * 0.4],
+            sunIntensity: 0.19 - p * 0.02,
+            artHex: 0xffd296,
+            artPos: [-2.5 - p * 0.9, 4.6 - p * 1.0, 4.9],
+            artIntensity: 0.21 - p * 0.02,
+            warmPointHex: 0xffe2ba,
+            warmPointIntensity: 0.14,
+            litColorFilter: 'contrast(1.24) saturate(1.30) brightness(0.94)',
+            litSoftHazeAlpha: 0.26,
+            litSoftHazeBlurPx: 2.0,
+            mistVeilTint: 'rgba(250, 241, 229, 0.33)',
+            mistSoftEdgeTint: 'rgba(244, 231, 215, 0.25)',
+            mistBlurPx: 11.0,
+            mistClearAlpha: 0.84,
+            mistClearCenter: [0.35 - p * 0.03, 0.38 + p * 0.03],
+            mistClearRadius: 0.74,
+            softLightStop0: 'rgba(255, 224, 184, 0.46)',
+            softLightStop1: 'rgba(255, 208, 162, 0.20)',
+            softLightStop2: 'rgba(38, 26, 20, 0.09)',
+            tyndallSheenStop0: 'rgba(255, 236, 204, 0.10)',
+            tyndallSheenStop1: 'rgba(255, 222, 184, 0.03)',
+            cssBeam: 'linear-gradient(' + Math.round(130 + p * 10) + 'deg, rgba(255, 240, 214, 0.05) 20%, rgba(255, 224, 186, 0.28) 47%, rgba(255, 208, 164, 0.12) 66%, rgba(244, 241, 234, 0) 82%)',
+            wallFilter: 'brightness(0.99) saturate(1.03)'
+          };
+        } else if (h >= 17.75 && h < 19.5) {
+          // 5. 暮色蓝调时刻 · Evening Blue Hour (17:45 - 19:30)
+          var p = (h - 17.75) / 1.75;
+          return {
+            phaseKey: 'evening-blue-' + Math.round(p * 3),
+            phaseName: 'evening-blue',
+            beamAngleDeg: Math.round(140 + p * 7),
+            beamBlurPx: Math.round(34 + p * 3),
+            penumbra: 0.96,
+            ambientHex: 0xeaf0fa,
+            ambientIntensity: 0.48 - p * 0.02,
+            skyHex: 0xc8daf6,
+            skyIntensity: 0.15,
+            sunHex: 0xbad0f4,
+            sunPos: [-3.9 - p * 0.3, 3.6 - p * 0.3, 4.6],
+            sunIntensity: 0.16,
+            artHex: 0xc6daf8,
+            artPos: [-3.3, 3.6, 4.8],
+            artIntensity: 0.18,
+            warmPointHex: 0xffdfc0,
+            warmPointIntensity: 0.13,
+            litColorFilter: 'contrast(1.23) saturate(1.26) brightness(0.94)',
+            litSoftHazeAlpha: 0.28,
+            litSoftHazeBlurPx: 2.1,
+            mistVeilTint: 'rgba(224, 233, 247, 0.35)',
+            mistSoftEdgeTint: 'rgba(212, 224, 242, 0.28)',
+            mistBlurPx: 11.5,
+            mistClearAlpha: 0.82,
+            mistClearCenter: [0.33, 0.38],
+            mistClearRadius: 0.72,
+            softLightStop0: 'rgba(194, 218, 252, 0.44)',
+            softLightStop1: 'rgba(244, 218, 204, 0.18)',
+            softLightStop2: 'rgba(22, 30, 48, 0.10)',
+            tyndallSheenStop0: 'rgba(208, 226, 252, 0.10)',
+            tyndallSheenStop1: 'rgba(244, 220, 206, 0.03)',
+            cssBeam: 'linear-gradient(' + Math.round(140 + p * 7) + 'deg, rgba(182, 206, 244, 0.06) 18%, rgba(198, 218, 248, 0.29) 45%, rgba(244, 218, 204, 0.12) 65%, rgba(236, 240, 246, 0) 82%)',
+            wallFilter: 'brightness(0.94) saturate(0.96) hue-rotate(-6deg)'
+          };
+        } else {
+          // 6. 静夜月华 · Quiet Moonlight Night (19:30 - 05:00)
+          var nightProgress = h >= 19.5 ? (h - 19.5) / 9.5 : (h + 4.5) / 9.5;
+          return {
+            phaseKey: 'night-' + Math.round(nightProgress * 2),
+            phaseName: 'night',
+            beamAngleDeg: Math.round(147 + Math.sin(nightProgress * Math.PI) * 5),
+            beamBlurPx: 37,
+            penumbra: 0.98,
+            ambientHex: 0xeef2f9,
+            ambientIntensity: 0.47,
+            skyHex: 0xd0def4,
+            skyIntensity: 0.14,
+            sunHex: 0xcadbf5,
+            sunPos: [-2.4 + Math.cos(nightProgress * Math.PI) * 0.6, 5.2, 4.8],
+            sunIntensity: 0.15,
+            artHex: 0xd6e4fa,
+            artPos: [-2.2, 4.8, 4.9],
+            artIntensity: 0.17,
+            warmPointHex: 0xffe8c8,
+            warmPointIntensity: 0.14,
+            litColorFilter: 'contrast(1.22) saturate(1.24) brightness(0.94)',
+            litSoftHazeAlpha: 0.29,
+            litSoftHazeBlurPx: 2.2,
+            mistVeilTint: 'rgba(231, 237, 247, 0.35)',
+            mistSoftEdgeTint: 'rgba(218, 227, 240, 0.28)',
+            mistBlurPx: 12.0,
+            mistClearAlpha: 0.80,
+            mistClearCenter: [0.35, 0.35],
+            mistClearRadius: 0.70,
+            softLightStop0: 'rgba(210, 226, 252, 0.40)',
+            softLightStop1: 'rgba(255, 238, 214, 0.15)',
+            softLightStop2: 'rgba(20, 26, 40, 0.10)',
+            tyndallSheenStop0: 'rgba(218, 232, 252, 0.09)',
+            tyndallSheenStop1: 'rgba(255, 239, 216, 0.03)',
+            cssBeam: 'linear-gradient(149deg, rgba(196, 214, 242, 0.05) 20%, rgba(214, 228, 248, 0.24) 47%, rgba(250, 236, 214, 0.09) 66%, rgba(238, 240, 244, 0) 82%)',
+            wallFilter: 'brightness(0.92) saturate(0.94) hue-rotate(-5deg)'
+          };
+        }
+      }
+
+      window.getNaturalLightProfile = getNaturalLightProfile;
 
       function drawRoundedRect(ctx, x, y, w, h, r) {
         ctx.beginPath();
@@ -454,24 +696,31 @@
         ctx.closePath();
       }
 
-      // 1.75x Supersampled Canvas (1575 x 2135) with LinearFilter (no mipmap blur)
+      // 2.5x High-Precision Supersampled Canvas (2250 x 3050) with Mipmaps & Anisotropic Filtering
+      // Implements "Sunlight / Natural Light Filtering Through Thin Mist (阳光透过薄雾)":
+      // - Where the natural light beam lands, colors are richer, clearer, and luminous, yet softened by a 2px micro-diffusion so they are never overly sharp ("被光照到的地方色彩表现可以更清晰一点，但是不要太清晰")
+      // - Outside the light beam, the dreamy thin mist veil remains intact
       function createCollectorPlateTextures(chapter, index, imgEl) {
-        var S = 1.75;
+        var S = 2.5;
         var baseW = 900, baseH = 1220;
         var c = document.createElement('canvas');
         c.width = Math.round(baseW * S);
         c.height = Math.round(baseH * S);
         var ctx = c.getContext('2d');
         ctx.scale(S, S);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        var lightProfile = getNaturalLightProfile(getEffectiveHour());
 
         // 1. Warm Matte Museum Cotton Rag Paper
-        ctx.fillStyle = '#F8F5EE';
+        ctx.fillStyle = '#FAF7F0';
         ctx.fillRect(0, 0, baseW, baseH);
 
         // Subtle warm paper vignette around edges
         var edgeGrad = ctx.createRadialGradient(450, 610, 340, 450, 610, 720);
-        edgeGrad.addColorStop(0, 'rgba(248, 245, 238, 0)');
-        edgeGrad.addColorStop(1, 'rgba(224, 216, 200, 0.34)');
+        edgeGrad.addColorStop(0, 'rgba(250, 247, 240, 0)');
+        edgeGrad.addColorStop(1, 'rgba(232, 225, 212, 0.24)');
         ctx.fillStyle = edgeGrad;
         ctx.fillRect(0, 0, baseW, baseH);
 
@@ -484,7 +733,7 @@
         ctx.lineWidth = 1;
         ctx.strokeRect(40, 40, baseW - 80, baseH - 80);
 
-        // 3. Top Curatorial Folio Header (Delicate size, clearer ink tone)
+        // 3. Top Curatorial Folio Header
         ctx.fillStyle = '#2C2A26';
         ctx.font = '500 22px "Noto Serif SC", "Newsreader", serif';
         ctx.fillText(chapter.folio, 66, 86);
@@ -508,11 +757,11 @@
         ctx.fillStyle = '#2C2A26';
         ctx.fillText(chapter.stamp, stampX + 27, 84);
 
-        // 4. Recessed Bevel Mat Window for the Illustration (Rich, clear colors + subtle 10% halation)
+        // 4. Recessed Bevel Mat Window for the Illustration ("阳光透过薄雾" — Clearer color in sunlit zone, never harsh)
         var matX = 64, matY = 114, matW = baseW - 128, matH = 710;
-        ctx.fillStyle = '#EAE5D9';
+        ctx.fillStyle = '#F0ECE1';
         ctx.fillRect(matX - 6, matY - 6, matW + 12, matH + 12);
-        ctx.strokeStyle = 'rgba(30, 29, 26, 0.14)';
+        ctx.strokeStyle = 'rgba(30, 29, 26, 0.12)';
         ctx.lineWidth = 1.5;
         ctx.strokeRect(matX - 6, matY - 6, matW + 12, matH + 12);
 
@@ -527,26 +776,119 @@
           ctx.rect(matX, matY, matW, matH);
           ctx.clip();
 
-          // Sharp base illustration with full color clarity
-          ctx.drawImage(imgEl, sx, sy, sw, sh, matX, matY, matW, matH);
-
-          // Very delicate artistic soft-focus bloom (dialed to 0.10 so colors stay vibrant and clear)
+          // Step A1: Richer, clearer color expression for the sunlit zone ("被光照到的地方色彩表现更清晰一点")
           try {
-            ctx.filter = 'blur(10px)';
-            ctx.globalAlpha = 0.10;
-            ctx.drawImage(imgEl, sx, sy, sw, sh, matX - 4, matY - 4, matW + 8, matH + 8);
+            ctx.filter = lightProfile.litColorFilter;
+          } catch (e) {}
+          ctx.drawImage(imgEl, sx, sy, sw, sh, matX, matY, matW, matH);
+          try {
+            ctx.filter = 'none';
+          } catch (e) {}
+
+          // Step A2: Delicate micro-softness veil over the sunlit zone ("但是不要太清晰" — keeps a velvety, non-digital softness while preserving full color richness)
+          try {
+            ctx.filter = 'blur(' + lightProfile.litSoftHazeBlurPx + 'px) saturate(1.18) contrast(1.10)';
+            ctx.globalAlpha = lightProfile.litSoftHazeAlpha;
+            ctx.drawImage(imgEl, sx, sy, sw, sh, matX - 2, matY - 2, matW + 4, matH + 4);
             ctx.filter = 'none';
             ctx.globalAlpha = 1.0;
-          } catch (err) {
+          } catch (e) {
             ctx.globalAlpha = 1.0;
           }
 
-          // Subtle warm sunlight kiss at top-left
-          var artLight = ctx.createRadialGradient(matX + 110, matY + 80, 15, matX + 240, matY + 260, 520);
-          artLight.addColorStop(0, 'rgba(255, 250, 238, 0.11)');
-          artLight.addColorStop(0.6, 'rgba(255, 246, 228, 0.02)');
-          artLight.addColorStop(1, 'rgba(28, 26, 22, 0.05)');
-          ctx.fillStyle = artLight;
+          // Step B: Partial Thin Mist Layer (薄雾层) — dreamy mist outside the light beam, cleanly parted where the natural light lands so colors shine through
+          var mistCan = document.createElement('canvas');
+          mistCan.width = matW;
+          mistCan.height = matH;
+          var mctx = mistCan.getContext('2d');
+          try {
+            mctx.filter = 'blur(' + lightProfile.mistBlurPx + 'px) brightness(1.01) saturate(1.04)';
+          } catch (e) {}
+          mctx.drawImage(imgEl, sx, sy, sw, sh, -10, -10, matW + 20, matH + 20);
+          try {
+            mctx.filter = 'none';
+          } catch (e) {}
+
+          // Soft atmospheric mist veil over the non-illuminated regions
+          mctx.fillStyle = lightProfile.mistVeilTint;
+          mctx.fillRect(0, 0, matW, matH);
+
+          // Part the milky mist cleanly in the sunlit zone so colors are not chalky, while keeping a soft feathered transition into the surrounding mist
+          mctx.globalCompositeOperation = 'destination-out';
+          var cx = matW * lightProfile.mistClearCenter[0];
+          var cy = matH * lightProfile.mistClearCenter[1];
+          var clearRad = Math.max(matW, matH) * lightProfile.mistClearRadius;
+          var clearGrad = mctx.createRadialGradient(cx, cy, clearRad * 0.10, cx + 55, cy + 50, clearRad);
+          clearGrad.addColorStop(0, 'rgba(0, 0, 0, ' + lightProfile.mistClearAlpha + ')');
+          clearGrad.addColorStop(0.36, 'rgba(0, 0, 0, ' + (lightProfile.mistClearAlpha * 0.82).toFixed(2) + ')');
+          clearGrad.addColorStop(0.64, 'rgba(0, 0, 0, ' + (lightProfile.mistClearAlpha * 0.36).toFixed(2) + ')');
+          clearGrad.addColorStop(0.86, 'rgba(0, 0, 0, 0.10)');
+          clearGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          mctx.fillStyle = clearGrad;
+          mctx.fillRect(0, 0, matW, matH);
+
+          // Carve the angled sunbeam corridor through the mist matching beamAngleDeg
+          var rad = (lightProfile.beamAngleDeg - 90) * Math.PI / 180;
+          var bx0 = matW * 0.06, by0 = matH * 0.05;
+          var bx1 = bx0 + Math.cos(rad) * matW * 0.88;
+          var by1 = by0 + Math.sin(rad) * matH * 0.88;
+          var beamClear = mctx.createLinearGradient(bx0, by0, bx1, by1);
+          beamClear.addColorStop(0, 'rgba(0, 0, 0, 0.62)');
+          beamClear.addColorStop(0.45, 'rgba(0, 0, 0, 0.44)');
+          beamClear.addColorStop(0.78, 'rgba(0, 0, 0, 0.12)');
+          beamClear.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          mctx.fillStyle = beamClear;
+          mctx.fillRect(0, 0, matW, matH);
+          mctx.globalCompositeOperation = 'source-over';
+
+          // Composite the partial thin mist onto the artwork window
+          ctx.drawImage(mistCan, matX, matY, matW, matH);
+
+          // Step C1: Natural Light Pigment Illumination using 'soft-light' blend mode
+          // Enriches and warms/cools the colors in the lit zone instead of covering them with chalky white
+          ctx.save();
+          try {
+            ctx.globalCompositeOperation = 'soft-light';
+          } catch (e) {}
+          var softLightGrad = ctx.createLinearGradient(
+            matX + bx0,
+            matY + by0,
+            matX + bx1,
+            matY + by1
+          );
+          softLightGrad.addColorStop(0, lightProfile.softLightStop0);
+          softLightGrad.addColorStop(0.52, lightProfile.softLightStop1);
+          softLightGrad.addColorStop(1, lightProfile.softLightStop2);
+          ctx.fillStyle = softLightGrad;
+          ctx.fillRect(matX, matY, matW, matH);
+          ctx.restore();
+
+          // Step C2: Whisper-light Tyndall air sheen at the light entry corner (kept very low so colors stay vivid)
+          var sheenGrad = ctx.createLinearGradient(
+            matX + bx0,
+            matY + by0,
+            matX + bx1 * 0.75,
+            matY + by1 * 0.75
+          );
+          sheenGrad.addColorStop(0, lightProfile.tyndallSheenStop0);
+          sheenGrad.addColorStop(0.55, lightProfile.tyndallSheenStop1);
+          sheenGrad.addColorStop(1, 'rgba(250, 247, 240, 0)');
+          ctx.fillStyle = sheenGrad;
+          ctx.fillRect(matX, matY, matW, matH);
+
+          // Step D: Delicate dreamy mist rim around outer/bottom-right edges so partial haziness is always felt
+          var mistRim = ctx.createRadialGradient(
+            matX + cx,
+            matY + cy,
+            matW * 0.32,
+            matX + matW * 0.52,
+            matY + matH * 0.54,
+            matW * 0.78
+          );
+          mistRim.addColorStop(0, 'rgba(250, 247, 240, 0)');
+          mistRim.addColorStop(0.70, 'rgba(248, 244, 236, 0.05)');
+          mistRim.addColorStop(1, lightProfile.mistSoftEdgeTint);
+          ctx.fillStyle = mistRim;
           ctx.fillRect(matX, matY, matW, matH);
 
           ctx.restore();
@@ -560,54 +902,11 @@
         ctx.lineWidth = 1.5;
         ctx.strokeRect(matX, matY, matW, matH);
 
-        // 4.5 Top-Right Delicate Video Play Badge ("圆圈里面一个三角形，圆圈一半实线一半虚线")
-        var playBtnR = 21;
-        var playBtnX = matX + matW - 40;
-        var playBtnY = matY + 40;
-
-        ctx.save();
-        // Subtle frosted glass backdrop circle
-        ctx.beginPath();
-        ctx.arc(playBtnX, playBtnY, playBtnR, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(24, 22, 18, 0.30)';
-        ctx.fill();
-
-        // Circle outline: half solid, half dashed
-        // Right half (from -PI/2 to PI/2, clockwise): solid line
-        ctx.beginPath();
-        ctx.arc(playBtnX, playBtnY, playBtnR, -Math.PI * 0.5, Math.PI * 0.5);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([]);
-        ctx.stroke();
-
-        // Left half (from PI/2 to 1.5*PI, clockwise): dashed line
-        ctx.beginPath();
-        ctx.arc(playBtnX, playBtnY, playBtnR, Math.PI * 0.5, Math.PI * 1.5);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([4.5, 3.5]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Triangle inside pointing right
-        var triSize = 7.5;
-        var triX = playBtnX + 1.2;
-        var triY = playBtnY;
-        ctx.beginPath();
-        ctx.moveTo(triX - triSize * 0.7, triY - triSize * 0.85);
-        ctx.lineTo(triX + triSize * 1.1, triY);
-        ctx.lineTo(triX - triSize * 0.7, triY + triSize * 0.85);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
-        ctx.fill();
-        ctx.restore();
-
-        // 5. Bottom Collector's Manuscript Section (Same delicate font sizes, clearer dark ink contrast)
+        // 5. Bottom Collector's Manuscript Section (Crisp, high-contrast archival ink for effortless reading)
         var baseY = 876;
 
-        ctx.fillStyle = '#161513';
-        ctx.font = '500 33px "Noto Serif SC", "Newsreader", serif';
+        ctx.fillStyle = '#141311';
+        ctx.font = '600 33px "Noto Serif SC", "Newsreader", serif';
         ctx.fillText(chapter.cardHeading, 66, baseY);
 
         ctx.strokeStyle = 'rgba(138, 107, 71, 0.38)';
@@ -619,9 +918,9 @@
 
         var boxX = 66, boxY = baseY + 40, boxW = baseW - 132, boxH = 176;
         drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 14);
-        ctx.fillStyle = '#F3F0E7';
+        ctx.fillStyle = '#F6F2E8';
         ctx.fill();
-        ctx.strokeStyle = 'rgba(30, 29, 26, 0.12)';
+        ctx.strokeStyle = 'rgba(30, 29, 26, 0.11)';
         ctx.lineWidth = 1.2;
         ctx.stroke();
 
@@ -630,79 +929,79 @@
         ctx.fill();
 
         if (chapter.cardType === 'diary') {
-          ctx.fillStyle = '#181714';
-          ctx.font = '400 24px "Noto Serif SC", Georgia, serif';
+          ctx.fillStyle = '#141311';
+          ctx.font = '500 24px "Noto Serif SC", Georgia, serif';
           ctx.fillText('“今天散步听见风铃响，忽然想起你上周说喜欢雨后的味道。', boxX + 40, boxY + 56);
           ctx.fillText('  这句话我悄悄记在心底了。”', boxX + 40, boxY + 94);
 
-          ctx.fillStyle = '#4A453E';
-          ctx.font = '400 19px "Noto Sans SC", sans-serif';
+          ctx.fillStyle = '#3E3A33';
+          ctx.font = '500 19px "Noto Sans SC", sans-serif';
           ctx.fillText(chapter.diaryMeta, boxX + 40, boxY + 144);
         } else if (chapter.cardType === 'branches') {
           ctx.fillStyle = '#7C5B38';
           ctx.font = '500 19px "Noto Sans SC", sans-serif';
           ctx.fillText(chapter.branchRoot, boxX + 40, boxY + 44);
 
-          ctx.fillStyle = '#161513';
-          ctx.font = '400 22px "Noto Serif SC", Georgia, serif';
+          ctx.fillStyle = '#141311';
+          ctx.font = '500 22px "Noto Serif SC", Georgia, serif';
           ctx.fillText(chapter.branchA, boxX + 40, boxY + 86);
 
-          ctx.fillStyle = '#36332E';
-          ctx.font = '400 22px "Noto Serif SC", Georgia, serif';
+          ctx.fillStyle = '#2A2722';
+          ctx.font = '500 22px "Noto Serif SC", Georgia, serif';
           ctx.fillText(chapter.branchB, boxX + 40, boxY + 124);
 
-          ctx.fillStyle = '#4A453E';
-          ctx.font = '400 18px "Noto Sans SC", sans-serif';
+          ctx.fillStyle = '#3E3A33';
+          ctx.font = '500 18px "Noto Sans SC", sans-serif';
           ctx.fillText(chapter.branchMeta, boxX + 40, boxY + 156);
         } else if (chapter.cardType === 'atelier') {
           ctx.fillStyle = '#56476A';
           ctx.font = '500 21px "Noto Sans SC", sans-serif';
           ctx.fillText(chapter.atelierItems, boxX + 40, boxY + 50);
 
-          ctx.fillStyle = '#181714';
-          ctx.font = '400 23px "Noto Serif SC", Georgia, serif';
+          ctx.fillStyle = '#141311';
+          ctx.font = '500 23px "Noto Serif SC", Georgia, serif';
           ctx.fillText(chapter.atelierNote, boxX + 40, boxY + 96);
 
-          ctx.fillStyle = '#4A453E';
-          ctx.font = '400 19px "Noto Sans SC", sans-serif';
+          ctx.fillStyle = '#3E3A33';
+          ctx.font = '500 19px "Noto Sans SC", sans-serif';
           ctx.fillText(chapter.atelierMeta, boxX + 40, boxY + 144);
         } else {
-          ctx.fillStyle = '#181714';
-          ctx.font = '400 24px "Noto Serif SC", Georgia, serif';
+          ctx.fillStyle = '#141311';
+          ctx.font = '500 24px "Noto Serif SC", Georgia, serif';
           ctx.fillText('“不联网注册，不上传任何服务器。', boxX + 40, boxY + 56);
           ctx.fillText('  你的偏爱与软肋，只有你自己能打开。”', boxX + 40, boxY + 94);
 
-          ctx.fillStyle = '#4A453E';
-          ctx.font = '400 19px "Noto Sans SC", sans-serif';
+          ctx.fillStyle = '#3E3A33';
+          ctx.font = '500 19px "Noto Sans SC", sans-serif';
           ctx.fillText(chapter.sanctuaryMeta, boxX + 40, boxY + 144);
         }
 
         // Bottom Plate Imprint Footer
         ctx.fillStyle = '#787266';
-        ctx.font = '400 17px "JetBrains Mono", monospace';
+        ctx.font = '500 17px "JetBrains Mono", monospace';
         ctx.fillText('PIXORY COLLECTOR PLATE', 66, 1148);
         ctx.fillText('0' + (index + 1) + ' / 04', baseW - 134, 1148);
 
-        // Foreground Texture: disable mipmap blur so thin strokes stay clean at 3D tilt angles
+        // Foreground Texture: high-resolution supersampling + mipmapping & anisotropic filtering for crisp text
         var sharpTex = new THREE.CanvasTexture(c);
-        sharpTex.generateMipmaps = false;
-        sharpTex.minFilter = THREE.LinearFilter;
+        sharpTex.generateMipmaps = true;
+        sharpTex.minFilter = THREE.LinearMipmapLinearFilter;
         sharpTex.magFilter = THREE.LinearFilter;
         if (renderer && renderer.capabilities) {
-          sharpTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          sharpTex.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 16);
         }
         sharpTex.needsUpdate = true;
 
-        // Soft-Focus Artistic Depth-of-Field Blurred Texture for receding background plates (gentler veil)
+        // Soft-Focus Artistic Depth-of-Field Blurred Texture for receding background plates (dreamier mist veil)
         var blurCanvas = document.createElement('canvas');
         blurCanvas.width = 512;
         blurCanvas.height = 694;
         var bctx = blurCanvas.getContext('2d');
         try {
-          bctx.filter = 'blur(4.5px)';
+          bctx.filter = 'blur(6px)';
         } catch (e) {}
         bctx.drawImage(c, 0, 0, blurCanvas.width, blurCanvas.height);
-        bctx.fillStyle = 'rgba(244, 241, 234, 0.08)';
+        bctx.fillStyle = 'rgba(244, 241, 234, 0.18)';
         bctx.fillRect(0, 0, blurCanvas.width, blurCanvas.height);
 
         var blurTex = new THREE.CanvasTexture(blurCanvas);
@@ -729,12 +1028,11 @@
         if (typeof THREE === 'undefined' || !canvas) return;
 
         scene = new THREE.Scene();
-        // Linear 3D Fog starting at 7.8 (just behind the active front frame at d=7.4)
-        // Front frame has 0% fog haze (100% clear color & text), while background frames attenuate naturally!
-        scene.fog = new THREE.Fog(0xF2EFE7, 7.8, 17.5);
+        // Linear 3D Fog starting behind the active front frame so background cards recede into mist
+        scene.fog = new THREE.Fog(0xF2EFE7, 8.8, 17.5);
 
         camera = new THREE.PerspectiveCamera(window.innerWidth < 768 ? 40 : 36, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.set(0, window.innerWidth < 768 ? 0.12 : 0.08, window.innerWidth < 768 ? 9.4 : 8.65);
+        camera.position.set(0, window.innerWidth < 768 ? 0.14 : 0.08, window.innerWidth < 768 ? 9.2 : 8.65);
 
         renderer = new THREE.WebGLRenderer({
           canvas: canvas,
@@ -745,14 +1043,15 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
+        // Calibrated exposure so natural light feels warm & airy while preserving rich pigment saturation
+        renderer.toneMappingExposure = 0.92;
 
         // 1. Balanced Gallery Ambient Light
-        var ambient = new THREE.AmbientLight(0xfffcf5, 0.68);
-        scene.add(ambient);
+        ambientLight = new THREE.AmbientLight(0xfffbf4, 0.52);
+        scene.add(ambientLight);
 
-        // 2. Artistic Gallery Spotlight (Warm pool of light with natural 3D distance decay)
-        artSpotLight = new THREE.SpotLight(0xfff6e6, 0.72);
+        // 2. Artistic Gallery Spotlight
+        artSpotLight = new THREE.SpotLight(0xfff6e6, 0.26);
         artSpotLight.position.set(2.4, 4.2, 5.4);
         artSpotLight.target.position.set(1.4, 0.0, 1.0);
         artSpotLight.angle = Math.PI / 3.1;
@@ -762,24 +1061,29 @@
         scene.add(artSpotLight);
         scene.add(artSpotLight.target);
 
-        // 3. Interactive Warm Artistic Grazing PointLight
-        warmPointLight = new THREE.PointLight(0xfff0d8, 0.34, 11, 1.7);
+        // 3. Subtle Natural Sky Light (自然天光)
+        naturalSkyLight = new THREE.DirectionalLight(0xfff6ec, 0.16);
+        naturalSkyLight.position.set(-2.2, 4.0, 4.4);
+        scene.add(naturalSkyLight);
+
+        // 4. Interactive Warm Artistic Grazing PointLight
+        warmPointLight = new THREE.PointLight(0xfff0d8, 0.13, 11, 1.7);
         warmPointLight.position.set(1.8, 1.2, 3.4);
         scene.add(warmPointLight);
 
-        // 4. Cool Rim Fill
-        var rimLight = new THREE.DirectionalLight(0xe4e9f2, 0.22);
+        // 5. Cool Rim Fill
+        rimLight = new THREE.DirectionalLight(0xe4e9f2, 0.14);
         rimLight.position.set(-5, -2, 2);
         scene.add(rimLight);
 
-        // 5. Subtle 3D Volumetric Light Halo Plane behind the active frame
+        // 6. Subtle 3D Volumetric Light Halo Plane behind the active frame
         var haloCanvas = document.createElement('canvas');
         haloCanvas.width = 512;
         haloCanvas.height = 512;
         var hctx = haloCanvas.getContext('2d');
         var hgrad = hctx.createRadialGradient(256, 240, 20, 256, 256, 240);
-        hgrad.addColorStop(0, 'rgba(255, 246, 226, 0.45)');
-        hgrad.addColorStop(0.45, 'rgba(248, 234, 208, 0.16)');
+        hgrad.addColorStop(0, 'rgba(255, 246, 226, 0.38)');
+        hgrad.addColorStop(0.45, 'rgba(248, 234, 208, 0.14)');
         hgrad.addColorStop(1, 'rgba(244, 241, 234, 0)');
         hctx.fillStyle = hgrad;
         hctx.fillRect(0, 0, 512, 512);
@@ -791,16 +1095,16 @@
         goboPlane.position.set(1.5, 0.2, 0.2);
         scene.add(goboPlane);
 
-        // 6. Natural Sun Directional & Spot Light for Daytime (08:00 - 18:00)
-        daySunLight = new THREE.DirectionalLight(0xfff6e6, 0.0);
+        // 7. Dynamic 24-Hour Natural Directional & Spot Light (Changes angle, color & softness across Day / Blue Hour / Night)
+        daySunLight = new THREE.DirectionalLight(0xfff6e6, 0.18);
         daySunLight.position.set(-3.2, 5.2, 4.5);
         scene.add(daySunLight);
 
-        dayArtLight = new THREE.SpotLight(0xffecd0, 0.0);
+        dayArtLight = new THREE.SpotLight(0xffecd0, 0.20);
         dayArtLight.position.set(-2.8, 4.8, 5.0);
-        dayArtLight.target.position.set(1.46, 0.04, 1.26);
-        dayArtLight.angle = Math.PI / 4.2;
-        dayArtLight.penumbra = 0.88;
+        dayArtLight.target.position.set(0.0, 0.4, 1.35);
+        dayArtLight.angle = Math.PI / 3.8;
+        dayArtLight.penumbra = 0.92;
         dayArtLight.decay = 1.5;
         dayArtLight.distance = 18;
         scene.add(dayArtLight);
@@ -819,14 +1123,14 @@
 
         var outerRimGeo = new THREE.BoxGeometry(frameW + 0.09, frameH + 0.09, frameDepth * 0.78);
         var outerRimMat = new THREE.MeshStandardMaterial({
-          color: 0xD8D0C1,
-          roughness: 0.55,
+          color: 0xE4DDD0,
+          roughness: 0.52,
           metalness: 0.06
         });
 
         var sideMat = new THREE.MeshStandardMaterial({
-          color: 0xEAE4D7,
-          roughness: 0.5,
+          color: 0xF2EDE2,
+          roughness: 0.48,
           metalness: 0.04
         });
 
@@ -841,6 +1145,8 @@
         sctx.fillRect(0, 0, 256, 64);
         var shadowTex = new THREE.CanvasTexture(shadowCanvas);
 
+        lastLightPhaseKey = getNaturalLightProfile(getEffectiveHour()).phaseKey;
+
         for (var i = 0; i < CHAPTERS.length; i++) {
           var ch = CHAPTERS[i];
           var imgEl = document.getElementById(ch.imgId);
@@ -848,16 +1154,16 @@
 
           var frontMat = new THREE.MeshStandardMaterial({
             map: texPair.sharpTex,
-            roughness: 0.44,
-            metalness: 0.02
+            roughness: 0.48,
+            metalness: 0.01
           });
 
           var dofMat = new THREE.MeshStandardMaterial({
             map: texPair.blurTex,
-            roughness: 0.48,
-            metalness: 0.02,
+            roughness: 0.52,
+            metalness: 0.01,
             transparent: true,
-            opacity: i === 0 ? 0.0 : 0.48,
+            opacity: i === 0 ? 0.015 : 0.56,
             depthWrite: false
           });
 
@@ -897,7 +1203,7 @@
           frameRefs.push({
             frontMat: frontMat,
             dofMat: dofMat,
-            targetBlurOpacity: i === 0 ? 0.0 : 0.48
+            targetBlurOpacity: i === 0 ? 0.015 : 0.56
           });
 
           if (imgEl && !imgEl.complete) {
@@ -936,7 +1242,7 @@
       function layoutGalleryTargets() {
         var isDesktop = window.innerWidth >= 1024;
         var centerX = isDesktop ? 1.46 : 0.0;
-        var centerY = isDesktop ? 0.04 : 0.22;
+        var centerY = isDesktop ? 0.04 : 0.40;
 
         for (var i = 0; i < CHAPTERS.length; i++) {
           var diff = i - activeIndex;
@@ -944,20 +1250,20 @@
 
           if (diff === 0) {
             t.x = isZoomedIn ? (isDesktop ? 1.15 : 0.0) : centerX;
-            t.y = isZoomedIn ? (isDesktop ? 0.06 : 0.08) : centerY;
+            t.y = isZoomedIn ? (isDesktop ? 0.06 : 0.12) : centerY;
             t.z = isZoomedIn ? (isDesktop ? 2.18 : 2.62) : (isDesktop ? 1.26 : 1.35);
             t.rotY = isZoomedIn ? -0.01 : (isDesktop ? -0.09 : -0.05);
             t.rotZ = 0;
-            t.scale = isDesktop ? 1.01 : (isZoomedIn ? 0.94 : 0.74);
-            if (frameRefs[i]) frameRefs[i].targetBlurOpacity = 0.0;
+            t.scale = isDesktop ? 1.01 : (isZoomedIn ? 0.94 : 0.72);
+            if (frameRefs[i]) frameRefs[i].targetBlurOpacity = isZoomedIn ? 0.0 : 0.015;
           } else if (diff > 0) {
             t.x = centerX + diff * (isDesktop ? 1.58 : 1.05) + (isDesktop ? 0.56 : 0.48);
             t.y = centerY - diff * 0.04;
             t.z = (isDesktop ? 0.02 : 0.06) - diff * 0.94;
             t.rotY = -0.38 - diff * 0.07;
             t.rotZ = -diff * 0.012;
-            t.scale = (isDesktop ? 0.85 : 0.62) * Math.pow(0.92, diff - 1);
-            if (frameRefs[i]) frameRefs[i].targetBlurOpacity = Math.min(0.68, 0.36 + diff * 0.12);
+            t.scale = (isDesktop ? 0.85 : 0.60) * Math.pow(0.92, diff - 1);
+            if (frameRefs[i]) frameRefs[i].targetBlurOpacity = Math.min(0.74, 0.48 + diff * 0.12);
           } else {
             var absD = Math.abs(diff);
             t.x = centerX - absD * (isDesktop ? 1.48 : 1.02) - (isDesktop ? 0.48 : 0.44);
@@ -965,8 +1271,8 @@
             t.z = (isDesktop ? -0.32 : -0.28) - absD * 0.98;
             t.rotY = 0.34 + absD * 0.07;
             t.rotZ = absD * 0.012;
-            t.scale = (isDesktop ? 0.82 : 0.60) * Math.pow(0.9, absD - 1);
-            if (frameRefs[i]) frameRefs[i].targetBlurOpacity = Math.min(0.68, 0.40 + absD * 0.12);
+            t.scale = (isDesktop ? 0.82 : 0.58) * Math.pow(0.9, absD - 1);
+            if (frameRefs[i]) frameRefs[i].targetBlurOpacity = Math.min(0.74, 0.50 + absD * 0.12);
           }
         }
       }
@@ -1012,7 +1318,7 @@
               var curOp = frameRefs[i].dofMat.opacity;
               var tgtOp = frameRefs[i].targetBlurOpacity;
               frameRefs[i].dofMat.opacity = curOp + (tgtOp - curOp) * 0.08;
-              frameRefs[i].dofMat.visible = frameRefs[i].dofMat.opacity > 0.01;
+              frameRefs[i].dofMat.visible = frameRefs[i].dofMat.opacity > 0.005;
             }
           }
           renderer.render(scene, camera);
@@ -1028,7 +1334,6 @@
 
       function updateZoomState() {
         var captionBox = document.getElementById('active-caption-box');
-        var chipText = document.getElementById('guide-chip-text');
         if (captionBox) {
           if (isZoomedIn) {
             captionBox.style.opacity = '0';
@@ -1040,22 +1345,9 @@
             captionBox.style.transform = 'translateY(0)';
           }
         }
-        if (chipText) {
-          chipText.textContent = isZoomedIn ? '轻触画幅退出端详' : '左右滑动换卷 · 轻触画幅端详';
-        }
       }
       function updateZoomLabel() {
         updateZoomState();
-      }
-
-      function getEffectiveHour() {
-        var urlParams = new URLSearchParams(window.location.search);
-        var forcedHour = urlParams.get('hour');
-        if (forcedHour !== null && !isNaN(parseFloat(forcedHour))) {
-          return parseFloat(forcedHour);
-        }
-        var now = new Date();
-        return now.getHours() + now.getMinutes() / 60;
       }
 
       window.getEffectiveHour = getEffectiveHour;
@@ -1063,70 +1355,79 @@
 
       function updateRealtimeLighting() {
         var hour = getEffectiveHour();
-        // 18:00 - 次日 08:00: 100% 1:1 replica of pixory (5).html
-        var isDaytime = hour >= 8.0 && hour < 18.0;
+        var p = getNaturalLightProfile(hour);
 
-        if (!isDaytime) {
-          if (daySunLight) daySunLight.intensity = 0.0;
-          if (dayArtLight) dayArtLight.intensity = 0.0;
-          if (beamOverlayEl) {
-            beamOverlayEl.style.background = 'linear-gradient(122deg, rgba(255, 251, 242, 0) 32%, rgba(255, 249, 236, 0.22) 49%, rgba(255, 245, 226, 0.08) 62%, rgba(244, 241, 234, 0) 76%)';
-          }
-          return;
+        if (ambientLight) {
+          ambientLight.color.setHex(p.ambientHex);
+          ambientLight.intensity = p.ambientIntensity;
+        }
+        if (naturalSkyLight) {
+          naturalSkyLight.color.setHex(p.skyHex);
+          naturalSkyLight.intensity = p.skyIntensity;
+        }
+        if (daySunLight) {
+          daySunLight.color.setHex(p.sunHex);
+          daySunLight.position.set(p.sunPos[0], p.sunPos[1], p.sunPos[2]);
+          daySunLight.intensity = p.sunIntensity;
+        }
+        if (dayArtLight) {
+          dayArtLight.color.setHex(p.artHex);
+          dayArtLight.position.set(p.artPos[0], p.artPos[1], p.artPos[2]);
+          dayArtLight.intensity = p.artIntensity;
+          dayArtLight.penumbra = p.penumbra;
+        }
+        if (warmPointLight) {
+          warmPointLight.color.setHex(p.warmPointHex);
+          warmPointLight.intensity = p.warmPointIntensity;
+        }
+        if (beamOverlayEl) {
+          beamOverlayEl.style.background = p.cssBeam;
+          beamOverlayEl.style.filter = 'blur(' + p.beamBlurPx + 'px)';
+        }
+        if (wallEl && wallEl.style.filter !== p.wallFilter) {
+          wallEl.style.filter = p.wallFilter;
         }
 
-        // Daytime: 08:00 - 18:00
-        // Natural sunlight with subtle angle, color, and intensity transition
-        if (hour >= 8.0 && hour < 11.5) {
-          // 08:00 - 11:30: Morning Sun (晨曦柔光)
-          var progress = (hour - 8.0) / 3.5;
-          if (daySunLight) {
-            daySunLight.color.setHex(0xffeed6);
-            daySunLight.position.set(-3.6 + progress * 0.4, 4.6 + progress * 0.8, 5.0);
-            daySunLight.intensity = 0.45 + progress * 0.10;
-          }
-          if (dayArtLight) {
-            dayArtLight.color.setHex(0xffe8ce);
-            dayArtLight.position.set(-3.0 + progress * 0.3, 4.4 + progress * 0.6, 5.0);
-            dayArtLight.intensity = 0.50 + progress * 0.12;
-          }
-          if (beamOverlayEl) {
-            beamOverlayEl.style.background = 'linear-gradient(116deg, rgba(255, 248, 235, 0.04) 22%, rgba(255, 240, 222, 0.28) 46%, rgba(255, 232, 210, 0.12) 64%, rgba(244, 241, 234, 0) 78%)';
-          }
-        } else if (hour >= 11.5 && hour < 15.5) {
-          // 11:30 - 15:30: Midday Sun (晴昼暖阳)
-          var progress = (hour - 11.5) / 4.0;
-          if (daySunLight) {
-            daySunLight.color.setHex(0xfff6e6);
-            daySunLight.position.set(-3.2 + progress * 0.2, 5.4 - progress * 0.4, 5.2);
-            daySunLight.intensity = 0.58;
-          }
-          if (dayArtLight) {
-            dayArtLight.color.setHex(0xfff2dc);
-            dayArtLight.position.set(-2.7, 5.0, 5.2);
-            dayArtLight.intensity = 0.65;
-          }
-          if (beamOverlayEl) {
-            beamOverlayEl.style.background = 'linear-gradient(124deg, rgba(255, 252, 242, 0.05) 26%, rgba(255, 248, 234, 0.32) 50%, rgba(255, 242, 220, 0.14) 66%, rgba(244, 241, 234, 0) 80%)';
-          }
-        } else {
-          // 15:30 - 18:00: Golden Hour Sunset (落日余晖)
-          var progress = (hour - 15.5) / 2.5;
-          if (daySunLight) {
-            daySunLight.color.setHex(0xffdeaa);
-            daySunLight.position.set(-3.0 - progress * 1.2, 5.0 - progress * 1.4, 5.0 - progress * 0.8);
-            daySunLight.intensity = 0.55 - progress * 0.15;
-          }
-          if (dayArtLight) {
-            dayArtLight.color.setHex(0xffd498);
-            dayArtLight.position.set(-2.7 - progress * 1.0, 4.6 - progress * 1.2, 5.0);
-            dayArtLight.intensity = 0.60 - progress * 0.18;
-          }
-          if (beamOverlayEl) {
-            beamOverlayEl.style.background = 'linear-gradient(132deg, rgba(255, 244, 220, 0.06) 24%, rgba(255, 230, 196, 0.34) 48%, rgba(255, 218, 175, 0.16) 66%, rgba(244, 241, 234, 0) 82%)';
-          }
+        // Rebuild collector plate mist & natural light angle if the time-of-day phase changed
+        if (p.phaseKey !== lastLightPhaseKey && frameRefs.length > 0) {
+          lastLightPhaseKey = p.phaseKey;
+          rebuildAllTextures();
         }
       }
+
+      // ==========================================
+      // 30s 自动轮播控制器 · 30s Auto-Cycling Controller
+      // - 展厅卡片循环切换，每张画框停留约 30 秒后平滑滑向下一卷
+      // - 用户点击/拖动/切换任意卡片后，立即从当前画框重置 30 秒倒计时
+      // - 走近画框(放大)、打开视频弹窗或页面切至后台时自动暂挂，退出后恢复
+      // ==========================================
+      var autoCycleTimer = null;
+      var AUTO_CYCLE_INTERVAL = 30000;
+
+      function resetAutoCycle() {
+        if (autoCycleTimer) {
+          clearTimeout(autoCycleTimer);
+          autoCycleTimer = null;
+        }
+        var videoModalOpen = videoOverlay && !videoOverlay.classList.contains('pointer-events-none');
+        if (isZoomedIn || videoModalOpen || document.hidden) {
+          return;
+        }
+        autoCycleTimer = setTimeout(function () {
+          goToSlide(activeIndex + 1);
+        }, AUTO_CYCLE_INTERVAL);
+      }
+
+      function pauseAutoCycle() {
+        if (autoCycleTimer) {
+          clearTimeout(autoCycleTimer);
+          autoCycleTimer = null;
+        }
+      }
+
+      window.resetAutoCycle = resetAutoCycle;
+      window.pauseAutoCycle = pauseAutoCycle;
+      window.goToSlide = goToSlide;
 
       function goToSlide(idx) {
         activeIndex = (idx + CHAPTERS.length) % CHAPTERS.length;
@@ -1170,6 +1471,7 @@
         }
 
         layoutGalleryTargets();
+        resetAutoCycle();
       }
 
       tabBtns.forEach(function (btn) {
@@ -1257,21 +1559,15 @@
               if (obj.userData && typeof obj.userData.slideIndex === 'number') {
                 var clickedIdx = obj.userData.slideIndex;
                 hitFound = true;
-
-                // Check if hit UV corresponds to the top-right video play badge on the active collector plate
-                if (clickedIdx === activeIndex && hit.uv) {
-                  var hitUV = hit.uv;
-                  // Canvas 900x1220, play badge is at (794, 156) -> UV (0.882, 0.872)
-                  if (Math.hypot(hitUV.x - 0.882, hitUV.y - 0.872) < 0.09) {
-                    openVideoModal();
-                    return;
-                  }
-                }
-
                 if (clickedIdx === activeIndex) {
                   isZoomedIn = !isZoomedIn;
                   updateZoomState();
                   layoutGalleryTargets();
+                  if (isZoomedIn) {
+                    pauseAutoCycle();
+                  } else {
+                    resetAutoCycle();
+                  }
                 } else {
                   isZoomedIn = false;
                   updateZoomState();
@@ -1285,6 +1581,7 @@
               isZoomedIn = false;
               updateZoomState();
               layoutGalleryTargets();
+              resetAutoCycle();
             }
           }
         });
@@ -1325,18 +1622,17 @@
       var soundToggleBtn = document.getElementById('video-sound-toggle');
       var soundIconMuted = document.getElementById('sound-icon-muted');
       var soundIconUnmuted = document.getElementById('sound-icon-unmuted');
-      var soundLabel = document.getElementById('sound-label');
 
       function updateSoundUI() {
         if (!videoEl) return;
         var isMuted = videoEl.muted || videoEl.volume === 0;
         if (soundIconMuted) soundIconMuted.classList.toggle('hidden', !isMuted);
         if (soundIconUnmuted) soundIconUnmuted.classList.toggle('hidden', isMuted);
-        if (soundLabel) soundLabel.textContent = isMuted ? '已静音 · 点击开启声音' : '声音已开启';
       }
 
       function openVideoModal() {
         if (!videoOverlay || !videoContainer) return;
+        pauseAutoCycle();
         videoOverlay.classList.remove('opacity-0', 'pointer-events-none');
         videoContainer.classList.remove('scale-95', 'opacity-0');
         if (videoEl) {
@@ -1358,7 +1654,16 @@
         if (videoEl) {
           videoEl.pause();
         }
+        resetAutoCycle();
       }
+
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          pauseAutoCycle();
+        } else {
+          resetAutoCycle();
+        }
+      });
 
       window.openVideoModal = openVideoModal;
       window.closeVideoModal = closeVideoModal;
@@ -1467,6 +1772,7 @@
 
       initThreeGallery();
       animateGallery();
+      resetAutoCycle();
     })();
   </script>
 </body>

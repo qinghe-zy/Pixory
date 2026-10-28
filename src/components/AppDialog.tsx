@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
@@ -25,6 +25,7 @@ interface AppDialogProps {
   accent?: 'default' | 'ai';
   dismissible?: boolean;
   appearance?: 'default' | 'opaqueMonochrome';
+  scrollable?: boolean;
 }
 
 export function AppDialog({
@@ -45,6 +46,7 @@ export function AppDialog({
   accent = 'default',
   dismissible = true,
   appearance = 'opaqueMonochrome',
+  scrollable = true,
 }: AppDialogProps) {
   const isOpaqueMonochrome = appearance === 'opaqueMonochrome';
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);
@@ -57,11 +59,27 @@ export function AppDialog({
       <View style={styles.overlay}>
         {dismissible ? <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} /> : null}
         <View style={[styles.panel, accent === 'ai' ? styles.aiPanel : null, isOpaqueMonochrome ? styles.opaqueMonochromePanel : null]}>
-          <View style={styles.copy}>
+          <View style={styles.header}>
             <Text style={[styles.title, accent === 'ai' ? styles.aiTitle : danger ? styles.dangerTitle : null]}>{title}</Text>
-            {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
           </View>
-          {children ? <View style={styles.body}>{children}</View> : null}
+          {scrollable ? (
+            <ScrollView
+              bounces={false}
+              contentContainerStyle={styles.scrollContentContainer}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              style={styles.scrollArea}
+            >
+              {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
+              {children ? <View style={styles.body}>{children}</View> : null}
+            </ScrollView>
+          ) : (
+            <>
+              {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
+              {children ? <View style={styles.body}>{children}</View> : null}
+            </>
+          )}
           <View style={[styles.actions, compactActions ? styles.compactActions : null, computedActionLayout === 'horizontal' ? styles.secondaryActionRow : null]}>
             {computedActionLayout === 'horizontal' ? (
               <>
@@ -117,6 +135,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.entryCardGap,
     maxWidth: 360,
+    maxHeight: '82%',
     padding: spacing[5],
     width: '100%',
   },
@@ -130,6 +149,16 @@ const styles = StyleSheet.create({
     borderColor: '#1a1c1c',
     borderRadius: 8,
     shadowOpacity: 0,
+  },
+  header: {
+    minHeight: 0,
+  },
+  scrollArea: {
+    flexShrink: 1,
+  },
+  scrollContentContainer: {
+    gap: rhythm.cardContentGap,
+    paddingVertical: 1,
   },
   copy: {
     gap: rhythm.cardContentGap,

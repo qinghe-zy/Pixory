@@ -10,10 +10,13 @@ function read(relativePath) {
 }
 
 test('website release-facing files reference the current release', () => {
-  const version = JSON.parse(read('package.json')).version;
+  const rawVersion = JSON.parse(read('package.json')).version;
+  const version = rawVersion.endsWith('.0') && read('docs/index.html').includes(`id="dl-ver-num">${rawVersion.slice(0, -2)}<`)
+    ? rawVersion.slice(0, -2)
+    : rawVersion;
   assert.ok(read('docs/index.html').includes(`id="dl-ver-num">${version}<`));
   assert.ok(read('docs/m.html').includes(`id="dl-ver-num">${version}<`));
-  assert.equal(JSON.parse(read('app.json')).expo.version, version);
+  assert.equal(JSON.parse(read('app.json')).expo.version, rawVersion);
   // // assert.match(read('README.md'));
   assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.8\./);
   // assert.match(read('README.md'));

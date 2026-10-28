@@ -74,6 +74,9 @@ interface AiHomeScreenProps {
   onOpenIpChatPicker: () => void;
   onOpenThread: (thread: AiHomeThreadItem) => void;
   onStartChatWithRole: (roleCardId: string) => void;
+  onCreateRole?: () => void;
+  onImportRole?: () => void;
+  onExportRole?: () => void;
 }
 
 interface RoleShortcut {
@@ -96,6 +99,9 @@ export function AiHomeScreen({
   onOpenSearch,
   onOpenThread,
   onStartChatWithRole,
+  onCreateRole,
+  onImportRole,
+  onExportRole,
 }: AiHomeScreenProps) {
   const insets = useSafeAreaInsets();
   const floatingFooterHeight = useContext(FloatingFooterContext);
@@ -254,6 +260,7 @@ export function AiHomeScreen({
 
   const compactHeaderBgStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [150, 190], [0, 1], Extrapolation.CLAMP),
+    display: scrollY.value >= 150 ? 'flex' : 'none',
   }));
 
   const newChatShrunkStyle = useAnimatedStyle(() => ({
@@ -284,14 +291,13 @@ export function AiHomeScreen({
         showHeader={false}
         title=""
       >
-        {/* Scrollable content */}
         <Animated.ScrollView
           bounces={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.screenContent, { paddingTop: insets.top, paddingBottom: layout.pageBottomOffset + floatingFooterHeight }]}
+          contentContainerStyle={[styles.screenContent, { paddingTop: Math.max(insets.top, 16), paddingBottom: layout.pageBottomOffset + floatingFooterHeight }]}
         >
           {/* Start Chat Card + Role Rail */}
           <View style={styles.mainStack}>
@@ -569,57 +575,56 @@ export function AiHomeScreen({
         { position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100, paddingTop: insets.top },
         compactHeaderBgStyle
       ]} pointerEvents="box-none">
-        <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
-        {/* iOS Top Status Bar Background */}
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9' }} />
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], height: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }} pointerEvents="box-none">
-          {/* Left: Search */}
-          <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-start', justifyContent: 'center' }, searchShrunkStyle]} pointerEvents="auto">
-            <Pressable
-              accessibilityLabel="搜索"
-              onPress={onOpenSearch}
-              style={({ pressed }) => [{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
-            >
-              <Ionicons name="search" size={20} color="#111827" />
-            </Pressable>
-          </Animated.View>
-
-          {/* Center: Role Rail */}
-          <Animated.View style={[{ flex: 1, paddingHorizontal: 12, height: 36, justifyContent: 'center' }, roleRailShrunkStyle]} pointerEvents="auto">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 32 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
-              {roleShortcuts.map((role) => (
-                <Pressable
-                  accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
-                  accessibilityRole="button"
-                  key={role.roleCardId}
-                  onPress={() => onStartChatWithRole(role.roleCardId)}
-                  style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, overflow: 'hidden' }, pressed && styles.pressed]}
-                >
-                  <SecureImage contentFit="cover" space={space} style={{ width: '100%', height: '100%' }} uri={role.avatarUri} />
-                </Pressable>
-              ))}
+          <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9' }} />
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], height: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }} pointerEvents="box-none">
+            {/* Left: Search */}
+            <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-start', justifyContent: 'center' }, searchShrunkStyle]} pointerEvents="auto">
               <Pressable
-                accessibilityLabel="角色库"
-                onPress={onOpenRoleLibrary}
-                style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, backgroundColor: '#f3f3f4', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+                accessibilityLabel="搜索"
+                onPress={onOpenSearch}
+                style={({ pressed }) => [{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
               >
-                <Ionicons name="ellipsis-vertical" size={16} color="#111827" />
+                <Ionicons name="search" size={20} color="#111827" />
               </Pressable>
-            </ScrollView>
-          </Animated.View>
+            </Animated.View>
 
-          {/* Right: New Chat */}
-          <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-end', justifyContent: 'center' }, newChatShrunkStyle]} pointerEvents="auto">
-            <Pressable
-              accessibilityLabel="开始聊天"
-              onPress={onStartNormalChat}
-              style={({ pressed }) => [{ width: 32, height: 32, backgroundColor: '#111827', borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
-            >
-              <Ionicons color="#FFFFFF" name="add" size={20} />
-            </Pressable>
-          </Animated.View>
-        </View>
-      </Animated.View>
+            {/* Center: Role Rail */}
+            <Animated.View style={[{ flex: 1, paddingHorizontal: 12, height: 36, justifyContent: 'center' }, roleRailShrunkStyle]} pointerEvents="auto">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 32 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+                {roleShortcuts.map((role) => (
+                  <Pressable
+                    accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
+                    accessibilityRole="button"
+                    key={role.roleCardId}
+                    onPress={() => onStartChatWithRole(role.roleCardId)}
+                    style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, overflow: 'hidden' }, pressed && styles.pressed]}
+                  >
+                    <SecureImage contentFit="cover" space={space} style={{ width: '100%', height: '100%' }} uri={role.avatarUri} />
+                  </Pressable>
+                ))}
+                <Pressable
+                  accessibilityLabel="角色库"
+                  onPress={onOpenRoleLibrary}
+                  style={({ pressed }) => [{ width: 32, height: 32, borderRadius: radius.xs, backgroundColor: '#f3f3f4', alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+                >
+                  <Ionicons name="ellipsis-vertical" size={16} color="#111827" />
+                </Pressable>
+              </ScrollView>
+            </Animated.View>
+
+            {/* Right: New Chat */}
+            <Animated.View style={[{ width: 36, height: 36, alignItems: 'flex-end', justifyContent: 'center' }, newChatShrunkStyle]} pointerEvents="auto">
+              <Pressable
+                accessibilityLabel="开始聊天"
+                onPress={onStartNormalChat}
+                style={({ pressed }) => [{ width: 32, height: 32, backgroundColor: '#111827', borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, pressed && styles.pressed]}
+              >
+                <Ionicons color="#FFFFFF" name="add" size={20} />
+              </Pressable>
+            </Animated.View>
+          </View>
+        </Animated.View>
     </View>
   );
 }
@@ -1030,7 +1035,60 @@ const styles = StyleSheet.create({
     color: aiLightColors.mutedSoft,
     flexShrink: 0,
   },
-
+  segmentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    backgroundColor: '#F0F0F2',
+    borderRadius: 8,
+    padding: 3,
+  },
+  segmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 6,
+    gap: 6,
+  },
+  segmentTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#71717A',
+  },
+  segmentTabTextActive: {
+    color: '#111111',
+    fontWeight: '600',
+  },
+  contactActionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EDEDED',
+  },
+  contactActionBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  contactActionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#18181B',
+    letterSpacing: 0.3,
+  },
 });
 
 

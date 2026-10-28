@@ -74,6 +74,10 @@ import {
   MIGRATION_STATEMENTS_V64,
   MIGRATION_STATEMENTS_V65,
   MIGRATION_STATEMENTS_V66,
+  MIGRATION_STATEMENTS_V67,
+  MIGRATION_STATEMENTS_V68,
+  MIGRATION_STATEMENTS_V69,
+  MIGRATION_STATEMENTS_V70,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -325,6 +329,36 @@ async function ensureMemoryAggregateSchema(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_memory_claim_feedback_space
         ON memory_claim_feedback(space, usedCount, injectedCount);
     `);
+  }
+}
+
+async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> {
+  if (!(await hasTable(db, 'ai_companion_memories'))) {
+    await db.execAsync(MIGRATION_STATEMENTS_V68);
+  }
+}
+
+async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
+  const columns = [
+    { name: 'background_image_uri', type: 'TEXT' },
+    { name: 'nudge_text', type: 'TEXT' },
+    { name: 'context_window_n', type: 'INTEGER DEFAULT 20' },
+    { name: 'heartbeat_enabled', type: 'INTEGER DEFAULT 1' },
+    { name: 'proactive_enabled', type: 'INTEGER DEFAULT 1' },
+    { name: 'im_settings_json', type: "TEXT NOT NULL DEFAULT '{}'" },
+    { name: 'living_state_json', type: 'TEXT' },
+  ];
+  for (const col of columns) {
+    try {
+      await db.execAsync(`ALTER TABLE ai_threads ADD COLUMN ${col.name} ${col.type};`);
+    } catch {
+      // 容错：列已存在时静默跳过
+    }
+  }
+  try {
+    await db.execAsync("ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';");
+  } catch {
+    // 容错：列已存在时静默跳过
   }
 }
 
@@ -633,6 +667,30 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V66);
     }
 
+    if (currentVersion < 67) {
+      await database.execAsync(MIGRATION_STATEMENTS_V67);
+    }
+
+    if (currentVersion < 68) {
+      await database.execAsync(MIGRATION_STATEMENTS_V68);
+    }
+
+    if (currentVersion < 69) {
+      try {
+        await database.execAsync(MIGRATION_STATEMENTS_V69);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
+    }
+
+    if (currentVersion < 70) {
+      try {
+        await database.execAsync(MIGRATION_STATEMENTS_V70);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
+    }
+
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
     await ensureAiMemoryLineageSchema(database);
@@ -641,6 +699,8 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     await ensureMediaPerformanceIndexes(database);
     await ensureMemoryAggregateSchema(database);
     await ensureMemoryScopeGovernance(database);
+    await ensureAiCompanionMemorySchema(database);
+    await ensureImThreadSettingsSchema(database);
 
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -1009,13 +1009,26 @@
         cardsContainer.appendChild(card);
       });
 
-      // 优化返回按钮逻辑：优先使用 history.back()
+      // 优化返回按钮逻辑：智能判断移动端/桌面端回退与降级跳转
       const backBtn = document.getElementById('nav-back-btn');
       if (backBtn) {
+        const isMobile = window.innerWidth <= 800 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+        const homeUrl = isMobile ? 'm.html' : 'index.html';
+        backBtn.setAttribute('href', homeUrl);
+
         backBtn.addEventListener('click', (e) => {
-          if (window.history.length > 1) {
-            e.preventDefault();
+          e.preventDefault();
+          // 如果同源前序历史记录存在，尝试后退
+          const hasValidReferrer = document.referrer && (document.referrer.includes(window.location.host) || document.referrer.includes('mist01.com'));
+          if (hasValidReferrer) {
             window.history.back();
+            // 超时降级：若在 250ms 内未触发跳转（例如标签页历史隔离），强制返回主页
+            setTimeout(() => {
+              window.location.href = homeUrl;
+            }, 250);
+          } else {
+            // 没有前序历史记录或直接打开时，直接导航至首页
+            window.location.href = homeUrl;
           }
         });
       }

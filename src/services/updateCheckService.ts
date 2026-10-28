@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const FALLBACK_CURRENT_VERSION = '2.8.10';
-const FALLBACK_CURRENT_VERSION_CODE = 2893;
+const FALLBACK_CURRENT_VERSION = '2.8.10.0';
+const FALLBACK_CURRENT_VERSION_CODE = 28100;
 
 export interface AppUpdateInfo {
   version: string;
@@ -35,6 +35,7 @@ type RemoteUpdatePayload = {
   title?: unknown;
   message?: unknown;
   releaseNotes?: unknown;
+  detailLines?: unknown;
   downloadUrl?: unknown;
   url?: unknown;
 };
@@ -118,6 +119,10 @@ function normalizeRemoteUpdate(payload: unknown): AppUpdateInfo | null {
     ? record.releaseNotes
         .map((item) => asNonEmptyString(item))
         .filter((item): item is string => Boolean(item))
+    : Array.isArray(record.detailLines)
+    ? record.detailLines
+        .map((item) => asNonEmptyString(item))
+        .filter((item): item is string => Boolean(item))
     : [];
 
   return {
@@ -149,8 +154,18 @@ function normalizeGitHubRelease(payload: unknown, fallbackDownloadUrl: string | 
 
   const releaseNotes = asNonEmptyString(record.body)
     ?.split(/\r?\n/)
-    .map((line) => line.trim().replace(/^[-*]\s+/, ''))
-    .filter((line) => line.length > 0 && !/^官方下载[:：]|^服务器直下[:：]/.test(line))
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^[-*]\s+/, '')
+        .replace(/^\d+\.\s+/, '')
+        .replace(/\*\*/g, '')
+    )
+    .filter(
+      (line) =>
+        line.length > 0 &&
+        !/^官方下载[:：]|^服务器直下[:：]|^#|^<!--|^>/.test(line)
+    )
     ?? [];
 
   return {

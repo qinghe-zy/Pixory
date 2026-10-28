@@ -22,6 +22,7 @@ interface SettingsScreenProps {
   onOpenAppearanceSettings?: () => void;
   onOpenProviderSettings?: () => void;
   onOpenProfileInfo?: () => void;
+  onOpenImCompanionSettings?: () => void;
 }
 
 export function SettingsScreen({
@@ -35,6 +36,7 @@ export function SettingsScreen({
   onOpenAppearanceSettings,
   onOpenProviderSettings,
   onOpenProfileInfo,
+  onOpenImCompanionSettings,
 }: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
   const [diagnosticsEnabled, setDiagnosticsEnabledState] = useState(false);
@@ -116,6 +118,14 @@ export function SettingsScreen({
               icon="color-palette-outline"
               title="外观设置"
               onPress={onOpenAppearanceSettings}
+              showBorder={Boolean(onOpenImCompanionSettings)}
+            />
+          ) : null}
+          {onOpenImCompanionSettings ? (
+            <SettingsRow
+              icon="chatbubbles-outline"
+              title="伴聊设置"
+              onPress={onOpenImCompanionSettings}
             />
           ) : null}
         </View>

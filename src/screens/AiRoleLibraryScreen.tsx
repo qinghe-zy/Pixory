@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { deleteRoleCards, listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
@@ -21,6 +21,7 @@ interface AiRoleLibraryScreenProps {
   onImportRole: () => void;
   onOpenRoleDetail: (roleCardId: string) => void;
   onStartChatWithRole: (roleCardId: string) => Promise<void> | void;
+  onStartImChat?: (card: AiRoleCardRecord) => Promise<void> | void;
   onApplyRoleToThread?: (roleCardId: string) => Promise<void> | void;
 }
 
@@ -32,6 +33,7 @@ export function AiRoleLibraryScreen({
   onImportRole,
   onOpenRoleDetail,
   onStartChatWithRole,
+  onStartImChat,
   onApplyRoleToThread,
 }: AiRoleLibraryScreenProps) {
   const [cards, setCards] = useState<AiRoleCardRecord[]>([]);
@@ -55,20 +57,44 @@ export function AiRoleLibraryScreen({
   }
 
   async function startChat(card: AiRoleCardRecord) {
-    setBusyRoleId(card.id);
-    setStatus(null);
-    try {
-      if (mode === 'apply_to_thread' && onApplyRoleToThread) {
+    if (mode === 'apply_to_thread' && onApplyRoleToThread) {
+      setBusyRoleId(card.id);
+      setStatus(null);
+      try {
         await onApplyRoleToThread(card.id);
-      } else {
-        await onStartChatWithRole(card.id);
+      } catch (error) {
+        setStatus(error instanceof Error ? `应用角色失败：${error.message}` : '应用角色失败');
+      } finally {
+        setBusyRoleId(null);
       }
-    } catch (error) {
-      const action = mode === 'apply_to_thread' ? '应用角色失败' : '开始对话失败';
-      setStatus(error instanceof Error ? `${action}：${error.message}` : action);
-    } finally {
-      setBusyRoleId(null);
+      return;
     }
+
+    if (!onStartImChat) {
+      setBusyRoleId(card.id);
+      try {
+        await onStartChatWithRole(card.id);
+      } finally {
+        setBusyRoleId(null);
+      }
+      return;
+    }
+
+    Alert.alert(`开启与【${card.name}】的对话`, undefined, [
+      {
+        text: '伴侣即时短聊 (IM)',
+        onPress: () => {
+          void onStartImChat(card);
+        },
+      },
+      {
+        text: '深度长聊 (剧情)',
+        onPress: () => {
+          void onStartChatWithRole(card.id);
+        },
+      },
+      { text: '取消', style: 'cancel' },
+    ]);
   }
 
   async function deleteSelectedCards() {
@@ -116,7 +142,7 @@ export function AiRoleLibraryScreen({
           {cards.map((card) => (
             <AiRoleLibraryItem
               card={card}
-              actionLabel={mode === 'apply_to_thread' ? '应用' : '开聊'}
+              actionLabel={mode === 'apply_to_thread' ? '应用' : undefined}
               key={card.id}
               selected={selectedCardIds.includes(card.id)}
               selectionMode={selectedCardIds.length > 0}

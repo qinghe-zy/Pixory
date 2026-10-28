@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { aiLightColors } from './ai/aiLightTheme';
 import { colors, componentTokens, spacing, typography } from '../design/tokens';
 
-export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
+export type RootTabKey = 'home' | 'organize' | 'im' | 'ai' | 'me';
 
 interface BottomTabBarProps {
   activeTab: RootTabKey;
@@ -19,12 +19,13 @@ const TAB_ITEMS: Array<{
 }> = [
   { key: 'home', label: '首页', icon: 'home-outline' },
   { key: 'organize', label: '整理', icon: 'albums-outline' },
-  { key: 'ai', label: '聊天', icon: 'chatbubble-ellipses-outline' },
+  { key: 'im', label: '伴聊', icon: 'chatbubbles-outline' },
+  { key: 'ai', label: '长聊', icon: 'sparkles-outline' },
   { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 
 function getActiveTintColor(tab: RootTabKey) {
-  return tab === 'ai' ? aiLightColors.primaryActive : colors.primary.default;
+  return tab === 'ai' || tab === 'im' ? aiLightColors.primaryActive : colors.primary.default;
 }
 
 export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
