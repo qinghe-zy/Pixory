@@ -38,7 +38,22 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
     assert.equal(coalesced[2].content, '刚吃过');
   });
 
-  await t.test('User-first guard: Zone 3 never starts with assistant', () => {
+  await t.test('coalesceHistoryBurstMessages: preserves system_notice as user-visible action prompt for AI self-awareness', () => {
+    const rawMessages = [
+      { id: '1', role: 'user', content: '好无聊啊' },
+      { id: '2', role: 'system', type: 'system_notice', content: '星野 拍了拍你的小脑瓜' },
+      { id: '3', role: 'user', content: '你干嘛拍我脑袋？' },
+    ];
+
+    const coalesced = coalesceHistoryBurstMessages(rawMessages);
+    assert.equal(coalesced.length, 3);
+    assert.equal(coalesced[0].content, '好无聊啊');
+    assert.equal(coalesced[1].role, 'user');
+    assert.equal(coalesced[1].content, '[系统动作提示: 星野 拍了拍你的小脑瓜]');
+    assert.equal(coalesced[2].content, '你干嘛拍我脑袋？');
+  });
+
+  await t.test('Synthetic First-Turn Padding: protects leading assistant greeting from deletion', () => {
     const historyWithLeadingAssistant = [
       { id: '1', role: 'assistant', content: '孤立的AI首句' },
       { id: '2', role: 'user', content: '你好' },
@@ -54,14 +69,20 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
       '最近怎么样'
     );
 
-    // Zone 1 (system), Zone 2 (system), Zone 3 (user, assistant), Zone 4 (user)
+    // Layer 1 (system), Layer 3 (padded user event, assistant, user, assistant), Layer 4 (@D1 system), Layer 5 (user)
     assert.equal(payload[0].role, 'system');
-    assert.equal(payload[1].role, 'system');
-    assert.equal(payload[2].role, 'user');
-    assert.equal(payload[2].content, '你好');
-    assert.equal(payload[3].role, 'assistant');
-    assert.equal(payload[4].role, 'user');
-    assert.match(payload[4].content, /最近怎么样/);
+    assert.equal(payload[1].role, 'user');
+    assert.equal(payload[1].content, '[系统事件: 会话开始]');
+    assert.equal(payload[2].role, 'assistant');
+    assert.equal(payload[2].content, '孤立的AI首句');
+    assert.equal(payload[3].role, 'user');
+    assert.equal(payload[3].content, '你好');
+    assert.equal(payload[4].role, 'assistant');
+    assert.equal(payload[4].content, '你好呀');
+    assert.equal(payload[5].role, 'system');
+    assert.match(payload[5].content, /当前情境/);
+    assert.equal(payload[6].role, 'user');
+    assert.match(payload[6].content, /最近怎么样/);
   });
 
   await t.test('Dangling anchor fallback: recovers gracefully when anchor was physically deleted by rollback', () => {
@@ -81,15 +102,14 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
       '新消息'
     );
 
-    // 验证自愈恢复，Zone 3 正常呈现且第一条为 user
+    // 验证自愈恢复，Layer 3 正常呈现且第一条为 user
     assert.equal(payload[0].role, 'system');
-    assert.equal(payload[1].role, 'system');
-    assert.equal(payload[2].role, 'user');
-    assert.equal(payload[2].content, '第一句');
+    assert.equal(payload[1].role, 'user');
+    assert.equal(payload[1].content, '第一句');
     assert.equal(payload[payload.length - 1].role, 'user');
   });
 
-  await t.test('Prefix stability: Zone 1 ~ Zone 3 prefix remains SHA-256 byte-identical when appending new turns', () => {
+  await t.test('Prefix stability: Layer 1 ~ Layer 3 prefix remains SHA-256 byte-identical when appending new turns', () => {
     const historyA = [
       { id: '1', role: 'user', content: '第一句' },
       { id: '2', role: 'assistant', content: '第一句回复' },
@@ -104,7 +124,7 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
       '第二句提问'
     );
 
-    // 验证 Zone 1 & Zone 2 在不同时间戳调用下严格内容一致 (永固锁死)
+    // 验证 Layer 1 & 历史视窗在不同时间戳调用下严格内容一致 (永固锁死)
     const payloadTurn2 = buildChatPayload(
       {
         rolePrompt: dummyRolePrompt,
@@ -114,12 +134,12 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
       '不同输入'
     );
 
-    const prefix1 = payloadTurn1.slice(0, 4).map((m) => `${m.role}:${m.content}`).join('||');
-    const prefix2 = payloadTurn2.slice(0, 4).map((m) => `${m.role}:${m.content}`).join('||');
+    const prefix1 = payloadTurn1.slice(0, 3).map((m) => `${m.role}:${m.content}`).join('||');
+    const prefix2 = payloadTurn2.slice(0, 3).map((m) => `${m.role}:${m.content}`).join('||');
     assert.equal(sha256(prefix1), sha256(prefix2), 'Prefix byte sequence must be 100% frozen');
   });
 
-  await t.test('Shadow Prefix Forking: compaction payload reuses exact Zone 1~3 prefix (96%+ token reuse)', () => {
+  await t.test('Shadow Prefix Forking: compaction payload reuses exact Layer 1 & Layer 3 prefix', () => {
     const history = [
       { id: '1', role: 'user', content: '今天带猫去体检了' },
       { id: '2', role: 'assistant', content: '体检结果怎么样？猫咪叫了吗？' },
@@ -141,9 +161,9 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
       historyMessages: history,
     });
 
-    // 验证 Zone 1, Zone 2, Zone 3 前缀 100% 字节相同
-    assert.equal(chatPayload.length, compPayload.length);
-    for (let i = 0; i < chatPayload.length - 1; i += 1) {
+    // 验证 Layer 1 与 Layer 3 历史视窗 100% 字节相同（前 5 项）
+    assert.equal(compPayload.length, 6); // 1 system + 4 history + 1 compaction
+    for (let i = 0; i < 5; i += 1) {
       assert.equal(
         chatPayload[i].content,
         compPayload[i].content,
@@ -152,7 +172,7 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
       assert.equal(chatPayload[i].role, compPayload[i].role);
     }
 
-    // 验证仅末尾 Zone 4 替换为 4D 结构化 JSON 压缩维护指令
+    // 验证仅末尾替换为 4D 结构化 JSON 压缩维护指令
     const lastCompMsg = compPayload[compPayload.length - 1];
     assert.equal(lastCompMsg.role, 'user');
     assert.match(lastCompMsg.content, /System Maintenance Mode/);
@@ -160,5 +180,112 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
     assert.match(lastCompMsg.content, /unresolved_tension/);
     assert.match(lastCompMsg.content, /l1_slot_mutations/);
     assert.match(lastCompMsg.content, /l2_memory_mutations/);
+  });
+
+  await t.test('Burst Deduplication: strips multiple trailing burst user messages from Layer 3', () => {
+    const burstHistory = [
+      { id: '1', role: 'user', content: '昨天聊到哪里了' },
+      { id: '2', role: 'assistant', content: '聊到你打算去图书馆' },
+      { id: '3', role: 'user', content: '我今天打算去图书馆自习' },
+      { id: '4', role: 'user', content: '顺便把高数题刷完' },
+      { id: '5', role: 'user', content: '晚上再回去' },
+    ];
+
+    const aggregatedInput = '我今天打算去图书馆自习\n顺便把高数题刷完\n晚上再回去';
+
+    const payload = buildChatPayload(
+      {
+        rolePrompt: dummyRolePrompt,
+        historyMessages: burstHistory,
+        now: 1700000000000,
+      },
+      aggregatedInput
+    );
+
+    // 验证 Layer 3 末尾切除属于当前连发批次的消息，只保留之前的对话
+    const historyRoles = payload.filter((m, idx) => idx > 0 && idx < payload.length - 2);
+    assert.equal(historyRoles.length, 2);
+    assert.equal(historyRoles[0].content, '昨天聊到哪里了');
+    assert.equal(historyRoles[1].content, '聊到你打算去图书馆');
+
+    // 验证 Layer 5 为唯一的聚合输入
+    assert.equal(payload[payload.length - 1].role, 'user');
+    assert.equal(payload[payload.length - 1].content, aggregatedInput);
+  });
+
+  await t.test('Proactive Followup: closes with synthetic user event and absorbs directive into Layer 4', () => {
+    const proactiveHistory = [
+      { id: '1', role: 'user', content: '先去忙啦' },
+      { id: '2', role: 'assistant', content: '好呀，忙完见' },
+    ];
+
+    const directive = '[系统提示: 对方已经停顿了 1 分钟。请发一句短问候]';
+    const payload = buildChatPayload(
+      {
+        rolePrompt: dummyRolePrompt,
+        historyMessages: proactiveHistory,
+        now: 1700000000000,
+      },
+      directive
+    );
+
+    // 验证 Layer 4 吸收追聊指令
+    const layer4 = payload[payload.length - 2];
+    assert.equal(layer4.role, 'system');
+    assert.match(layer4.content, /对方已经停顿了 1 分钟/);
+
+    // 验证 Layer 5 闭合为标准 user 触发事件，彻底杜绝尾部 system 导致的 API 报错
+    const layer5 = payload[payload.length - 1];
+    assert.equal(layer5.role, 'user');
+    assert.equal(layer5.content, '[系统事件: 已到预定联系时间，请主动发送消息]');
+  });
+
+  await t.test('Micro-timestamp coalescing: inserts [HH:mm 主动发消息] when interval >= 5min', () => {
+    const rawMessages = [
+      { id: '1', role: 'user', content: '我去图书馆啦', createdAt: '2026-10-28T13:20:00.000Z' },
+      { id: '2', role: 'assistant', content: '好的去吧，注意安全！', createdAt: '2026-10-28T13:20:05.000Z' },
+      // 75 minutes later, companion sends proactive message
+      { id: '3', role: 'assistant', content: '图书馆闭馆了吧？到宿舍没呀', createdAt: '2026-10-28T14:35:00.000Z' },
+    ];
+
+    const coalesced = coalesceHistoryBurstMessages(rawMessages);
+    assert.equal(coalesced.length, 2);
+    assert.equal(coalesced[0].role, 'user');
+    assert.equal(coalesced[1].role, 'assistant');
+    // Notice: 14:35 UTC is 22:35 in UTC+8
+    const d = new Date('2026-10-28T14:35:00.000Z');
+    const hh = d.getHours().toString().padStart(2, '0');
+    const mm = d.getMinutes().toString().padStart(2, '0');
+    assert.equal(
+      coalesced[1].content,
+      `好的去吧，注意安全！[BR][${hh}:${mm} 主动发消息] 图书馆闭馆了吧？到宿舍没呀`
+    );
+  });
+
+  await t.test('Wakeup Ping: Layer 4 and Layer 5 formatted for scheduled proactive alarm', () => {
+    const history = [
+      { id: '1', role: 'user', content: '去洗澡啦' },
+      { id: '2', role: 'assistant', content: '去吧去吧' },
+    ];
+
+    const payload = buildChatPayload(
+      {
+        rolePrompt: dummyRolePrompt,
+        historyMessages: history,
+        now: new Date('2026-10-28T14:45:00.000Z').getTime(),
+        isWakeupPing: true,
+        pingIntent: '问问洗完没',
+      },
+      ''
+    );
+
+    const layer4 = payload[payload.length - 2];
+    assert.equal(layer4.role, 'system');
+    assert.match(layer4.content, /\[主动联系唤醒/);
+    assert.match(layer4.content, /问问洗完没/);
+
+    const layer5 = payload[payload.length - 1];
+    assert.equal(layer5.role, 'user');
+    assert.equal(layer5.content, '[系统事件: 预约闹钟到期唤醒，请主动发起问候]');
   });
 });

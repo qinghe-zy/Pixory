@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
   presetTextActive: { color: '#FFFFFF' },
   input: { height: 44, borderRadius: 10, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, fontSize: 15, color: '#1A1C1C', marginBottom: 18 },
   actionRow: { flexDirection: 'row', gap: 10 },
-  btn: { flex: 1, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  btn: { flex: 1, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   cancelBtn: { backgroundColor: '#F3F4F6' },
   cancelText: { fontSize: 14, fontWeight: '600', color: '#4B5563' },
   confirmBtn: { backgroundColor: '#1A1C1C' },

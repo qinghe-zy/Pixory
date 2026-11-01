@@ -1,5 +1,5 @@
 import { initDatabase, type PixorySpace } from '../../../database';
-import type { ImCompanionDiary, DiaryPaperTexture, DiaryStickerItem, DiaryWashiTapeItem, DiaryPolaroidCard, DiaryThemeKey, DiaryMemoryMetadata } from '../types';
+import type { ImCompanionDiary, DiaryPaperTexture, DiaryStickerItem, DiaryWashiTapeItem, DiaryPolaroidCard, DiaryThemeKey, DiaryMemoryMetadata, DiaryVersionHistoryItem } from '../types';
 
 interface RawDiaryRow {
   id: string;
@@ -16,6 +16,7 @@ interface RawDiaryRow {
   paper_texture: string | null;
   theme_key?: string | null;
   memory_metadata_json?: string | null;
+  previous_versions_json?: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -38,6 +39,7 @@ export async function ensureDiaryTable(space: PixorySpace): Promise<void> {
       paper_texture TEXT DEFAULT 'grid',
       theme_key TEXT DEFAULT 'sage',
       memory_metadata_json TEXT,
+      previous_versions_json TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       UNIQUE(thread_id, diary_date)
@@ -51,6 +53,9 @@ export async function ensureDiaryTable(space: PixorySpace): Promise<void> {
   try {
     await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN memory_metadata_json TEXT;`);
   } catch {}
+  try {
+    await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN previous_versions_json TEXT;`);
+  } catch {}
 }
 
 function rowToDiary(row: RawDiaryRow): ImCompanionDiary {
@@ -58,6 +63,7 @@ function rowToDiary(row: RawDiaryRow): ImCompanionDiary {
   let tapes: DiaryWashiTapeItem[] = [];
   let polaroid: DiaryPolaroidCard | null = null;
   let memoryMetadata: DiaryMemoryMetadata | null = null;
+  let previousVersions: DiaryVersionHistoryItem[] = [];
   try {
     if (row.stickers_json) stickers = JSON.parse(row.stickers_json);
   } catch {}
@@ -69,6 +75,9 @@ function rowToDiary(row: RawDiaryRow): ImCompanionDiary {
   } catch {}
   try {
     if (row.memory_metadata_json) memoryMetadata = JSON.parse(row.memory_metadata_json);
+  } catch {}
+  try {
+    if (row.previous_versions_json) previousVersions = JSON.parse(row.previous_versions_json);
   } catch {}
 
   return {
@@ -86,6 +95,7 @@ function rowToDiary(row: RawDiaryRow): ImCompanionDiary {
     paperTexture: (row.paper_texture as DiaryPaperTexture) || 'grid',
     themeKey: (row.theme_key as DiaryThemeKey) || 'sage',
     memoryMetadata,
+    previousVersions,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -94,12 +104,30 @@ function rowToDiary(row: RawDiaryRow): ImCompanionDiary {
 export async function saveCompanionDiary(space: PixorySpace, diary: ImCompanionDiary): Promise<void> {
   const db = await initDatabase(space);
   await ensureDiaryTable(space);
+
+  // 检查是否已有旧版本，若有且正文变化，存入版本栈（最多3版）
+  let versions = diary.previousVersions || [];
+  try {
+    const existing = await getCompanionDiaryByDate(space, diary.threadId, diary.diaryDate);
+    if (existing && existing.content !== diary.content) {
+      const hist: DiaryVersionHistoryItem = {
+        title: existing.title,
+        content: existing.content,
+        weather: existing.weather,
+        moodTag: existing.moodTag,
+        themeKey: existing.themeKey,
+        updatedAt: existing.updatedAt || Date.now(),
+      };
+      versions = [hist, ...(existing.previousVersions || [])].slice(0, 3);
+    }
+  } catch {}
+
   await db.runAsync(
     `INSERT INTO ai_companion_diaries (
       id, thread_id, role_card_id, diary_date, title, content,
       weather, mood_tag, stickers_json, tapes_json, polaroid_json,
-      paper_texture, theme_key, memory_metadata_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      paper_texture, theme_key, memory_metadata_json, previous_versions_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(thread_id, diary_date) DO UPDATE SET
       title = excluded.title,
       content = excluded.content,
@@ -111,6 +139,7 @@ export async function saveCompanionDiary(space: PixorySpace, diary: ImCompanionD
       paper_texture = excluded.paper_texture,
       theme_key = excluded.theme_key,
       memory_metadata_json = excluded.memory_metadata_json,
+      previous_versions_json = excluded.previous_versions_json,
       updated_at = excluded.updated_at;`,
     [
       diary.id,
@@ -127,9 +156,60 @@ export async function saveCompanionDiary(space: PixorySpace, diary: ImCompanionD
       diary.paperTexture || 'grid',
       diary.themeKey || 'sage',
       diary.memoryMetadata ? JSON.stringify(diary.memoryMetadata) : null,
+      JSON.stringify(versions),
       diary.createdAt || Date.now(),
       diary.updatedAt || Date.now(),
     ]
+  );
+}
+
+export async function restorePreviousDiaryVersion(
+  space: PixorySpace,
+  threadId: string,
+  diaryDate: string
+): Promise<ImCompanionDiary | null> {
+  const db = await initDatabase(space);
+  await ensureDiaryTable(space);
+  const existing = await getCompanionDiaryByDate(space, threadId, diaryDate);
+  if (!existing || !existing.previousVersions || existing.previousVersions.length === 0) {
+    return null;
+  }
+  const [targetVersion, ...restVersions] = existing.previousVersions;
+  await db.runAsync(
+    `UPDATE ai_companion_diaries SET
+      title = ?,
+      content = ?,
+      weather = ?,
+      mood_tag = ?,
+      theme_key = ?,
+      previous_versions_json = ?,
+      updated_at = ?
+     WHERE thread_id = ? AND diary_date = ?;`,
+    [
+      targetVersion.title,
+      targetVersion.content,
+      targetVersion.weather ?? null,
+      targetVersion.moodTag ?? null,
+      targetVersion.themeKey || 'sage',
+      JSON.stringify(restVersions),
+      Date.now(),
+      threadId,
+      diaryDate,
+    ]
+  );
+  return getCompanionDiaryByDate(space, threadId, diaryDate);
+}
+
+export async function deleteCompanionDiary(
+  space: PixorySpace,
+  threadId: string,
+  diaryDate: string
+): Promise<void> {
+  const db = await initDatabase(space);
+  await ensureDiaryTable(space);
+  await db.runAsync(
+    `DELETE FROM ai_companion_diaries WHERE thread_id = ? AND diary_date = ?;`,
+    [threadId, diaryDate]
   );
 }
 

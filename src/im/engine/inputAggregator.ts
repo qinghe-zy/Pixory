@@ -1,11 +1,13 @@
 /**
- * 用户连发输入防抖聚合器 (InputAggregator)
+ * 用户连发输入自适应端点检测防抖聚合器 (InputAggregator)
  *
  * 核心设计：
  * 1. 用户按发送立即在 UI 上屏绿色气泡并持久化至 SQLite。
- * 2. 开启 800ms 防抖聚合窗口。
- * 3. 若窗口内用户继续发送，重置定时器并追加待处理文本。
- * 4. 窗口超时后，将合并文本一次性触发给大模型装填引擎。
+ * 2. 依据语义端点 (Sentence Endpoint) 自适应判断：
+ *    - 完整句（句号/感叹号/问号或独立语义）：零等待立即发送 (0ms)，绝不让大模型空等。
+ *    - 连词/未完成句（逗号/“然后”/“而且”等）：预留 500ms 聚合窗等待下一句。
+ *    - 若输入框内仍有草稿输入中，自适应暂停并等待草稿清空。
+ * 3. 窗口超时或立即判定后，将合并文本一次性触发给大模型装填引擎。
  */
 
 export class InputAggregator {
@@ -17,7 +19,7 @@ export class InputAggregator {
 
   constructor(
     onFlush: (combinedText: string) => void,
-    debounceMs: number = 2000,
+    debounceMs: number = 0,
     isInputEmptyCheck?: () => boolean
   ) {
     this.onFlush = onFlush;
@@ -26,11 +28,20 @@ export class InputAggregator {
   }
 
   setDebounceMs(ms: number) {
-    this.debounceMs = Math.max(1000, Math.min(60000, ms));
+    this.debounceMs = Math.max(0, Math.min(60000, ms));
   }
 
   setIsInputEmptyCheck(check: () => boolean) {
     this.isInputEmptyCheck = check;
+  }
+
+  private isTrailingContinuation(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    // 结尾为逗号、顿号、省略号或口语连词
+    if (/[，,、…~～]$/.test(trimmed)) return true;
+    if (/(然后|而且|还有|不过|就是|但是|并且|另外|以及)$/.test(trimmed)) return true;
+    return false;
   }
 
   push(text: string) {
@@ -40,11 +51,37 @@ export class InputAggregator {
 
     if (this.timer) {
       clearTimeout(this.timer);
+      this.timer = null;
     }
 
-    this.timer = setTimeout(() => {
+    // 判断等待预算
+    const isContinuation = this.isTrailingContinuation(trimmed);
+    const isUserStillDrafting = this.isInputEmptyCheck ? !this.isInputEmptyCheck() : false;
+
+    let targetWaitMs = this.debounceMs;
+    if (this.debounceMs === 0) {
+      if (isUserStillDrafting) {
+        targetWaitMs = 400;
+      } else if (isContinuation) {
+        targetWaitMs = 500;
+      } else {
+        targetWaitMs = 0;
+      }
+    } else {
+      // 用户显式指定了防抖秒数
+      if (!isContinuation && !isUserStillDrafting) {
+        targetWaitMs = Math.min(this.debounceMs, 400);
+      }
+    }
+
+    if (targetWaitMs <= 0) {
+      // 零等待即刻分发
       this.attemptFlush();
-    }, this.debounceMs);
+    } else {
+      this.timer = setTimeout(() => {
+        this.attemptFlush();
+      }, targetWaitMs);
+    }
   }
 
   private attemptFlush() {
@@ -53,7 +90,7 @@ export class InputAggregator {
       if (this.timer) clearTimeout(this.timer);
       this.timer = setTimeout(() => {
         this.attemptFlush();
-      }, 400);
+      }, 350);
       return;
     }
     this.flush();

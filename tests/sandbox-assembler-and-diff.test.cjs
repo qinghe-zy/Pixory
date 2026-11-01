@@ -219,6 +219,20 @@ test('4. sandboxDetector 识别与全屏/抽屉决策', () => {
   const plainChat = `今天天气真好，出去散步吗？`;
   assert.strictEqual(extractSandboxExecutableCode(plainChat), null, '普通日常闲聊提取应为 null');
 
+  // 未闭合围栏代码提取测试
+  const unclosed = '这是根据你描述的场景生成的网页：\n```html\n<!DOCTYPE html>\n<html><head><title>测试</title></head><body><h1>Hello</h1></body></html>';
+  const target1 = extractSandboxExecutableCode(unclosed);
+  assert.ok(target1 !== null, '未闭合围栏代码应成功提取沙箱目标');
+  assert.strictEqual(target1.language, 'html');
+  assert.ok(target1.code.includes('<h1>Hello</h1>'));
+
+  // 嵌入自然语言中的裸 HTML 提取测试
+  const rawEmbedded = '为你生成了页面：\n<!DOCTYPE html>\n<html><body><canvas id="c"></canvas><script>console.log(1)</script></body></html>\n快去运行吧';
+  const target2 = extractSandboxExecutableCode(rawEmbedded);
+  assert.ok(target2 !== null, '嵌入自然语言的裸 HTML 应成功提取沙箱目标');
+  assert.strictEqual(target2.language, 'html');
+  assert.ok(target2.code.includes('<canvas id="c">'));
+
   // hasRichFormatting 富文本标记嗅探
   assert.strictEqual(hasRichFormatting('# 标题一'), true);
   assert.strictEqual(hasRichFormatting('这是**加粗**文本'), true);

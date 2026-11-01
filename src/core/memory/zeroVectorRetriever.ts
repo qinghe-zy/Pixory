@@ -1,16 +1,91 @@
-import { initDatabase, type PixorySpace } from '../../database';
+import { initDatabase, type PixorySpace } from '../../database/index';
 import { memoryRepository } from './memoryRepository';
 import { scoreCompanionMemory, sanitizeAndExtractFtsTerms } from './memoryScorer';
-import type { MemoryRecallCandidate } from './memoryTypes';
+import type { MemoryRecallCandidate, TurnMemoryIntentProfile } from './memoryTypes';
 
 export { scoreCompanionMemory, sanitizeAndExtractFtsTerms };
+
+/**
+ * 计算两个文本片段的 2-gram Jaccard 相似度 (0~1.0)
+ */
+export function compute2GramJaccardSimilarity(textA: string, textB: string): number {
+  if (!textA || !textB) return 0;
+  const setA = new Set<string>();
+  const setB = new Set<string>();
+  for (let i = 0; i < textA.length - 1; i++) setA.add(textA.slice(i, i + 2));
+  for (let i = 0; i < textB.length - 1; i++) setB.add(textB.slice(i, i + 2));
+  if (setA.size === 0 || setB.size === 0) return 0;
+
+  let intersection = 0;
+  for (const gram of setA) {
+    if (setB.has(gram)) intersection++;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * 最大边际相关性多样性选择器 (Maximal Marginal Relevance, lambda=0.72)
+ * 兼顾高相关度打分与语义去重，杜绝多条相似记忆重复挤占 Layer 4 上下文预算
+ */
+export function selectDiverseMemoriesMMR(
+  candidates: MemoryRecallCandidate[],
+  limit: number,
+  lambda: number = 0.72
+): MemoryRecallCandidate[] {
+  if (candidates.length <= limit) return candidates;
+
+  const selected: MemoryRecallCandidate[] = [];
+  const remaining = [...candidates];
+
+  // 首条选择绝对打分最高的代表性记忆
+  selected.push(remaining.shift()!);
+
+  while (selected.length < limit && remaining.length > 0) {
+    let bestIdx = -1;
+    let bestMmrScore = -Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i];
+      let maxSim = 0;
+      for (const sel of selected) {
+        const sim = compute2GramJaccardSimilarity(candidate.content, sel.content);
+        if (sim > maxSim) maxSim = sim;
+      }
+
+      // MMR(c) = lambda * Score(c) - (1 - lambda) * maxSim
+      const mmrScore = lambda * candidate.score - (1 - lambda) * maxSim;
+      if (mmrScore > bestMmrScore) {
+        bestMmrScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx !== -1) {
+      selected.push(remaining.splice(bestIdx, 1)[0]);
+    } else {
+      break;
+    }
+  }
+
+  return selected;
+}
 
 export async function retrieveRelevantMemories(
   roleCardId: string,
   space: PixorySpace,
   userInput: string,
-  limit: number = 3
+  limit: number = 3,
+  intentProfile?: TurnMemoryIntentProfile
 ): Promise<MemoryRecallCandidate[]> {
+  // 意图路由门控：若判定为极短闲聊/语气词，直接 0 召回（0 检索开销、0 噪音）
+  if (intentProfile && intentProfile.topK === 0) {
+    return [];
+  }
+
+  const effectiveLimit = intentProfile ? intentProfile.topK : limit;
+  const scoreThreshold = intentProfile?.scoreThreshold ?? 0.18;
+
   const db = await initDatabase(space);
 
   // 1. 获取该角色下的全部 L2 记忆 (通常在 50~200 条，内存耗时 < 0.3ms)
@@ -37,19 +112,35 @@ export async function retrieveRelevantMemories(
     }
   }
 
-  // 3. 多通道综合打分
+  // 3. 多通道综合打分 (复用已提取的中文实词 N-Gram，避免循环内重复切词)
   const candidates: MemoryRecallCandidate[] = [];
   const now = Date.now();
   for (const mem of memories) {
-    const scored = scoreCompanionMemory(mem, userInput, now, ftsIds);
-    if (scored && scored.score > 0.05) {
-      candidates.push(scored);
+    const scored = scoreCompanionMemory(mem, userInput, now, ftsIds, terms);
+    if (!scored) continue;
+
+    let adjustedScore = scored.score;
+    if (intentProfile?.boostCategory === 'preference' || intentProfile?.boostCategory === 'fact') {
+      if (mem.tier === 'L2_FACT') adjustedScore *= 1.25;
+    } else if (intentProfile?.boostCategory === 'episode') {
+      if (mem.tier === 'L2_EPISODE' || mem.tier === 'L2_EPISODIC') adjustedScore *= 1.25;
+    } else if (intentProfile?.boostCategory === 'diary') {
+      if (mem.category.includes('diary') || mem.tier === 'L2_EPISODE' || mem.tier === 'L2_EPISODIC') {
+        adjustedScore *= 1.35;
+      }
+    }
+
+    if (adjustedScore >= scoreThreshold) {
+      candidates.push({
+        ...scored,
+        score: Number(adjustedScore.toFixed(4)),
+      });
     }
   }
 
-  // 4. 排序并取 Top N
+  // 4. 排序并通过 MMR 多样性筛选 Top N
   candidates.sort((a, b) => b.score - a.score);
-  const topResults = candidates.slice(0, limit);
+  const topResults = selectDiverseMemoriesMMR(candidates, effectiveLimit);
 
   // 5. 异步回写访问计数 (零等待)
   if (topResults.length > 0) {

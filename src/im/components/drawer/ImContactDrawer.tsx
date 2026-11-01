@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  AppState,
   FlatList,
   Pressable,
   StyleSheet,
@@ -11,7 +12,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../../database';
 import type { ImThreadListItem } from '../../types';
 import { listImThreads } from '../../repository/imThreadRepository';
+import { GlobalHeartbeatEngine } from '../../heartbeat/globalHeartbeatEngine';
 import { SecureImage } from '../../../components/SecureImage';
+import { formatImPreviewText } from '../../utils/formatImPreviewText';
 import { formatWeChatTime } from '../../utils/formatWeChatTime';
 
 export interface ImContactDrawerProps {
@@ -21,18 +24,6 @@ export interface ImContactDrawerProps {
   onNewRole: () => void;
   onImportRole: () => void;
   refreshTrigger?: number;
-}
-
-function cleanPreview(raw?: string | null): string {
-  if (!raw) return '发句问候，开启今天的对话吧';
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('{') && (trimmed.includes('"imageUri"') || trimmed.includes('"type":"image"'))) {
-    return '[图片]';
-  }
-  return trimmed
-    .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE):[^\]]+\]/gi, '')
-    .replace(/\[BR\]/g, ' ')
-    .trim() || '发句问候，开启今天的对话吧';
 }
 
 export function ImContactDrawer({
@@ -60,44 +51,73 @@ export function ImContactDrawer({
 
   useEffect(() => {
     void loadData();
-  }, [loadData, refreshTrigger]);
+    const unsub = GlobalHeartbeatEngine.shared.subscribe((_threadId, s) => {
+      if (s === space) {
+        void loadData();
+      }
+    });
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void loadData();
+      }
+    });
+    return () => {
+      unsub();
+      sub.remove();
+    };
+  }, [loadData, refreshTrigger, space]);
 
   const renderItem = ({ item }: { item: ImThreadListItem }) => {
     const isActive = item.roleCardId === activeRoleCardId;
-    const preview = cleanPreview(item.lastMessagePreview);
+    const preview = formatImPreviewText(item.lastMessagePreview, '发句问候，开启今天的对话吧');
+    const unreadCount = !isActive ? (item.unreadCount ?? 0) : 0;
+    const a11yLabel =
+      unreadCount > 0
+        ? `切换至伴侣 ${item.title}，${unreadCount} 条未读消息`
+        : `切换至伴侣 ${item.title}`;
 
     return (
       <Pressable
-        accessibilityLabel={`切换至伴侣 ${item.title}`}
+        accessibilityLabel={a11yLabel}
         accessibilityRole="button"
+        accessibilityState={{ selected: isActive }}
         onPress={() => onSelectCompanion(item.roleCardId, item.title, item.avatarUri)}
         style={({ pressed }) => [
           styles.row,
-          isActive && styles.activeRow,
-          pressed && styles.pressedRow,
+          isActive ? styles.activeRow : null,
+          pressed ? styles.pressedRow : null,
         ]}
       >
-        <View style={styles.avatarBox}>
-          {item.avatarUri ? (
-            <SecureImage space={space} style={styles.avatarImg} uri={item.avatarUri} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.fallbackLetter}>{item.title.slice(0, 1)}</Text>
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatarBox}>
+            {item.avatarUri ? (
+              <SecureImage space={space} style={styles.avatarImg} uri={item.avatarUri} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.fallbackLetter}>{item.title.slice(0, 1)}</Text>
+              </View>
+            )}
+          </View>
+          {isActive ? <View style={styles.activeDot} /> : null}
+          {unreadCount > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>
+                {unreadCount > 99 ? '99+' : String(unreadCount)}
+              </Text>
             </View>
-          )}
-          {isActive && <View style={styles.activeDot} />}
+          ) : null}
         </View>
 
         <View style={styles.infoCol}>
           <View style={styles.nameRow}>
-            <Text numberOfLines={1} style={[styles.nameText, isActive && styles.activeNameText]}>
+            <Text numberOfLines={1} style={[styles.nameText, isActive ? styles.activeNameText : null]}>
               {item.title}
             </Text>
-            {Boolean(item.lastMessageAt) && (
+            {item.lastMessageAt ? (
               <Text style={styles.timeText}>
                 {formatWeChatTime(item.lastMessageAt, 'list')}
               </Text>
-            )}
+            ) : null}
           </View>
           <Text numberOfLines={1} style={styles.snippetText}>
             {preview}
@@ -112,11 +132,11 @@ export function ImContactDrawer({
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>伴侣通讯录</Text>
         <View style={styles.actionGroup}>
-          <Pressable accessibilityRole="button" onPress={onNewRole} style={styles.textBtn}>
+          <Pressable accessibilityRole="button" hitSlop={8} onPress={onNewRole} style={styles.textBtn}>
             <Text style={styles.textBtnLabel}>新建</Text>
           </Pressable>
           <View style={styles.btnDivider} />
-          <Pressable accessibilityRole="button" onPress={onImportRole} style={styles.textBtn}>
+          <Pressable accessibilityRole="button" hitSlop={8} onPress={onImportRole} style={styles.textBtn}>
             <Text style={styles.textBtnLabel}>导入</Text>
           </Pressable>
         </View>
@@ -162,18 +182,21 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DCE0' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#1A1C1C' },
   actionGroup: { flexDirection: 'row', alignItems: 'center' },
-  textBtn: { paddingVertical: 6, paddingHorizontal: 10, minHeight: 36, justifyContent: 'center' },
+  textBtn: { paddingVertical: 8, paddingHorizontal: 10, minHeight: 44, justifyContent: 'center' },
   textBtnLabel: { fontSize: 14, fontWeight: '600', color: '#1A1C1C' },
   btnDivider: { width: StyleSheet.hairlineWidth, height: 12, backgroundColor: '#D8DCE0' },
   listContent: { paddingTop: 8, paddingBottom: 48 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, marginBottom: 6, minHeight: 64 },
   activeRow: { backgroundColor: '#FFFFFF', borderWidth: 0, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 },
   pressedRow: { opacity: 0.8 },
-  avatarBox: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden', position: 'relative', marginRight: 10 },
+  avatarContainer: { width: 44, height: 44, position: 'relative', marginRight: 10 },
+  avatarBox: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
   avatarImg: { width: '100%', height: '100%', borderRadius: 22 },
   avatarFallback: { width: '100%', height: '100%', backgroundColor: '#D4D8DD', alignItems: 'center', justifyContent: 'center' },
   fallbackLetter: { fontSize: 18, fontWeight: '700', color: '#4B5563' },
   activeDot: { position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: '#1A1C1C', borderWidth: 1.5, borderColor: '#FFFFFF' },
+  unreadBadge: { position: 'absolute', top: -4, right: -5, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFFFFF' },
+  unreadBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', includeFontPadding: false },
   infoCol: { flex: 1, justifyContent: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
   nameText: { fontSize: 15, fontWeight: '600', color: '#1A1C1C' },

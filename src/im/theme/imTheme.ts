@@ -222,22 +222,128 @@ export function createImTheme(overrides?: DeepPartial<ImThemeTokens>): ImThemeTo
   };
 }
 
+export interface BubbleSkinPresetItem {
+  name: string;
+  label: string;
+  bubbleRightBackground: string;
+  userBubbleBg: string;
+  bubbleRightText: string;
+  bubbleRightBorder: string;
+}
+
+export const BUBBLE_SKIN_PRESETS: Record<string, BubbleSkinPresetItem> = {
+  wechat_green: {
+    name: '经典草绿',
+    label: '经典草绿',
+    bubbleRightBackground: '#95EC69',
+    userBubbleBg: '#95EC69',
+    bubbleRightText: '#111111',
+    bubbleRightBorder: 'transparent',
+  },
+  warm_amber: {
+    name: '温润琥珀',
+    label: '温润琥珀',
+    bubbleRightBackground: '#F7E6CA',
+    userBubbleBg: '#F7E6CA',
+    bubbleRightText: '#2C1D0D',
+    bubbleRightBorder: 'transparent',
+  },
+  mist_blue: {
+    name: '晴空雾蓝',
+    label: '晴空雾蓝',
+    bubbleRightBackground: '#DCEBFE',
+    userBubbleBg: '#DCEBFE',
+    bubbleRightText: '#1E293B',
+    bubbleRightBorder: 'transparent',
+  },
+  rose_quartz: {
+    name: '蔷薇粉晶',
+    label: '蔷薇粉晶',
+    bubbleRightBackground: '#FCE7F3',
+    userBubbleBg: '#FCE7F3',
+    bubbleRightText: '#3B182E',
+    bubbleRightBorder: 'transparent',
+  },
+  ink_mono: {
+    name: '水墨玄黑',
+    label: '水墨玄黑',
+    bubbleRightBackground: '#26282B',
+    userBubbleBg: '#26282B',
+    bubbleRightText: '#F8FAFC',
+    bubbleRightBorder: 'transparent',
+  },
+};
+
+export function calculateContrastingTextColor(hexColor: string): string {
+  const cleanHex = hexColor.replace('#', '').replace(/^custom:/, '').trim();
+  if (cleanHex.length === 3) {
+    const r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    const g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    const b = parseInt(cleanHex[2] + cleanHex[2], 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 148 ? '#111111' : '#FFFFFF';
+  }
+  if (cleanHex.length === 6) {
+    const r = parseInt(cleanHex.slice(0, 2), 16);
+    const g = parseInt(cleanHex.slice(2, 4), 16);
+    const b = parseInt(cleanHex.slice(4, 6), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 148 ? '#111111' : '#FFFFFF';
+  }
+  return '#111111';
+}
+
 /**
  * 根据用户的排版与外观偏好构建动态主题令牌
  */
 export function buildImThemeFromPreferences(
   baseTheme: ImThemeTokens = defaultWechatTheme,
   typography?: { fontSize?: number; lineHeight?: number; letterSpacing?: number; paragraphSpacing?: number },
-  appearance?: { avatarRadius?: number; bubbleRadius?: number; userBubbleColor?: string }
+  appearance?: {
+    avatarRadius?: number;
+    bubbleRadius?: number;
+    userBubbleColor?: string;
+    bubbleSkinPreset?: string;
+    hasWallpaper?: boolean;
+  },
+  bubbleSkinPresetOverride?: string,
+  hasWallpaperOverride?: boolean
 ): ImThemeTokens {
   const pSpacing = typography?.paragraphSpacing ?? 10;
+  const effectiveSkinKey = bubbleSkinPresetOverride || appearance?.bubbleSkinPreset;
+  const skin = effectiveSkinKey && BUBBLE_SKIN_PRESETS[effectiveSkinKey];
+
+  let rightBg = baseTheme.colors.bubbleRightBackground;
+  let rightText = baseTheme.colors.bubbleRightText;
+  let rightBorder = baseTheme.colors.bubbleRightBorder;
+
+  if (skin) {
+    rightBg = skin.bubbleRightBackground;
+    rightText = skin.bubbleRightText;
+    rightBorder = skin.bubbleRightBorder;
+  } else if (effectiveSkinKey && (effectiveSkinKey.startsWith('#') || effectiveSkinKey.startsWith('custom:'))) {
+    const hex = effectiveSkinKey.startsWith('custom:') ? effectiveSkinKey.replace('custom:', '') : effectiveSkinKey;
+    rightBg = hex;
+    rightText = calculateContrastingTextColor(hex);
+    rightBorder = 'transparent';
+  } else if (appearance?.userBubbleColor && appearance.userBubbleColor !== 'transparent') {
+    rightBg = appearance.userBubbleColor;
+  }
+
+  // 若存在壁纸背景，调整系统时间胶囊提高文字阅读对比度
+  const hasWallpaper = hasWallpaperOverride !== undefined ? hasWallpaperOverride : Boolean(appearance?.hasWallpaper);
+  const systemNoticeBackground = hasWallpaper ? 'rgba(0, 0, 0, 0.32)' : baseTheme.colors.systemNoticeBackground;
+  const systemNoticeText = hasWallpaper ? '#FFFFFF' : baseTheme.colors.systemNoticeText;
+
   return {
     ...baseTheme,
     colors: {
       ...baseTheme.colors,
-      bubbleRightBackground: (appearance?.userBubbleColor && appearance.userBubbleColor !== 'transparent')
-        ? appearance.userBubbleColor
-        : baseTheme.colors.bubbleRightBackground,
+      bubbleRightBackground: rightBg,
+      bubbleRightText: rightText,
+      bubbleRightBorder: rightBorder,
+      systemNoticeBackground,
+      systemNoticeText,
     },
     typography: {
       ...baseTheme.typography,

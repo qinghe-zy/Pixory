@@ -33,7 +33,7 @@ export const imMessageRollback = {
   ): Promise<number> {
     const db = await initDatabase(space);
     const result = await db.runAsync(
-      'DELETE FROM ai_messages WHERE threadId = ? AND visible_at > ?',
+      "DELETE FROM ai_messages WHERE threadId = ? AND (visible_at > ? OR delivery_status = 'staged')",
       threadId,
       now
     );

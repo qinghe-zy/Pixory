@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../database';
@@ -6,6 +6,8 @@ import type { ImThreadListItem } from '../types';
 import { ImThreadList } from '../components/ImThreadList';
 import { layout } from '../../design/tokens';
 import { FloatingFooterContext } from '../../components/AppScreen';
+import { GlobalHeartbeatEngine } from '../heartbeat/globalHeartbeatEngine';
+import { getTotalImUnreadCount } from '../repository/imThreadRepository';
 
 export interface ImHomeScreenProps {
   space: PixorySpace;
@@ -31,11 +33,37 @@ export function ImHomeScreen({
 }: ImHomeScreenProps) {
   const insets = useSafeAreaInsets();
   const floatingFooterHeight = useContext(FloatingFooterContext);
+  const [localRefreshTick, setLocalRefreshTick] = useState(0);
+  const [totalUnread, setTotalUnread] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchUnread = () => {
+      void getTotalImUnreadCount(space).then((c) => {
+        if (mounted) setTotalUnread(c);
+      });
+    };
+    fetchUnread();
+    const unsubscribe = GlobalHeartbeatEngine.shared.subscribe((_, targetSpace) => {
+      if (targetSpace === space) {
+        setLocalRefreshTick((prev) => prev + 1);
+        fetchUnread();
+      }
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [space]);
+
+  const combinedRefreshTrigger = (refreshToken ?? 0) + localRefreshTick;
 
   const renderHeader = () => (
     <View style={[styles.headerContainer, { paddingTop: Math.max(insets.top, 12) }]}>
       <View style={styles.topRow}>
-        <Text style={styles.screenTitle}>伴聊</Text>
+        <Text style={styles.screenTitle}>
+          {totalUnread > 0 ? `伴聊 (${totalUnread > 99 ? '99+' : totalUnread})` : '伴聊'}
+        </Text>
         <View style={styles.actionBar}>
           <Pressable accessibilityRole="button" onPress={onCreateRole} style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}>
             <Text style={styles.actionBtnText}>添加</Text>
@@ -60,7 +88,7 @@ export function ImHomeScreen({
         contentContainerStyle={{ paddingBottom: layout.pageBottomOffset + floatingFooterHeight }}
         onOpenImChat={onOpenImChat}
         onOpenRoleLibrary={onOpenRoleLibrary}
-        refreshTrigger={refreshToken}
+        refreshTrigger={combinedRefreshTrigger}
         space={space}
       />
     </View>

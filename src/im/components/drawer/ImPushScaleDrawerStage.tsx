@@ -47,7 +47,7 @@ export function ImPushScaleDrawerStage({
   mainCardContentStyle,
   spatialPreset = 'level_2',
 }: ImPushScaleDrawerStageProps) {
-  const progress = useSharedValue(0);
+  const progress = useSharedValue(leftDrawerVisible ? 1 : rightDrawerVisible ? -1 : 0);
   const isDrawerOpen = leftDrawerVisible || rightDrawerVisible;
   // 伴聊侧边栏恒定推拉态，确保抽屉交互与 3D 景深体验始终可用
   const isPushScale = true;
@@ -65,9 +65,13 @@ export function ImPushScaleDrawerStage({
   stateRef.current = { leftDrawerVisible, rightDrawerVisible, canOpenRightDrawer, onOpenLeftDrawer, onOpenRightDrawer, onCloseLeftDrawer, onCloseRightDrawer };
 
   useEffect(() => {
-    if (leftDrawerVisible) progress.value = withSpring(1, SPRING_OPEN);
-    else if (rightDrawerVisible) progress.value = withSpring(-1, SPRING_OPEN);
-    else progress.value = withSpring(0, SPRING_CLOSE);
+    if (leftDrawerVisible) {
+      if (progress.value !== 1) progress.value = withSpring(1, SPRING_OPEN);
+    } else if (rightDrawerVisible) {
+      if (progress.value !== -1) progress.value = withSpring(-1, SPRING_OPEN);
+    } else {
+      if (progress.value !== 0) progress.value = withSpring(0, SPRING_CLOSE);
+    }
   }, [leftDrawerVisible, rightDrawerVisible, progress]);
 
   const panResponder = useRef(

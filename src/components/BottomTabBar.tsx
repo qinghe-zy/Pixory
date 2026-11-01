@@ -10,6 +10,7 @@ export type RootTabKey = 'home' | 'organize' | 'im' | 'ai' | 'me';
 interface BottomTabBarProps {
   activeTab: RootTabKey;
   onSelectTab: (tab: RootTabKey) => void;
+  imUnreadCount?: number;
 }
 
 const TAB_ITEMS: Array<{
@@ -28,7 +29,7 @@ function getActiveTintColor(tab: RootTabKey) {
   return tab === 'ai' || tab === 'im' ? aiLightColors.primaryActive : colors.primary.default;
 }
 
-export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
+export function BottomTabBar({ activeTab, onSelectTab, imUnreadCount }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   
   return (
@@ -36,6 +37,7 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
       {TAB_ITEMS.map((item) => {
         const isActive = item.key === activeTab;
         const activeTintColor = getActiveTintColor(item.key);
+        const hasImUnread = item.key === 'im' && typeof imUnreadCount === 'number' && imUnreadCount > 0;
 
         return (
           <Pressable
@@ -49,11 +51,20 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
               pressed && styles.pressed
             ]}
           >
-            <Ionicons
-              color={isActive ? '#000000' : colors.text.secondary}
-              name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
-              size={22}
-            />
+            <View style={styles.iconBox}>
+              <Ionicons
+                color={isActive ? '#000000' : colors.text.secondary}
+                name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
+                size={22}
+              />
+              {hasImUnread && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {imUnreadCount > 99 ? '99+' : imUnreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text style={[
               styles.label, 
               isActive ? styles.activeLabel : null, 
@@ -82,6 +93,29 @@ const styles = StyleSheet.create({
     gap: 2,
     justifyContent: 'center',
     paddingBottom: 4,
+  },
+  iconBox: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FA5151',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 11,
   },
   label: {
     ...typography.textStyles.navTab,

@@ -1,16 +1,50 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+
+function loadTs(relPath) {
+  const full = path.resolve(__dirname, relPath.endsWith('.ts') ? relPath : `${relPath}.ts`);
+  const out = ts.transpileModule(fs.readFileSync(full, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', out)(mod, mod.exports, (id) =>
+    id.startsWith('.') ? loadTs(path.resolve(path.dirname(full), id)) : require(id)
+  );
+  return mod.exports;
+}
+
 const {
   TagAwareStreamParser,
   stripMetaTags,
 } = require('../src/im/engine/tagAwareStreamParser.ts');
+const {
+  parseNudgeTag,
+  parseHeartbeatTag,
+} = loadTs('../src/im/engine/imTagParser.ts');
 
 test('TagAwareStreamParser Streaming Slicing and Sanitization', async (t) => {
   await t.test('stripMetaTags removes status and mood protocol tags', () => {
     const raw = '[STATUS: online] 刚忙完回家呢 [MOOD: happy] [BR] 今天降温了记得多穿点';
     const cleaned = stripMetaTags(raw);
     assert.equal(cleaned, '刚忙完回家呢 [BR] 今天降温了记得多穿点');
+  });
+
+  await t.test('stripMetaTags removes [NUDGE] and [NUDGE: action] tags cleanly', () => {
+    const raw1 = '[NUDGE] 醒醒啦别发呆了！';
+    assert.equal(stripMetaTags(raw1), '醒醒啦别发呆了！');
+
+    const raw2 = '[NUDGE: 脑门] 困了就去眯会儿[BR]别硬撑着';
+    assert.equal(stripMetaTags(raw2), '困了就去眯会儿[BR]别硬撑着');
+  });
+
+  await t.test('parseNudgeTag parses action descriptions correctly', () => {
+    assert.deepEqual(parseNudgeTag('你好呀 [NUDGE: 小脑瓜]'), { action: '小脑瓜' });
+    assert.deepEqual(parseNudgeTag('快看！[NUDGE]'), { action: '小脑瓜' });
+    assert.deepEqual(parseNudgeTag('无动作文本'), null);
   });
 
   await t.test('Chunk-by-chunk stream slicing on [BR]', () => {
@@ -113,5 +147,66 @@ test('TagAwareStreamParser Streaming Slicing and Sanitization', async (t) => {
     const flushed = parser.flush();
     assert.deepEqual(flushed, ['在干嘛呢？', '我刚才去超市买了草莓', '分你一半呀！']);
     assert.equal(parser.getEmittedCount(), 3);
+  });
+
+  await t.test('Protects Markdown code blocks from newline splitting in fallback', () => {
+    const parser = new TagAwareStreamParser();
+    const raw = '这是为你生成的页面：\n```html\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<title>小依</title>\n</head>\n<body>\n<h1>你好</h1>\n</body>\n</html>\n```\n快去试试吧！';
+    parser.feed(raw);
+    const flushed = parser.flush();
+    assert.equal(flushed.length, 3);
+    assert.equal(flushed[0], '这是为你生成的页面：');
+    assert.equal(flushed[1].startsWith('```html'), true);
+    assert.equal(flushed[1].includes('<title>小依</title>'), true);
+    assert.equal(flushed[1].endsWith('```'), true);
+    assert.equal(flushed[2], '快去试试吧！');
+  });
+
+  await t.test('Prevents [BR] splitting inside streaming code blocks', () => {
+    const parser = new TagAwareStreamParser();
+    const s1 = parser.feed('前缀文本[BR]```html\n<h1>标题</h1>[BR]<p>内容</p>\n```[BR]后缀文本');
+    assert.deepEqual(s1, [
+      '前缀文本',
+      '```html\n<h1>标题</h1>[BR]<p>内容</p>\n```',
+    ]);
+    const s2 = parser.flush();
+    assert.deepEqual(s2, ['后缀文本']);
+  });
+
+  await t.test('Protects unclosed Markdown code blocks from line shredding on cutoff', () => {
+    const parser = new TagAwareStreamParser();
+    const brokenStream = '这是根据你描述的场景生成的页面\n```html\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<title>小依</title>';
+    parser.feed(brokenStream);
+    const flushed = parser.flush();
+    // 严禁将 unclosed 代码块逐行切成 10 个碎气泡，必须整体作为一个代码气泡并自愈闭合
+    assert.equal(flushed.length, 2);
+    assert.equal(flushed[0], '这是根据你描述的场景生成的页面');
+    assert.equal(flushed[1].startsWith('```html'), true);
+    assert.equal(flushed[1].includes('<title>小依</title>'), true);
+    assert.equal(flushed[1].endsWith('```'), true);
+  });
+
+  await t.test('Protects embedded raw HTML without code fence from line shredding', () => {
+    const parser = new TagAwareStreamParser();
+    const rawHtml = '给你写了一段测试网页：\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head><meta charset="utf-8"></head>\n<body><h1>欢迎</h1></body>\n</html>\n点击右侧可直接运行';
+    parser.feed(rawHtml);
+    const flushed = parser.flush();
+    assert.equal(flushed.length, 3);
+    assert.equal(flushed[0], '给你写了一段测试网页：');
+    assert.equal(flushed[1].includes('<!DOCTYPE html>'), true);
+    assert.equal(flushed[1].includes('<h1>欢迎</h1>'), true);
+    assert.equal(flushed[2], '点击右侧可直接运行');
+  });
+
+  await t.test('Multi-line code snippet with CSS and JS is preserved as one atomic bubble', () => {
+    const parser = new TagAwareStreamParser();
+    const snippet = '为你准备了样式：\n```css\nbody {\n  margin: 0;\n  padding: 0;\n  background: #fff;\n}\n```\n快去看看效果！';
+    parser.feed(snippet);
+    const flushed = parser.flush();
+    assert.equal(flushed.length, 3);
+    assert.equal(flushed[0], '为你准备了样式：');
+    assert.equal(flushed[1].startsWith('```css'), true);
+    assert.equal(flushed[1].includes('background: #fff;'), true);
+    assert.equal(flushed[2], '快去看看效果！');
   });
 });

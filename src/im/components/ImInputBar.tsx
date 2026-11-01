@@ -3,10 +3,10 @@ import {
   Keyboard,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  ToastAndroid,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,8 @@ export interface ImInputBarProps {
   disabled?: boolean;
   fillDraftText?: string | null;
 }
+
+const EMOTICON_CHIPS = ['(≧▽≦)', '摸摸头', '抱抱', '(｡•́︿•̀｡)', '晚安~', '在干嘛呀', '好想你', '嘿嘿~'];
 
 /**
  * 微信级原生动态输入条与扩展面板 (Authentic WeChat Composer)
@@ -47,6 +49,7 @@ export function ImInputBar({
   const theme = useImTheme();
   const [text, setText] = useState('');
   const [panelVisible, setPanelVisible] = useState(false);
+  const [emoticonBarVisible, setEmoticonBarVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   React.useEffect(() => {
@@ -72,7 +75,26 @@ export function ImInputBar({
       inputRef.current?.focus();
     } else {
       setPanelVisible(true);
+      setEmoticonBarVisible(false);
     }
+  };
+
+  const handleToggleEmoticons = () => {
+    if (emoticonBarVisible) {
+      setEmoticonBarVisible(false);
+    } else {
+      setEmoticonBarVisible(true);
+      setPanelVisible(false);
+    }
+  };
+
+  const handleChipPress = (chip: string) => {
+    setText((prev) => {
+      const next = prev ? `${prev} ${chip}` : chip;
+      onTextChange?.(next);
+      return next;
+    });
+    inputRef.current?.focus();
   };
 
   return (
@@ -130,25 +152,30 @@ export function ImInputBar({
           />
         </View>
 
-        {/* 右一：微信表情按钮 */}
+        {/* 右一：快捷表情按钮 */}
         <Pressable
-          accessibilityLabel="表情"
+          accessibilityLabel="快捷表情与动作"
           accessibilityRole="button"
-          onPress={() => {
-            if (Platform.OS === 'android') {
-              ToastAndroid.show('快捷表情面板', ToastAndroid.SHORT);
-            }
-          }}
+          hitSlop={6}
+          onPress={handleToggleEmoticons}
           style={({ pressed }) => [
             styles.iconButton,
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons
-            color={theme.colors.actionIconColor}
-            name="happy-outline"
-            size={26}
-          />
+          {emoticonBarVisible ? (
+            <Ionicons
+              color="#3B82F6"
+              name="happy"
+              size={26}
+            />
+          ) : (
+            <Ionicons
+              color={theme.colors.actionIconColor}
+              name="happy-outline"
+              size={26}
+            />
+          )}
         </Pressable>
 
         {/* 右二：动态操作区 (+ 号 vs 发送键) */}
@@ -156,6 +183,7 @@ export function ImInputBar({
           <Pressable
             accessibilityLabel="发送消息"
             accessibilityRole="button"
+            hitSlop={6}
             onPress={handleSend}
             style={({ pressed }) => [
               styles.sendButton,
@@ -182,6 +210,7 @@ export function ImInputBar({
           <Pressable
             accessibilityLabel="更多选项"
             accessibilityRole="button"
+            hitSlop={6}
             onPress={handleTogglePanel}
             style={({ pressed }) => [
               styles.iconButton,
@@ -196,6 +225,30 @@ export function ImInputBar({
           </Pressable>
         )}
       </View>
+
+      {/* 快捷表情与微动作水平栏 */}
+      {emoticonBarVisible && (
+        <View style={styles.emoticonScrollWrap}>
+          <ScrollView
+            contentContainerStyle={styles.emoticonScrollContent}
+            horizontal
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+          >
+            {EMOTICON_CHIPS.map((chip) => (
+              <Pressable
+                accessibilityLabel={`快捷表情：${chip}`}
+                accessibilityRole="button"
+                key={chip}
+                onPress={() => handleChipPress(chip)}
+                style={({ pressed }) => [styles.emoticonChip, pressed && styles.pressed]}
+              >
+                <Text style={styles.emoticonChipText}>{chip}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* 底部扩展面板 (4等分横向纵向铺满) */}
       {panelVisible && (
@@ -426,5 +479,37 @@ const styles = StyleSheet.create({
   },
   itemLabel: {
     fontWeight: '400',
+  },
+  emoticonScrollWrap: {
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#F8FAFC',
+  },
+  emoticonScrollContent: {
+    paddingHorizontal: 12,
+    gap: 8,
+    alignItems: 'center',
+  },
+  emoticonChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E2E8F0',
+    minHeight: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  emoticonChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1C1C1E',
   },
 });

@@ -57,7 +57,7 @@ type ImportAwareMaintenanceContext = {
 
 const activeMaintenanceTasks = new Map<string, ActiveMaintenanceTask>();
 const queuedMaintenanceTasks: ActiveMaintenanceTask[] = [];
-const suspendedMemorySpaces = new Set<PixorySpace>(['personal']);
+const suspendedMemorySpaces = new Set<PixorySpace>();
 let globalMaintenanceRunnerActive = false;
 
 function assertMemoryMaintenanceActive(input: Pick<ScheduleMemoryMaintenanceInput, 'signal' | 'space'>): void {

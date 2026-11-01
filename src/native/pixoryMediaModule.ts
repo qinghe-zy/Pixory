@@ -124,6 +124,8 @@ interface PixoryMediaNativeModule {
   cancelDiaryAlarm(jobId: string): Promise<boolean>;
   canScheduleExactDiaryAlarm(): Promise<boolean>;
   openDiaryExactAlarmSettings(): Promise<boolean>;
+  postCompanionNotification(threadId: string, title: string, content: string): Promise<boolean>;
+  cancelCompanionNotification(threadId: string): Promise<boolean>;
 }
 
 const nativeModule = NativeModules.PixoryMediaModule as PixoryMediaNativeModule | undefined;
@@ -311,4 +313,18 @@ export function canScheduleExactDiaryAlarm(): Promise<boolean> {
 
 export function openDiaryExactAlarmSettings(): Promise<boolean> {
   return requireNativeModule().openDiaryExactAlarmSettings();
+}
+
+export function postCompanionNotification(
+  threadId: string,
+  title: string,
+  content: string
+): Promise<boolean> {
+  if (Platform.OS !== 'android') return Promise.resolve(false);
+  return requireNativeModule().postCompanionNotification(threadId, title, content);
+}
+
+export function cancelCompanionNotification(threadId: string): Promise<boolean> {
+  if (Platform.OS !== 'android') return Promise.resolve(false);
+  return requireNativeModule().cancelCompanionNotification(threadId);
 }

@@ -6,10 +6,10 @@ import type { ImCompanionDiary, DiaryPageContent, DiarySpreadPair, DiaryStickerI
  * 依据物理纸面承载力，在句子边界平滑切分并自然装填，彻底告别半页留白。
  */
 
-// 单个物理面容纳的标准正文字符数与行高估计 (14px 字号在 300px 正文宽度下约 20 字/行)
-const CHARS_PER_LINE = 20;
-const MAX_LINES_FIRST_PAGE = 13;   // 第一页包含避让区与标题，正文容纳 13 行 (约 260 字)
-const MAX_LINES_NORMAL_PAGE = 16;  // 续页避让上方 Diary 艺术字后，正文容纳 16 行 (约 320 字)
+// 单个物理面容纳的标准正文字符数与行高估计 (15.5px 字号 + 27.5px 行高在 300px 正文宽度下约 18 字/行)
+export const CHARS_PER_LINE = 18;
+export const MAX_LINES_FIRST_PAGE = 11;   // 第一页包含避让区与标题，正文容纳 11 行 (约 198 字)，严防溢出不滚动
+export const MAX_LINES_NORMAL_PAGE = 13;  // 续页避让上方 Diary 艺术字后，正文容纳 13 行 (约 234 字)
 
 /**
  * 将长段落按自然语义标点 (。！？…) 切分为句子单元

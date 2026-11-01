@@ -166,20 +166,21 @@ const styles = StyleSheet.create({
     color: '#475569',
   },
   titleText: {
-    fontSize: 16,
+    fontSize: 17.5,
+    lineHeight: 24,
     fontWeight: '700',
     color: '#0F172A',
-    letterSpacing: 0.3,
+    letterSpacing: 0.35,
   },
   textContent: {
     flex: 1,
   },
   paragraphText: {
-    fontSize: 14,
-    lineHeight: 24,
+    fontSize: 15.5,
+    lineHeight: 27.5,
     color: '#1E293B',
-    marginBottom: 8,
-    letterSpacing: 0.25,
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   pageNumber: {
     position: 'absolute',

@@ -15,6 +15,7 @@ export interface ImMessageActionMenuProps {
   onClose: () => void;
   onDelete: (message: ImMessage) => void;
   onEditResend?: (message: ImMessage) => void;
+  onSelectText?: (message: ImMessage) => void;
 }
 
 export function ImMessageActionMenu({
@@ -25,6 +26,7 @@ export function ImMessageActionMenu({
   onClose,
   onDelete,
   onEditResend,
+  onSelectText,
 }: ImMessageActionMenuProps) {
   if (!visible || !message) return null;
 
@@ -49,6 +51,18 @@ export function ImMessageActionMenu({
     label: '复制',
     onPress: handleCopy,
   });
+
+  if (onSelectText && message.content) {
+    actions.push({
+      key: 'select_text',
+      icon: 'document-text-outline',
+      label: '选择文本',
+      onPress: () => {
+        onSelectText(message);
+        onClose();
+      },
+    });
+  }
 
   if (isUserMessage && onEditResend) {
     actions.push({

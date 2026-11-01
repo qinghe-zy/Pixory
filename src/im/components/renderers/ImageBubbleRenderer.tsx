@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useImTheme } from '../../theme/ImThemeProvider';
 import type { BubbleRendererProps } from '../../registry/bubbleRegistry';
 import { SecureImage } from '../../../components/SecureImage';
@@ -14,7 +15,10 @@ export function ImageBubbleRenderer({
   userAvatarUri,
   onLongPressMessage,
   onPressMessage,
+  onRetryMessage,
   onNudge,
+  onNudgeSelf,
+  space = 'normal',
 }: BubbleRendererProps) {
   const theme = useImTheme();
   const isUser = message.role === 'user';
@@ -22,10 +26,13 @@ export function ImageBubbleRenderer({
   const lastAvatarTapRef = React.useRef(0);
 
   const handleAvatarPress = () => {
-    if (isUser) return;
     const now = Date.now();
     if (now - lastAvatarTapRef.current < 320) {
-      onNudge?.();
+      if (isUser) {
+        onNudgeSelf?.();
+      } else {
+        onNudge?.();
+      }
       lastAvatarTapRef.current = 0;
     } else {
       lastAvatarTapRef.current = now;
@@ -44,17 +51,19 @@ export function ImageBubbleRenderer({
       {/* 头像 */}
       <View style={[styles.avatarContainer, { width: theme.metrics.avatarSize, height: theme.metrics.avatarSize, borderRadius: theme.radii.avatarRadius }]}>
         {isUser ? (
-          userAvatarUri ? (
-            <SecureImage space="normal" style={[styles.avatarImage, { borderRadius: theme.radii.avatarRadius }]} uri={userAvatarUri} />
-          ) : (
-            <View style={[styles.userDefaultAvatar, { borderRadius: theme.radii.avatarRadius }]}>
-              <Text style={styles.userDefaultAvatarText}>我</Text>
-            </View>
-          )
+          <Pressable onPress={handleAvatarPress} style={styles.avatarPressable}>
+            {userAvatarUri ? (
+              <SecureImage space={space} style={[styles.avatarImage, { borderRadius: theme.radii.avatarRadius }]} uri={userAvatarUri} />
+            ) : (
+              <View style={[styles.userDefaultAvatar, { borderRadius: theme.radii.avatarRadius }]}>
+                <Text style={styles.userDefaultAvatarText}>我</Text>
+              </View>
+            )}
+          </Pressable>
         ) : (
           <Pressable onPress={handleAvatarPress} style={styles.avatarPressable}>
             {companionAvatarUri ? (
-              <SecureImage space="normal" style={[styles.avatarImage, { borderRadius: theme.radii.avatarRadius }]} uri={companionAvatarUri} />
+              <SecureImage space={space} style={[styles.avatarImage, { borderRadius: theme.radii.avatarRadius }]} uri={companionAvatarUri} />
             ) : (
               <View style={[styles.companionDefaultAvatar, { borderRadius: theme.radii.avatarRadius }]}>
                 <Text style={styles.companionDefaultAvatarText}>{companionName.slice(0, 1)}</Text>
@@ -73,7 +82,7 @@ export function ImageBubbleRenderer({
           style={({ pressed }) => [styles.imageCard, { borderRadius: theme.radii.bubbleRadius }, pressed && styles.pressed]}
         >
           {imageUri ? (
-            <SecureImage space="normal" style={[styles.contentImage, { borderRadius: theme.radii.bubbleRadius }]} uri={imageUri} />
+            <SecureImage space={space} style={[styles.contentImage, { borderRadius: theme.radii.bubbleRadius }]} uri={imageUri} />
           ) : (
             <View style={styles.fallbackBox}>
               <Text style={styles.fallbackText}>[图片已失效]</Text>
@@ -89,6 +98,17 @@ export function ImageBubbleRenderer({
           )}
         </Pressable>
       </View>
+
+      {/* 失败重发入口 */}
+      {message.status === 'failed' && (
+        <Pressable
+          hitSlop={8}
+          onPress={() => onRetryMessage?.(message)}
+          style={{ justifyContent: 'center', alignSelf: 'center', marginHorizontal: 6 }}
+        >
+          <Ionicons color="#EF4444" name="alert-circle" size={20} />
+        </Pressable>
+      )}
     </View>
   );
 }

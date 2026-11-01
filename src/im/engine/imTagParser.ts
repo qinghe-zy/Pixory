@@ -1,4 +1,6 @@
-import type { ActivityLoad, PrivacyContext, DeviceAccess } from '../types';
+import type { ActivityLoad, PrivacyContext, DeviceAccess, ImCompanionLivingState } from '../types';
+import type { EffectiveDndConfig } from '../heartbeat/imDndGuard';
+import { parseNaturalTimeToTimestamp } from './naturalTimeParser';
 
 export interface ParsedStatusTag {
   statusText: string;
@@ -13,11 +15,37 @@ export interface ParsedHeartbeatTag {
   message: string;
 }
 
+export interface ParsedNudgeTag {
+  action: string;
+}
+
+export interface ParsedPingTag {
+  targetTimestamp: number;
+  intent: string;
+}
+
+// 模块级提升的协议标签正则 (js-hoist-regexp)
+const NUDGE_TAG_REGEX = /\[NUDGE(?::\s*([^\]]+))?\]/i;
+const STATUS_TAG_REGEX = /\[STATUS:\s*([^\]]+)\]/i;
+const HEARTBEAT_TAG_REGEX = /\[HEARTBEAT:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
+const PING_TAG_REGEX = /\[PING:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
+
+/**
+ * 解析 [NUDGE] 或 [NUDGE: 动作描述]
+ */
+export function parseNudgeTag(text: string): ParsedNudgeTag | null {
+  const match = text.match(NUDGE_TAG_REGEX);
+  if (!match) return null;
+  const rawAction = match[1]?.trim();
+  const action = rawAction || '小脑瓜';
+  return { action };
+}
+
 /**
  * 解析大模型返回的 [STATUS: 动作描述 | load=... | privacy=... | device=... | alter=...]
  */
 export function parseStatusTag(text: string): ParsedStatusTag | null {
-  const match = text.match(/\[STATUS:\s*([^\]]+)\]/i);
+  const match = text.match(STATUS_TAG_REGEX);
   if (!match) return null;
   const inner = match[1].trim();
   const parts = inner.split('|').map((p) => p.trim());
@@ -46,7 +74,7 @@ export function parseStatusTag(text: string): ParsedStatusTag | null {
  * 解析 [HEARTBEAT: delay | message] 预埋气泡信封
  */
 export function parseHeartbeatTag(text: string): ParsedHeartbeatTag | null {
-  const match = text.match(/\[HEARTBEAT:\s*([^|\]]+)\|\s*([^\]]+)\]/i);
+  const match = text.match(HEARTBEAT_TAG_REGEX);
   if (!match) return null;
   const rawDelay = match[1].trim().toLowerCase();
   const message = match[2].trim();
@@ -64,6 +92,41 @@ export function parseHeartbeatTag(text: string): ParsedHeartbeatTag | null {
   }
 
   return { delayMs, message };
+}
+
+/**
+ * 解析 [PING: 相对/绝对时间 | 计划联络意图] 预约主动唤醒闹钟
+ * 示例：[PING: 22:30 | 问他回寝室没] 或 [PING: +45m | 问问洗完澡没]
+ */
+export function parsePingTag(
+  text: string,
+  now: number = Date.now(),
+  livingState?: ImCompanionLivingState,
+  dndConfig?: EffectiveDndConfig | null
+): ParsedPingTag | null {
+  const match = text.match(PING_TAG_REGEX);
+  if (!match) return null;
+  const rawTimeStr = match[1].trim();
+  const rawIntent = match[2].trim();
+
+  const parsedTime = parseNaturalTimeToTimestamp(rawTimeStr, now, livingState, dndConfig);
+  if (!parsedTime) return null;
+
+  let finalTimestamp = parsedTime.targetTimestamp;
+  // 若伴侣处于 occupied 或 away，且目标时间落在忙碌时间内，顺延至忙碌结束后
+  if (livingState) {
+    if (
+      (livingState.activityLoad === 'occupied' || livingState.deviceAccess === 'away') &&
+      livingState.validUntil > finalTimestamp
+    ) {
+      finalTimestamp = livingState.validUntil + 5 * 60 * 1000;
+    }
+  }
+
+  return {
+    targetTimestamp: finalTimestamp,
+    intent: rawIntent,
+  };
 }
 
 /**

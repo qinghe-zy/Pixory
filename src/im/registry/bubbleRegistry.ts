@@ -12,8 +12,11 @@ export interface BubbleRendererProps {
   userAvatarUri?: string | null;
   onLongPressMessage?: (message: ImMessage, pageX: number, pageY: number) => void;
   onPressMessage?: (message: ImMessage) => void;
+  onRetryMessage?: (message: ImMessage) => void;
   onNudge?: () => void;
+  onNudgeSelf?: () => void;
   onOpenDiary?: (diaryId?: string) => void;
+  onOpenSandbox?: (target: { code: string; language?: string; title?: string }) => void;
   space?: 'normal' | 'personal';
 }
 

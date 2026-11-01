@@ -336,6 +336,21 @@ async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> 
   if (!(await hasTable(db, 'ai_companion_memories'))) {
     await db.execAsync(MIGRATION_STATEMENTS_V68);
   }
+  const memoryCols = [
+    { name: 'expires_at', type: 'INTEGER DEFAULT NULL' },
+    { name: 'superseded_by', type: 'TEXT DEFAULT NULL' },
+    { name: 'deleted_at', type: 'INTEGER DEFAULT NULL' },
+    { name: 'confidence', type: 'REAL NOT NULL DEFAULT 0.85' },
+  ];
+  for (const col of memoryCols) {
+    try {
+      await db.execAsync(`ALTER TABLE ai_companion_memories ADD COLUMN ${col.name} ${col.type};`);
+    } catch {}
+  }
+  try {
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_expires ON ai_companion_memories(expires_at);');
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_deleted ON ai_companion_memories(deleted_at);');
+  } catch {}
 }
 
 async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
@@ -347,6 +362,16 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
     { name: 'proactive_enabled', type: 'INTEGER DEFAULT 1' },
     { name: 'im_settings_json', type: "TEXT NOT NULL DEFAULT '{}'" },
     { name: 'living_state_json', type: 'TEXT' },
+    { name: 'consecutive_unreplied_count', type: 'INTEGER DEFAULT 0' },
+    { name: 'last_user_interaction_at', type: 'INTEGER' },
+    { name: 'pending_diary_hook', type: 'TEXT' },
+    { name: 'pending_ping_at', type: 'INTEGER' },
+    { name: 'pending_ping_intent', type: 'TEXT' },
+    { name: 'ping_retry_count', type: 'INTEGER DEFAULT 0' },
+    { name: 'im_unread_count', type: 'INTEGER DEFAULT 0' },
+    { name: 'dnd_override_enabled', type: 'INTEGER DEFAULT NULL' },
+    { name: 'dnd_start_time', type: 'TEXT DEFAULT NULL' },
+    { name: 'dnd_end_time', type: 'TEXT DEFAULT NULL' },
   ];
   for (const col of columns) {
     try {
@@ -359,6 +384,11 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
     await db.execAsync("ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';");
   } catch {
     // 容错：列已存在时静默跳过
+  }
+  try {
+    await db.execAsync("CREATE INDEX IF NOT EXISTS idx_ai_threads_pending_ping ON ai_threads(pending_ping_at);");
+  } catch {
+    // 容错：静默跳过
   }
 }
 

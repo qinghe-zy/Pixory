@@ -15,7 +15,12 @@ export async function getImGlobalSettings(space: PixorySpace = 'normal'): Promis
       const val = await settingsRepository.getValue(db, IM_GLOBAL_SETTINGS_KEY);
       if (val) {
         const parsed = JSON.parse(val);
-        return { ...DEFAULT_IM_GLOBAL_SETTINGS, ...parsed };
+        const merged = { ...DEFAULT_IM_GLOBAL_SETTINGS, ...parsed };
+        // 自动净化历史老版本默认残留（老版本 2s 强制修正为当前标准 0s 极速直出）
+        if (parsed.debounceWaitSec === 2) {
+          merged.debounceWaitSec = 0;
+        }
+        return merged;
       }
     } catch {
       // 容错返回默认

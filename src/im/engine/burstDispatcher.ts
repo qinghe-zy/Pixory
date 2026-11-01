@@ -2,10 +2,14 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { type PixorySpace } from '../../database';
 import {
   getNextPendingVisibleAt,
+  getNextPendingVisibleRow,
   insertImMessage,
+  revealPendingMessages,
 } from '../repository/imThreadRepository';
 import type { ImMessage } from '../types';
 import { calculateBubbleTypingDelay, DEFAULT_PACING_CONFIG, type ImPacingConfig } from '../config/pacingProfile';
+import { calculateHumanTypingDelay, type HumanTypingOptions } from '../config/humanTypingTimeline';
+import { sanitizeCompanionBubble } from './humanizeOutputGate';
 
 export class VisibilityTicker {
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -14,6 +18,8 @@ export class VisibilityTicker {
   private threadId: string;
   private space: PixorySpace;
   private appStateSubscription: { remove: () => void } | null = null;
+  private isDisposed: boolean = false;
+  private isNextBurstTyping: boolean = false;
 
   constructor(threadId: string, space: PixorySpace) {
     this.threadId = threadId;
@@ -26,8 +32,12 @@ export class VisibilityTicker {
 
   private handleAppStateChange = (nextState: AppStateStatus) => {
     if (nextState === 'active') {
-      this.notifyReveal();
-      this.scheduleNextTick();
+      void revealPendingMessages(this.space, this.threadId, Date.now())
+        .then(() => {
+          this.notifyReveal();
+          this.scheduleNextTick();
+        })
+        .catch(() => {});
     }
   };
 
@@ -54,7 +64,7 @@ export class VisibilityTicker {
   }
 
   isRevealing(): boolean {
-    return this.timer !== null;
+    return this.timer !== null && this.isNextBurstTyping && !this.isDisposed;
   }
 
   async scheduleNextTick(): Promise<void> {
@@ -63,16 +73,28 @@ export class VisibilityTicker {
       this.timer = null;
     }
 
-    const nextVisibleAt = await getNextPendingVisibleAt(this.space, this.threadId);
-    if (!nextVisibleAt) {
+    if (this.isDisposed) return;
+
+    const nextRow = await getNextPendingVisibleRow(this.space, this.threadId);
+    if (!nextRow || this.isDisposed) {
+      this.isNextBurstTyping = false;
       this.notifyIdle();
       return;
     }
 
     const now = Date.now();
-    const waitMs = Math.max(0, nextVisibleAt - now);
+    const waitMs = Math.max(0, nextRow.visibleAt - now);
 
-    this.timer = setTimeout(() => {
+    // 仅当下一条是切句气泡 (revealing) 且在 8 秒短时打字窗口内，才算作正在输入
+    this.isNextBurstTyping = nextRow.deliveryStatus === 'revealing' && waitMs <= 8000;
+    if (!this.isNextBurstTyping) {
+      this.notifyIdle();
+    }
+
+    this.timer = setTimeout(async () => {
+      if (this.isDisposed) return;
+      await revealPendingMessages(this.space, this.threadId, Date.now()).catch(() => 0);
+      if (this.isDisposed) return;
       this.notifyReveal();
       this.scheduleNextTick().catch(() => {});
     }, waitMs);
@@ -83,10 +105,13 @@ export class VisibilityTicker {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.isNextBurstTyping = false;
     this.notifyIdle();
   }
 
   dispose() {
+    this.isDisposed = true;
+    this.isNextBurstTyping = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -122,17 +147,32 @@ export class BurstMessageDispatcher {
     return this.currentBurstGroupId;
   }
 
+  cancelPendingBurst(): void {
+    this.currentBurstGroupId = null;
+    this.accumulatedDelay = 0;
+    this.dispatchedCountInBurst = 0;
+  }
+
   async dispatchSentence(
     text: string,
     ticker?: VisibilityTicker,
-    options?: { isOccupied?: boolean }
+    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
   ): Promise<ImMessage> {
     if (!this.currentBurstGroupId) {
       this.beginBurst();
     }
 
+    const cleaned = sanitizeCompanionBubble(text);
+    const effectiveText = cleaned.trim() || text.trim();
+
     const isFirst = this.dispatchedCountInBurst === 0;
-    const delay = calculateBubbleTypingDelay(text, this.config, isFirst, options);
+    const delay = options?.useHumanTimeline
+      ? calculateHumanTypingDelay(effectiveText, this.config, isFirst, {
+          isOccupied: options.isOccupied,
+          userTextLength: options.userTextLength,
+          burstIndex: this.dispatchedCountInBurst,
+        })
+      : calculateBubbleTypingDelay(effectiveText, this.config, isFirst, options);
     this.accumulatedDelay += delay;
     this.dispatchedCountInBurst += 1;
     const visibleAt = Date.now() + this.accumulatedDelay;
@@ -142,7 +182,7 @@ export class BurstMessageDispatcher {
       threadId: this.threadId,
       burstGroupId: this.currentBurstGroupId || undefined,
       role: 'assistant',
-      content: text,
+      content: effectiveText,
       type: 'text',
       status: 'sent',
       deliveryStatus: 'revealing',
@@ -157,7 +197,8 @@ export class BurstMessageDispatcher {
 
   async dispatchStagedHeartbeat(
     text: string,
-    delayMs: number
+    delayMs: number,
+    ticker?: VisibilityTicker
   ): Promise<ImMessage> {
     const visibleAt = Date.now() + delayMs;
     const message: ImMessage = {
@@ -172,6 +213,7 @@ export class BurstMessageDispatcher {
       createdAt: new Date(visibleAt).toISOString(),
     };
     await insertImMessage(this.space, message);
+    ticker?.scheduleNextTick().catch(() => {});
     return message;
   }
 }

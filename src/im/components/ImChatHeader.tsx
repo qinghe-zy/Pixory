@@ -44,23 +44,7 @@ export function ImChatHeader({
       ]}
     >
       <View style={styles.navRow}>
-        {/* 左侧通讯录抽屉按钮 */}
-        {Boolean(onOpenContacts) && (
-          <Pressable
-            accessibilityLabel="打开伴侣通讯录"
-            accessibilityRole="button"
-            onPress={onOpenContacts}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-          >
-            <Ionicons
-              color={theme.colors.headerTitle}
-              name="people-outline"
-              size={22}
-            />
-          </Pressable>
-        )}
-
-        {/* 左对齐会话标题与生活状态 (不加粗) */}
+        {/* 左对齐会话标题与生活状态 (不加粗，移除左侧通讯录按钮，文字纯靠左对齐) */}
         <View style={styles.titleCol} pointerEvents="none">
           <Text
             numberOfLines={1}
@@ -113,23 +97,19 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   navRow: {
-    height: 48,
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-  },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingLeft: 16,
+    paddingRight: 8,
   },
   titleCol: {
     flex: 1,
-    marginLeft: 6,
+    marginRight: 8,
     justifyContent: 'center',
     alignItems: 'flex-start',
+    overflow: 'hidden',
   },
   titleText: {
     fontWeight: '500',

@@ -1,6 +1,65 @@
 import { initDatabase, type PixorySpace } from '../../database';
 import type { ImMessage } from '../types';
 
+export type ImRelationshipPreset =
+  | 'close_friend'
+  | 'romantic'
+  | 'friend'
+  | 'mentor'
+  | 'childhood_sweetheart'
+  | 'rival_partner'
+  | 'natural'
+  | 'sweet'
+  | 'partner'
+  | 'gentle'
+  | 'custom';
+
+export type ImReplyStyleGear =
+  | 'balanced'
+  | 'empathetic'
+  | 'playful'
+  | 'tsundere'
+  | 'concise'
+  | 'lively'
+  | 'clingy_sweet'
+  | 'concise_cool';
+
+export type ImProactiveFrequencyGear =
+  | 'balanced'
+  | 'frequent'
+  | 'calm'
+  | 'silent'
+  | 'quiet'
+  | 'standard'
+  | 'clingy';
+
+export type ImBubbleSkinPreset =
+  | 'wechat_green'
+  | 'warm_amber'
+  | 'mist_blue'
+  | 'rose_quartz'
+  | 'ink_mono'
+  | (string & {});
+
+export interface ImCompanionMilestone {
+  id: string;
+  label: string;
+  dateKey: string;
+}
+
+export interface ImCompanionPersonalization {
+  userNickname?: string | null;
+  companionCallName?: string | null;
+  userPersonaNote?: string | null;
+  relationshipPreset?: ImRelationshipPreset | null;
+  customRelationshipNote?: string | null;
+  replyStyleGear?: ImReplyStyleGear | null;
+  proactiveFrequencyGear?: ImProactiveFrequencyGear | null;
+  bubbleSkinPreset?: ImBubbleSkinPreset | null;
+  wallpaperScrimOpacity?: number | null;
+  milestones?: ImCompanionMilestone[];
+}
+
 export interface ImThreadSettings {
   backgroundImageUri?: string | null;
   nudgeText?: string | null;
@@ -9,6 +68,10 @@ export interface ImThreadSettings {
   proactiveEnabled?: boolean;
   providerId?: string | null;
   modelId?: string | null;
+  dndOverrideEnabled?: boolean | null;
+  dndStartTime?: string | null;
+  dndEndTime?: string | null;
+  personalization?: ImCompanionPersonalization | null;
 }
 
 export async function getImThreadSettings(
@@ -24,11 +87,26 @@ export async function getImThreadSettings(
     proactive_enabled: number | null;
     providerId: string | null;
     modelId: string | null;
+    dnd_override_enabled: number | null;
+    dnd_start_time: string | null;
+    dnd_end_time: string | null;
+    im_settings_json: string | null;
   }>(
-    `SELECT background_image_uri, nudge_text, context_window_n, heartbeat_enabled, proactive_enabled, providerId, modelId
+    `SELECT background_image_uri, nudge_text, context_window_n, heartbeat_enabled, proactive_enabled, providerId, modelId,
+            dnd_override_enabled, dnd_start_time, dnd_end_time, im_settings_json
      FROM ai_threads WHERE id = ? LIMIT 1;`,
     [threadId]
   );
+
+  let personalization: ImCompanionPersonalization | null = null;
+  if (row?.im_settings_json) {
+    try {
+      const parsed = JSON.parse(row.im_settings_json);
+      if (parsed && typeof parsed.personalization === 'object') {
+        personalization = parsed.personalization;
+      }
+    } catch {}
+  }
 
   return {
     backgroundImageUri: row?.background_image_uri ?? null,
@@ -38,6 +116,10 @@ export async function getImThreadSettings(
     proactiveEnabled: row?.proactive_enabled !== 0,
     providerId: row?.providerId ?? null,
     modelId: row?.modelId ?? null,
+    dndOverrideEnabled: row?.dnd_override_enabled !== null && row?.dnd_override_enabled !== undefined ? row.dnd_override_enabled === 1 : null,
+    dndStartTime: row?.dnd_start_time ?? null,
+    dndEndTime: row?.dnd_end_time ?? null,
+    personalization,
   };
 }
 
@@ -77,6 +159,33 @@ export async function updateImThreadSettings(
   if (settings.modelId !== undefined) {
     fields.push('modelId = ?');
     values.push(settings.modelId);
+  }
+  if (settings.dndOverrideEnabled !== undefined) {
+    fields.push('dnd_override_enabled = ?');
+    values.push(settings.dndOverrideEnabled === null ? null : (settings.dndOverrideEnabled ? 1 : 0));
+  }
+  if (settings.dndStartTime !== undefined) {
+    fields.push('dnd_start_time = ?');
+    values.push(settings.dndStartTime);
+  }
+  if (settings.dndEndTime !== undefined) {
+    fields.push('dnd_end_time = ?');
+    values.push(settings.dndEndTime);
+  }
+  if (settings.personalization !== undefined) {
+    const existingRow = await db.getFirstAsync<{ im_settings_json: string | null }>(
+      'SELECT im_settings_json FROM ai_threads WHERE id = ? LIMIT 1;',
+      [threadId]
+    );
+    let parsedSettings: Record<string, any> = {};
+    if (existingRow?.im_settings_json) {
+      try {
+        parsedSettings = JSON.parse(existingRow.im_settings_json) || {};
+      } catch {}
+    }
+    parsedSettings.personalization = settings.personalization;
+    fields.push('im_settings_json = ?');
+    values.push(JSON.stringify(parsedSettings));
   }
 
   if (fields.length > 0) {

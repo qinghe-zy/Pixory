@@ -44,6 +44,7 @@ import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { AboutScreen } from './src/screens/AboutScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
+import { GlobalHeartbeatEngine } from './src/im/heartbeat/globalHeartbeatEngine';
 import { AiBranchTreeScreen } from './src/screens/AiBranchTreeScreen';
 import { AiChatScreen } from './src/screens/AiChatScreen';
 import { AiChatSearchScreen } from './src/screens/AiChatSearchScreen';
@@ -63,7 +64,7 @@ import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
 import { ImChatScreen } from './src/im/screens/ImChatScreen';
 import { ImHomeScreen } from './src/im/screens/ImHomeScreen';
 import { ImCompanionSettingsScreen } from './src/im/screens/ImCompanionSettingsScreen';
-import { getOrCreateImThread } from './src/im/repository/imThreadRepository';
+import { getOrCreateImThread, getTotalImUnreadCount } from './src/im/repository/imThreadRepository';
 import { exportRoleContinuityPackage } from './src/ai/aiRoleCardContinuityExportService';
 import { listRoleCards } from './src/ai/aiRoleCardService';
 import { DiaryReaderScreen } from './src/screens/DiaryReaderScreen';
@@ -282,7 +283,7 @@ type AppRoute =
   | { name: 'diagnostics-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string; threadId?: string; mode?: 'library' | 'apply_to_thread' }
-  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string; autoImport?: boolean }
+  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string; autoImport?: boolean; origin?: 'im' | 'ai' }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string; initialSource?: 'ip' | 'file' | 'manual_text' }
@@ -559,6 +560,7 @@ export default function App() {
     if (isReady) {
       void initializeDiagnostics(activeSpace).catch(() => undefined);
       void preloadAiHomeData(activeSpace);
+      GlobalHeartbeatEngine.shared.start();
     }
   }, [activeSpace, isReady]);
 
@@ -965,6 +967,7 @@ export default function App() {
       resumePersonalCompanionMaintenance();
       resumeCompanionMemoryMaintenance('personal');
       resumeDiaryBackgroundTasks('personal');
+      GlobalHeartbeatEngine.shared.setPersonalSpaceUnlocked(true);
       void coordinateDiaryRuntime({ allowPersonal: true, space: 'personal' }).catch(() => undefined);
       void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
       void reconcileThoughtSessions('personal')
@@ -1051,6 +1054,7 @@ export default function App() {
     const lockingTaskToken = personalTaskTokenRef.current;
     invalidatePersonalTaskToken(lockingTaskToken);
     const runtimeResults = await Promise.allSettled([
+      GlobalHeartbeatEngine.shared.suspendPersonalSpace(),
       aiGenerationManager.suspendSpace('personal'),
       suspendCompanionMaintenance('personal'),
       suspendCompanionMemoryMaintenance('personal'),
@@ -1511,8 +1515,8 @@ export default function App() {
           {renderedTabs.has('im') ? (
             <ImHomeScreen
               isActive={currentTab === 'im'}
-              onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}
-              onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, autoImport: true })}
+              onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, origin: 'im' })}
+              onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, autoImport: true, origin: 'im' })}
               onOpenImChat={async (thread) => {
                 const effective = await getOrCreateImThread(activeSpace, thread.roleCardId, {
                   defaultTitle: thread.title,
@@ -1565,8 +1569,8 @@ export default function App() {
                 })
               }
               onStartChatWithRole={(roleCardId) => startChatWithRoleCard(activeSpace, roleCardId)}
-              onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}
-              onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, autoImport: true })}
+              onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, origin: 'ai' })}
+              onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace, autoImport: true, origin: 'ai' })}
               onExportRole={() => void handleExportRole()}
               refreshToken={aiHomeRefreshToken}
               space={activeSpace}
@@ -2422,6 +2426,7 @@ export default function App() {
         onImportRole={() =>
           pushRoute({
             name: 'ai-role-card-editor',
+            origin: 'im',
             space: currentRoute.space,
             autoImport: true,
           })
@@ -2429,6 +2434,7 @@ export default function App() {
         onNewRole={() =>
           pushRoute({
             name: 'ai-role-card-editor',
+            origin: 'im',
             space: currentRoute.space,
           })
         }
@@ -2469,7 +2475,21 @@ export default function App() {
         autoImport={currentRoute.autoImport}
         onApplyRoleCard={popRoute}
         onBack={popRoute}
-        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        onStartChatWithRole={async (roleCardId) => {
+          if (currentRoute.origin === 'im') {
+            const thread = await getOrCreateImThread(currentRoute.space, roleCardId);
+            replaceCurrentRoute({
+              name: 'im-chat',
+              roleAvatarUri: thread.avatarUri,
+              roleCardId,
+              roleName: thread.title,
+              space: currentRoute.space,
+              threadId: thread.id,
+            });
+          } else {
+            await startChatWithRoleCard(currentRoute.space, roleCardId);
+          }
+        }}
         roleCardId={currentRoute.roleCardId}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
@@ -2699,6 +2719,25 @@ function FloatingFooterProvider({ children }: { children: React.ReactNode }) {
 }
 
 function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTab: RootTabKey; onSelectTab: (tab: RootTabKey) => void; scrollOffset?: SharedValue<number> }) {
+  const [imUnread, setImUnread] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchUnread = () => {
+      void getTotalImUnreadCount('normal').then((c) => {
+        if (mounted) setImUnread(c);
+      });
+    };
+    fetchUnread();
+    const unsub = GlobalHeartbeatEngine.shared.subscribe(() => {
+      fetchUnread();
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, []);
+
   return (
     <View
       pointerEvents="box-none"
@@ -2709,7 +2748,7 @@ function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTa
         right: 0,
       }}
     >
-      <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} />
+      <BottomTabBar activeTab={activeTab} imUnreadCount={imUnread} onSelectTab={onSelectTab} />
     </View>
   );
 }

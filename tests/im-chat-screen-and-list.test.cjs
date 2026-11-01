@@ -15,7 +15,7 @@ test('IM chat screen and list policy verification', async (t) => {
   await t.test('ImChatHeader renders title, subText and more options button without wechat text label', () => {
     assert.match(headerContent, /export function ImChatHeader/);
     assert.match(headerContent, /useImTheme\(\)/);
-    assert.match(headerContent, /name="people-outline"/);
+    assert.doesNotMatch(headerContent, /name="people-outline"/);
     assert.match(headerContent, /name="ellipsis-horizontal"/);
     assert.doesNotMatch(headerContent, /'微信'/);
   });

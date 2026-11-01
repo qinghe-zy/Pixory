@@ -16,11 +16,24 @@ const {
   clampAlterValue,
 } = require('../src/im/engine/imAgencyEngine.ts');
 
+const ts = require('typescript');
+function loadTs(relPath) {
+  const full = path.resolve(__dirname, relPath.endsWith('.ts') ? relPath : `${relPath}.ts`);
+  const out = ts.transpileModule(fs.readFileSync(full, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', out)(mod, mod.exports, (id) =>
+    id.startsWith('.') ? loadTs(path.resolve(path.dirname(full), id)) : require(id)
+  );
+  return mod.exports;
+}
+
 const {
   parseStatusTag,
   parseHeartbeatTag,
   validateHeartbeatConsistency,
-} = require('../src/im/engine/imTagParser.ts');
+} = loadTs('../src/im/engine/imTagParser.ts');
 
 const {
   calculateBubbleTypingDelay,

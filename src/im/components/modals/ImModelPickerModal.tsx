@@ -83,7 +83,7 @@ export function ImModelPickerModal({
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>选择伴侣专属模型</Text>
-            <Pressable onPress={onClose} style={styles.closeBtn}>
+            <Pressable accessibilityLabel="关闭" accessibilityRole="button" hitSlop={10} onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={20} color="#8E8E93" />
             </Pressable>
           </View>

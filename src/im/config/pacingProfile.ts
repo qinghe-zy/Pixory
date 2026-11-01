@@ -18,17 +18,23 @@ export interface ImGlobalPacingSettings {
   debounceWaitSec: number;
   globalHeartbeatEnabled: boolean;
   globalProactiveEnabled: boolean;
+  globalDndEnabled?: boolean;
+  globalDndStartTime?: string;
+  globalDndEndTime?: string;
 }
 
 export const DEFAULT_IM_GLOBAL_SETTINGS: ImGlobalPacingSettings = {
   intervalMode: 'medium',
-  customIntervalMs: 350,
+  customIntervalMs: 320,
   charDelayEnabled: false,
   charSpeedGear: 'medium',
-  customCharSpeedMs: 50,
-  debounceWaitSec: 2,
+  customCharSpeedMs: 40,
+  debounceWaitSec: 0,
   globalHeartbeatEnabled: true,
   globalProactiveEnabled: true,
+  globalDndEnabled: true,
+  globalDndStartTime: '23:00',
+  globalDndEndTime: '07:30',
 };
 
 export interface ImPacingConfig {
@@ -41,15 +47,15 @@ export interface ImPacingConfig {
 
 export const DEFAULT_PACING_CONFIG: ImPacingConfig = {
   typingSpeedMsPerChar: 18,
-  minBubbleDelayMs: 200,
-  maxBubbleDelayMs: 700,
-  userInputDebounceMs: 2000,
+  minBubbleDelayMs: 180,
+  maxBubbleDelayMs: 600,
+  userInputDebounceMs: 0,
   maxBurstCount: 4,
 };
 
 /**
  * 根据全局设置、字符数与首句标志计算显影延迟
- * 首句极速上屏 (150~250ms)，后续分句按选定档位紧凑弹出
+ * 首句零等待极速上屏 (0ms)，后续分句紧凑阶梯推进 (180ms~600ms)
  */
 export function calculateBubbleTypingDelay(
   text: string,
@@ -57,29 +63,28 @@ export function calculateBubbleTypingDelay(
   isFirstBubble: boolean = false,
   options?: { isOccupied?: boolean; dampingMultiplier?: number }
 ): number {
-  const multiplier = options?.dampingMultiplier ?? (options?.isOccupied ? 1.5 : 1.0);
   if (isFirstBubble) {
-    const base = Math.round(150 + Math.random() * 100);
-    return Math.round(base * multiplier);
+    return 0;
   }
 
+  const multiplier = options?.dampingMultiplier ?? (options?.isOccupied ? 1.4 : 1.0);
   const global = ('intervalMode' in settings) ? settings : DEFAULT_IM_GLOBAL_SETTINGS;
-  let baseInterval = 350;
+  let baseInterval = 320;
   switch (global.intervalMode) {
     case 'fast':
-      baseInterval = 200;
+      baseInterval = 180;
       break;
     case 'medium':
-      baseInterval = 350;
+      baseInterval = 320;
       break;
     case 'slow':
-      baseInterval = 600;
+      baseInterval = 550;
       break;
     case 'random':
-      baseInterval = Math.round(200 + Math.random() * 300);
+      baseInterval = Math.round(180 + Math.random() * 240);
       break;
     case 'custom':
-      baseInterval = Math.max(100, global.customIntervalMs || 350);
+      baseInterval = Math.max(80, global.customIntervalMs || 320);
       break;
   }
 
@@ -87,24 +92,24 @@ export function calculateBubbleTypingDelay(
     return Math.round(baseInterval * multiplier);
   }
 
-  let charSpeed = 50;
+  let charSpeed = 40;
   switch (global.charSpeedGear) {
     case 'fast':
-      charSpeed = 20;
+      charSpeed = 18;
       break;
     case 'medium':
-      charSpeed = 50;
+      charSpeed = 40;
       break;
     case 'slow':
-      charSpeed = 80;
+      charSpeed = 70;
       break;
     case 'custom':
-      charSpeed = Math.max(5, global.customCharSpeedMs || 50);
+      charSpeed = Math.max(5, global.customCharSpeedMs || 40);
       break;
   }
 
   const charDelay = text.trim().length * charSpeed;
-  return Math.min(3500, Math.round((baseInterval + charDelay) * multiplier));
+  return Math.min(2500, Math.round((baseInterval + charDelay) * multiplier));
 }
 
 /**

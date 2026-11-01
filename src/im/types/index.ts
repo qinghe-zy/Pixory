@@ -9,7 +9,16 @@ export type ImMessageRole = 'user' | 'assistant' | 'system';
 
 export type ImMessageStatus = 'sending' | 'sent' | 'failed';
 
-export type DeliveryStatus = 'staged' | 'revealing' | 'delivered' | 'cancelled';
+export type DeliveryStatus =
+  | 'staged'
+  | 'revealing'
+  | 'delivered'
+  | 'cancelled'
+  | 'cancelled_by_user'
+  | 'cancelled_by_state'
+  | 'expired_ttl';
+
+export type ImDeliveryStatus = DeliveryStatus;
 
 export type ImMessageType = 'text' | 'image' | 'voice' | 'system_notice' | 'diary_card';
 

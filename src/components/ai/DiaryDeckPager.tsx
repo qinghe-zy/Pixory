@@ -35,6 +35,7 @@ export function DiaryDeckPager({ createdAt, diaryDate, fontKey, pages, themeKey 
   const [activeIndex, setActiveIndex] = useState(0);
   const translateX = useSharedValue(0);
   const exitingOpacity = useSharedValue(1);
+  const isAdvancing = useSharedValue(false);
   const paperWidth = Math.min(width - spacing[8], 360);
   const visiblePages = useMemo(() => [0, 1, 2].map((offset) => pages[(activeIndex + offset) % pages.length]).filter(Boolean), [activeIndex, pages]);
 
@@ -42,19 +43,29 @@ export function DiaryDeckPager({ createdAt, diaryDate, fontKey, pages, themeKey 
     setActiveIndex((current) => (current + direction + pages.length) % pages.length);
     translateX.value = 0;
     exitingOpacity.value = 1;
+    isAdvancing.value = false;
   };
   const pan = Gesture.Pan()
     .activeOffsetX([-16, 16])
     .failOffsetY([-14, 14])
-    .onUpdate((event) => { translateX.value = event.translationX; })
+    .onUpdate((event) => {
+      if (isAdvancing.value) return;
+      translateX.value = event.translationX;
+    })
     .onEnd((event) => {
+      if (isAdvancing.value) return;
       const direction = event.translationX < -paperWidth * 0.18 || event.velocityX < -560 ? 1 : event.translationX > paperWidth * 0.18 || event.velocityX > 560 ? -1 : 0;
       if (direction === 0 || pages.length < 2) {
         translateX.value = withSpring(0, spring);
         return;
       }
+      isAdvancing.value = true;
       exitingOpacity.value = withTiming(0, { duration: 120 });
-      translateX.value = withTiming(direction * -paperWidth * 1.05, { duration: 170 }, () => runOnJS(advance)(direction as 1 | -1));
+      translateX.value = withTiming(direction * -paperWidth * 1.05, { duration: 170 }, (finished) => {
+        if (finished) {
+          runOnJS(advance)(direction as 1 | -1);
+        }
+      });
     });
   const frontStyle = useAnimatedStyle(() => ({ opacity: exitingOpacity.value, transform: [{ translateX: translateX.value }, { rotate: `${translateX.value / paperWidth * 4}deg` }] }));
 

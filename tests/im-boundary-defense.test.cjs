@@ -44,7 +44,7 @@ test('IM ContextBuilder 6 Deep Boundary Guards Defense', async (t) => {
     assert.ok(sliced.length <= 20);
   });
 
-  await t.test('Boundary 3: Strict Role Alternation drops initial assistant and merges consecutive same-role turns', () => {
+  await t.test('Boundary 3: Strict Role Alternation protects initial assistant with synthetic padding and merges consecutive same-role turns', () => {
     const rawTurns = [
       { role: 'assistant', content: '孤立的开场' },
       { role: 'user', content: '第一句话' },
@@ -54,14 +54,18 @@ test('IM ContextBuilder 6 Deep Boundary Guards Defense', async (t) => {
     ];
 
     const sanitized = roleSanitizerPipeline(rawTurns);
-    // 1. Initial assistant must be dropped (forward absorption)
+    // 1. Initial assistant must be protected with synthetic event padding
     assert.equal(sanitized[0].role, 'user');
-    assert.equal(sanitized[0].content, '第一句话\n第二句话');
-
-    // 2. Consecutive assistants merged with \n
+    assert.equal(sanitized[0].content, '[系统事件: 会话开始]');
     assert.equal(sanitized[1].role, 'assistant');
-    assert.equal(sanitized[1].content, '回复一\n回复二');
-    assert.equal(sanitized.length, 2);
+    assert.equal(sanitized[1].content, '孤立的开场');
+
+    // 2. Consecutive users and assistants merged with \n
+    assert.equal(sanitized[2].role, 'user');
+    assert.equal(sanitized[2].content, '第一句话\n第二句话');
+    assert.equal(sanitized[3].role, 'assistant');
+    assert.equal(sanitized[3].content, '回复一\n回复二');
+    assert.equal(sanitized.length, 4);
   });
 
   await t.test('Boundary 4: Giant message (> 4000 chars) is folded to protect context budget', () => {
@@ -72,9 +76,9 @@ test('IM ContextBuilder 6 Deep Boundary Guards Defense', async (t) => {
     assert.ok(sanitized[0].content.includes('[...已折叠过长历史片段...]'));
   });
 
-  await t.test('Boundary 5: Temporal awareness injects elapsed time purely as objective fact when > 3 mins', () => {
+  await t.test('Boundary 5: Temporal awareness injects elapsed time purely as objective fact into Layer 4 when >= 2 hours', () => {
     const pastTime = new Date('2026-10-25T10:00:00Z').getTime();
-    const nowTime = new Date('2026-10-25T10:45:00Z').getTime(); // 45 mins elapsed
+    const nowTime = new Date('2026-10-25T13:05:00Z').getTime(); // 3 hours 5 mins elapsed
 
     const history = [
       { id: '1', role: 'user', content: '先去开会啦', createdAt: new Date(pastTime).toISOString() },
@@ -90,14 +94,17 @@ test('IM ContextBuilder 6 Deep Boundary Guards Defense', async (t) => {
       '我开完会回来啦'
     );
 
+    const layer4 = payload[payload.length - 2];
+    assert.equal(layer4.role, 'system');
+    assert.ok(layer4.content.includes('时间流逝: 距离上次交流已过 3 小时'));
+    assert.ok(layer4.content.includes('当前时间:'));
+
     const userPayload = payload[payload.length - 1];
     assert.equal(userPayload.role, 'user');
-    assert.ok(userPayload.content.includes('时间流逝感知: 距离上次交流已过去 44 分钟') || userPayload.content.includes('45 分钟'));
-    // Ensure no commanding directive is added
-    assert.ok(!userPayload.content.includes('请在回复中流露'));
+    assert.equal(userPayload.content, '我开完会回来啦');
   });
 
-  await t.test('Boundary 6: Zero-history fallback cleanly skips Zone 2 and Zone 3 on soft reset', () => {
+  await t.test('Boundary 6: Zero-history fallback cleanly skips Layer 2 and Layer 3 on soft reset', () => {
     const payload = buildChatPayload(
       {
         rolePrompt: dummyRolePrompt,
@@ -107,10 +114,11 @@ test('IM ContextBuilder 6 Deep Boundary Guards Defense', async (t) => {
       '初次见面'
     );
 
-    // Only Zone 1 (System) and Zone 4 (User) should exist
-    assert.equal(payload.length, 2);
+    // Layer 1 (System), Layer 4 (@D1 System), Layer 5 (User)
+    assert.equal(payload.length, 3);
     assert.equal(payload[0].role, 'system');
-    assert.equal(payload[1].role, 'user');
-    assert.ok(payload[1].content.includes('初次见面'));
+    assert.equal(payload[1].role, 'system');
+    assert.equal(payload[2].role, 'user');
+    assert.equal(payload[2].content, '初次见面');
   });
 });

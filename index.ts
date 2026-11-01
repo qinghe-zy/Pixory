@@ -33,6 +33,11 @@ AppRegistry.registerHeadlessTask('PixoryDiaryAlarm', () => async (data: { jobId?
   if (!jobId) {
     return;
   }
+  if (jobId.startsWith('im_staged_') || jobId.startsWith('im_ping_')) {
+    const { handleImAlarmHeadless } = await import('./src/im/services/imNotificationManager');
+    await handleImAlarmHeadless(jobId);
+    return;
+  }
   const { runDiaryJobForAnySpace } = await import('./src/ai/diary/diaryHeadlessService');
   await runDiaryJobForAnySpace(jobId);
 });

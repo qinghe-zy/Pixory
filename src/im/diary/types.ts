@@ -46,6 +46,15 @@ export interface DiaryMemoryMetadata {
   rawText?: string;           // 原始元数据文本
 }
 
+export interface DiaryVersionHistoryItem {
+  title: string;
+  content: string;
+  weather?: string | null;
+  moodTag?: string | null;
+  themeKey?: DiaryThemeKey;
+  updatedAt: number;
+}
+
 export interface ImCompanionDiary {
   id: string;
   threadId: string;
@@ -62,6 +71,7 @@ export interface ImCompanionDiary {
   themeKey?: DiaryThemeKey;
   pageColor?: string | null;
   memoryMetadata?: DiaryMemoryMetadata | null;
+  previousVersions?: DiaryVersionHistoryItem[];
   createdAt: number;
   updatedAt: number;
 }

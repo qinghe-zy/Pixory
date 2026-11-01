@@ -1,11 +1,37 @@
 import * as SecureStore from 'expo-secure-store';
 import { initDatabase, type PixorySpace } from '../../database/index';
+import { settingsRepository } from '../../database/repositories/settingsRepository';
 
 export interface ActiveProviderConfig {
   providerId: string;
   modelId: string;
   baseUrl: string;
+  protocol: 'openai_compatible' | 'gemini' | 'anthropic';
   apiKey: string | null;
+  promptCacheEnabled: boolean;
+}
+
+export interface MemoryModelConfig extends ActiveProviderConfig {
+  mode: 'custom' | 'deepseek_flash' | 'follow_chat' | 'auto';
+  isSameAsChatModel: boolean;
+}
+
+export function normalizeProviderModelId(
+  modelId: string | null | undefined,
+  baseUrl?: string | null
+): string {
+  const trimmed = modelId?.trim();
+  if (!trimmed) return 'deepseek-v4-flash';
+
+  const isDeepSeekEndpoint = Boolean(
+    baseUrl && (baseUrl.includes('api.deepseek.com') || baseUrl.toLowerCase().includes('deepseek'))
+  );
+
+  if (isDeepSeekEndpoint && (trimmed === 'deepseek-chat' || trimmed === 'deepseek-reasoner')) {
+    return 'deepseek-v4-flash';
+  }
+
+  return trimmed;
 }
 
 export async function readProviderApiKey(
@@ -33,10 +59,15 @@ export async function getActiveProviderConfig(
   preferredModelId?: string | null
 ): Promise<ActiveProviderConfig | null> {
   const db = await initDatabase(space);
+  const cacheSettings = await settingsRepository.getAiPromptCacheSettings(db).catch(() => ({
+    enabled: true,
+    disabledProviderIds: [] as string[],
+  }));
 
   let providerRow: {
     id: string;
     baseUrl: string;
+    protocol: string;
     defaultChatModelId: string | null;
   } | null = null;
 
@@ -45,9 +76,10 @@ export async function getActiveProviderConfig(
     providerRow = await db.getFirstAsync<{
       id: string;
       baseUrl: string;
+      protocol: string;
       defaultChatModelId: string | null;
     }>(
-      `SELECT id, baseUrl, defaultChatModelId
+      `SELECT id, baseUrl, protocol, defaultChatModelId
        FROM ai_providers
        WHERE id = ?
        LIMIT 1;`,
@@ -60,9 +92,10 @@ export async function getActiveProviderConfig(
     providerRow = await db.getFirstAsync<{
       id: string;
       baseUrl: string;
+      protocol: string;
       defaultChatModelId: string | null;
     }>(
-      `SELECT id, baseUrl, defaultChatModelId
+      `SELECT id, baseUrl, protocol, defaultChatModelId
        FROM ai_providers
        WHERE chatEnabled = 1
        ORDER BY (lastVerifiedAt IS NOT NULL) DESC, createdAt ASC
@@ -75,22 +108,122 @@ export async function getActiveProviderConfig(
   }
 
   // 3. 模型解析：优先使用传入的 preferredModelId，其次 defaultChatModelId，再其次查询该 Provider 支持 chat 的模型
-  let modelId = preferredModelId || providerRow.defaultChatModelId;
-  if (!modelId) {
-    const modelRow = await db.getFirstAsync<{ id: string }>(
-      'SELECT id FROM ai_models WHERE providerId = ? AND chatEnabled = 1 LIMIT 1',
+  let rawModelId = preferredModelId || providerRow.defaultChatModelId;
+  if (!rawModelId) {
+    const modelRow = await db.getFirstAsync<{ modelId: string }>(
+      'SELECT modelId FROM ai_provider_models WHERE providerId = ? AND supportsChat = 1 LIMIT 1',
       providerRow.id
     );
-    modelId = modelRow?.id || 'deepseek-chat';
+    rawModelId = modelRow?.modelId || 'deepseek-v4-flash';
   }
+
+  const modelId = normalizeProviderModelId(rawModelId, providerRow.baseUrl);
 
   // 4. 读取密钥（全兼容各种命名规范）
   const apiKey = await readProviderApiKey(space, providerRow.id);
+
+  const protocol = (
+    providerRow.protocol === 'gemini' || providerRow.protocol === 'anthropic'
+      ? providerRow.protocol
+      : 'openai_compatible'
+  ) as 'openai_compatible' | 'gemini' | 'anthropic';
+
+  const promptCacheEnabled = Boolean(
+    cacheSettings.enabled && !cacheSettings.disabledProviderIds.includes(providerRow.id)
+  );
 
   return {
     providerId: providerRow.id,
     modelId,
     baseUrl: providerRow.baseUrl,
+    protocol,
     apiKey,
+    promptCacheEnabled,
   };
+}
+
+export async function getMemoryModelProviderConfig(
+  space: PixorySpace,
+  chatProviderId?: string | null,
+  chatModelId?: string | null
+): Promise<MemoryModelConfig | null> {
+  const db = await initDatabase(space);
+  const settings = await settingsRepository.getMemoryMaintenanceSettings(db).catch(() => null);
+  const mode = settings?.memoryMaintenanceMode || 'auto';
+
+  // 辅助获取当前聊天兜底配置
+  const resolveChatFallback = async (): Promise<MemoryModelConfig | null> => {
+    const chatCfg = await getActiveProviderConfig(space, chatProviderId, chatModelId);
+    if (!chatCfg) return null;
+    return {
+      ...chatCfg,
+      mode: 'follow_chat',
+      isSameAsChatModel: true,
+    };
+  };
+
+  // 1. 自定义模式
+  if (mode === 'custom' && settings?.memoryMaintenanceProviderId) {
+    const customCfg = await getActiveProviderConfig(
+      space,
+      settings.memoryMaintenanceProviderId,
+      settings.memoryMaintenanceModelId
+    );
+    if (customCfg && customCfg.apiKey) {
+      const isSameAsChat =
+        Boolean(chatProviderId && chatProviderId === customCfg.providerId) &&
+        Boolean(chatModelId && chatModelId === customCfg.modelId);
+      return {
+        ...customCfg,
+        mode: 'custom',
+        isSameAsChatModel: isSameAsChat,
+      };
+    }
+  }
+
+  // 2. 深度优选 Flash (deepseek_flash)
+  if (mode === 'deepseek_flash') {
+    const dsCfg = await getActiveProviderConfig(space, 'deepseek', 'deepseek-v4-flash');
+    if (dsCfg && dsCfg.apiKey) {
+      const isSameAsChat =
+        Boolean(chatProviderId && chatProviderId === dsCfg.providerId) &&
+        Boolean(chatModelId && chatModelId === dsCfg.modelId);
+      return {
+        ...dsCfg,
+        mode: 'deepseek_flash',
+        isSameAsChatModel: isSameAsChat,
+      };
+    }
+  }
+
+  // 3. 跟随聊天模型 (follow_chat)
+  if (mode === 'follow_chat') {
+    return resolveChatFallback();
+  }
+
+  // 4. 自动模式 (auto)
+  // 优先探测 deepseek Flash 是否具备 Key
+  const dsCandidate = await getActiveProviderConfig(space, 'deepseek', 'deepseek-v4-flash');
+  if (dsCandidate && dsCandidate.apiKey) {
+    const isSameAsChat =
+      Boolean(chatProviderId && chatProviderId === dsCandidate.providerId) &&
+      Boolean(chatModelId && chatModelId === dsCandidate.modelId);
+    return {
+      ...dsCandidate,
+      mode: 'auto',
+      isSameAsChatModel: isSameAsChat,
+    };
+  }
+
+  // 最终安全回退到聊天模型
+  const fallback = await resolveChatFallback();
+  if (fallback) {
+    return {
+      ...fallback,
+      mode: 'auto',
+      isSameAsChatModel: true,
+    };
+  }
+
+  return null;
 }

@@ -97,6 +97,39 @@ export function shiftTimestampPastDnd(
     target.setDate(target.getDate() + 1);
   }
 
-  const jitterMs = Math.floor((5 + Math.random() * randomJitterMinutes) * 60 * 1000);
+  const jitterMs =
+    randomJitterMinutes > 0
+      ? Math.floor((5 + Math.random() * randomJitterMinutes) * 60 * 1000)
+      : 0;
   return target.getTime() + jitterMs;
+}
+
+/**
+ * 语义判定：是否属于晚安/就寝类关怀信封
+ */
+export function isGoodnightMessage(content: string): boolean {
+  if (!content) return false;
+  return /(晚安|早点睡|快睡吧|睡个好觉|做个好梦|该睡了|去睡觉)/i.test(content);
+}
+
+/**
+ * 晚安信封语义 TTL 熔断检测：
+ * 晚安消息最大生存期为 2 小时，且严禁在次日清晨 (06:00~12:00) 显影，杜绝“早晨道晚安”穿帮
+ */
+export function shouldExpireGoodnightEnvelope(
+  content: string,
+  createdAtMs: number,
+  scheduledVisibleAt: number,
+  nowMs: number = Date.now()
+): boolean {
+  if (!isGoodnightMessage(content)) return false;
+  const MAX_GOODNIGHT_TTL_MS = 2 * 3600 * 1000;
+  if (nowMs - createdAtMs > MAX_GOODNIGHT_TTL_MS) {
+    return true;
+  }
+  const targetHour = new Date(scheduledVisibleAt).getHours();
+  if (targetHour >= 6 && targetHour < 12) {
+    return true;
+  }
+  return false;
 }

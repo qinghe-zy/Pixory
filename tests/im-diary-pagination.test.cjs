@@ -1,93 +1,40 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
 
-// Replicate pure pagination logic for CommonJS test runner
-const CHARS_PER_LINE = 20;
-const MAX_LINES_FIRST_PAGE = 13;
-const MAX_LINES_NORMAL_PAGE = 16;
-
-function splitParagraphIntoSentences(text) {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-  const regex = /[^。！？…\n]+[。！？…]+|\S+$/g;
-  const matches = trimmed.match(regex);
-  if (!matches || matches.length === 0) return [trimmed];
-  return matches.map((s) => s.trim()).filter(Boolean);
+function loadTsModule(relPath, mocks = {}) {
+  const fullPath = path.resolve(__dirname, relPath);
+  const code = fs.readFileSync(fullPath, 'utf8');
+  const transpiled = ts.transpileModule(code, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
+  }).outputText;
+  const m = { exports: {} };
+  const customRequire = (id) => {
+    if (mocks[id]) return mocks[id];
+    if (id.endsWith('.png') || id.endsWith('.jpg')) return { mockAsset: path.basename(id) };
+    if (id.startsWith('.')) {
+      const candidate = path.resolve(path.dirname(fullPath), id);
+      const finalFile = fs.existsSync(candidate + '.ts')
+        ? candidate + '.ts'
+        : fs.existsSync(candidate + '.tsx')
+          ? candidate + '.tsx'
+          : candidate;
+      return loadTsModule(finalFile, mocks);
+    }
+    return require(id);
+  };
+  new Function('module', 'exports', 'require', transpiled)(m, m.exports, customRequire);
+  return m.exports;
 }
 
-function paginateDiaryIntoPages(diary) {
-  const pages = [];
-  const rawParagraphs = diary.content
-    .split('\n')
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  let currentPageIndex = 1;
-  let pageParagraphs = [];
-  let currentLines = 0;
-  const maxLinesForPage = (idx) => (idx === 1 ? MAX_LINES_FIRST_PAGE : MAX_LINES_NORMAL_PAGE);
-
-  for (const para of rawParagraphs) {
-    const sentences = splitParagraphIntoSentences(para);
-    if (sentences.length === 0) continue;
-
-    let currentParaChunk = '';
-    let isParaStart = true;
-
-    for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i];
-      const testChunk = currentParaChunk ? currentParaChunk + sentence : (isParaStart ? `\u3000\u3000${sentence}` : sentence);
-      const testLines = Math.max(1, Math.ceil(testChunk.length / CHARS_PER_LINE));
-
-      const limit = maxLinesForPage(currentPageIndex);
-      if (currentLines + testLines > limit && (currentLines > 0 || currentParaChunk.length > 0)) {
-        if (currentParaChunk.trim()) {
-          pageParagraphs.push(currentParaChunk);
-        }
-        if (pageParagraphs.length > 0) {
-          pages.push({
-            pageNumber: currentPageIndex,
-            isLeft: currentPageIndex % 2 !== 0,
-            paragraphs: pageParagraphs,
-            isEndPage: false,
-          });
-          currentPageIndex++;
-          pageParagraphs = [];
-          currentLines = 0;
-        }
-        isParaStart = false;
-        currentParaChunk = sentence;
-      } else {
-        currentParaChunk = testChunk;
-      }
-    }
-
-    if (currentParaChunk.trim()) {
-      pageParagraphs.push(currentParaChunk);
-      currentLines += Math.max(1, Math.ceil(currentParaChunk.length / CHARS_PER_LINE));
-    }
-  }
-
-  if (pageParagraphs.length > 0 || pages.length === 0) {
-    pages.push({
-      pageNumber: currentPageIndex,
-      isLeft: currentPageIndex % 2 !== 0,
-      paragraphs: pageParagraphs,
-      isEndPage: true,
-    });
-  }
-
-  if (pages.length % 2 !== 0) {
-    pages.push({
-      pageNumber: pages.length + 1,
-      isLeft: false,
-      paragraphs: [],
-      isEndPage: true,
-    });
-  }
-
-  return pages;
-}
+const {
+  CHARS_PER_LINE,
+  MAX_LINES_FIRST_PAGE,
+  MAX_LINES_NORMAL_PAGE,
+  paginateDiaryIntoPages,
+} = loadTsModule('../src/im/diary/engine/imDiaryPagination.ts');
 
 function computeViewportSpreads(allSpreads, currentIndex) {
   const total = allSpreads.length;
@@ -151,12 +98,16 @@ test('TC-PAGE-02: 800字长篇日记句子级流式分页装填测试，无半�
   assert.ok(pages[0].paragraphs.length > 0);
   assert.ok(pages[0].paragraphs[0].startsWith('\u3000\u3000'), '段落首句应包含全角两格缩进');
 
-  // 验证非最后一页的内容饱满（字数充足，杜绝仅有 3-4 行就跳页）
+  // 验证非最后一页的内容饱满且不超出放大字号后的物理行预算 (18字/行, 首页11行, 续页13行)
+  assert.equal(CHARS_PER_LINE, 18);
+  assert.equal(MAX_LINES_FIRST_PAGE, 11);
+  assert.equal(MAX_LINES_NORMAL_PAGE, 13);
+
   const page1Chars = pages[0].paragraphs.reduce((acc, p) => acc + p.length, 0);
-  assert.ok(page1Chars >= 180, `首页字数 (${page1Chars}) 应当饱满，不留大空白`);
+  assert.ok(page1Chars >= 140 && page1Chars <= 205, `首页字数 (${page1Chars}) 应当饱满且不溢出`);
 
   const page2Chars = pages[1].paragraphs.reduce((acc, p) => acc + p.length, 0);
-  assert.ok(page2Chars >= 200, `第二页字数 (${page2Chars}) 应当饱满`);
+  assert.ok(page2Chars >= 165 && page2Chars <= 240, `第二页字数 (${page2Chars}) 应当饱满且不溢出`);
 });
 
 test('TC-PERF-01: 365 篇历史日记在视口滑动窗口下恒定保留 3 个 Spread (最多 6 页)', () => {
@@ -202,4 +153,42 @@ test('TC-CURL-01: 3D 卷页物理引擎底面与运动叶片严格遵循双向�
   };
   assert.equal(backwardBottom.leftPage.pageNumber, 1);
   assert.equal(backwardBottom.rightPage.pageNumber, 4);
+});
+
+test('TC-DIARY-COVER-01: 手账回忆目录支持 5 款主题对应封面缩略图映射与 sage 兜底', () => {
+  const { resolveDiaryThemeKey } = loadTsModule('../src/im/diary/components/ImDiaryDatePickerModal.tsx', {
+    react: { createElement: () => null },
+    'react-native': {
+      Image: 'Image',
+      Modal: 'Modal',
+      Pressable: 'Pressable',
+      ScrollView: 'ScrollView',
+      StyleSheet: { create: (s) => s, hairlineWidth: 0.5 },
+      Text: 'Text',
+      View: 'View',
+    },
+    '@expo/vector-icons': { Ionicons: 'Ionicons' },
+  });
+  const { imDiaryThemeAssets } = loadTsModule('../src/im/diary/themeAssets.ts');
+
+  for (const key of ['sage', 'rainwater', 'rose', 'lavender', 'celadon']) {
+    assert.equal(resolveDiaryThemeKey(key), key);
+    assert.ok(imDiaryThemeAssets[key].card, `主题 ${key} 必须拥有对应日记封面图资产`);
+  }
+  assert.equal(resolveDiaryThemeKey(undefined), 'sage');
+  assert.equal(resolveDiaryThemeKey('unknown_theme'), 'sage');
+
+  // 验证目录组件源码渲染了 Image source={coverAsset.card}，以及书页正文字号/行高升级
+  const modalSrc = fs.readFileSync(
+    path.resolve(__dirname, '../src/im/diary/components/ImDiaryDatePickerModal.tsx'),
+    'utf8'
+  );
+  assert.ok(modalSrc.includes('source={coverAsset.card}'), '手账回忆目录必须展示对应日记封面图');
+
+  const spreadSrc = fs.readFileSync(
+    path.resolve(__dirname, '../src/im/diary/components/ImDiaryPageSpread.tsx'),
+    'utf8'
+  );
+  assert.ok(spreadSrc.includes('fontSize: 15.5'), '日记正文字号应调大至 15.5');
+  assert.ok(spreadSrc.includes('lineHeight: 27.5'), '日记正文行高应调大至 27.5');
 });

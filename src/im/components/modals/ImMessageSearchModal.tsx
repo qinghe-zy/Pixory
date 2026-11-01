@@ -78,12 +78,12 @@ export function ImMessageSearchModal({
               value={query}
             />
             {query.length > 0 ? (
-              <Pressable onPress={() => setQuery('')} style={styles.clearBtn}>
+              <Pressable accessibilityLabel="清空输入" accessibilityRole="button" hitSlop={8} onPress={() => setQuery('')} style={styles.clearBtn}>
                 <Ionicons color="#94A3B8" name="close-circle" size={16} />
               </Pressable>
             ) : null}
           </View>
-          <Pressable onPress={onClose} style={styles.cancelBtn}>
+          <Pressable accessibilityLabel="取消" accessibilityRole="button" hitSlop={8} onPress={onClose} style={styles.cancelBtn}>
             <Text style={styles.cancelText}>取消</Text>
           </Pressable>
         </View>
@@ -98,7 +98,12 @@ export function ImMessageSearchModal({
                 <Ionicons color="#CBD5E1" name="search-outline" size={36} style={{ marginBottom: 8 }} />
                 <Text style={styles.emptyText}>未找到与 “{query}” 相关的聊天记录</Text>
               </View>
-            ) : null
+            ) : (
+              <View style={styles.emptyBox}>
+                <Ionicons color="#CBD5E1" name="chatbubbles-outline" size={36} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyText}>输入关键词回溯与 {companionName} 的对话</Text>
+              </View>
+            )
           }
           renderItem={({ item }) => {
             const isUser = item.role === 'user';

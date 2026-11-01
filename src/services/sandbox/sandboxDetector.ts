@@ -96,21 +96,27 @@ export function extractSandboxExecutableCode(content: string): ExtractedSandboxT
     };
   }
 
-  // 2. 检查 Markdown 围栏代码块 ```html ... ``` 或 ```svg ... ```
-  const fenceRegex = /```([a-zA-Z0-9_-]*)\s*\n([\s\S]*?)\n```/g;
+  // 2. 检查 Markdown 围栏代码块 ```html ... ``` 或 ```svg ... ``` (支持结尾未闭合或省略尾部换行)
+  const fenceRegex = /```([a-zA-Z0-9_-]*)\s*\n([\s\S]*?)(?:\n```|$)/g;
   let match: RegExpExecArray | null;
   while ((match = fenceRegex.exec(content)) !== null) {
     const lang = (match[1] || '').toLowerCase();
     const code = match[2] || '';
     if (isExecutableSandboxCode(code, lang)) {
-      return { code, language: lang };
+      return { code: code.trim(), language: lang || 'html' };
     }
   }
 
-  // 3. 检查嵌入的裸 <svg>...</svg> 块
+  // 3. 检查嵌入在自然语言中的裸 HTML 页面 (<!DOCTYPE html>... 或 <html...</html>)
+  const embeddedHtmlMatch = /(?:<!doctype\s+html[\s\S]*?(?:<\/html>|$)|<html\b[\s\S]*?(?:<\/html>|$))/i.exec(content);
+  if (embeddedHtmlMatch && embeddedHtmlMatch[0].length > 40) {
+    return { code: embeddedHtmlMatch[0].trim(), language: 'html' };
+  }
+
+  // 4. 检查嵌入的裸 <svg>...</svg> 块
   const svgMatch = /<svg\b[\s\S]*?<\/svg>/i.exec(content);
   if (svgMatch && svgMatch[0].length > 40) {
-    return { code: svgMatch[0], language: 'svg' };
+    return { code: svgMatch[0].trim(), language: 'svg' };
   }
 
   return null;

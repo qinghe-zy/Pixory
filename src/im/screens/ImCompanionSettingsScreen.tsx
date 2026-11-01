@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -12,6 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../database';
 import { useImGlobalSettings } from '../services/imCompanionPreferences';
 import type { ImIntervalMode, ImCharSpeedGear } from '../config/pacingProfile';
+import { getMemoryModelProviderConfig } from '../../core/llm-transport/secureApiKey';
+import { colors } from '../../design/tokens/colors';
+import { rhythm } from '../../design/tokens/rhythm';
+import { spacing } from '../../design/tokens/spacing';
+import { metrics } from '../../design/tokens/metrics';
+import { radius } from '../../design/tokens/radius';
+import { shadows } from '../../design/tokens/shadows';
 
 export interface ImCompanionSettingsScreenProps {
   space: PixorySpace;
@@ -24,6 +31,32 @@ export function ImCompanionSettingsScreen({
 }: ImCompanionSettingsScreenProps) {
   const insets = useSafeAreaInsets();
   const { settings, update } = useImGlobalSettings(space);
+  const [memoryModelDesc, setMemoryModelDesc] = useState<string>('探测中...');
+
+  useEffect(() => {
+    let mounted = true;
+    void getMemoryModelProviderConfig(space)
+      .then((cfg) => {
+        if (!mounted) return;
+        if (!cfg) {
+          setMemoryModelDesc('跟随会话模型 (默认)');
+        } else {
+          const modeLabel =
+            cfg.mode === 'deepseek_flash'
+              ? '优选 Flash'
+              : cfg.mode === 'custom'
+                ? '自定义模型'
+                : '跟随聊天模型';
+          setMemoryModelDesc(`${cfg.modelId} (${modeLabel})`);
+        }
+      })
+      .catch(() => {
+        if (mounted) setMemoryModelDesc('跟随会话模型');
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [space]);
 
   const intervalModes: Array<{ key: ImIntervalMode; label: string; desc: string }> = [
     { key: 'fast', label: '快', desc: '200ms' },
@@ -38,11 +71,25 @@ export function ImCompanionSettingsScreen({
     { key: 'slow', label: '慢', desc: '80ms/字' },
   ];
 
+  const dndPresets = [
+    { label: '标准 (23:00~07:30)', start: '23:00', end: '07:30' },
+    { label: '夜猫 (01:00~09:00)', start: '01:00', end: '09:00' },
+    { label: '早睡 (22:00~06:30)', start: '22:00', end: '06:30' },
+  ];
+
+  const currentDndStart = settings.globalDndStartTime || '23:00';
+  const currentDndEnd = settings.globalDndEndTime || '07:30';
+
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#1A1A1A" />
+        <Pressable
+          accessibilityLabel="返回"
+          accessibilityRole="button"
+          onPress={onBack}
+          style={styles.backBtn}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.text.title} />
         </Pressable>
         <Text style={styles.headerTitle}>伴聊设置</Text>
         <View style={styles.headerPlaceholder} />
@@ -60,7 +107,7 @@ export function ImCompanionSettingsScreen({
             <Switch
               value={settings.globalHeartbeatEnabled}
               onValueChange={(val) => void update({ globalHeartbeatEnabled: val })}
-              trackColor={{ true: '#1A1C1C', false: '#D4D8DD' }}
+              trackColor={{ true: colors.primary.default, false: colors.border.strong }}
             />
           </View>
           <View style={styles.divider} />
@@ -72,8 +119,70 @@ export function ImCompanionSettingsScreen({
             <Switch
               value={settings.globalProactiveEnabled}
               onValueChange={(val) => void update({ globalProactiveEnabled: val })}
-              trackColor={{ true: '#1A1C1C', false: '#D4D8DD' }}
+              trackColor={{ true: colors.primary.default, false: colors.border.strong }}
             />
+          </View>
+        </View>
+
+        {/* 全局作息免打扰 (P2) */}
+        <Text style={styles.sectionHeader}>全局作息免打扰</Text>
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={styles.labelCol}>
+              <Text style={styles.rowTitle}>夜间免打扰守卫</Text>
+              <Text style={styles.rowSub}>
+                免打扰时段内伴侣的主动联系闹钟顺延至次日清晨苏醒后发送
+              </Text>
+            </View>
+            <Switch
+              value={settings.globalDndEnabled !== false}
+              onValueChange={(val) => void update({ globalDndEnabled: val })}
+              trackColor={{ true: colors.primary.default, false: colors.border.strong }}
+            />
+          </View>
+
+          {settings.globalDndEnabled !== false && (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.subLabel}>快捷作息时段选择</Text>
+              <View style={styles.dndPresetsWrap}>
+                {dndPresets.map((preset) => {
+                  const isSelected = currentDndStart === preset.start && currentDndEnd === preset.end;
+                  return (
+                    <Pressable
+                      key={preset.label}
+                      onPress={() =>
+                        void update({
+                          globalDndStartTime: preset.start,
+                          globalDndEndTime: preset.end,
+                        })
+                      }
+                      style={[styles.dndPresetBtn, isSelected && styles.dndPresetBtnActive]}
+                    >
+                      <Text style={[styles.dndPresetText, isSelected && styles.dndPresetTextActive]}>
+                        {preset.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* 记忆系统与维护模型 (Layer B/P2) */}
+        <Text style={styles.sectionHeader}>记忆系统与维护模型</Text>
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={styles.labelCol}>
+              <Text style={styles.rowTitle}>生效维护模型</Text>
+              <Text style={styles.rowSub}>
+                负责前缀上下文压缩、偏好冲突消解与高显著性异步事实提炼
+              </Text>
+            </View>
+            <View style={styles.modelBadge}>
+              <Text style={styles.modelBadgeText}>{memoryModelDesc}</Text>
+            </View>
           </View>
         </View>
 
@@ -106,7 +215,7 @@ export function ImCompanionSettingsScreen({
             <Switch
               value={settings.charDelayEnabled}
               onValueChange={(val) => void update({ charDelayEnabled: val })}
-              trackColor={{ true: '#1A1C1C', false: '#D4D8DD' }}
+              trackColor={{ true: colors.primary.default, false: colors.border.strong }}
             />
           </View>
 
@@ -159,34 +268,91 @@ export function ImCompanionSettingsScreen({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ECEEF1' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DCE0' },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#1A1A1A' },
-  headerPlaceholder: { width: 32 },
-  scrollContent: { padding: 12, paddingBottom: 40 },
-  sectionHeader: { fontSize: 13, fontWeight: '600', color: '#666666', marginBottom: 6, marginLeft: 4, marginTop: 10 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
+  container: { flex: 1, backgroundColor: colors.background.page },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    backgroundColor: colors.background.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.default,
+  },
+  backBtn: {
+    width: metrics.minTouchSize,
+    height: metrics.minTouchSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: colors.text.title },
+  headerPlaceholder: { width: metrics.minTouchSize },
+  scrollContent: { padding: spacing[3], paddingBottom: 40 },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    marginBottom: spacing[2],
+    marginLeft: 4,
+    marginTop: spacing[3],
+  },
+  card: {
+    backgroundColor: colors.background.surface,
+    borderRadius: radius.md,
+    padding: metrics.cardPadding,
+    ...shadows.xs,
+  },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  labelCol: { flex: 1, marginRight: 12 },
-  rowTitle: { fontSize: 15, fontWeight: '600', color: '#222222', marginBottom: 2 },
-  rowSub: { fontSize: 12, color: '#888888', lineHeight: 17 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#F0F2F4', marginVertical: 12 },
-  segmentGroup: { flexDirection: 'row', backgroundColor: '#F0F2F5', borderRadius: 10, padding: 3 },
-  segmentBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8 },
-  segmentActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 2, elevation: 2 },
-  segmentLabel: { fontSize: 13, fontWeight: '600', color: '#555555' },
-  segmentLabelActive: { color: '#1A1C1C', fontWeight: '700' },
-  segmentSub: { fontSize: 10, color: '#999999', marginTop: 1 },
-  segmentSubActive: { color: '#1A1C1C' },
+  labelCol: { flex: 1, marginRight: spacing[3] },
+  rowTitle: { fontSize: 15, fontWeight: '600', color: colors.text.title, marginBottom: 2 },
+  rowSub: { fontSize: 12, color: colors.text.secondary, lineHeight: 17 },
+  subLabel: { fontSize: 12, fontWeight: '500', color: colors.text.secondary, marginBottom: 8 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border.subtle, marginVertical: spacing[3] },
+  dndPresetsWrap: { gap: 6 },
+  dndPresetBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    backgroundColor: colors.background.tag,
+  },
+  dndPresetBtnActive: {
+    backgroundColor: colors.primary.default,
+  },
+  dndPresetText: {
+    fontSize: 13,
+    color: colors.text.body,
+  },
+  dndPresetTextActive: {
+    color: colors.text.inverse,
+    fontWeight: '500',
+  },
+  modelBadge: {
+    backgroundColor: colors.background.tag,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.xs,
+    maxWidth: 160,
+  },
+  modelBadgeText: {
+    fontSize: 12,
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  segmentGroup: { flexDirection: 'row', backgroundColor: colors.background.tag, borderRadius: radius.sm, padding: 3 },
+  segmentBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radius.xs },
+  segmentActive: { backgroundColor: colors.background.surface, ...shadows.xs },
+  segmentLabel: { fontSize: 13, fontWeight: '600', color: colors.text.secondary },
+  segmentLabelActive: { color: colors.text.title, fontWeight: '700' },
+  segmentSub: { fontSize: 10, color: colors.text.tertiary, marginTop: 1 },
+  segmentSubActive: { color: colors.text.title },
   subSegmentWrap: { flexDirection: 'row', gap: 6, marginTop: 10 },
-  gearBtn: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 8, backgroundColor: '#F5F6F8' },
-  gearBtnActive: { backgroundColor: '#E5E7EB' },
-  gearLabel: { fontSize: 12, color: '#555555' },
-  gearLabelActive: { color: '#1A1C1C', fontWeight: '700' },
+  gearBtn: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: radius.xs, backgroundColor: colors.background.tag },
+  gearBtnActive: { backgroundColor: colors.border.default },
+  gearLabel: { fontSize: 12, color: colors.text.secondary },
+  gearLabelActive: { color: colors.text.title, fontWeight: '700' },
   sliderRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-  secPill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#F0F2F5' },
-  secPillActive: { backgroundColor: '#1A1C1C' },
-  secPillText: { fontSize: 13, fontWeight: '600', color: '#555555' },
-  secPillTextActive: { color: '#FFFFFF' },
+  secPill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.xs, backgroundColor: colors.background.tag },
+  secPillActive: { backgroundColor: colors.primary.default },
+  secPillText: { fontSize: 13, fontWeight: '600', color: colors.text.secondary },
+  secPillTextActive: { color: colors.text.inverse },
 });

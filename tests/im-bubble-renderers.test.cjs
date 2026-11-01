@@ -47,6 +47,9 @@ test('IM bubble renderers and registry policy verification', async (t) => {
     assert.match(textBubbleContent, /bubbleRightBackground/);
     assert.match(textBubbleContent, /avatarSize/);
     assert.match(textBubbleContent, /bubbleBox:\s*\{\s*elevation:\s*0\s*\}/);
+    assert.match(textBubbleContent, /extractSandboxExecutableCode/);
+    assert.match(textBubbleContent, /sandboxRunBtn/);
+    assert.match(textBubbleContent, /name="play"/);
   });
 
   await t.test('ImageBubbleRenderer renders image with avatar, IP badge and flat card', () => {

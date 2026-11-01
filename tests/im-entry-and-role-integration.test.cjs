@@ -40,7 +40,7 @@ test('IM entry scheme 1 and role card linkage policy verification', async (t) =>
     assert.match(threadListContent, /livingIndicator/);
     assert.match(threadListContent, /formatWeChatTime/);
     assert.match(threadListContent, /挑选伴侣/);
-    assert.match(threadListContent, /color="#A1A1AA"/);
+    assert.match(threadListContent, /color=(?:"#A1A1AA"|\{colors\.text\.(?:secondary|tertiary)\})/);
   });
 
   await t.test('AiRoleCardDetailScreen upgrades primary button to send companion message', () => {
