@@ -31,4 +31,5 @@ export {
   type TypographyGear,
 } from './repositories/settingsRepository';
 export { tagRepository } from './repositories/tagRepository';
+export { customStickerRepository } from './repositories/customStickerRepository';
 export type * from './types';

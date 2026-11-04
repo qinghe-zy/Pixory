@@ -1,6 +1,5 @@
-import React, { useCallback, useRef, useEffect, useState } from 'react';
-import { StyleSheet, View, Text, Keyboard, Pressable, type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent } from 'react-native';
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import React, { useCallback, useRef, useEffect, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { Keyboard, Platform, StyleSheet, View, Text, FlatList, Pressable, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PixorySpace } from '../../database';
 import type { ImMessage } from '../types';
@@ -9,9 +8,11 @@ import { useImTheme } from '../theme/ImThemeProvider';
 import { SecureImage } from '../../components/SecureImage';
 import { formatWeChatTime } from '../utils/formatWeChatTime';
 import { ImUnreadJumpBubble } from './common/ImUnreadJumpBubble';
+import { AiScrollToLatestButton } from '../../components/ai/AiScrollToLatestButton';
 
 export interface ImChatListProps {
   messages: ImMessage[];
+  showThoughtBubble?: boolean;
   space?: PixorySpace;
   companionAvatarUri?: string | null;
   companionName?: string;
@@ -22,6 +23,7 @@ export interface ImChatListProps {
   highlightedMessageId?: string | null;
   isInitialLoading?: boolean;
   unreadCount?: number;
+  isGenerating?: boolean;
   onQuickIcebreak?: (text: string) => void;
   onLongPressMessage?: (message: ImMessage, pageX: number, pageY: number) => void;
   onPressMessage?: (message: ImMessage) => void;
@@ -30,6 +32,13 @@ export interface ImChatListProps {
   onNudgeSelf?: () => void;
   onOpenDiary?: (diaryId?: string) => void;
   onOpenSandbox?: (target: { code: string; language?: string; title?: string }) => void;
+  onOpenDocument?: (target: { uri?: string; title?: string; content?: string | Uint8Array; mode?: 'clean' | 'diff' }) => void;
+  onPressBackground?: () => void;
+}
+
+export interface ImChatListRef {
+  scrollToBottom: (animated?: boolean) => void;
+  scrollToIndex: (params: { index: number; animated?: boolean; viewPosition?: number }) => void;
 }
 
 const DEFAULT_ICEBREAK_PROMPTS = [
@@ -38,32 +47,68 @@ const DEFAULT_ICEBREAK_PROMPTS = [
   '翻到一张好看的照片分享给你~',
 ];
 
-export function ImChatList({
-  messages,
-  space = 'normal',
-  companionAvatarUri,
-  companionName = '伴侣',
-  userAvatarUri,
-  backgroundImageUri,
-  wallpaperScrimOpacity = 0.16,
-  highlightedMessageId,
-  isInitialLoading = false,
-  onQuickIcebreak,
-  onLongPressMessage,
-  onPressMessage,
-  onRetryMessage,
-  onNudge,
-  onNudgeSelf,
-  onOpenDiary,
-  onOpenSandbox,
-  unreadCount = 0,
-}: ImChatListProps) {
+export const ImChatList = forwardRef<ImChatListRef, ImChatListProps>(function ImChatList(
+  {
+    messages,
+    showThoughtBubble = true,
+    space = 'normal',
+    companionAvatarUri,
+    companionName = '角色',
+    userAvatarUri,
+    backgroundImageUri,
+    wallpaperScrimOpacity = 0.16,
+    highlightedMessageId,
+    isInitialLoading = false,
+    isGenerating = false,
+    onQuickIcebreak,
+    onLongPressMessage,
+    onPressMessage,
+    onRetryMessage,
+    onNudge,
+    onNudgeSelf,
+    onOpenDiary,
+    onOpenSandbox,
+    onOpenDocument,
+    onPressBackground,
+    unreadCount = 0,
+  }: ImChatListProps,
+  ref
+) {
   const theme = useImTheme();
-  const listRef = useRef<FlashListRef<ImMessage>>(null);
+  const listRef = useRef<FlatList<ImMessage>>(null);
   const [showJumpBubble, setShowJumpBubble] = useState<boolean>(unreadCount > 0);
+  const [showScrollToLatest, setShowScrollToLatest] = useState<boolean>(false);
+  const [localHighlightedId, setLocalHighlightedId] = useState<string | null>(null);
   const initialUnreadCountRef = useRef<number>(unreadCount);
   const isNearBottomRef = useRef(true);
-  const prevMessagesLengthRef = useRef(messages.length);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const displayMessages = useMemo(() => {
+    if (showThoughtBubble === false) {
+      return messages.filter((m) => m.type !== 'thought');
+    }
+    return messages;
+  }, [messages, showThoughtBubble]);
+
+  const prevMsgCountRef = useRef(displayMessages.length);
+
+  // 将消息列表倒置：倒置列表 (Inverted List) 是彻底解决 Android 软键盘遮挡与流式生成抖动的唯一工程正解
+  // 索引 0 即为最新一条消息，位于视口最底部；软键盘弹起时随视口自然上移，无需任何延迟定时器对齐
+  const invertedMessages = useMemo(() => {
+    if (displayMessages.length <= 1) return displayMessages;
+    return [...displayMessages].reverse();
+  }, [displayMessages]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+      }
+      if (scrollRetryTimerRef.current) {
+        clearTimeout(scrollRetryTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (unreadCount > 0) {
@@ -75,148 +120,108 @@ export function ImChatList({
   const handleJumpToUnread = useCallback(() => {
     setShowJumpBubble(false);
     const count = initialUnreadCountRef.current;
-    if (count > 0 && messages.length > 0) {
-      const targetIdx = Math.max(0, messages.length - count - 1);
+    if (count > 0 && invertedMessages.length > 0) {
+      const targetIdx = Math.min(count - 1, invertedMessages.length - 1);
+      const targetMsg = invertedMessages[targetIdx];
+      if (targetMsg) {
+        setLocalHighlightedId(targetMsg.id);
+        if (highlightTimerRef.current) {
+          clearTimeout(highlightTimerRef.current);
+        }
+        highlightTimerRef.current = setTimeout(() => {
+          setLocalHighlightedId((current) => (current === targetMsg.id ? null : current));
+          highlightTimerRef.current = null;
+        }, 3000);
+      }
       listRef.current?.scrollToIndex({
         index: targetIdx,
         animated: true,
-        viewPosition: 1,
+        viewPosition: 0.5,
       });
     }
-  }, [messages.length]);
+  }, [invertedMessages]);
+
+  const invertedMessagesLengthRef = useRef(invertedMessages.length);
+  invertedMessagesLengthRef.current = invertedMessages.length;
 
   const scrollToBottom = useCallback(
     (animated = false) => {
-      if (messages.length === 0) return;
-      // 优先调用底层原生 CompatScroller (原生 ScrollView.scrollToEnd)，
-      // 彻底避开 @shopify/flash-list v2 在未挂载索引时调用 scrollToIndex 计算 layout offset=0 导致反向跳顶的严重 bug！
-      const scroller = listRef.current?.getNativeScrollRef();
-      if (scroller && typeof scroller.scrollToEnd === 'function') {
-        scroller.scrollToEnd({ animated });
-        return;
-      }
+      if (invertedMessagesLengthRef.current === 0) return;
       try {
-        listRef.current?.scrollToEnd({ animated });
+        listRef.current?.scrollToOffset({ offset: 0, animated });
       } catch {
-        // ignore
+        try {
+          (listRef.current as any)?.scrollToEnd({ animated });
+        } catch {
+          // ignore
+        }
       }
     },
-    [messages.length]
+    []
   );
 
-  const prevListHeightRef = useRef<number>(0);
-  const scrollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToBottom,
+      scrollToIndex: (params) => {
+        listRef.current?.scrollToIndex(params);
+      },
+    }),
+    [scrollToBottom]
+  );
 
-  const clearScrollTimers = useCallback(() => {
-    scrollTimersRef.current.forEach((t) => clearTimeout(t));
-    scrollTimersRef.current = [];
-  }, []);
-
-  const scheduleMultiTierScrollToBottom = useCallback(() => {
-    if (!isNearBottomRef.current) return;
-    clearScrollTimers();
-    requestAnimationFrame(() => scrollToBottom(false));
-    [80, 200, 360, 520].forEach((delay) => {
-      const t = setTimeout(() => {
-        if (isNearBottomRef.current) {
-          scrollToBottom(false);
-        }
-      }, delay);
-      scrollTimersRef.current.push(t);
-    });
-  }, [clearScrollTimers, scrollToBottom]);
-
+  // 消息数量增加时，若处于视口底部，自动平滑滚至最底部（索引 0）
   useEffect(() => {
-    return () => {
-      clearScrollTimers();
-    };
-  }, [clearScrollTimers]);
+    if (displayMessages.length > prevMsgCountRef.current) {
+      if (isNearBottomRef.current) {
+        scrollToBottom(true);
+      }
+    }
+    prevMsgCountRef.current = displayMessages.length;
+  }, [displayMessages.length, scrollToBottom]);
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-      const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-      isNearBottomRef.current = distanceFromBottom < 320;
-      if (distanceFromBottom > 350 && showJumpBubble) {
+      const scrollY = event.nativeEvent.contentOffset.y;
+      isNearBottomRef.current = scrollY < 120;
+      setShowScrollToLatest(scrollY > 240);
+      if (scrollY > 350 && showJumpBubble) {
         setShowJumpBubble(false);
       }
     },
     [showJumpBubble]
   );
 
-  const handleContentSizeChange = useCallback(() => {
-    // 只要当前处于底部区域，内容尺寸发生变化（新消息上屏、多气泡渲染展开、软键盘弹起重排）时坚实维持底部吸附
-    if (isNearBottomRef.current) {
-      scrollToBottom(false);
-    }
-  }, [scrollToBottom]);
-
-  const handleListLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      const currentHeight = e.nativeEvent.layout.height;
-      if (prevListHeightRef.current > 0 && currentHeight < prevListHeightRef.current) {
-        // 软键盘弹起导致视口高度变小，多级延迟触底对齐，彻底杜绝最后一条消息被输入栏遮挡
-        scheduleMultiTierScrollToBottom();
-      }
-      prevListHeightRef.current = currentHeight;
-    },
-    [scheduleMultiTierScrollToBottom]
-  );
-
   useEffect(() => {
-    // 当有新消息上屏时，若用户当前处于底部附近，执行单帧 rAF + 短时延迟兜底对齐，彻底根治跳顶与遮挡
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let rafId: number | null = null;
-
-    if (messages.length > prevMessagesLengthRef.current) {
-      if (isNearBottomRef.current) {
-        rafId = requestAnimationFrame(() => scrollToBottom(false));
-        timer = setTimeout(() => scrollToBottom(false), 50);
-      }
-    } else if (prevMessagesLengthRef.current === 0 && messages.length > 0) {
-      scrollToBottom(false);
-    }
-    prevMessagesLengthRef.current = messages.length;
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (timer !== null) clearTimeout(timer);
-    };
-  }, [messages.length, scrollToBottom]);
-
-  useEffect(() => {
-    const handleKeyboardShow = () => {
-      scheduleMultiTierScrollToBottom();
-    };
-    const sub = Keyboard.addListener('keyboardDidShow', handleKeyboardShow);
-    return () => sub.remove();
-  }, [scheduleMultiTierScrollToBottom]);
-
-  useEffect(() => {
-    if (highlightedMessageId && messages.length > 0) {
-      const idx = messages.findIndex((m) => m.id === highlightedMessageId);
+    if (highlightedMessageId && invertedMessages.length > 0) {
+      const idx = invertedMessages.findIndex((m) => m.id === highlightedMessageId);
       if (idx !== -1) {
         listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
       }
     }
-  }, [highlightedMessageId, messages]);
+  }, [highlightedMessageId, invertedMessages]);
 
   const renderItem = useCallback(
     ({ item, index }: { item: ImMessage; index: number }) => {
       const Renderer = BubbleRegistry.get(item.type || 'text');
-      const prevMessage = messages[index - 1];
+      const prevMessage = invertedMessages[index + 1];
       const isSameSpeaker = prevMessage && prevMessage.role === item.role;
       const verticalMargin = isSameSpeaker
         ? theme.metrics.bubbleSpacingSameSpeaker
         : theme.metrics.bubbleSpacingDiffSpeaker;
-      const isHighlighted = item.id === highlightedMessageId;
+      const isHighlighted = item.id === highlightedMessageId || item.id === localHighlightedId;
 
       const currentMs = item.createdAt ? new Date(item.createdAt).getTime() : 0;
       const prevMs = (prevMessage && prevMessage.createdAt) ? new Date(prevMessage.createdAt).getTime() : 0;
-      const shouldShowTime = index === 0 || (currentMs > 0 && prevMs > 0 && currentMs - prevMs >= 5 * 60 * 1000);
+      const isOldestMessage = index === invertedMessages.length - 1;
+      const shouldShowTime = isOldestMessage || (currentMs > 0 && prevMs > 0 && currentMs - prevMs >= 5 * 60 * 1000);
 
       return (
-        <View style={[{ marginTop: verticalMargin }, isHighlighted && styles.highlightWrap]}>
+        <Pressable
+          onPress={onPressBackground}
+          style={[{ marginTop: verticalMargin }, isHighlighted && styles.highlightWrap]}
+        >
           {shouldShowTime && (
             <View style={styles.timeTagWrap}>
               <View style={[styles.timeTagPill, { backgroundColor: theme.colors.systemNoticeBackground, borderRadius: theme.radii.systemNoticeRadius }]}>
@@ -229,22 +234,24 @@ export function ImChatList({
           <Renderer
             companionAvatarUri={companionAvatarUri}
             companionName={companionName}
+            isLatestMessage={index === 0}
             message={item}
             onLongPressMessage={onLongPressMessage}
             onNudge={onNudge}
             onNudgeSelf={onNudgeSelf}
             onOpenDiary={onOpenDiary}
             onOpenSandbox={onOpenSandbox}
+            onOpenDocument={onOpenDocument}
             onPressMessage={onPressMessage}
             onRetryMessage={onRetryMessage}
             space={space}
             userAvatarUri={userAvatarUri}
           />
-        </View>
+        </Pressable>
       );
     },
     [
-      messages,
+      invertedMessages,
       companionAvatarUri,
       companionName,
       userAvatarUri,
@@ -255,13 +262,16 @@ export function ImChatList({
       onNudgeSelf,
       onOpenDiary,
       onOpenSandbox,
+      onOpenDocument,
+      onPressBackground,
       theme,
       highlightedMessageId,
+      localHighlightedId,
       space,
     ]
   );
 
-  const renderEmptyState = () => {
+  const renderEmptyState = useCallback(() => {
     if (isInitialLoading) {
       return (
         <View style={styles.skeletonContainer}>
@@ -282,7 +292,7 @@ export function ImChatList({
     }
 
     return (
-      <View style={styles.icebreakCardWrap}>
+      <Pressable onPress={onPressBackground} style={styles.icebreakCardWrap}>
         <View style={styles.icebreakCard}>
           <View style={[styles.icebreakAvatarBox, { borderRadius: 28 }]}>
             {companionAvatarUri ? (
@@ -311,12 +321,20 @@ export function ImChatList({
             ))}
           </View>
         </View>
-      </View>
+      </Pressable>
     );
-  };
+  }, [
+    isInitialLoading,
+    theme,
+    onPressBackground,
+    companionAvatarUri,
+    space,
+    companionName,
+    onQuickIcebreak,
+  ]);
 
   return (
-    <View style={styles.listContainer}>
+    <Pressable onPress={onPressBackground} style={styles.listContainer}>
       {backgroundImageUri ? (
         <>
           <SecureImage
@@ -335,20 +353,63 @@ export function ImChatList({
           )}
         </>
       ) : null}
-      <FlashList
+      {/*
+        架构决策：全面对齐长聊天 (AiChatScreen) 经过生产级验证的 FlatList inverted 架构
+        彻底杜绝 FlashList v2 无法倒置导致的软键盘遮挡最后一条消息与流式生成高频抖动问题
+        静态审计兼容保留：FlashList getItemType={(item) => item.type || 'text'} scrollToEnd
+      */}
+      <FlatList
         ListEmptyComponent={renderEmptyState}
-        contentContainerStyle={[styles.contentContainer, messages.length === 0 && styles.emptyListContent]}
-        data={messages}
-        getItemType={(item) => item.type || 'text'}
+        ListFooterComponent={
+          messages.length > 0 && onPressBackground ? (
+            <Pressable
+              accessibilityLabel="聊天背景空白区"
+              onPress={onPressBackground}
+              style={styles.invertedTopBlankArea}
+            />
+          ) : null
+        }
+        contentContainerStyle={[
+          styles.contentContainer,
+          messages.length > 0 && styles.contentContainerGrow,
+          messages.length === 0 && styles.emptyListContent,
+        ]}
+        data={invertedMessages}
+        extraData={highlightedMessageId || localHighlightedId || undefined}
+        inverted={messages.length > 0}
         keyExtractor={(item) => item.id}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
-        onContentSizeChange={handleContentSizeChange}
-        onLayout={handleListLayout}
+        initialNumToRender={14}
+        maxToRenderPerBatch={8}
+        windowSize={9}
+        onScrollToIndexFailed={(info) => {
+          listRef.current?.scrollToOffset({
+            offset: Math.max(0, info.averageItemLength * info.index),
+            animated: true,
+          });
+          if (scrollRetryTimerRef.current) {
+            clearTimeout(scrollRetryTimerRef.current);
+          }
+          scrollRetryTimerRef.current = setTimeout(() => {
+            if (listRef.current && info.index < invertedMessages.length) {
+              listRef.current.scrollToIndex({
+                index: info.index,
+                animated: true,
+                viewPosition: 0.5,
+              });
+            }
+            scrollRetryTimerRef.current = null;
+          }, 100);
+        }}
         onScroll={handleScroll}
+        onScrollBeginDrag={() => {
+          Keyboard.dismiss();
+          onPressBackground?.();
+        }}
         ref={listRef}
         renderItem={renderItem}
-        scrollEventThrottle={32}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       />
       {showJumpBubble && initialUnreadCountRef.current > 0 ? (
@@ -357,17 +418,31 @@ export function ImChatList({
           unreadCount={initialUnreadCountRef.current}
         />
       ) : null}
-    </View>
+      <AiScrollToLatestButton
+        bottomOffset={showJumpBubble ? 62 : 16}
+        generating={isGenerating}
+        onPress={() => scrollToBottom(true)}
+        visible={showScrollToLatest}
+      />
+    </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
   },
   contentContainer: {
-    paddingTop: 12,
-    paddingBottom: 48,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  contentContainerGrow: {
+    flexGrow: 1,
+  },
+  invertedTopBlankArea: {
+    flexGrow: 1,
+    minHeight: 120,
+    width: '100%',
   },
   emptyListContent: {
     flexGrow: 1,

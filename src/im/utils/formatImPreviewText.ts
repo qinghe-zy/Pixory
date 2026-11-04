@@ -8,6 +8,7 @@
 const META_TAG_PREVIEW_REGEX = /\[(STATUS|MOOD|STICKER|HEARTBEAT|PING|NUDGE|STAGE_FOLLOWUP):[^\]]*\]/gi;
 const BR_GLOBAL_REGEX = /\[BR\]/gi;
 const WHITESPACE_COLLAPSE_REGEX = /\s+/g;
+const DOCUMENT_TAG_REGEX = /\[(?:DOCUMENT|DOC):\s*([^\]|\n]+)(?:\|[\s\S]*?\]|\][\s\S]*?\[\/(?:DOCUMENT|DOC)\])/i;
 
 export function formatImPreviewText(
   raw: string | null | undefined,
@@ -22,6 +23,11 @@ export function formatImPreviewText(
     (trimmed.includes('"imageUri"') || trimmed.includes('"type":"image"'))
   ) {
     return '[图片]';
+  }
+
+  const docMatch = trimmed.match(DOCUMENT_TAG_REGEX);
+  if (docMatch) {
+    return `[文件] ${docMatch[1].trim()}`;
   }
 
   const cleaned = trimmed

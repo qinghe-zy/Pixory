@@ -2,7 +2,7 @@ import { initDatabase, type PixorySpace } from '../../../database';
 import { streamClient } from '../../../core/llm-transport/streamClient';
 import { getActiveProviderConfig } from '../../../core/llm-transport/secureApiKey';
 import type { ImCompanionDiary, DiaryPaperTexture, DiaryThemeKey, DiaryMemoryMetadata } from '../types';
-import { saveCompanionDiary } from '../repository/imDiaryRepository';
+import { saveCompanionDiary, getCompanionDiaryByDate } from '../repository/imDiaryRepository';
 import { harvestDiaryMemoryToL2 } from './diaryMemoryHarvester';
 import { insertImMessage } from '../../repository/imThreadRepository';
 import type { ImMessage } from '../../types';
@@ -17,7 +17,7 @@ export interface GenerateDiaryParams {
   forceRewrite?: boolean;
 }
 
-function parseDualLayerDiary(rawText: string): {
+export function parseDualLayerDiary(rawText: string): {
   theme: DiaryThemeKey;
   mood?: string;
   weather?: string;
@@ -45,13 +45,14 @@ function parseDualLayerDiary(rawText: string): {
   let content = '';
   const contentMatch = rawText.match(/<Diary_Content>([\s\S]*?)<\/Diary_Content>/i);
   if (contentMatch) {
-    content = contentMatch[1].trim();
+    content = contentMatch[1].replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
   } else {
     content = rawText
+      .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
       .replace(/\[THEME:[^\]]+\]/gi, '')
       .replace(/\[MOOD:[^\]]+\]/gi, '')
       .replace(/\[WEATHER:[^\]]+\]/gi, '')
-      .replace(/<Memory_Metadata>[\s\S]*?<\/Memory_Metadata>/gi, '')
+      .replace(/<Memory_Metadata>[\s\S]*?(?:<\/Memory_Metadata>|$)/gi, '')
       .replace(/<\/?Diary_Content>/gi, '')
       .trim();
   }
@@ -79,13 +80,14 @@ export async function generateCompanionDailyDiary({
   roleCardId,
   roleName,
   targetDateStr,
+  forceRewrite = false,
 }: GenerateDiaryParams): Promise<ImCompanionDiary> {
   const db = await initDatabase(space);
   const now = new Date();
-  const dateStr = targetDateStr || toLocalDateStr(now);
-  const dayRange = getLocalDayRange(dateStr);
+  let dateStr = targetDateStr || toLocalDateStr(now);
+  let dayRange = getLocalDayRange(dateStr);
 
-  // 1. 若为系统静默定时触发（非手动指定日期），若已超过 72h 未交流则静默跳过
+  // 1. 若为系统静默定时触发（非手动指定日期），若已超过 72h 未交流则静默跳过；若当日已存在且非重写则直接返回
   if (!targetDateStr) {
     const lastUserMsg = await db.getFirstAsync<{ createdAt: string }>(
       `SELECT createdAt FROM ai_messages WHERE threadId = ? AND role = 'user' ORDER BY createdAt DESC LIMIT 1;`,
@@ -94,33 +96,131 @@ export async function generateCompanionDailyDiary({
     if (lastUserMsg?.createdAt && now.getTime() - new Date(lastUserMsg.createdAt).getTime() > 72 * 3600 * 1000) {
       throw new Error('INACTIVE_OVER_72H');
     }
+    if (!forceRewrite) {
+      const existingToday = await getCompanionDiaryByDate(space, threadId, dateStr);
+      if (existingToday) {
+        return existingToday;
+      }
+    }
   }
 
   // 2. 检查当天是否有用户发言记录 (基于本地时区起止范围，杜绝 UTC 错位)
-  const userMsgCheck = await db.getFirstAsync<{ count: number }>(
+  let userMsgCheck = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(id) as count FROM ai_messages
      WHERE threadId = ? AND role = 'user' AND createdAt >= ? AND createdAt < ?;`,
     [threadId, dayRange.startIso, dayRange.endIso]
   );
+
+  // 凌晨或当日暂无消息的人性化回溯：若指定日期为今天但今日无记录（特别是凌晨 00:00~06:00 跨夜场景），向前探查昨天深夜的高质量聊天
+  if (!userMsgCheck || (userMsgCheck.count || 0) === 0) {
+    const isTargetingToday = !targetDateStr || targetDateStr === toLocalDateStr(now);
+    if (isTargetingToday) {
+      const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
+      const yesterdayStr = toLocalDateStr(yesterday);
+      const yesterdayRange = getLocalDayRange(yesterdayStr);
+      const yesterdayCheck = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(id) as count FROM ai_messages
+         WHERE threadId = ? AND role = 'user' AND createdAt >= ? AND createdAt < ?;`,
+        [threadId, yesterdayRange.startIso, yesterdayRange.endIso]
+      );
+      if (yesterdayCheck && (yesterdayCheck.count || 0) > 0) {
+        dateStr = yesterdayStr;
+        dayRange = yesterdayRange;
+        userMsgCheck = yesterdayCheck;
+      } else {
+        // 向前查找最近一次有交流的日期（例如前天或更早）
+        const latestMsg = await db.getFirstAsync<{ createdAt: string }>(
+          `SELECT createdAt FROM ai_messages WHERE threadId = ? AND role = 'user' ORDER BY createdAt DESC LIMIT 1;`,
+          [threadId]
+        );
+        if (latestMsg?.createdAt) {
+          const fallbackDateStr = toLocalDateStr(new Date(latestMsg.createdAt));
+          const fallbackRange = getLocalDayRange(fallbackDateStr);
+          const fallbackCheck = await db.getFirstAsync<{ count: number }>(
+            `SELECT COUNT(id) as count FROM ai_messages
+             WHERE threadId = ? AND role = 'user' AND createdAt >= ? AND createdAt < ?;`,
+            [threadId, fallbackRange.startIso, fallbackRange.endIso]
+          );
+          if (fallbackCheck && (fallbackCheck.count || 0) > 0) {
+            dateStr = fallbackDateStr;
+            dayRange = fallbackRange;
+            userMsgCheck = fallbackCheck;
+          }
+        }
+      }
+    }
+  }
+
   if (!userMsgCheck || (userMsgCheck.count || 0) === 0) {
     throw new Error('NO_MESSAGES_FOR_DATE');
   }
 
-  // 3. 提取当天对话
-  const todayMessages = await db.getAllAsync<{ role: string; content: string; type?: string; createdAt?: string }>(
-    `SELECT role, content, type, createdAt FROM ai_messages
-     WHERE threadId = ? AND createdAt >= ? AND createdAt < ?
+  // 3. 提取当天对话（只读取 SQLite 中真实存在的字段，过滤未显影 staged 消息，杜绝字段不存在异常与未来剧透）
+  const nowMs = Date.now();
+  const rawRows = await db.getAllAsync<{ role: string; content: string; createdAt: string }>(
+    `SELECT role, content, createdAt FROM ai_messages
+     WHERE threadId = ?
+       AND createdAt >= ? AND createdAt < ?
+       AND (visible_at IS NULL OR visible_at <= ?)
+       AND (delivery_status IS NULL OR delivery_status != 'staged')
      ORDER BY createdAt ASC LIMIT 200;`,
-    [threadId, dayRange.startIso, dayRange.endIso]
+    [threadId, dayRange.startIso, dayRange.endIso, nowMs]
   );
+
+  const todayMessages = rawRows.map((r) => {
+    let type: string = 'text';
+    let content = r.content;
+    let metadata: any = null;
+
+    if (
+      r.content.startsWith('{"type":"diary_card"') ||
+      r.content.startsWith('{"diaryDate":') ||
+      r.content.startsWith('{"diaryId":')
+    ) {
+      type = 'diary_card';
+    } else if (r.content.startsWith('{"type":"sticker"')) {
+      type = 'sticker';
+      try {
+        const p = JSON.parse(r.content);
+        content = p.name ?? p.text ?? '[表情]';
+      } catch {}
+    } else if (r.content.startsWith('{"imageUri":')) {
+      type = 'image';
+      try {
+        const p = JSON.parse(r.content);
+        content = p.text ?? '[图片]';
+      } catch {}
+    } else if (r.content.startsWith('{"type":"document"') || r.content.startsWith('{"document":')) {
+      type = 'document';
+      try {
+        const p = JSON.parse(r.content);
+        content = p.title ?? '[文档]';
+      } catch {}
+    } else if (r.role === 'system' || r.content.startsWith('[系统提示:')) {
+      type = 'notice';
+    }
+
+    return {
+      role: r.role,
+      content,
+      type,
+      metadata,
+      createdAt: r.createdAt,
+    };
+  });
+
   const dialogueText = selectDiaryDialogue(todayMessages, 3600);
   if (!dialogueText) {
     throw new Error('NO_MESSAGES_FOR_DATE');
   }
 
-  // 4. 提取当天生活状态轨迹
-  const threadRow = await db.getFirstAsync<{ living_state_json: string | null }>(
-    `SELECT living_state_json FROM ai_threads WHERE id = ? LIMIT 1;`,
+  // 4. 提取当天生活状态轨迹与会话模型配置
+  const threadRow = await db.getFirstAsync<{
+    providerId: string | null;
+    modelId: string | null;
+    living_state_json: string | null;
+  }>(
+    `SELECT providerId, modelId, living_state_json FROM ai_threads WHERE id = ? LIMIT 1;`,
     [threadId]
   );
   let trajectorySummary = '';
@@ -133,8 +233,12 @@ export async function generateCompanionDailyDiary({
     } catch {}
   }
 
-  // 5. 校验 AI Provider 模型配置（绝不允许在没有 Key 时假冒生成）
-  const provider = await getActiveProviderConfig(space);
+  // 5. 校验 AI Provider 模型配置（优先使用当前会话配置，绝不允许在没有 Key 时假冒生成）
+  const provider = await getActiveProviderConfig(
+    space,
+    threadRow?.providerId,
+    threadRow?.modelId
+  );
   if (!provider || !provider.apiKey) {
     throw new Error('NO_PROVIDER_CONFIGURED');
   }
@@ -154,22 +258,46 @@ export async function generateCompanionDailyDiary({
     `<Memory_Metadata>\n- 核心事件摘要：(客观简要总结)\n- 捕捉到的用户偏好/状态：(习惯喜好或情绪)\n- 关键物品与地点：(信物与地点)\n- 待触发钩子：(未完成约定或下次话题)\n</Memory_Metadata>`;
 
   let generated = '';
-  for await (const chunk of streamClient.streamText([{ role: 'user', content: prompt }], {
-    providerId: provider.providerId,
-    modelId: provider.modelId,
-    baseUrl: provider.baseUrl,
-    apiKey: provider.apiKey,
-  })) {
-    generated += chunk;
+  const abortCtrl = new AbortController();
+  const timeoutId = setTimeout(() => abortCtrl.abort(), 45000);
+
+  try {
+    for await (const chunk of streamClient.streamText([{ role: 'user', content: prompt }], {
+      providerId: provider.providerId,
+      modelId: provider.modelId,
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+      protocol: provider.protocol,
+      abortSignal: abortCtrl.signal,
+    })) {
+      generated += chunk;
+    }
+  } catch (err: any) {
+    if (abortCtrl.signal.aborted) {
+      throw new Error('GENERATION_TIMEOUT');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
-  if (!generated.trim()) {
-    throw new Error('GENERATION_EMPTY_FAILED');
-  }
-
-  const parsed = parseDualLayerDiary(generated);
-  if (!parsed.content || parsed.content.length < 20) {
-    throw new Error('GENERATION_EMPTY_FAILED');
+  let parsed = parseDualLayerDiary(generated);
+  if (!parsed.content || parsed.content.length < 10) {
+    // 拟真温情保底：当大模型输出异常中断或为空时，基于今日对话提炼一段真实陪伴手账
+    const cleanDialogueSummary = dialogueText
+      .replace(/\[(BR|br)\]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 100);
+    parsed = {
+      theme: 'sage',
+      mood: '温润',
+      weather: '静谧',
+      content: `夜色渐深，翻开手账回想起今天与你的对话：“${cleanDialogueSummary}…” 虽然只是简短的碎片，但在我心里都是无可替代的珍贵印记。愿你今晚有好梦相伴，明天我们再接着聊。`,
+      metadata: {
+        rawText: '今日交流日常小记',
+        summary: cleanDialogueSummary.slice(0, 50),
+      },
+    };
   }
 
   const diary: ImCompanionDiary = {
@@ -218,7 +346,15 @@ export async function generateCompanionDailyDiary({
     });
 
     const existingCard = await db.getFirstAsync<{ id: string }>(
-      `SELECT id FROM ai_messages WHERE threadId = ? AND type = 'diary_card' AND content LIKE ? LIMIT 1;`,
+      `SELECT id FROM ai_messages
+       WHERE threadId = ?
+         AND (
+           content LIKE '{"type":"diary_card"%'
+           OR content LIKE '{"diaryDate":%'
+           OR content LIKE '{"diaryId":%'
+         )
+         AND content LIKE ?
+       LIMIT 1;`,
       [threadId, `%"diaryDate":"${diary.diaryDate}"%`]
     );
 

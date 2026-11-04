@@ -36,7 +36,7 @@ export interface ImCompanionPersonaModalProps {
 
 const RELATIONSHIP_OPTIONS: Array<{ key: ImRelationshipPreset; label: string; desc: string }> = [
   { key: 'close_friend', label: '知心挚友', desc: '无话不谈、温暖陪伴' },
-  { key: 'romantic', label: '心动伴侣', desc: '双向奔赴、亲昵依恋' },
+  { key: 'romantic', label: '心动角色', desc: '双向奔赴、亲昵依恋' },
   { key: 'friend', label: '日常朋友', desc: '轻松闲聊、自然随和' },
   { key: 'mentor', label: '亦师亦友', desc: '引路解惑、沉稳包容' },
   { key: 'childhood_sweetheart', label: '青梅竹马', desc: '默契熟稔、打闹斗嘴' },
@@ -205,12 +205,12 @@ export function ImCompanionPersonaModal({
                 <Text style={styles.sectionTitle}>彼此专属称谓</Text>
               </View>
               <Text style={styles.sectionTip}>
-                写入第一层前缀契约，伴侣将永久铭记并以此称呼你。
+                写入第一层前缀契约，对方将永久铭记并以此称呼你。
               </Text>
               <View style={styles.inputRow}>
-                <Text style={styles.inputLabel}>伴侣称呼我为：</Text>
+                <Text style={styles.inputLabel}>TA 称呼我为：</Text>
                 <TextInput
-                  accessibilityLabel="伴侣称呼我为"
+                  accessibilityLabel="TA称呼我为"
                   maxLength={12}
                   onChangeText={setUserNickname}
                   placeholder="例如：小林 / 阿哲 / 你的名字"
@@ -220,9 +220,9 @@ export function ImCompanionPersonaModal({
                 />
               </View>
               <View style={[styles.inputRow, { marginTop: 8 }]}>
-                <Text style={styles.inputLabel}>我称呼伴侣为：</Text>
+                <Text style={styles.inputLabel}>我称呼 TA 为：</Text>
                 <TextInput
-                  accessibilityLabel="我称呼伴侣为"
+                  accessibilityLabel="我称呼TA为"
                   maxLength={12}
                   onChangeText={setCompanionCallName}
                   placeholder={`默认：${companionName}`}

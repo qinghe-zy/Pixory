@@ -75,7 +75,7 @@ export function ImChatHeader({
 
         {/* 右侧更多选项按钮 */}
         <Pressable
-          accessibilityLabel="聊天详情与伴侣资料"
+          accessibilityLabel="聊天详情与角色资料"
           accessibilityRole="button"
           onPress={onOpenDetails}
           style={({ pressed }) => [styles.moreBtn, pressed && styles.pressed]}

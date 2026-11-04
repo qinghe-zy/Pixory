@@ -39,19 +39,19 @@ test('IM entry scheme 1 and role card linkage policy verification', async (t) =>
     assert.match(threadListContent, /avatarImage/);
     assert.match(threadListContent, /livingIndicator/);
     assert.match(threadListContent, /formatWeChatTime/);
-    assert.match(threadListContent, /挑选伴侣/);
+    assert.match(threadListContent, /挑选角色/);
     assert.match(threadListContent, /color=(?:"#A1A1AA"|\{colors\.text\.(?:secondary|tertiary)\})/);
   });
 
   await t.test('AiRoleCardDetailScreen upgrades primary button to send companion message', () => {
     assert.match(roleDetailContent, /onStartImChat/);
-    assert.match(roleDetailContent, /发消息 \(伴侣IM\)/);
+    assert.match(roleDetailContent, /发消息 \(即时聊天\)/);
     assert.match(roleDetailContent, /长文本剧情/);
   });
 
   await t.test('AiRoleLibraryScreen supports IM chat choice dialog and App.tsx passes avatarUri', () => {
     assert.match(roleLibraryContent, /onStartImChat/);
-    assert.match(roleLibraryContent, /伴侣即时短聊 \(IM\)/);
+    assert.match(roleLibraryContent, /即时短聊 \(IM\)/);
     assert.match(appContent, /name:\s*'im-chat'/);
     assert.match(appContent, /ImChatScreen/);
     assert.match(appContent, /roleAvatarUri/);

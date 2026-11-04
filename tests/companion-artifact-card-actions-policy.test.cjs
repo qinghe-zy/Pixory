@@ -11,8 +11,8 @@ test('companion cards can reuse the shared version stepper controls', () => {
   const stepper = fs.existsSync(stepperPath) ? fs.readFileSync(stepperPath, 'utf8') : '';
 
   assert.match(stepper, /currentIndex[\s\S]*total/);
-  assert.match(stepper, /chevron-back/);
-  assert.match(stepper, /chevron-forward/);
+  assert.match(stepper, /chevron-back|ChevronLeftIcon/);
+  assert.match(stepper, /chevron-forward|ChevronRightIcon/);
   assert.match(read('src/components/ai/AiMessageBubble.tsx'), /AiVersionStepper/);
 });
 

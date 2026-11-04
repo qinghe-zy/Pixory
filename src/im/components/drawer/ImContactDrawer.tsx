@@ -73,8 +73,8 @@ export function ImContactDrawer({
     const unreadCount = !isActive ? (item.unreadCount ?? 0) : 0;
     const a11yLabel =
       unreadCount > 0
-        ? `切换至伴侣 ${item.title}，${unreadCount} 条未读消息`
-        : `切换至伴侣 ${item.title}`;
+        ? `切换至 ${item.title}，${unreadCount} 条未读消息`
+        : `切换至 ${item.title}`;
 
     return (
       <Pressable
@@ -130,7 +130,7 @@ export function ImContactDrawer({
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>伴侣通讯录</Text>
+        <Text style={styles.headerTitle}>通讯录</Text>
         <View style={styles.actionGroup}>
           <Pressable accessibilityRole="button" hitSlop={8} onPress={onNewRole} style={styles.textBtn}>
             <Text style={styles.textBtnLabel}>新建</Text>
@@ -162,10 +162,10 @@ export function ImContactDrawer({
           ListEmptyComponent={
             <View style={styles.emptyBox}>
               <Ionicons color="#9CA3AF" name="people-outline" size={38} style={styles.emptyIcon} />
-              <Text style={styles.emptyTitle}>还没添加伴侣角色</Text>
-              <Text style={styles.emptySub}>新建或导入角色，开启专属陪伴聊天</Text>
+              <Text style={styles.emptyTitle}>还没添加角色</Text>
+              <Text style={styles.emptySub}>新建或导入角色，开启专属即时对话</Text>
               <Pressable accessibilityRole="button" onPress={onNewRole} style={styles.emptyActionBtn}>
-                <Text style={styles.emptyActionText}>新建伴侣角色</Text>
+                <Text style={styles.emptyActionText}>新建角色</Text>
               </Pressable>
             </View>
           }

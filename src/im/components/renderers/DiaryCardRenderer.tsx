@@ -15,7 +15,7 @@ interface DiaryCardPayload {
  * 伴侣日记略缩态小信封卡片 (Diary Envelope Thumbnail Bubble)
  * 1:1 复刻长聊天略缩信封，点击直接唤醒伴侣手账本
  */
-export function DiaryCardRenderer({
+const MemoizedDiaryCardRenderer = React.memo(function DiaryCardRendererImpl({
   message,
   onOpenDiary,
   onPressMessage,
@@ -49,7 +49,7 @@ export function DiaryCardRenderer({
   return (
     <View style={styles.container}>
       <Pressable
-        accessibilityLabel="打开伴侣日记"
+        accessibilityLabel="打开日记"
         accessibilityRole="button"
         delayLongPress={300}
         onLongPress={handleLongPress}
@@ -65,7 +65,7 @@ export function DiaryCardRenderer({
             <View style={styles.textCol}>
               <Text style={styles.metaText}>{label}</Text>
               <Text numberOfLines={1} style={styles.titleText}>
-                {data.title || '伴侣日记已为你生成'}
+                {data.title || '今日日记已为你生成'}
               </Text>
             </View>
             <View style={styles.openBadge}>
@@ -76,6 +76,10 @@ export function DiaryCardRenderer({
       </Pressable>
     </View>
   );
+});
+
+export function DiaryCardRenderer(props: BubbleRendererProps) {
+  return <MemoizedDiaryCardRenderer {...props} />;
 }
 
 const styles = StyleSheet.create({

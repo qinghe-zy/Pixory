@@ -49,6 +49,91 @@ function mapThreadRow(row: RawThreadRow): ImThread {
 }
 
 /**
+ * 序列化 IM 文档消息载荷接口
+ */
+export interface SerializedImDocumentPayload {
+  type: 'document';
+  title: string;
+  uri: string;
+  casUri: string;
+  casHash?: string;
+  size?: number;
+  mimeType?: string;
+  format?: string;
+  hasRevisions?: boolean;
+  baseMsgId?: string;
+  derivedFromMsgId?: string;
+  diffSummary?: string;
+  tocSkeleton?: Array<{ blockId: string; previewText: string }>;
+  text: string;
+  content?: string;
+}
+
+export function serializeImDocumentMessage(message: ImMessage): {
+  rawContent: string;
+  cleanPreview: string;
+} {
+  const docMeta = message.metadata?.document ?? {};
+  const title = docMeta.title || message.content || '未命名文档.md';
+  const effectiveUri = docMeta.casUri || docMeta.uri || '';
+
+  const payload: SerializedImDocumentPayload = {
+    type: 'document',
+    title,
+    uri: effectiveUri,
+    casUri: effectiveUri,
+    casHash: docMeta.casHash,
+    size: typeof docMeta.sizeBytes === 'number' ? docMeta.sizeBytes : (typeof docMeta.size === 'number' ? docMeta.size : 0),
+    mimeType: docMeta.mimeType,
+    format: docMeta.format || title.split('.').pop()?.toLowerCase(),
+    hasRevisions: Boolean(docMeta.hasRevisions),
+    baseMsgId: docMeta.baseMsgId,
+    derivedFromMsgId: docMeta.derivedFromMsgId,
+    diffSummary: docMeta.diffSummary,
+    tocSkeleton: docMeta.tocSkeleton,
+    text: title,
+    content: typeof docMeta.content === 'string' ? docMeta.content : undefined,
+  };
+
+  return {
+    rawContent: JSON.stringify(payload),
+    cleanPreview: `[文档] ${title}`,
+  };
+}
+
+export function tryParseDocumentRowContent(rawContent: string): SerializedImDocumentPayload | null {
+  if (!rawContent || !rawContent.startsWith('{') || !rawContent.includes('"document"')) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(rawContent) as Partial<SerializedImDocumentPayload>;
+    if (parsed && parsed.type === 'document' && typeof parsed.title === 'string') {
+      const effectiveUri = parsed.casUri || parsed.uri || '';
+      return {
+        type: 'document',
+        title: parsed.title,
+        uri: effectiveUri,
+        casUri: effectiveUri,
+        casHash: parsed.casHash,
+        size: typeof parsed.size === 'number' ? parsed.size : 0,
+        mimeType: parsed.mimeType,
+        format: parsed.format || parsed.title.split('.').pop()?.toLowerCase(),
+        hasRevisions: Boolean(parsed.hasRevisions),
+        baseMsgId: parsed.baseMsgId,
+        derivedFromMsgId: parsed.derivedFromMsgId,
+        diffSummary: parsed.diffSummary,
+        tocSkeleton: Array.isArray(parsed.tocSkeleton) ? parsed.tocSkeleton : undefined,
+        text: parsed.text || parsed.title,
+        content: typeof parsed.content === 'string' ? parsed.content : undefined,
+      };
+    }
+  } catch {
+    // 非合法文档 JSON，回退至普通文本解析
+  }
+  return null;
+}
+
+/**
  * 从日记小卡片消息内容或创建时间中提取日期 Key (YYYY-MM-DD)
  */
 export function extractDiaryCardDate(content: string, createdAt?: string): string | null {
@@ -77,11 +162,39 @@ function mapMessageRow(row: RawMessageRow): ImMessage {
   let content = row.content;
   let imageUri: string | null = null;
   let boundIpName: string | null = null;
+  let metadata: Record<string, any> | null = null;
 
-  if (row.role === 'system') {
+  const docData = tryParseDocumentRowContent(row.content);
+  if (docData) {
+    type = 'document';
+    content = docData.title;
+    metadata = { document: docData };
+  } else if (row.role === 'system') {
     type = 'system_notice';
+  } else if (row.content && row.content.startsWith('{"type":"thought"')) {
+    try {
+      const parsed = JSON.parse(row.content);
+      type = 'thought';
+      content = parsed.content ?? '';
+      metadata = {
+        isThinking: false,
+        durationSeconds: parsed.durationSeconds ?? 1,
+        isCollapsed: parsed.isCollapsed ?? true,
+      };
+    } catch {
+      // 容错保持普通文本
+    }
   } else if (row.content && (row.content.startsWith('{"type":"diary_card"') || row.content.startsWith('{"diaryDate":') || row.content.startsWith('{"diaryId":'))) {
     type = 'diary_card';
+  } else if (row.content && row.content.startsWith('{"type":"sticker"')) {
+    try {
+      const parsed = JSON.parse(row.content);
+      type = 'sticker';
+      imageUri = parsed.imageUri ?? parsed.uri ?? null;
+      content = parsed.name ?? parsed.text ?? '[表情]';
+    } catch {
+      // 容错保持普通文本
+    }
   } else if (row.content && row.content.startsWith('{"imageUri":')) {
     try {
       const parsed = JSON.parse(row.content);
@@ -103,6 +216,7 @@ function mapMessageRow(row: RawMessageRow): ImMessage {
     type,
     imageUri,
     boundIpName,
+    metadata,
     status: row.status === 'failed' ? 'failed' : 'sent',
     deliveryStatus: (row.delivery_status as any) || 'delivered',
     visibleAt: row.visible_at,
@@ -135,7 +249,7 @@ export async function getOrCreateImThread(
   );
   const roleName = roleCard?.name?.trim();
   const avatarUri = roleCard && roleCard.avatarEnabled !== 0 ? roleCard.avatarUri : null;
-  const initialTitle = options?.defaultTitle?.trim() || roleName || '伴侣会话';
+  const initialTitle = options?.defaultTitle?.trim() || roleName || '角色会话';
 
   const existing = await db.getFirstAsync<RawThreadRow>(
     `SELECT id, space, roleCardId, title, chat_mode, lastMessagePreview, isPinned, createdAt, updatedAt
@@ -147,7 +261,7 @@ export async function getOrCreateImThread(
 
   if (existing) {
     const thread = mapThreadRow(existing);
-    if (roleName && (thread.title === '伴侣会话' || thread.title !== roleName)) {
+    if (roleName && (thread.title === '角色会话' || thread.title === '伴侣会话' || thread.title !== roleName)) {
       thread.title = roleName;
       void db.runAsync(`UPDATE ai_threads SET title = ? WHERE id = ?;`, [roleName, thread.id]);
     }
@@ -341,13 +455,13 @@ export async function listImThreads(
   );
 
   const items: ImThreadListItem[] = rows.map((row) => {
-    const displayTitle = row.roleName?.trim() || (row.threadTitle !== '伴侣会话' ? row.threadTitle : '') || '伴侣';
+    const displayTitle = row.roleName?.trim() || (row.threadTitle !== '伴侣会话' && row.threadTitle !== '角色会话' ? row.threadTitle : '') || '角色';
     const effectiveAvatar = row.avatarEnabled !== 0 ? row.avatarUri : null;
     const hasThread = Boolean(row.threadId);
     const hasRealChat = Boolean(row.lastChatAt && (hasThread || row.lastMessagePreview));
     const lastPreview = hasThread && row.lastMessagePreview
       ? row.lastMessagePreview
-      : (row.firstMessage?.trim() || '点击开启伴侣对话');
+      : (row.firstMessage?.trim() || '点击开启对话');
 
     return {
       id: row.threadId || `contact-${row.roleCardId}`,
@@ -593,6 +707,13 @@ export async function insertImMessage(
 
   if (message.type === 'diary_card') {
     cleanPreview = '[日记已生成]';
+  } else if (message.type === 'sticker') {
+    rawContent = JSON.stringify({
+      type: 'sticker',
+      imageUri: message.imageUri,
+      name: message.content || '[表情]',
+    });
+    cleanPreview = message.content ? `[表情] ${message.content}` : '[表情]';
   } else if (message.type === 'image') {
     rawContent = JSON.stringify({
       imageUri: message.imageUri,
@@ -600,6 +721,18 @@ export async function insertImMessage(
       text: message.content || '[图片]',
     });
     cleanPreview = message.boundIpName ? `[图片·${message.boundIpName}]` : '[图片]';
+  } else if (message.type === 'thought') {
+    rawContent = JSON.stringify({
+      type: 'thought',
+      content: message.content,
+      durationSeconds: message.metadata?.durationSeconds || 1,
+      isCollapsed: message.metadata?.isCollapsed ?? true,
+    });
+    cleanPreview = '[思考过程]';
+  } else if (message.type === 'document') {
+    const serialized = serializeImDocumentMessage(message);
+    rawContent = serialized.rawContent;
+    cleanPreview = serialized.cleanPreview;
   }
 
   const deliveryStatus = message.deliveryStatus || 'delivered';
@@ -648,8 +781,8 @@ export async function insertImMessage(
       ]
     );
 
-    // 只有已可见的消息才立即刷新到会话列表预览
-    if (message.visibleAt == null || message.visibleAt <= Date.now()) {
+    // 只有已可见的消息才立即刷新到会话列表预览（思考气泡不覆盖会话列表的最后消息预览）
+    if (message.type !== 'thought' && (message.visibleAt == null || message.visibleAt <= Date.now())) {
       await db.runAsync(
         `UPDATE ai_threads SET lastMessagePreview = ?, updatedAt = ? WHERE id = ?;`,
         [cleanPreview, message.createdAt, message.threadId]
@@ -1100,7 +1233,7 @@ export async function markImThreadRead(
   const db = await initDatabase(space);
   try {
     await db.runAsync(
-      `UPDATE ai_threads SET im_unread_count = 0 WHERE id = ?;`,
+      `UPDATE ai_threads SET im_unread_count = 0 WHERE id = ? AND (im_unread_count IS NOT NULL AND im_unread_count > 0);`,
       [threadId]
     );
     if (space === 'normal') {
@@ -1205,4 +1338,16 @@ export async function getInterruptedUserThreads(
   } catch {
     return [];
   }
+}
+
+/**
+ * 更新单条消息的正文内容（用于表情冷却时的 Emoji 补偿等场景）
+ */
+export async function updateImMessageContent(
+  space: PixorySpace,
+  messageId: string,
+  newContent: string
+): Promise<void> {
+  const db = await initDatabase(space);
+  await db.runAsync(`UPDATE ai_messages SET content = ? WHERE id = ?;`, [newContent, messageId]);
 }

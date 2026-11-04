@@ -15,7 +15,7 @@ import type { BubbleRendererProps } from '../../registry/bubbleRegistry';
 export function SystemNoticeRenderer({ message, onRetryMessage }: BubbleRendererProps) {
   const theme = useImTheme();
   const isErrorNotice = Boolean(
-    message.content?.includes('未收到伴侣回复') ||
+    message.content?.includes('未收到回复') ||
     message.content?.includes('连接暂时不稳定') ||
     message.content?.includes('生成中断') ||
     message.content?.includes('网络异常') ||
@@ -46,7 +46,7 @@ export function SystemNoticeRenderer({ message, onRetryMessage }: BubbleRenderer
         </Text>
         {isErrorNotice && onRetryMessage && (
           <Pressable
-            accessibilityLabel="重试接收伴侣回复"
+            accessibilityLabel="重试接收回复"
             accessibilityRole="button"
             hitSlop={8}
             onPress={() => onRetryMessage(message)}

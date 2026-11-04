@@ -171,18 +171,18 @@ export class GlobalHeartbeatEngine {
           }).catch(() => 0);
           if (revealedCount > 0) {
             this.notifyListeners(threadId, space);
-            // 普通空间且未在前台会话窗口内时，触发 Android 原生通知栏提醒
+            // 普通空间且未在前台会话窗口内时，触发 Android 原生通知栏提醒（遵守免打扰与隐私脱敏设置）
             if (space === 'normal' && !this.isThreadActivelyOpen(space, threadId)) {
               try {
                 const { initDatabase } = await import('../../database');
-                const { postCompanionNotification } = await import('../../native/pixoryMediaModule');
+                const { postCompanionNotificationSafely } = await import('../services/imNotificationManager');
                 const db = await initDatabase(space);
                 const tRow = await db.getFirstAsync<{ title?: string; lastMessagePreview?: string }>(
                   'SELECT title, lastMessagePreview FROM ai_threads WHERE id = ?',
                   [threadId]
                 );
                 if (tRow?.lastMessagePreview) {
-                  void postCompanionNotification(threadId, tRow.title || 'AI 伴侣', tRow.lastMessagePreview);
+                  void postCompanionNotificationSafely(space, threadId, tRow.title || '新消息', tRow.lastMessagePreview);
                 }
               } catch {}
             }

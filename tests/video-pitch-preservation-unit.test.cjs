@@ -64,7 +64,7 @@ test('invalid playback rates are rejected before mutating the player', () => {
 test('video player routes every playback-rate write through the pitch helper', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
-  assert.match(playerSource, /import \{ applyPitchPreservingRate \} from '\.\.\/media\/videoPlaybackRate'/);
+  assert.match(playerSource, /import \{ applyPitchPreservingRate \} from ['"]\.\.\/media\/videoPlaybackRate['"]/);
   assert.doesNotMatch(playerSource, /\b(?:instance|player)\.playbackRate\s*=/);
   assert.ok((playerSource.match(/applyPitchPreservingRate\(/g) ?? []).length >= 5);
 });

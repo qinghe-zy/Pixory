@@ -27,7 +27,7 @@ test('IM Phase 3 Full Loop and Drawers Verification', async (t) => {
   });
 
   await t.test('ImContactDrawer renders contacts list with avatar, last chat preview, and new/import buttons', () => {
-    assert.match(contactDrawerContent, /伴侣通讯录/);
+    assert.match(contactDrawerContent, /通讯录/);
     assert.match(contactDrawerContent, /onNewRole/);
     assert.match(contactDrawerContent, /onImportRole/);
     assert.match(contactDrawerContent, /onSelectCompanion/);
@@ -59,7 +59,7 @@ test('IM Phase 3 Full Loop and Drawers Verification', async (t) => {
   });
 
   await t.test('ImCompanionSettingsScreen provides global pacing, heartbeat, and send debounce controls', () => {
-    assert.match(companionSettingsContent, /伴聊设置/);
+    assert.match(companionSettingsContent, /(?:伴聊设置|聊天设置)/);
     assert.match(companionSettingsContent, /主动关怀/);
     assert.match(companionSettingsContent, /间隔延时/);
     assert.match(companionSettingsContent, /发送请求等待时间/);

@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
+  Animated,
+  Easing,
   Keyboard,
   Platform,
   Pressable,
@@ -11,9 +13,18 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useImTheme } from '../theme/ImThemeProvider';
+import { EmojiPickerPanel } from '../../components/emoji/EmojiPickerPanel';
+import { WeChatKeyboardIcon } from './WeChatKeyboardIcon';
+
+export interface ImInputBarRef {
+  collapse: () => void;
+  closeEmoticons: () => void;
+  isEmoticonOpen: () => boolean;
+}
 
 export interface ImInputBarProps {
   onSend: (text: string) => void;
+  onSendSticker?: (sticker: any) => void;
   onTextChange?: (text: string) => void;
   onCameraPress?: () => void;
   onSelectImage?: () => void;
@@ -21,9 +32,8 @@ export interface ImInputBarProps {
   onSelectIp?: () => void;
   disabled?: boolean;
   fillDraftText?: string | null;
+  space?: 'normal' | 'personal';
 }
-
-const EMOTICON_CHIPS = ['(≧▽≦)', '摸摸头', '抱抱', '(｡•́︿•̀｡)', '晚安~', '在干嘛呀', '好想你', '嘿嘿~'];
 
 /**
  * 微信级原生动态输入条与扩展面板 (Authentic WeChat Composer)
@@ -36,21 +46,163 @@ const EMOTICON_CHIPS = ['(≧▽≦)', '摸摸头', '抱抱', '(｡•́︿•̀
  *    - 3. 文件 (File)
  *    - 4. 关联IP (Bind IP)
  */
-export function ImInputBar({
-  onSend,
-  onTextChange,
-  onCameraPress,
-  onSelectImage,
-  onSelectFile,
-  onSelectIp,
-  disabled = false,
-  fillDraftText,
-}: ImInputBarProps) {
+export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(function ImInputBar(
+  {
+    onSend,
+    onSendSticker,
+    onTextChange,
+    onCameraPress,
+    onSelectImage,
+    onSelectFile,
+    onSelectIp,
+    disabled = false,
+    fillDraftText,
+    space = 'normal',
+  }: ImInputBarProps,
+  ref
+) {
+  const EMOJI_PANEL_HEIGHT = 365; // 高度适度提升，展现更多表情行
   const theme = useImTheme();
   const [text, setText] = useState('');
   const [panelVisible, setPanelVisible] = useState(false);
   const [emoticonBarVisible, setEmoticonBarVisible] = useState(false);
+  const [isEmojiMounted, setIsEmojiMounted] = useState(false);
+  const panelHeightAnim = useRef(new Animated.Value(0)).current;
+  const [selection, setSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const inputRef = useRef<TextInput>(null);
+  const isSwitchingToKeyboardRef = useRef(false);
+  const keyboardHeightRef = useRef(300);
+  const switchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * 极平滑慢速收起表情面板 (520ms 优雅缓动下落，彻底杜绝瞬间骤降与触底剧烈弹跳)
+   */
+  const animateCloseEmoticons = React.useCallback(
+    (onFinished?: () => void) => {
+      setEmoticonBarVisible(false);
+      Animated.timing(panelHeightAnim, {
+        toValue: 0,
+        duration: 520, // 极慢平滑下落
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished) {
+          setIsEmojiMounted(false);
+          onFinished?.();
+        }
+      });
+    },
+    [panelHeightAnim]
+  );
+
+  /**
+   * 平滑升起表情面板
+   */
+  const animateOpenEmoticons = React.useCallback(() => {
+    setIsEmojiMounted(true);
+    setEmoticonBarVisible(true);
+    setPanelVisible(false);
+    Animated.timing(panelHeightAnim, {
+      toValue: EMOJI_PANEL_HEIGHT,
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [panelHeightAnim]);
+
+  /**
+   * 平稳接力切换至软键盘 (表情高度极平缓降落，与键盘升起优雅重合，落到键盘位置即停)
+   */
+  const transitionToKeyboard = React.useCallback(() => {
+    isSwitchingToKeyboardRef.current = true;
+    setEmoticonBarVisible(false);
+    inputRef.current?.focus();
+
+    Animated.timing(panelHeightAnim, {
+      toValue: 0,
+      duration: 480, // 极平缓平稳下落，与软键盘升起完全接力
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        setIsEmojiMounted(false);
+      }
+    });
+
+    if (switchTimeoutRef.current) {
+      clearTimeout(switchTimeoutRef.current);
+    }
+    // 550ms 看门狗保护防死锁
+    switchTimeoutRef.current = setTimeout(() => {
+      if (isSwitchingToKeyboardRef.current) {
+        panelHeightAnim.setValue(0);
+        setIsEmojiMounted(false);
+        isSwitchingToKeyboardRef.current = false;
+      }
+    }, 550);
+  }, [panelHeightAnim]);
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      collapse: () => {
+        Keyboard.dismiss();
+        if (switchTimeoutRef.current) {
+          clearTimeout(switchTimeoutRef.current);
+          switchTimeoutRef.current = null;
+        }
+        isSwitchingToKeyboardRef.current = false;
+        if (emoticonBarVisible || isEmojiMounted) {
+          animateCloseEmoticons();
+        }
+        if (panelVisible) {
+          setPanelVisible(false);
+        }
+      },
+      closeEmoticons: () => {
+        if (switchTimeoutRef.current) {
+          clearTimeout(switchTimeoutRef.current);
+          switchTimeoutRef.current = null;
+        }
+        isSwitchingToKeyboardRef.current = false;
+        if (emoticonBarVisible || isEmojiMounted) {
+          animateCloseEmoticons();
+        }
+      },
+      isEmoticonOpen: () => emoticonBarVisible || isEmojiMounted,
+    }),
+    [animateCloseEmoticons, emoticonBarVisible, isEmojiMounted, panelVisible]
+  );
+
+  React.useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        if (e.endCoordinates?.height > 100) {
+          keyboardHeightRef.current = e.endCoordinates.height;
+        }
+        if (switchTimeoutRef.current) {
+          clearTimeout(switchTimeoutRef.current);
+          switchTimeoutRef.current = null;
+        }
+        // 软键盘已完全升起就位后，平稳完成接力，重置标记与挂载状态
+        if (isSwitchingToKeyboardRef.current) {
+          panelHeightAnim.setValue(0);
+          setIsEmojiMounted(false);
+          setEmoticonBarVisible(false);
+          isSwitchingToKeyboardRef.current = false;
+        }
+      }
+    );
+
+    return () => {
+      showSub.remove();
+      if (switchTimeoutRef.current) {
+        clearTimeout(switchTimeoutRef.current);
+        switchTimeoutRef.current = null;
+      }
+    };
+  }, [panelHeightAnim]);
 
   React.useEffect(() => {
     if (fillDraftText != null) {
@@ -69,32 +221,69 @@ export function ImInputBar({
     onTextChange?.('');
   };
 
-  const handleTogglePanel = () => {
+  const handleTogglePanel = React.useCallback(() => {
     if (panelVisible) {
       setPanelVisible(false);
       inputRef.current?.focus();
     } else {
-      setPanelVisible(true);
-      setEmoticonBarVisible(false);
+      Keyboard.dismiss();
+      if (emoticonBarVisible || isEmojiMounted) {
+        animateCloseEmoticons(() => {
+          setPanelVisible(true);
+        });
+      } else {
+        setPanelVisible(true);
+      }
     }
-  };
+  }, [animateCloseEmoticons, emoticonBarVisible, isEmojiMounted, panelVisible]);
 
-  const handleToggleEmoticons = () => {
-    if (emoticonBarVisible) {
-      setEmoticonBarVisible(false);
+  const handleToggleEmoticons = React.useCallback(() => {
+    if (switchTimeoutRef.current) {
+      clearTimeout(switchTimeoutRef.current);
+      switchTimeoutRef.current = null;
+    }
+
+    if (emoticonBarVisible || isEmojiMounted) {
+      // 处于表情面板中，点击微信键盘图标切换为文字输入
+      transitionToKeyboard();
     } else {
-      setEmoticonBarVisible(true);
-      setPanelVisible(false);
+      // 处于文字输入或静止底栏，点击笑脸切换至表情面板
+      isSwitchingToKeyboardRef.current = false;
+      Keyboard.dismiss();
+      animateOpenEmoticons();
     }
+  }, [animateOpenEmoticons, emoticonBarVisible, isEmojiMounted, transitionToKeyboard]);
+
+  const handleInsertText = (insertStr: string) => {
+    const start = selection.start ?? text.length;
+    const end = selection.end ?? text.length;
+    const next = text.slice(0, start) + insertStr + text.slice(end);
+    const newPos = start + insertStr.length;
+    setText(next);
+    setSelection({ start: newPos, end: newPos });
+    onTextChange?.(next);
   };
 
-  const handleChipPress = (chip: string) => {
-    setText((prev) => {
-      const next = prev ? `${prev} ${chip}` : chip;
+  const handleBackspace = () => {
+    if (!text) return;
+    const start = selection.start ?? text.length;
+    const end = selection.end ?? text.length;
+    if (start !== end) {
+      const next = text.slice(0, start) + text.slice(end);
+      setText(next);
+      setSelection({ start, end: start });
       onTextChange?.(next);
-      return next;
-    });
-    inputRef.current?.focus();
+      return;
+    }
+    if (start === 0) return;
+    const chars = Array.from(text.slice(0, start));
+    chars.pop();
+    const nextBefore = chars.join('');
+    const next = nextBefore + text.slice(start);
+    const newPos = nextBefore.length;
+    setText(next);
+    setSelection({ start: newPos, end: newPos });
+    onTextChange?.(next);
   };
 
   return (
@@ -136,6 +325,15 @@ export function ImInputBar({
                 setPanelVisible(false);
               }
             }}
+            onFocus={() => {
+              if (emoticonBarVisible || isEmojiMounted) {
+                transitionToKeyboard();
+              }
+              setPanelVisible(false);
+            }}
+            onSelectionChange={(e) => {
+              setSelection(e.nativeEvent.selection);
+            }}
             placeholder=""
             placeholderTextColor={theme.colors.inputPlaceholder}
             ref={inputRef}
@@ -152,9 +350,9 @@ export function ImInputBar({
           />
         </View>
 
-        {/* 右一：快捷表情按钮 */}
+        {/* 右一：快捷表情按钮 (微信原生切换：展开表情时切换为键盘圆标) */}
         <Pressable
-          accessibilityLabel="快捷表情与动作"
+          accessibilityLabel={emoticonBarVisible ? '切换回键盘输入' : '快捷表情与动作'}
           accessibilityRole="button"
           hitSlop={6}
           onPress={handleToggleEmoticons}
@@ -164,9 +362,8 @@ export function ImInputBar({
           ]}
         >
           {emoticonBarVisible ? (
-            <Ionicons
-              color="#3B82F6"
-              name="happy"
+            <WeChatKeyboardIcon
+              color={theme.colors.actionIconColor}
               size={26}
             />
           ) : (
@@ -226,28 +423,27 @@ export function ImInputBar({
         )}
       </View>
 
-      {/* 快捷表情与微动作水平栏 */}
-      {emoticonBarVisible && (
-        <View style={styles.emoticonScrollWrap}>
-          <ScrollView
-            contentContainerStyle={styles.emoticonScrollContent}
-            horizontal
-            keyboardShouldPersistTaps="handled"
-            showsHorizontalScrollIndicator={false}
-          >
-            {EMOTICON_CHIPS.map((chip) => (
-              <Pressable
-                accessibilityLabel={`快捷表情：${chip}`}
-                accessibilityRole="button"
-                key={chip}
-                onPress={() => handleChipPress(chip)}
-                style={({ pressed }) => [styles.emoticonChip, pressed && styles.pressed]}
-              >
-                <Text style={styles.emoticonChipText}>{chip}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
+      {/* 独立解耦表情与颜文字键盘面板 (高度升至 365px，极慢平滑下落与零弹跳接力) */}
+      {isEmojiMounted && (
+        <Animated.View
+          style={[
+            styles.emojiContainerWrapper,
+            {
+              height: panelHeightAnim,
+            },
+          ]}
+        >
+          <EmojiPickerPanel
+            height={EMOJI_PANEL_HEIGHT}
+            onBackspace={handleBackspace}
+            onSelectAnimatedEmoji={(sticker) => {
+              onSendSticker?.(sticker);
+            }}
+            onSelectKaomoji={handleInsertText}
+            onSelectStaticEmoji={handleInsertText}
+            space={space}
+          />
+        </Animated.View>
       )}
 
       {/* 底部扩展面板 (4等分横向纵向铺满) */}
@@ -402,9 +598,13 @@ export function ImInputBar({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
+  emojiContainerWrapper: {
+    width: '100%',
+    overflow: 'hidden',
+  },
   composerWrapper: {
     borderTopWidth: StyleSheet.hairlineWidth,
   },
@@ -479,37 +679,5 @@ const styles = StyleSheet.create({
   },
   itemLabel: {
     fontWeight: '400',
-  },
-  emoticonScrollWrap: {
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
-    backgroundColor: '#F8FAFC',
-  },
-  emoticonScrollContent: {
-    paddingHorizontal: 12,
-    gap: 8,
-    alignItems: 'center',
-  },
-  emoticonChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E8F0',
-    minHeight: 34,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  emoticonChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1C1C1E',
   },
 });

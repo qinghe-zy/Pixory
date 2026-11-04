@@ -4,6 +4,16 @@ import { TextBubbleRenderer } from '../components/renderers/TextBubbleRenderer';
 import { SystemNoticeRenderer } from '../components/renderers/SystemNoticeRenderer';
 import { ImageBubbleRenderer } from '../components/renderers/ImageBubbleRenderer';
 import { DiaryCardRenderer } from '../components/renderers/DiaryCardRenderer';
+import { StickerBubbleRenderer } from '../../components/emoji/StickerBubbleRenderer';
+import { DocumentBubbleRenderer } from '../components/renderers/DocumentBubbleRenderer';
+import { ThoughtBubbleRenderer } from '../components/renderers/ThoughtBubbleRenderer';
+
+export interface OpenDocumentTarget {
+  uri?: string;
+  title?: string;
+  content?: string | Uint8Array;
+  mode?: 'clean' | 'diff';
+}
 
 export interface BubbleRendererProps {
   message: ImMessage;
@@ -17,18 +27,23 @@ export interface BubbleRendererProps {
   onNudgeSelf?: () => void;
   onOpenDiary?: (diaryId?: string) => void;
   onOpenSandbox?: (target: { code: string; language?: string; title?: string }) => void;
+  onOpenDocument?: (target: OpenDocumentTarget) => void;
   space?: 'normal' | 'personal';
+  isLatestMessage?: boolean;
 }
 
 export type BubbleRendererComponent = React.ComponentType<BubbleRendererProps>;
 
 const registry = new Map<ImMessageType, BubbleRendererComponent>();
 
-// 默认注册微信基础渲染器与日记略缩信封
+// 默认注册微信基础渲染器、日记略缩信封与极简文档卡片
 registry.set('text', TextBubbleRenderer);
 registry.set('system_notice', SystemNoticeRenderer);
 registry.set('image', ImageBubbleRenderer);
 registry.set('diary_card', DiaryCardRenderer);
+registry.set('sticker', StickerBubbleRenderer as any);
+registry.set('document', DocumentBubbleRenderer);
+registry.set('thought', ThoughtBubbleRenderer);
 
 /**
  * 气泡渲染器注册表 (插件化高扩展契约)

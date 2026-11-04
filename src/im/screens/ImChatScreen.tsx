@@ -1,18 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { StyleSheet, Keyboard } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import type { PixorySpace } from '../../database';
-import {
-  useAiSidebarStylePreference,
-  useAiSidebarSpatialPresetPreference,
-  useChatTypographyPreferences,
-  useChatAppearancePreferences,
-} from '../../services/aiChatPreferences';
+import { useAiSidebarSpatialPresetPreference, useChatTypographyPreferences, useChatAppearancePreferences } from '../../services/aiChatPreferences';
 import { ImThemeProvider } from '../theme/ImThemeProvider';
 import { buildImThemeFromPreferences } from '../theme/imTheme';
 import { ImChatHeader } from '../components/ImChatHeader';
-import { ImChatList } from '../components/ImChatList';
-import { ImInputBar } from '../components/ImInputBar';
+import { ImChatList, type ImChatListRef } from '../components/ImChatList';
+import { ImInputBar, type ImInputBarRef } from '../components/ImInputBar';
 import { ImPushScaleDrawerStage } from '../components/drawer/ImPushScaleDrawerStage';
 import { ImContactDrawer } from '../components/drawer/ImContactDrawer';
 import { ImChatSettingsDrawer } from '../components/drawer/ImChatSettingsDrawer';
@@ -24,6 +19,8 @@ import { ImImageViewerModal } from '../components/modals/ImImageViewerModal';
 import { ImDiaryBookModal } from '../diary/ImDiaryBookModal';
 import { AiSandboxViewerModal } from '../../components/common/AiSandboxViewerModal';
 import { MessageTextSelectionModal } from '../../components/common/MessageTextSelectionModal';
+import { ImDocumentMinimalViewer } from '../../components/document/ImDocumentMinimalViewer';
+import { exportDocumentToShare } from '../utils/documentExport';
 import { useImChatSession } from '../hooks/useImChatSession';
 import type { ImMessage } from '../types';
 
@@ -69,6 +66,7 @@ export function ImChatScreen({
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [ipTarget, setIpTarget] = useState<'chat' | 'avatar' | 'background' | null>(null);
   const [activeSandbox, setActiveSandbox] = useState<{ code: string; language?: string; title?: string } | null>(null);
+  const [activeDocument, setActiveDocument] = useState<{ uri?: string; title?: string; content?: string | Uint8Array; mode?: 'clean' | 'diff' } | null>(null);
   const [selectedTextMessage, setSelectedTextMessage] = useState<ImMessage | null>(null);
   const [spatialPreset] = useAiSidebarSpatialPresetPreference(space);
   const typographyPrefs = useChatTypographyPreferences(space);
@@ -77,7 +75,7 @@ export function ImChatScreen({
   const {
     messages, isInitialLoading, initialUnreadCount, subText, livingState, userAvatarUri, companionName, companionAvatarUri,
     threadSettings, actionMenuVisible, activeMessageForMenu, menuAnchor, handleActionMenuClose,
-    handleDeleteMessage, handleEditResend, handleRetryMessage, handleSend, handleCamera, handlePhoto,
+    handleDeleteMessage, handleEditResend, handleRetryMessage, handleSend, handleSendSticker, handleCamera, handlePhoto,
     handleFile, handleIpSend, handleLongPress, handleClear, handleNudge, handleNudgeSelf,
     handleUpdateSettings, handleSetAvatarUri, handleSetBackgroundUri,
     handlePickAvatarFromAlbum, handleClearAvatar, handlePickBackgroundFromAlbum,
@@ -93,6 +91,13 @@ export function ImChatScreen({
     Boolean(threadSettings.backgroundImageUri)
   );
 
+  const inputBarRef = useRef<ImInputBarRef>(null);
+  const chatListRef = useRef<ImChatListRef>(null);
+  const handleDismissPanels = useCallback(() => {
+    Keyboard.dismiss();
+    inputBarRef.current?.collapse();
+  }, []);
+
   useEffect(() => {
     if (highlightedMessageId) {
       const t = setTimeout(() => setHighlightedMessageId(null), 3500);
@@ -103,7 +108,7 @@ export function ImChatScreen({
   const cleanSelectedContent = useMemo(() => {
     if (!selectedTextMessage?.content) return '';
     return selectedTextMessage.content
-      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING):[^\]]+\]/gi, '')
+      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING|DOCUMENT|DOC):[^\]]+\]/gi, '')
       .replace(/\[BR\]/g, '\n')
       .trim();
   }, [selectedTextMessage]);
@@ -119,8 +124,8 @@ export function ImChatScreen({
       >
         <KeyboardAvoidingView behavior="padding" enabled={!leftOpen && !rightOpen} style={styles.screen}>
           <ImChatHeader onBack={onBack} onOpenDetails={() => setRightOpen(true)} subText={subText || (livingState?.statusText ? `• ${livingState.statusText}` : null)} title={companionName} />
-          <ImChatList backgroundImageUri={threadSettings.backgroundImageUri} bubbleSkinPreset={threadSettings.personalization?.bubbleSkinPreset || undefined} companionAvatarUri={companionAvatarUri} companionName={companionName} highlightedMessageId={highlightedMessageId} isInitialLoading={isInitialLoading} messages={messages} onLongPressMessage={(m, px, py) => handleLongPress(m, px, py)} onNudge={handleNudge} onNudgeSelf={handleNudgeSelf} onOpenDiary={() => setDiaryOpen(true)} onOpenSandbox={(s) => setActiveSandbox(s)} onPressMessage={(m) => { if (m.type === 'image' && m.imageUri) setViewerImageUri(m.imageUri); }} onQuickIcebreak={(prompt) => void handleSend(prompt)} onRetryMessage={handleRetryMessage} space={space} unreadCount={initialUnreadCount} userAvatarUri={userAvatarUri} />
-          <ImInputBar fillDraftText={fillDraftText} onCameraPress={() => void handleCamera()} onSelectFile={() => void handleFile()} onSelectImage={() => void handlePhoto()} onSelectIp={() => setIpTarget('chat')} onSend={handleSend} onTextChange={handleDraftChange} />
+          <ImChatList backgroundImageUri={threadSettings.backgroundImageUri} bubbleSkinPreset={threadSettings.personalization?.bubbleSkinPreset || undefined} companionAvatarUri={companionAvatarUri} companionName={companionName} highlightedMessageId={highlightedMessageId} isGenerating={Boolean(subText)} isInitialLoading={isInitialLoading} messages={messages} showThoughtBubble={threadSettings.showThoughtBubble !== false} onLongPressMessage={(m, px, py) => handleLongPress(m, px, py)} onNudge={handleNudge} onNudgeSelf={handleNudgeSelf} onOpenDiary={() => setDiaryOpen(true)} onOpenDocument={(doc) => setActiveDocument(doc)} onOpenSandbox={(s) => setActiveSandbox(s)} onPressBackground={handleDismissPanels} onPressMessage={(m) => { if (m.type === 'image' && m.imageUri) setViewerImageUri(m.imageUri); }} onQuickIcebreak={(prompt) => { chatListRef.current?.scrollToBottom(true); void handleSend(prompt); }} onRetryMessage={handleRetryMessage} ref={chatListRef} space={space} unreadCount={initialUnreadCount} userAvatarUri={userAvatarUri} />
+          <ImInputBar fillDraftText={fillDraftText} onCameraPress={() => void handleCamera()} onSelectFile={() => void handleFile()} onSelectImage={() => void handlePhoto()} onSelectIp={() => setIpTarget('chat')} onSend={(text) => { chatListRef.current?.scrollToBottom(true); void handleSend(text); }} onSendSticker={(sticker) => void handleSendSticker(sticker)} onTextChange={handleDraftChange} ref={inputBarRef} space={space} />
         </KeyboardAvoidingView>
       </ImPushScaleDrawerStage>
       <ImImageViewerModal imageUri={viewerImageUri} onClose={() => setViewerImageUri(null)} space={space} visible={Boolean(viewerImageUri)} />
@@ -131,6 +136,7 @@ export function ImChatScreen({
       <ImMessageActionMenu anchorX={menuAnchor.x} anchorY={menuAnchor.y} message={activeMessageForMenu} onClose={handleActionMenuClose} onDelete={(m) => void handleDeleteMessage(m)} onEditResend={(m) => void handleEditResend(m)} onSelectText={(m) => setSelectedTextMessage(m)} visible={actionMenuVisible} />
       <MessageTextSelectionModal content={cleanSelectedContent} onClose={() => setSelectedTextMessage(null)} onOpenSandbox={(s) => setActiveSandbox(s)} visible={Boolean(selectedTextMessage)} />
       <AiSandboxViewerModal code={activeSandbox?.code || ''} language={activeSandbox?.language} onClose={() => setActiveSandbox(null)} title={activeSandbox?.title} visible={Boolean(activeSandbox)} />
+      <ImDocumentMinimalViewer content={activeDocument?.content} documentTitle={activeDocument?.title} documentUri={activeDocument?.uri} initialMode={activeDocument?.mode || 'clean'} onClose={() => setActiveDocument(null)} onExport={activeDocument ? () => void exportDocumentToShare(activeDocument) : undefined} visible={Boolean(activeDocument)} />
     </ImThemeProvider>
   );
 }

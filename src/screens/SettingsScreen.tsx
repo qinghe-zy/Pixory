@@ -23,6 +23,7 @@ interface SettingsScreenProps {
   onOpenProviderSettings?: () => void;
   onOpenProfileInfo?: () => void;
   onOpenImCompanionSettings?: () => void;
+  onOpenNotificationSettings?: () => void;
 }
 
 export function SettingsScreen({
@@ -37,6 +38,7 @@ export function SettingsScreen({
   onOpenProviderSettings,
   onOpenProfileInfo,
   onOpenImCompanionSettings,
+  onOpenNotificationSettings,
 }: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
   const [diagnosticsEnabled, setDiagnosticsEnabledState] = useState(false);
@@ -124,8 +126,16 @@ export function SettingsScreen({
           {onOpenImCompanionSettings ? (
             <SettingsRow
               icon="chatbubbles-outline"
-              title="伴聊设置"
+              title="聊天设置"
               onPress={onOpenImCompanionSettings}
+              showBorder={Boolean(onOpenNotificationSettings)}
+            />
+          ) : null}
+          {onOpenNotificationSettings ? (
+            <SettingsRow
+              icon="notifications-outline"
+              title="通知管理"
+              onPress={onOpenNotificationSettings}
             />
           ) : null}
         </View>

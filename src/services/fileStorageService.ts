@@ -11,6 +11,8 @@ const TEMP_DIR_NAME = 'temp';
 const PROFILE_DIR_NAME = 'profile';
 const AI_DOCUMENTS_DIR_NAME = 'ai_documents';
 const AI_ROLE_AVATARS_DIR_NAME = 'ai_role_avatars';
+const STICKERS_DIR_NAME = 'stickers';
+const STICKER_PACKS_DIR_NAME = 'sticker_packs';
 
 export interface ManagedFileInfo {
   uri: string;
@@ -130,6 +132,8 @@ export async function ensureAppDirectories(space: PixorySpace = 'normal'): Promi
     getTempDir(space),
     getAiDocumentsDir(space),
     getAiRoleAvatarsDir(space),
+    getStickersDir(space),
+    getStickerPacksDir(space),
     ...(space === 'normal' ? [getProfileDir()] : []),
   ];
 
@@ -172,6 +176,14 @@ export function getAiKnowledgeBaseDocumentsDir(space: PixorySpace, knowledgeBase
 
 export function getAiIpDocumentsDir(space: PixorySpace, ipId: number): string {
   return normalizeDirectoryUri(joinPath(getAiDocumentsDir(space), `ip_${ipId}`));
+}
+
+export function getStickersDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), STICKERS_DIR_NAME));
+}
+
+export function getStickerPacksDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), STICKER_PACKS_DIR_NAME));
 }
 
 export function generateInternalFilename(originalFilename: string): string {

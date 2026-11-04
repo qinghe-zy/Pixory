@@ -144,7 +144,7 @@ test('role library displays saved roles as visual cards with covers and source b
   assert.match(item, /styles\.sourceBadge/);
   assert.match(item, /card\.avatarEnabled && card\.avatarUri/);
   assert.match(item, /SecureImage[\s\S]*style=\{styles\.coverImage\}/);
-  assert.match(item, /开聊/);
+  assert.match(item, /actionLabel/);
   assert.match(item, /numberOfLines=\{2\} style=\{styles\.description\}/);
 });
 

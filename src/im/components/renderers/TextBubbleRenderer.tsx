@@ -6,14 +6,28 @@ import type { BubbleRendererProps } from '../../registry/bubbleRegistry';
 import { ImBubbleBeak } from '../common/ImBubbleBeak';
 import { SecureImage } from '../../../components/SecureImage';
 import { extractSandboxExecutableCode } from '../../../services/sandbox/sandboxDetector';
+import { parseStreamingArtifactSegments } from '../../../services/sandbox/streamingArtifactSplitter';
+import { AiSandboxArtifactViewfinder } from '../../../components/ai/AiSandboxArtifactViewfinder';
+import { AiSandboxArtifactCard } from '../../../components/ai/AiSandboxArtifactCard';
+import { stripMetaTags } from '../../engine/tagAwareStreamParser';
+
+// 辅助纯函数：识别正文与括号心理/动作描写，分层赋予淡雅灰字阶
+function parseThoughtSegments(raw: string) {
+  if (!raw) return [];
+  const parts = raw.split(/([（\(][^）\)]+[）\)])/g);
+  return parts.filter(Boolean).map((part, index) => {
+    const isThought = /^([（\(].+[）\)])$/.test(part);
+    return { id: index, text: part, isThought };
+  });
+}
 
 /**
  * 微信经典原生文字气泡渲染器 (Authentic WeChat Text Bubble)
  */
-export function TextBubbleRenderer({
+export const TextBubbleRenderer = React.memo(function TextBubbleRenderer({
   message,
   companionAvatarUri,
-  companionName = '伴侣',
+  companionName = '角色',
   userAvatarUri,
   onLongPressMessage,
   onPressMessage,
@@ -21,16 +35,14 @@ export function TextBubbleRenderer({
   onNudge,
   onNudgeSelf,
   onOpenSandbox,
+  onOpenDocument,
   space = 'normal',
+  isLatestMessage = false,
 }: BubbleRendererProps) {
   const theme = useImTheme();
   const isUser = message.role === 'user';
   const lastAvatarTapRef = React.useRef(0);
   const shakeAnim = React.useRef(new Animated.Value(0)).current;
-
-  const sandboxTarget = React.useMemo(() => {
-    return extractSandboxExecutableCode(message.content || '');
-  }, [message.content]);
 
   const triggerShake = () => {
     Animated.sequence([
@@ -57,17 +69,30 @@ export function TextBubbleRenderer({
     }
   };
 
-  const formattedContent = (message.content || '').replace(/\[BR\]/g, '\n').trim();
+  const normalizedContent = (message.content || '')
+    .replace(/\[BR\]/g, '\n')
+    .replace(/\[br\s*\/?\]|<\/?br\s*\/?>/gi, '\n');
+  const formattedContent = (!isUser ? stripMetaTags(normalizedContent) : normalizedContent).trim();
 
-  // 识别正文与括号心理/动作描写，分层赋予淡雅灰字阶（不设字数上限）
-  const contentSegments = React.useMemo(() => {
-    if (!formattedContent) return [];
-    const parts = formattedContent.split(/([（\(][^）\)]+[）\)])/g);
-    return parts.filter(Boolean).map((part, index) => {
-      const isThought = /^([（\(].+[）\)])$/.test(part);
-      return { id: index, text: part, isThought };
-    });
+  // 1. 尝试探测是否包含独立可运行的 HTML / SVG 制品
+  const artifactSegments = React.useMemo(() => {
+    return parseStreamingArtifactSegments(formattedContent, false);
   }, [formattedContent]);
+
+  const hasArtifact = artifactSegments.hasArtifact && Boolean(artifactSegments.artifact);
+  const artifact = artifactSegments.artifact;
+  const preText = (artifactSegments.preText || '').trim();
+  const postText = (artifactSegments.postText || '').trim();
+
+  // 惰性嗅探微型代码块 (仅在未命中沙箱制品时才需要计算，降低 GC 压力)
+  const sandboxTarget = React.useMemo(() => {
+    if (hasArtifact) return null;
+    return extractSandboxExecutableCode(message.content || '');
+  }, [hasArtifact, message.content]);
+
+  const preTextSegments = React.useMemo(() => parseThoughtSegments(preText), [preText]);
+  const postTextSegments = React.useMemo(() => parseThoughtSegments(postText), [postText]);
+  const contentSegments = React.useMemo(() => parseThoughtSegments(formattedContent), [formattedContent]);
 
   const handleLongPress = (event: any) => {
     if (onLongPressMessage) {
@@ -76,7 +101,28 @@ export function TextBubbleRenderer({
     }
   };
 
-  const handlePress = () => onPressMessage?.(message);
+  const docMeta = message.metadata?.document || message.metadata?.docInfo;
+
+  const handlePress = () => {
+    if (docMeta && onOpenDocument) {
+      onOpenDocument({
+        uri: docMeta.uri || docMeta.documentUri,
+        title: docMeta.title || docMeta.name,
+        content: docMeta.content || message.content,
+      });
+      return;
+    }
+    const docMatch = (message.content || '').match(/\[(文档|DOC):\s*([^\]]+)\]/i);
+    if (docMatch && onOpenDocument) {
+      onOpenDocument({
+        uri: docMatch[2].trim(),
+        title: docMatch[2].trim(),
+        content: message.content,
+      });
+      return;
+    }
+    onPressMessage?.(message);
+  };
 
   return (
     <View style={[styles.rowWrap, { flexDirection: isUser ? 'row-reverse' : 'row', marginHorizontal: 12 }]}>
@@ -109,62 +155,222 @@ export function TextBubbleRenderer({
         )}
       </View>
 
-      {/* 气泡与尖角包裹区 */}
-      <View style={[styles.bubbleWrap, { maxWidth: theme.metrics.bubbleMaxWidthPercent, marginLeft: isUser ? 0 : theme.metrics.avatarToBubbleGap, marginRight: isUser ? theme.metrics.avatarToBubbleGap : 0 }]}>
-        <ImBubbleBeak direction={isUser ? 'right' : 'left'} />
-        <Pressable
-          delayLongPress={260}
-          onLongPress={handleLongPress}
-          onPress={handlePress}
-          style={({ pressed }) => [
-            styles.bubbleBox,
-            {
-              backgroundColor: isUser ? theme.colors.bubbleRightBackground : theme.colors.bubbleLeftBackground,
-              borderRadius: theme.radii.bubbleRadius,
-              paddingHorizontal: theme.metrics.bubblePaddingHorizontal,
-              paddingVertical: theme.metrics.bubblePaddingVertical,
-              borderColor: isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder,
-              borderWidth: (isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder) !== 'transparent' ? StyleSheet.hairlineWidth : 0,
-            },
-            pressed && styles.bubblePressed,
-          ]}
-        >
-          <Text
-            selectable
-            style={[
-              styles.bubbleText,
-              {
-                color: isUser ? theme.colors.bubbleRightText : theme.colors.bubbleLeftText,
-                fontSize: theme.typography.bubbleFontSize,
-                lineHeight: theme.typography.bubbleLineHeight,
-                letterSpacing: theme.typography.bubbleLetterSpacing,
-              },
-            ]}
-          >
-            {contentSegments.map((segment) =>
-              segment.isThought ? (
-                <Text
-                  key={segment.id}
-                  style={[
-                    styles.thoughtText,
+      {/* 气泡与工件包裹区 */}
+      <View
+        style={[
+          styles.bubbleWrap,
+          {
+            maxWidth: hasArtifact ? 292 : theme.metrics.bubbleMaxWidthPercent,
+            marginLeft: isUser ? 0 : theme.metrics.avatarToBubbleGap,
+            marginRight: isUser ? theme.metrics.avatarToBubbleGap : 0,
+          },
+        ]}
+      >
+        {hasArtifact && artifact ? (
+          <View style={styles.artifactBubbleColumn}>
+            {/* 1. 前置引导语文本气泡（若有） */}
+            {preText ? (
+              <View style={[styles.segmentedBubbleWrap, { alignSelf: isUser ? 'flex-end' : 'flex-start' }]}>
+                <ImBubbleBeak direction={isUser ? 'right' : 'left'} />
+                <Pressable
+                  delayLongPress={260}
+                  onLongPress={handleLongPress}
+                  onPress={handlePress}
+                  style={({ pressed }) => [
+                    styles.bubbleBox,
                     {
-                      color: isUser ? 'rgba(0, 0, 0, 0.55)' : '#7A8699',
-                      fontSize: Math.max(12, theme.typography.bubbleFontSize - 2),
+                      backgroundColor: isUser ? theme.colors.bubbleRightBackground : theme.colors.bubbleLeftBackground,
+                      borderRadius: theme.radii.bubbleRadius,
+                      paddingHorizontal: theme.metrics.bubblePaddingHorizontal,
+                      paddingVertical: theme.metrics.bubblePaddingVertical,
+                      borderColor: isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder,
+                      borderWidth: (isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder) !== 'transparent' ? StyleSheet.hairlineWidth : 0,
                     },
+                    pressed && styles.bubblePressed,
                   ]}
                 >
-                  {segment.text}
-                </Text>
+                  <Text
+                    selectable
+                    style={[
+                      styles.bubbleText,
+                      {
+                        color: isUser ? theme.colors.bubbleRightText : theme.colors.bubbleLeftText,
+                        fontSize: theme.typography.bubbleFontSize,
+                        lineHeight: theme.typography.bubbleLineHeight,
+                        letterSpacing: theme.typography.bubbleLetterSpacing,
+                      },
+                    ]}
+                  >
+                    {preTextSegments.map((segment) =>
+                      segment.isThought ? (
+                        <Text
+                          key={segment.id}
+                          style={[
+                            styles.thoughtText,
+                            {
+                              color: isUser ? 'rgba(0, 0, 0, 0.55)' : '#7A8699',
+                              fontSize: Math.max(12, theme.typography.bubbleFontSize - 2),
+                            },
+                          ]}
+                        >
+                          {segment.text}
+                        </Text>
+                      ) : (
+                        <Text key={segment.id}>{segment.text}</Text>
+                      )
+                    )}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {/* 2. 核心工件：沙箱取景框 / 优雅小白卡 (彻底阻断源码刷屏！) */}
+            <Pressable
+              delayLongPress={260}
+              onLongPress={handleLongPress}
+              style={[
+                styles.sandboxCardWrap,
+                { alignSelf: isUser ? 'flex-end' : 'flex-start' },
+                preText ? styles.sandboxCardWithGap : null,
+              ]}
+            >
+              {!preText ? <ImBubbleBeak customColor="#FFFFFF" direction={isUser ? 'right' : 'left'} /> : null}
+              {isLatestMessage ? (
+                <AiSandboxArtifactViewfinder
+                  code={artifact.code}
+                  id={`im-vf-${message.id}`}
+                  language={artifact.language}
+                  lineCount={artifact.lineCount}
+                  messageId={message.id}
+                  onOpenSandbox={onOpenSandbox}
+                  title={artifact.title}
+                />
               ) : (
-                <Text key={segment.id}>{segment.text}</Text>
-              )
-            )}
-          </Text>
-        </Pressable>
+                <AiSandboxArtifactCard
+                  code={artifact.code}
+                  id={`im-card-${message.id}`}
+                  language={artifact.language}
+                  lineCount={artifact.lineCount}
+                  messageId={message.id}
+                  onOpenSandbox={onOpenSandbox}
+                  title={artifact.title}
+                />
+              )}
+            </Pressable>
+
+            {/* 3. 后置交待语文本气泡（若有） */}
+            {postText ? (
+              <View style={[styles.segmentedBubbleWrap, { alignSelf: isUser ? 'flex-end' : 'flex-start', marginTop: 6 }]}>
+                <Pressable
+                  delayLongPress={260}
+                  onLongPress={handleLongPress}
+                  onPress={handlePress}
+                  style={({ pressed }) => [
+                    styles.bubbleBox,
+                    {
+                      backgroundColor: isUser ? theme.colors.bubbleRightBackground : theme.colors.bubbleLeftBackground,
+                      borderRadius: theme.radii.bubbleRadius,
+                      paddingHorizontal: theme.metrics.bubblePaddingHorizontal,
+                      paddingVertical: theme.metrics.bubblePaddingVertical,
+                      borderColor: isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder,
+                      borderWidth: (isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder) !== 'transparent' ? StyleSheet.hairlineWidth : 0,
+                    },
+                    pressed && styles.bubblePressed,
+                  ]}
+                >
+                  <Text
+                    selectable
+                    style={[
+                      styles.bubbleText,
+                      {
+                        color: isUser ? theme.colors.bubbleRightText : theme.colors.bubbleLeftText,
+                        fontSize: theme.typography.bubbleFontSize,
+                        lineHeight: theme.typography.bubbleLineHeight,
+                        letterSpacing: theme.typography.bubbleLetterSpacing,
+                      },
+                    ]}
+                  >
+                    {postTextSegments.map((segment) =>
+                      segment.isThought ? (
+                        <Text
+                          key={segment.id}
+                          style={[
+                            styles.thoughtText,
+                            {
+                              color: isUser ? 'rgba(0, 0, 0, 0.55)' : '#7A8699',
+                              fontSize: Math.max(12, theme.typography.bubbleFontSize - 2),
+                            },
+                          ]}
+                        >
+                          {segment.text}
+                        </Text>
+                      ) : (
+                        <Text key={segment.id}>{segment.text}</Text>
+                      )
+                    )}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <>
+            <ImBubbleBeak direction={isUser ? 'right' : 'left'} />
+            <Pressable
+              delayLongPress={260}
+              onLongPress={handleLongPress}
+              onPress={handlePress}
+              style={({ pressed }) => [
+                styles.bubbleBox,
+                {
+                  backgroundColor: isUser ? theme.colors.bubbleRightBackground : theme.colors.bubbleLeftBackground,
+                  borderRadius: theme.radii.bubbleRadius,
+                  paddingHorizontal: theme.metrics.bubblePaddingHorizontal,
+                  paddingVertical: theme.metrics.bubblePaddingVertical,
+                  borderColor: isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder,
+                  borderWidth: (isUser ? theme.colors.bubbleRightBorder : theme.colors.bubbleLeftBorder) !== 'transparent' ? StyleSheet.hairlineWidth : 0,
+                },
+                pressed && styles.bubblePressed,
+              ]}
+            >
+              <Text
+                selectable
+                style={[
+                  styles.bubbleText,
+                  {
+                    color: isUser ? theme.colors.bubbleRightText : theme.colors.bubbleLeftText,
+                    fontSize: theme.typography.bubbleFontSize,
+                    lineHeight: theme.typography.bubbleLineHeight,
+                    letterSpacing: theme.typography.bubbleLetterSpacing,
+                  },
+                ]}
+              >
+                {contentSegments.map((segment) =>
+                  segment.isThought ? (
+                    <Text
+                      key={segment.id}
+                      style={[
+                        styles.thoughtText,
+                        {
+                          color: isUser ? 'rgba(0, 0, 0, 0.55)' : '#7A8699',
+                          fontSize: Math.max(12, theme.typography.bubbleFontSize - 2),
+                        },
+                      ]}
+                    >
+                      {segment.text}
+                    </Text>
+                  ) : (
+                    <Text key={segment.id}>{segment.text}</Text>
+                  )
+                )}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
-      {/* HTML / SVG 完整代码沙箱即时运行按钮 (圆圈加三角形) */}
-      {sandboxTarget ? (
+      {/* 兜底微型沙箱运行按钮 (仅在未渲染沙箱大卡片但存在代码时保留) */}
+      {!hasArtifact && sandboxTarget ? (
         <Pressable
           accessibilityLabel="运行 HTML / SVG 沙箱"
           accessibilityRole="button"
@@ -173,14 +379,19 @@ export function TextBubbleRenderer({
           style={({ pressed }) => [
             styles.sandboxRunBtn,
             pressed && styles.sandboxRunBtnPressed,
-            { alignSelf: 'center', marginLeft: isUser ? 0 : 8, marginRight: isUser ? 8 : 0 },
+            {
+              alignSelf: 'flex-end',
+              marginBottom: 4,
+              marginLeft: isUser ? 0 : 8,
+              marginRight: isUser ? 8 : 0,
+            },
           ]}
         >
           <Ionicons
-            color="#006948"
+            color="#8E8E93"
             name="play"
             size={11}
-            style={{ marginLeft: 1.5 }}
+            style={styles.playIconMargin}
           />
         </Pressable>
       ) : null}
@@ -197,7 +408,7 @@ export function TextBubbleRenderer({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   rowWrap: { alignItems: 'flex-start' },
@@ -223,18 +434,36 @@ const styles = StyleSheet.create({
   bubblePressed: { opacity: 0.88 },
   bubbleText: { textAlign: 'left' },
   thoughtText: { fontStyle: 'italic', opacity: 0.9 },
+  artifactBubbleColumn: {
+    width: '100%',
+  },
+  segmentedBubbleWrap: {
+    position: 'relative',
+    justifyContent: 'flex-start',
+  },
+  sandboxCardWrap: {
+    width: 292,
+    maxWidth: '100%',
+    position: 'relative',
+  },
+  sandboxCardWithGap: {
+    marginTop: 4,
+  },
   sandboxRunBtn: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0, 0, 0, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sandboxRunBtnPressed: {
-    backgroundColor: 'rgba(0, 105, 72, 0.15)',
+    backgroundColor: 'rgba(0, 0, 0, 0.10)',
     transform: [{ scale: 0.94 }],
+  },
+  playIconMargin: {
+    marginLeft: 1.5,
   },
 });

@@ -497,6 +497,7 @@ const RESTORE_TABLE_PRIORITY = [
   'ai_providers', 'ai_provider_models', 'ai_role_cards', 'ai_knowledge_bases', 'ai_threads',
   'ai_continuity_import_sessions', 'ai_messages', 'ai_documents', 'ai_chunks', 'ai_embeddings',
   'ai_message_attachments', 'ai_message_versions', 'ai_message_citations',
+  'agent_runs', 'agent_step_checkpoints', 'doc_search_chunks',
 ];
 
 export async function mergeManagedDatabaseRecords(input: {

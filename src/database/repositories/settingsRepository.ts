@@ -55,6 +55,24 @@ export const CHAT_LETTER_SPACING_GEAR_KEY = 'chatLetterSpacingGear';
 export const CHAT_LINE_HEIGHT_GEAR_KEY = 'chatLineHeightGear';
 export const CHAT_PARAGRAPH_SPACING_GEAR_KEY = 'chatParagraphSpacingGear';
 
+export const NOTIFICATION_ENABLED_KEY = 'notificationEnabled';
+export const NOTIFICATION_SHOW_CONTENT_KEY = 'notificationShowContent';
+export const NOTIFICATION_SHOW_AVATAR_KEY = 'notificationShowAvatar';
+export const NOTIFICATION_DND_ENABLED_KEY = 'notificationDndEnabled';
+export const NOTIFICATION_DND_START_KEY = 'notificationDndStart';
+export const NOTIFICATION_DND_END_KEY = 'notificationDndEnd';
+export const NOTIFICATION_VIBRATION_ENABLED_KEY = 'notificationVibrationEnabled';
+
+export interface NotificationSettingsRecord {
+  enabled: boolean;
+  showContent: boolean;
+  showAvatar: boolean;
+  dndEnabled: boolean;
+  dndStart: string;
+  dndEnd: string;
+  vibrationEnabled: boolean;
+}
+
 export type AssetListViewMode = 'grid' | 'detail' | 'justified';
 export type ImageImportSourceMode = 'copy' | 'move';
 export type MediaPickerSource = 'album' | 'files';
@@ -636,6 +654,65 @@ export const settingsRepository = {
 
   async setChatParagraphSpacingGear(db: SQLiteDatabase, gear: TypographyGear): Promise<void> {
     await this.setValue(db, CHAT_PARAGRAPH_SPACING_GEAR_KEY, isTypographyGear(gear) ? gear : 'gear_2');
+  },
+
+  async getNotificationSettings(db: SQLiteDatabase): Promise<NotificationSettingsRecord> {
+    const [
+      enabledVal,
+      showContentVal,
+      showAvatarVal,
+      dndEnabledVal,
+      dndStartVal,
+      dndEndVal,
+      vibrationEnabledVal,
+    ] = await Promise.all([
+      this.getValue(db, NOTIFICATION_ENABLED_KEY),
+      this.getValue(db, NOTIFICATION_SHOW_CONTENT_KEY),
+      this.getValue(db, NOTIFICATION_SHOW_AVATAR_KEY),
+      this.getValue(db, NOTIFICATION_DND_ENABLED_KEY),
+      this.getValue(db, NOTIFICATION_DND_START_KEY),
+      this.getValue(db, NOTIFICATION_DND_END_KEY),
+      this.getValue(db, NOTIFICATION_VIBRATION_ENABLED_KEY),
+    ]);
+
+    return {
+      enabled: enabledVal === null ? true : enabledVal === '1',
+      showContent: showContentVal === null ? true : showContentVal === '1',
+      showAvatar: showAvatarVal === null ? true : showAvatarVal === '1',
+      dndEnabled: dndEnabledVal === '1',
+      dndStart: dndStartVal || '23:00',
+      dndEnd: dndEndVal || '08:00',
+      vibrationEnabled: vibrationEnabledVal === null ? true : vibrationEnabledVal === '1',
+    };
+  },
+
+  async saveNotificationSettings(
+    db: SQLiteDatabase,
+    settings: Partial<NotificationSettingsRecord>
+  ): Promise<void> {
+    const tasks: Promise<void>[] = [];
+    if (settings.enabled !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_ENABLED_KEY, settings.enabled ? '1' : '0'));
+    }
+    if (settings.showContent !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_SHOW_CONTENT_KEY, settings.showContent ? '1' : '0'));
+    }
+    if (settings.showAvatar !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_SHOW_AVATAR_KEY, settings.showAvatar ? '1' : '0'));
+    }
+    if (settings.dndEnabled !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_DND_ENABLED_KEY, settings.dndEnabled ? '1' : '0'));
+    }
+    if (settings.dndStart !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_DND_START_KEY, settings.dndStart));
+    }
+    if (settings.dndEnd !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_DND_END_KEY, settings.dndEnd));
+    }
+    if (settings.vibrationEnabled !== undefined) {
+      tasks.push(this.setValue(db, NOTIFICATION_VIBRATION_ENABLED_KEY, settings.vibrationEnabled ? '1' : '0'));
+    }
+    await Promise.all(tasks);
   },
 };
 

@@ -78,6 +78,8 @@ import {
   MIGRATION_STATEMENTS_V68,
   MIGRATION_STATEMENTS_V69,
   MIGRATION_STATEMENTS_V70,
+  MIGRATION_STATEMENTS_V71,
+  MIGRATION_STATEMENTS_V72,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -390,6 +392,10 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
   } catch {
     // 容错：静默跳过
   }
+}
+
+export async function ensureAgentVfsSchema(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(MIGRATION_STATEMENTS_V71);
 }
 
 async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
@@ -721,6 +727,14 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       }
     }
 
+    if (currentVersion < 71) {
+      await database.execAsync(MIGRATION_STATEMENTS_V71);
+    }
+
+    if (currentVersion < 72) {
+      await database.execAsync(MIGRATION_STATEMENTS_V72);
+    }
+
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
     await ensureAiMemoryLineageSchema(database);
@@ -731,6 +745,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     await ensureMemoryScopeGovernance(database);
     await ensureAiCompanionMemorySchema(database);
     await ensureImThreadSettingsSchema(database);
+    await ensureAgentVfsSchema(database);
 
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -761,16 +776,38 @@ export async function getDatabase(space: PixorySpace): Promise<SQLiteDatabase> {
 
 export async function runWithDatabaseSpace<T>(
   space: PixorySpace,
-  task: (db: SQLiteDatabase) => Promise<T>
+  task: (db: SQLiteDatabase) => Promise<T>,
+  maxRetries = 5,
 ): Promise<T> {
   const db = await getDatabase(space);
-  return task(db);
+  let attempt = 0;
+  while (true) {
+    try {
+      return await task(db);
+    } catch (error: any) {
+      attempt += 1;
+      const message = String(error?.message || '');
+      const isLockError =
+        message.includes('database is locked') ||
+        message.includes('cannot rollback') ||
+        message.includes('finalizeAsync') ||
+        message.includes('SQLITE_BUSY') ||
+        message.includes('SQLITE_LOCKED');
+      if (isLockError && attempt <= maxRetries) {
+        const jitter = Math.floor(Math.random() * 25);
+        const backoffMs = Math.min(800, 50 * Math.pow(2, attempt - 1)) + jitter;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 export async function runWithTransactionRetry<T>(
   db: SQLiteDatabase,
   fn: (txn: SQLiteDatabase) => Promise<T>,
-  maxRetries = 3,
+  maxRetries = 5,
 ): Promise<T> {
   let attempt = 0;
   while (true) {
@@ -796,7 +833,9 @@ export async function runWithTransactionRetry<T>(
         message.includes('SQLITE_BUSY') ||
         message.includes('SQLITE_LOCKED');
       if (isLockError && attempt <= maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 60 * Math.pow(2, attempt - 1)));
+        const jitter = Math.floor(Math.random() * 25);
+        const backoffMs = Math.min(800, 50 * Math.pow(2, attempt - 1)) + jitter;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
         continue;
       }
       throw error;

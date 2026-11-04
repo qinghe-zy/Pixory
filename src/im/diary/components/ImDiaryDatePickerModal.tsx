@@ -139,7 +139,7 @@ export function ImDiaryDatePickerModal({
                 />
                 <Text style={styles.emptyTitle}>还没有历史手账</Text>
                 <Text style={styles.emptySubtitle}>
-                  和伴侣多聊几句日常吧，伴侣会在夜晚或手账本里为你写下专属回忆。
+                  多聊几句日常吧，夜晚会在手账本里为你写下专属回忆。
                 </Text>
                 <Pressable
                   accessibilityLabel="知道了，关闭目录"

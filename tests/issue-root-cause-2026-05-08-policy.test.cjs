@@ -31,7 +31,7 @@ test('video player uses auto play queue-aware playback and scrub-safe animated c
 
   assert.match(source, /CONTROL_HIDE_DELAY_MS\s*=\s*5000/);
   assert.match(source, /player\.loop\s*=\s*Boolean\(externalSource\) \|\| queue\.length <= 1/);
-  assert.match(source, /player\.addListener\('playToEnd'/);
+  assert.match(source, /player\.addListener\(\s*['"]playToEnd['"]/);
   assert.match(source, /safePlayPlayer\(\)/);
   assert.match(source, /isScrubbing/);
   assert.match(source, /scrubDisplayTime/);

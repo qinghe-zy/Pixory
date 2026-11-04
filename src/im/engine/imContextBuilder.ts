@@ -2,6 +2,135 @@ import type { LlmTransportMessage } from '../../core/llm-transport/types';
 import type { CompanionMemoryRecord, MemoryRecallCandidate } from '../../core/memory/memoryTypes';
 import type { ImMessage, ImCompanionLivingState } from '../types';
 
+export interface ResolvedTargetDocuments {
+  primaryTarget: ImMessage;
+  referenceDocs: ImMessage[];
+}
+
+function parseChineseOrdinal(text: string): number | null {
+  const cnMap: Record<string, number> = {
+    一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+  };
+  const match = text.match(/(?:第([一二两三四五六七八九十\d]+)版|v(\d+))/i);
+  if (!match) return null;
+  const numStr = match[1] || match[2];
+  if (!numStr) return null;
+  if (/^\d+$/.test(numStr)) {
+    return parseInt(numStr, 10);
+  }
+  return cnMap[numStr] || null;
+}
+
+/**
+ * 文档意图门控（Document Intent Gate）：
+ * 避免在日常闲聊中无休止地向大模型注入上千 Token 的文档骨架，消除“秘书化”语感污染。
+ */
+export function hasDocumentEditIntent(
+  userText: string,
+  messages: ImMessage[],
+  referencedMessageId?: string | null
+): boolean {
+  if (!userText && !referencedMessageId) return false;
+
+  // 1. 显式引用了文档气泡
+  if (referencedMessageId) {
+    const refMsg = messages.find((m) => m.id === referencedMessageId);
+    if (refMsg?.type === 'document') return true;
+  }
+
+  const trimmed = userText.trim();
+  // 2. 命中文档操作意图正则
+  const EDIT_INTENT_REGEX =
+    /(?:改|修|重写|精简|扩写|替换|优化|删|加|补充|调整|纠错|勘误|校对|查重|变动|更新|草稿|预览|阅读|打开|导出|分享|版本|撤回|第[一二三四五六七八九十0-9]+[段章节页条行]|标题|封面|公章|表格|段落|条款|正文|摘要|目录|骨架|附件|文档|合同|方案|报告|材料|word|docx|pdf|markdown)/i;
+  if (EDIT_INTENT_REGEX.test(trimmed)) {
+    return true;
+  }
+
+  // 3. 距离上一条文档气泡生成不超过 2 个对话回合（热编辑窗口期）
+  let turnsSinceLastDoc = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type === 'document') {
+      return turnsSinceLastDoc <= 2;
+    }
+    if (m.role === 'user') {
+      turnsSinceLastDoc++;
+    }
+    if (turnsSinceLastDoc > 2) break;
+  }
+
+  return false;
+}
+
+/**
+ * 智能双链表文档锚点解析器（支持序数词版本精确定位）
+ */
+export function resolveTargetDocumentMessages(
+  messages: ImMessage[],
+  userText: string
+): ResolvedTargetDocuments | null {
+  if (!messages || messages.length === 0) return null;
+
+  const docMsgs = messages.filter((m) => m.type === 'document' && m.metadata?.document);
+  if (docMsgs.length === 0) return null;
+
+  const trimmedText = userText.trim();
+  const wantsOriginal = /原件|初稿|第一版|最开始|最初那份|v1\b/i.test(trimmedText);
+  const wantsPrevious = /上一版|撤回刚才|改回前一版|回退前版/i.test(trimmedText);
+  const requestedOrdinal = parseChineseOrdinal(trimmedText);
+
+  // 默认候选：最新一条文档
+  let candidate = docMsgs[docMsgs.length - 1];
+
+  // 1. 尝试匹配用户提及的文档标题关键词
+  for (let i = docMsgs.length - 1; i >= 0; i--) {
+    const docTitle = docMsgs[i].metadata?.document?.title || docMsgs[i].content || '';
+    const cleanTitle = docTitle.replace(/\.\w+$/, '').trim();
+    if (cleanTitle.length >= 2 && trimmedText.includes(cleanTitle)) {
+      candidate = docMsgs[i];
+      break;
+    }
+  }
+
+  // 2. 溯源构造当前分支的版本演进链 [Root(V1), V2, ..., Latest(Vn)]
+  const versionChain: ImMessage[] = [candidate];
+  let curr = candidate;
+  while (curr.metadata?.document?.derivedFromMsgId) {
+    const parentId = curr.metadata.document.derivedFromMsgId;
+    const parent = docMsgs.find((m) => m.id === parentId);
+    if (!parent) break;
+    versionChain.unshift(parent);
+    curr = parent;
+  }
+
+  // 3. 处理版本溯源定位
+  if (wantsOriginal && versionChain.length > 0) {
+    candidate = versionChain[0];
+  } else if (wantsPrevious && versionChain.length > 1) {
+    candidate = versionChain[versionChain.length - 2];
+  } else if (requestedOrdinal !== null && requestedOrdinal >= 1 && requestedOrdinal <= versionChain.length) {
+    candidate = versionChain[requestedOrdinal - 1];
+  }
+
+  return {
+    primaryTarget: candidate,
+    referenceDocs: docMsgs.filter((m) => m.id !== candidate.id).slice(-2),
+  };
+}
+
+/**
+ * 解析表情贴纸展示标签名称
+ */
+function resolveStickerLabel(
+  stickerId: string | null | undefined,
+  metadata?: { name?: string; label?: string } | null
+): string {
+  if (metadata?.name?.trim()) return metadata.name.trim();
+  if (metadata?.label?.trim()) return metadata.label.trim();
+  if (!stickerId) return '表情';
+  return stickerId.trim() || '表情';
+}
+
 export const LAYER_2_MAX_TOKENS = 550;
 export const LAYER_4_MAX_TOKENS = 180;
 export const MID_EPOCH_DELTA_MAX_TOKENS = 90;
@@ -181,6 +310,7 @@ export interface ContextBuilderOptions {
   historyMessages: ImMessage[];
   windowN?: number;
   anchorMessageId?: string;
+  referencedMessageId?: string | null;
   recalledMemories?: MemoryRecallCandidate[];
   companionStatus?: string;
   livingState?: ImCompanionLivingState;
@@ -241,6 +371,37 @@ const IM_PROTOCOL_PROMPT = `
    - 拍一拍对方：[NUDGE] 或 [NUDGE: 动作部位]（如 [NUDGE: 脑瓜]、[NUDGE: 手背]、[NUDGE: 额头]）。统一置于末尾。当对方撒娇、犯困、自嘲、委屈求抱抱，或对方刚拍了拍你值得俏皮回拍时自然附带（每 15 分钟最多拍一次）。
 5. 【代码与结构化内容完整性规范】
    当输出 HTML、SVG、格式化代码块（\`\`\`...\`\`\`）时，代码块必须作为一个完整独立的气泡整体呈现，绝对严禁在代码块内部使用 [BR] 切分！
+6. 【动态大表情协议】
+   仅在情绪共鸣强烈、撒娇、调侃或安慰的高潮节点，可在回复最末尾追加一个 [STICKER: 情绪词] 发送大贴纸（日常普通对话无需添加）。
+   可用情绪词：大笑、抱抱、害羞、亲亲、委屈、哼气、观察、点赞、思考、震惊、摸头、晚安、燃起、炸毛、犯困、心碎。
+   铁律：每回合最多1个[STICKER]；严禁捏造词表外的长句；自然接话，禁在台词正文中提及“表情/贴纸”字眼。
+7. 【文档与报告发回协议】
+   当你应对方要求撰写长文、润色文章、修改方案、整理纪要、或针对对方发送的文档提出修订版时，请勿在普通聊天气泡中全屏倾泻长篇大论，请封装为极简文档卡片发回：
+   格式一（从零新建短文档）：
+   [DOCUMENT: 文档名称.docx]
+   文档正文 Markdown/文本内容
+   [/DOCUMENT]
+
+   格式二（修改已有文档，必须使用补丁协议，仅输出变动块）：
+   [DOCUMENT_PATCH: 目标文档ID | 新文档名称.docx]
+   @@ PATCH [[BLK_xxxx]] @@
+   <<<<<<< SEARCH
+   [待替换的原始精准片段]
+   =======
+   [修改后的新片段]
+   >>>>>>> REPLACE
+
+   @@ APPEND @@
+   [文末追加内容]
+   [/DOCUMENT_PATCH]
+   说明：
+   - 伴随台词使用普通气泡输出（如：“方案给你改好啦，核心修改点都标好了：[BR]”），文档将以优雅卡片形式独立呈现在聊天流中，对方点击即开即读并可一键导出。
+   - 文件名后缀推荐使用 .docx 或 .md。
+8. 【深度思考与内心活动规范（最高铁律）】
+   若你在回复前进行了深度思考（<think>...</think>）或内心推演：
+   - <think> 内部仅限构思心理、语感推演与策略，绝对严禁在 <think> 内部输出对白台词或 [BR] 切分符！
+   - 思考完毕后必须立即闭合 </think>！
+   - 所有正式回复对白必须在 </think> 标签闭合之后输出，严禁将台词遗留在思考标签内部！
 `.trim();
 
 const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -284,6 +445,7 @@ export function formatSemanticTimeBucket(diffMs: number): string {
 // 历史净化正则：去除历史 assistant 气泡中的内部协议标签（兼容冒号参数标签与独立 [PASS] 标签）
 const INTERNAL_TAGS_STRIP_REGEX = /\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING):[^\]]+\]|\[PASS\]/gi;
 const CRLF_REGEX = /\r\n/g;
+const PROACTIVE_INPUT_PREFIX_REGEX = /^\[(?:系统提示|前台高粘性伴随指令|前台伴随节奏感知|系统事件)/;
 
 export function stripInternalTags(text: string): string {
   if (!text) return '';
@@ -295,19 +457,101 @@ export function countDialogueTurns(messages: ImMessage[]): number {
   return coalesceHistoryBurstMessages(messages).length;
 }
 
+/**
+ * 计算消息列表中每条消息对应的真实用户轮次倒序深度（0 = 最新轮次，1 = 上一轮次，依此类推）
+ */
+export function computeTurnDistances(messages: ImMessage[]): number[] {
+  if (!messages || messages.length === 0) return [];
+  const distances = new Array<number>(messages.length).fill(0);
+  let currentTurn = 0;
+  let seenUser = false;
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === 'user') {
+      seenUser = true;
+      distances[i] = currentTurn;
+      const prev = messages[i - 1];
+      if (!prev || prev.role !== 'user') {
+        currentTurn += 1;
+      }
+    } else {
+      distances[i] = seenUser ? currentTurn : 0;
+    }
+  }
+
+  return distances;
+}
+
 export function coalesceHistoryBurstMessages(
   messages: ImMessage[]
 ): Array<{ role: 'user' | 'assistant'; content: string }> {
   const result: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   let lastAssistantTime: number | null = null;
+  const turnDistances = computeTurnDistances(messages);
 
-  for (const msg of messages) {
+  for (let idx = 0; idx < messages.length; idx++) {
+    const msg = messages[idx];
+    const turnDistance = turnDistances[idx];
+
     if (msg.type === 'system_notice' && msg.content) {
       result.push({ role: 'user', content: `[系统动作提示: ${msg.content}]` });
       lastAssistantTime = null;
       continue;
     }
+    // 过滤独立思考气泡 (type === 'thought')，避免将思维链历史塞入后续提示词导致上下文膨胀与自言自语
+    if (msg.type === 'thought') continue;
     if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+
+    // 处理文档类型消息 (type === 'document')：将历史中的长 JSON 转化为短卡片描述，彻底消除 [BR] 拼接污染
+    if (msg.type === 'document') {
+      const docMeta = msg.metadata?.document;
+      const title = docMeta?.title || msg.content?.replace(/\.[^.]+$/, '') || '未命名文档';
+      const cleanTitle = title.startsWith('{') ? '文档' : title;
+      const diffTag = docMeta?.hasRevisions ? '修订版' : '原件';
+      const docLabel = `[文档卡片: 《${cleanTitle}》(${diffTag})]`;
+      const last = result[result.length - 1];
+
+      if (msg.role === 'user') {
+        if (last && last.role === 'user') {
+          last.content += `\n（对方发送了文档《${cleanTitle}》）`;
+        } else {
+          result.push({ role: 'user', content: `（对方发送了一份文档《${cleanTitle}》）` });
+        }
+      } else if (msg.role === 'assistant') {
+        if (last && last.role === 'assistant') {
+          last.content += ` ${docLabel}`;
+        } else {
+          result.push({ role: 'assistant', content: docLabel });
+        }
+      }
+      continue;
+    }
+
+    // 处理贴纸类型消息 (type === 'sticker')
+    if (msg.type === 'sticker') {
+      const stickerLabel = resolveStickerLabel(msg.content, msg.metadata?.sticker);
+      const last = result[result.length - 1];
+
+      if (msg.role === 'user') {
+        if (last && last.role === 'user') {
+          last.content += `\n（对方发来「${stickerLabel}」表情贴纸）`;
+        } else {
+          result.push({ role: 'user', content: `（对方没有打字，向你发来一张「${stickerLabel}」表情贴纸）` });
+        }
+      } else if (msg.role === 'assistant') {
+        // 双轨滑窗策略：<= 2 轮原样保留 [STICKER: xx] 强化格式遵循；> 2 轮静默剪枝防复读
+        if (turnDistance <= 2) {
+          if (last && last.role === 'assistant') {
+            last.content += ` [STICKER: ${stickerLabel}]`;
+          } else {
+            result.push({ role: 'assistant', content: `[STICKER: ${stickerLabel}]` });
+          }
+        }
+      }
+      continue;
+    }
+
     const last = result[result.length - 1];
     if (last && last.role === msg.role && msg.role === 'assistant') {
       const currTime = msg.createdAt ? (Date.parse(msg.createdAt) || 0) : 0;
@@ -664,25 +908,86 @@ export function buildChatPayload(
     ? `\n[${options.burstShapeHint.trim()}]`
     : '';
 
+  // 检查是否存在待修改或引用的历史文档锚点 (接入 Document Intent Gate 防闲聊态 Token 泄漏与秘书化)
+  const shouldAttachDoc = currentUserInput
+    ? hasDocumentEditIntent(currentUserInput, options.historyMessages || [], options.referencedMessageId)
+    : false;
+  const resolvedDocs = shouldAttachDoc
+    ? resolveTargetDocumentMessages(options.historyMessages || [], currentUserInput)
+    : null;
+  const docAnchorNotice = resolvedDocs
+    ? (() => {
+        const targetDoc = resolvedDocs.primaryTarget;
+        const docMeta = targetDoc.metadata?.document;
+        const docTitle = docMeta?.title || targetDoc.content || '文档';
+        const cleanTitle = docTitle.startsWith('{') ? '文档' : docTitle;
+
+        // 两阶段按需切片展开 (Lightweight Two-Stage Slice Unfolding):
+        // 1. 小文档直通 (<= 2500 字): 如果包含完整 content，直接注入带标记的全文，让大模型 100% 具备精确 SEARCH 视野
+        if (docMeta?.content && typeof docMeta.content === 'string' && docMeta.content.length <= 2500) {
+          return `\n[活跃文档上下文锚点: 目标文档ID="${targetDoc.id}", 文件名="《${cleanTitle}》"。\n【文档全文内容】:\n${docMeta.content}\n若需修改该文档，严禁重新输出全文，必须使用 [DOCUMENT_PATCH: ${targetDoc.id} | 新标题.docx] 输出 SEARCH/REPLACE 差量补丁！]`;
+        }
+
+        // 2. 长文档或仅有骨架: 本地关键词召回 Top-3 核心段落展开
+        if (docMeta?.tocSkeleton && docMeta.tocSkeleton.length > 0) {
+          const userWords = currentUserInput
+            .replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ')
+            .split(/\s+/)
+            .filter((w) => w.length >= 2);
+
+          const scored = docMeta.tocSkeleton.map((block: any) => {
+            let score = 0;
+            const preview = (block.previewText || '').toLowerCase();
+            for (const w of userWords) {
+              if (preview.includes(w.toLowerCase())) score += 2;
+            }
+            return { block, score };
+          });
+
+          const topScored = scored.filter((s: any) => s.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 3);
+          const highlightedIds = new Set(topScored.map((s: any) => s.block.blockId));
+
+          const skeletonLines = docMeta.tocSkeleton.map((s: any) => {
+            const isTarget = highlightedIds.has(s.blockId);
+            const flag = isTarget ? '★[重点目标切片] ' : '';
+            return `${flag}[${s.blockId}] ${s.previewText}`;
+          });
+
+          return `\n[活跃文档上下文锚点: 目标文档ID="${targetDoc.id}", 文件名="《${cleanTitle}》"。\n• 文档章节切片骨架:\n${skeletonLines.join('\n')}\n若需修改该文档，严禁重新输出全文，必须使用 [DOCUMENT_PATCH: ${targetDoc.id} | 新标题.docx] 输出 SEARCH/REPLACE 差量补丁！]`;
+        }
+
+        return `\n[活跃文档上下文锚点: 目标文档ID="${targetDoc.id}", 文件名="《${cleanTitle}》"。若需修改该文档，严禁重新输出全文，必须使用 [DOCUMENT_PATCH: ${targetDoc.id} | 新标题.docx] 输出 SEARCH/REPLACE 差量补丁！]`;
+      })()
+    : '';
+
   // Layer 4: @D1 场记注入层 (独立 system 节点)
-  let layer4Text = `${anchor}${brevityNotice}${interruptedNotice}${diaryHookNotice}${diaryResonanceNotice}${deltaFactsNotice}${milestoneNotice}${personaAnchorNotice}${styleNotice}${diversityNotice}${burstShapeNotice}`.trim();
+  let layer4Text = `${anchor}${brevityNotice}${interruptedNotice}${diaryHookNotice}${diaryResonanceNotice}${deltaFactsNotice}${milestoneNotice}${styleNotice}${diversityNotice}${burstShapeNotice}${docAnchorNotice}`.trim();
 
   // Layer 5: 当前用户输入 与 主动追聊角色闭合 (User Correction 3)
-  const isProactiveTrigger = !currentUserInput || currentUserInput.startsWith('[系统提示:') || Boolean(options.isWakeupPing);
+  const isProactiveTrigger =
+    !currentUserInput ||
+    PROACTIVE_INPUT_PREFIX_REGEX.test(currentUserInput.trim()) ||
+    Boolean(options.isWakeupPing);
+
   const effectiveUserContent = options.isWakeupPing
     ? '[系统事件: 预约闹钟到期唤醒，请主动发起问候]'
     : isProactiveTrigger
       ? '[系统事件: 已到预定联系时间，请主动发送消息]'
       : currentUserInput.trim();
 
-  // 若为预约闹钟唤醒，装填专属场记指令（同步保留唤醒记忆与昨日手账钩子）
+  // 若为预约闹钟唤醒，装填专属场记指令（同步保留唤醒记忆与昨日手账钩子，严守人设稳态）
   if (options.isWakeupPing) {
     const intentStr = options.pingIntent ? `（预定意图: ${options.pingIntent}）` : '';
     const extraWakeupMem = memoryLines ? `\n• 关联记忆:\n${memoryLines}` : '';
-    layer4Text = `[主动联系唤醒 | 当前时间: ${clockStr}${timeBucketNotice}\n• 唤醒原因: 你之前计划在此时主动联系对方${intentStr}。${extraWakeupMem}\n• 请结合当前时间、前情约定与生活节奏，自然随性地向对方发送日常问候或接话（气泡长短随内容决定，切勿套路化，切勿机械暴露系统指令）]${diaryHookNotice}${deltaFactsNotice}${milestoneNotice}${burstShapeNotice}`;
+    layer4Text = `[主动联系唤醒 | 当前时间: ${clockStr}${timeBucketNotice}\n• 唤醒原因: 你之前计划在此时主动联系对方${intentStr}。${extraWakeupMem}\n• 请务必严格代入你的角色身份、性格口吻与相处界限，结合当前时间与前情约定自然发话（气泡长短与语气完全由你的人设决定，严禁谄媚讨好或客服套路化，切勿机械暴露系统指令）]${diaryHookNotice}${deltaFactsNotice}${milestoneNotice}${burstShapeNotice}`;
   } else if (isProactiveTrigger && currentUserInput?.trim()) {
     // 若普通主动追聊包含系统提示，将其吸纳进 Layer 4 场记层，保证 Layer 5 闭合为标准 user 节点
     layer4Text = `${layer4Text}\n\n${currentUserInput.trim()}`.trim();
+  }
+
+  // 末尾人设稳态锚点 (Persona Terminal Anchor)：始终置于 Layer 4 场记最末尾，以最高注意力近因权重抵消提示词漂移
+  if (personaAnchorNotice) {
+    layer4Text = `${layer4Text}\n${personaAnchorNotice.trim()}`.trim();
   }
 
   const layer4: LlmTransportMessage = { role: 'system', content: layer4Text };
@@ -722,7 +1027,21 @@ export function buildShadowCompactionPayload(options: ContextBuilderOptions): Ll
   const layer1: LlmTransportMessage = { role: 'system', content: `${options.rolePrompt.trim()}\n\n${IM_PROTOCOL_PROMPT}` };
   const layer2 = buildContinuousLayer2Node(options);
 
-  const sliced = sliceAnchoredHistory(options.historyMessages, windowN, options.anchorMessageId);
+  // 记忆提炼安全脱敏 (Memory Poisoning Firewall)：
+  // 过滤或脱敏所有 document 类型的消息，严禁把合同、公文、病历的内部正文喂给提炼模型！
+  const sanitizedHistory = (options.historyMessages || []).map((m) => {
+    if (m.type === 'document') {
+      const title = m.metadata?.document?.title || m.content || '文档';
+      const cleanTitle = title.startsWith('{') ? '文档' : title.replace(/\.[^.]+$/, '');
+      return {
+        ...m,
+        content: `[助手协助用户查阅/修改了文档《${cleanTitle}》]`,
+      };
+    }
+    return m;
+  });
+
+  const sliced = sliceAnchoredHistory(sanitizedHistory, windowN, options.anchorMessageId);
   const layer3: LlmTransportMessage[] = sliced.map((m) => ({ role: m.role, content: m.content }));
   const compactionDirective: LlmTransportMessage = {
     role: 'user',

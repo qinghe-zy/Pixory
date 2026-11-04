@@ -1,4 +1,5 @@
 import { Share } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   EXPORT_FORMAT_OPTIONS,
@@ -138,9 +139,69 @@ export async function exportDocument(input: ExportDocumentInput): Promise<Export
 }
 
 /**
+ * 安全调用系统级真实物理文件分享。
+ * 核心设计原则（防闪退探针）：
+ * 1. 严禁直接调用 import('expo-sharing')！若宿主 APK 未内嵌原生模块（如 OTA 热更或旧底包环境），
+ *    Metro 会在模块顶层抛出 Cannot find native module 'ExpoSharing' 并直接调用
+ *    ExceptionsManagerModule.reportException 触发进程致命闪退。
+ * 2. 必须先通过 expo 的 requireOptionalNativeModule('ExpoSharing') 预检 Native 宿主模块注册表；
+ *    若未注册则安全返回 false，决不触发 Metro 模块求值异常。
+ * 3. 宿主确认具备原生模块后，安全动态导入 expo-sharing 并调用 shareAsync 跨应用分发文件实体。
+ */
+export async function safeShareFileAsync(
+  fileUri: string,
+  options: { mimeType?: string; dialogTitle?: string; UTI?: string } = {}
+): Promise<boolean> {
+  try {
+    let hasNativeModule = false;
+    try {
+      const g = globalThis as any;
+      if (g.expo?.modules?.ExpoSharing) {
+        hasNativeModule = true;
+      } else {
+        const mod = requireOptionalNativeModule('ExpoSharing');
+        hasNativeModule = Boolean(mod);
+      }
+    } catch {
+      hasNativeModule = false;
+    }
+
+    if (!hasNativeModule) {
+      return false;
+    }
+
+    const Sharing = await import('expo-sharing');
+    if (typeof Sharing.isAvailableAsync === 'function') {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        return false;
+      }
+    }
+
+    if (typeof Sharing.shareAsync === 'function') {
+      await Sharing.shareAsync(fileUri, options);
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 唤起系统原生分享面板
  */
 export async function shareExportedDocument(result: ExportDocumentResult): Promise<void> {
+  // 1. 优先调用 safeShareFileAsync 分享真实文件实体（携带 Android Intent.EXTRA_STREAM）
+  const shared = await safeShareFileAsync(result.fileUri, {
+    mimeType: result.mimeType,
+    dialogTitle: result.fileName,
+  });
+  if (shared) {
+    return;
+  }
+
   let shareMessage = result.fileName;
   try {
     if (result.format !== 'pdf') {
@@ -149,7 +210,7 @@ export async function shareExportedDocument(result: ExportDocumentResult): Promi
       });
       // Android Share.share 仅传递 message 文本，因此在文本合理长度内直接透传真实文档内容，杜绝仅发送单行文件名
       if (content && content.length < 50000) {
-        shareMessage = content;
+        shareMessage = `《${result.fileName}》\n\n${content}`;
       }
     }
   } catch {}

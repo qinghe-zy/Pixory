@@ -104,7 +104,7 @@ export function AiRoleCardDetailScreen({
         await onStartChatWithRole(card.id);
       }
     } catch (error) {
-      setStatus(error instanceof Error ? `开始伴侣对话失败：${error.message}` : '开始伴侣对话失败');
+      setStatus(error instanceof Error ? `开始对话失败：${error.message}` : '开始对话失败');
     } finally {
       setStarting(false);
     }
@@ -185,7 +185,7 @@ export function AiRoleCardDetailScreen({
                     : '正在进入'
                   : mode === 'apply_to_thread'
                   ? '应用到当前会话'
-                  : '发消息 (伴侣IM)'
+                  : '发消息 (即时聊天)'
               }
               loading={starting}
               onPress={() => void (mode === 'apply_to_thread' ? startChat() : startImChat())}

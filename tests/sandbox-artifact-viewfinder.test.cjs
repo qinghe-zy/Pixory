@@ -270,7 +270,10 @@ test('14. 沙箱模态窗关闭叉号右移与黑白灰状态点', () => {
 });
 
 test('15. 选择文本预览直出全屏沙箱，杜绝 160dp 取景框套娃', () => {
-  const selectModalSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/ai/AiMessageTextSelectionModal.tsx'), 'utf-8');
+  const targetFile = fs.existsSync(path.resolve(__dirname, '../src/components/common/MessageTextSelectionModal.tsx'))
+    ? '../src/components/common/MessageTextSelectionModal.tsx'
+    : '../src/components/ai/AiMessageTextSelectionModal.tsx';
+  const selectModalSrc = fs.readFileSync(path.resolve(__dirname, targetFile), 'utf-8');
 
   assert.ok(selectModalSrc.includes('fullscreenSandboxContainer'), '选择文本预览必须直接渲染全屏沙箱容器');
   assert.ok(selectModalSrc.includes('sandboxExecutable'), '必须包含可执行沙箱制品嗅探');

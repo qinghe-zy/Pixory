@@ -194,7 +194,7 @@ test('streaming assistant content uses lightweight rendering until the reply is 
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const content = read('src/components/ai/AiMessageContent.tsx');
 
-  assert.match(bubble, /renderAssistantContentWithCursor\(content, streaming\)/);
+  assert.match(bubble, /renderAssistantContentWithCursor\((?:effectiveAssistantContent|content), streaming\)/);
   assert.match(bubble, /<AiMessageContent[\s\S]*?content=\{content\}[\s\S]*?streaming=\{streaming\}[\s\S]*?trailingInline=\{<InlineStreamingCursor \/>\}/);
   assert.match(content, /streaming\?: boolean;/);
   assert.match(content, /if \(streaming\) \{/);

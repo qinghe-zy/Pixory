@@ -72,6 +72,7 @@ export interface ImThreadSettings {
   dndStartTime?: string | null;
   dndEndTime?: string | null;
   personalization?: ImCompanionPersonalization | null;
+  showThoughtBubble?: boolean;
 }
 
 export async function getImThreadSettings(
@@ -99,11 +100,15 @@ export async function getImThreadSettings(
   );
 
   let personalization: ImCompanionPersonalization | null = null;
+  let showThoughtBubble = true;
   if (row?.im_settings_json) {
     try {
       const parsed = JSON.parse(row.im_settings_json);
       if (parsed && typeof parsed.personalization === 'object') {
         personalization = parsed.personalization;
+      }
+      if (parsed && typeof parsed.showThoughtBubble === 'boolean') {
+        showThoughtBubble = parsed.showThoughtBubble;
       }
     } catch {}
   }
@@ -120,6 +125,7 @@ export async function getImThreadSettings(
     dndStartTime: row?.dnd_start_time ?? null,
     dndEndTime: row?.dnd_end_time ?? null,
     personalization,
+    showThoughtBubble,
   };
 }
 
@@ -172,7 +178,7 @@ export async function updateImThreadSettings(
     fields.push('dnd_end_time = ?');
     values.push(settings.dndEndTime);
   }
-  if (settings.personalization !== undefined) {
+  if (settings.personalization !== undefined || settings.showThoughtBubble !== undefined) {
     const existingRow = await db.getFirstAsync<{ im_settings_json: string | null }>(
       'SELECT im_settings_json FROM ai_threads WHERE id = ? LIMIT 1;',
       [threadId]
@@ -183,7 +189,12 @@ export async function updateImThreadSettings(
         parsedSettings = JSON.parse(existingRow.im_settings_json) || {};
       } catch {}
     }
-    parsedSettings.personalization = settings.personalization;
+    if (settings.personalization !== undefined) {
+      parsedSettings.personalization = settings.personalization;
+    }
+    if (settings.showThoughtBubble !== undefined) {
+      parsedSettings.showThoughtBubble = settings.showThoughtBubble;
+    }
     fields.push('im_settings_json = ?');
     values.push(JSON.stringify(parsedSettings));
   }

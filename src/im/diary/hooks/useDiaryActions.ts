@@ -54,13 +54,29 @@ export function useDiaryActions({
         onDiaryGenerated?.();
         showToast(isRewrite ? '已为您重新撰写并保留上一版' : '已为您完成手账日记撰写');
       } catch (err: any) {
+        console.error('[useDiaryActions] Diary generation failed:', err);
         const message = err?.message || '';
         if (message.includes('NO_PROVIDER_CONFIGURED')) {
           showToast('请先在「设置」中配置有效的 AI 模型与 Key');
         } else if (message.includes('NO_MESSAGES_FOR_DATE')) {
-          showToast('该日期暂无与伴侣的聊天记录，无法撰写手账');
+          showToast('该日期暂无聊天记录，无法撰写手账');
+        } else if (message.includes('GENERATION_TIMEOUT')) {
+          showToast('日记生成超时，请检查网络或稍后重试');
+        } else if (message.includes('database is locked') || message.includes('SQLITE_BUSY')) {
+          showToast('数据库繁忙，请稍等片刻后重试');
+        } else if (message.includes('401') || message.includes('Unauthorized')) {
+          showToast('模型 API Key 认证失败，请在设置中检查');
+        } else if (message.includes('429') || /rate limit|quota/i.test(message)) {
+          showToast('模型调用额度超限或频次过高，请稍后再试');
+        } else if (/network|failed to fetch/i.test(message)) {
+          showToast('网络连接中断，请检查手机网络后重试');
+        } else if (message.includes('GENERATION_EMPTY_FAILED')) {
+          showToast('暂未构思出日记内容，请重试一次');
+        } else if (message.includes('NativeDatabase') || message.includes('SQLite') || message.includes('prepare')) {
+          showToast('数据库读取异常，请重试');
         } else {
-          showToast('日记撰写失败，请确认模型连接后重试');
+          const detail = message ? `：${message.slice(0, 40)}` : '，请确认模型连接后重试';
+          showToast(`日记撰写失败${detail}`);
         }
       } finally {
         setGenerating(false);

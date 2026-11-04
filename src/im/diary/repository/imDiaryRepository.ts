@@ -46,6 +46,8 @@ export async function ensureDiaryTable(space: PixorySpace): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_diaries_thread_date 
     ON ai_companion_diaries(thread_id, diary_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_diaries_thread_date_unique
+    ON ai_companion_diaries(thread_id, diary_date);
   `);
   try {
     await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN theme_key TEXT;`);
@@ -55,6 +57,18 @@ export async function ensureDiaryTable(space: PixorySpace): Promise<void> {
   } catch {}
   try {
     await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN previous_versions_json TEXT;`);
+  } catch {}
+  try {
+    await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN paper_texture TEXT DEFAULT 'grid';`);
+  } catch {}
+  try {
+    await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN polaroid_json TEXT;`);
+  } catch {}
+  try {
+    await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN stickers_json TEXT;`);
+  } catch {}
+  try {
+    await db.execAsync(`ALTER TABLE ai_companion_diaries ADD COLUMN tapes_json TEXT;`);
   } catch {}
 }
 

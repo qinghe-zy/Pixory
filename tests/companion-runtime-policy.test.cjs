@@ -175,7 +175,7 @@ test('thought delivery shares the assistant and generation terminal transaction'
   const chat = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   const finalPersist = /markGenerationMetric\(generationMetrics, 'finalPersistStartAt'\)[\s\S]*?markGenerationMetric\(generationMetrics, 'finalPersistEndAt'\)/.exec(chat)?.[0] ?? '';
   assert.equal((finalPersist.match(/deliverThoughtReservation\(/g) ?? []).length, 1);
-  assert.match(finalPersist, /db\.withTransactionAsync\([\s\S]*deliverThoughtReservation\([\s\S]*settleGenerationJob/);
+  assert.match(finalPersist, /(?:db\.withTransactionAsync|runWithTransactionRetry)\([\s\S]*deliverThoughtReservation\([\s\S]*settleGenerationJob/);
 });
 
 test('continuation citations are revalidated and stranded thought reservations are reconciled', () => {

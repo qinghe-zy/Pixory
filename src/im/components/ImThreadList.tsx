@@ -75,7 +75,7 @@ export function ImThreadList({
   const renderItem = ({ item }: { item: ImThreadListItem }) => {
     const formattedPreview = formatImPreviewText(
       item.lastMessagePreview,
-      '刚刚建立了伴侣联络'
+      '刚刚建立了联络'
     );
     const unreadCount = item.unreadCount ?? 0;
     const a11yLabel =
@@ -192,18 +192,18 @@ export function ImThreadList({
     return (
       <View style={styles.emptyContainer}>
         <Ionicons color={colors.text.secondary} name="chatbubbles-outline" size={40} style={styles.emptyIcon} />
-        <Text style={styles.emptyTitle}>暂无伴侣聊天</Text>
+        <Text style={styles.emptyTitle}>暂无聊天消息</Text>
         <Text style={styles.emptySubtitle}>
-          挑选心仪伴侣或从通讯录开启对话，开启专属即时聊天。
+          挑选角色或从通讯录开启对话，开启专属即时聊天。
         </Text>
         {onOpenRoleLibrary ? (
           <Pressable
-            accessibilityLabel="挑选伴侣开启聊天"
+            accessibilityLabel="挑选角色开启聊天"
             accessibilityRole="button"
             onPress={onOpenRoleLibrary}
             style={({ pressed }) => [styles.pickButton, pressed ? styles.pressed : null]}
           >
-            <Text style={styles.pickButtonText}>挑选伴侣</Text>
+            <Text style={styles.pickButtonText}>挑选角色</Text>
           </Pressable>
         ) : null}
       </View>

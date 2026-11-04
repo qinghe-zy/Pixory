@@ -82,7 +82,7 @@ export function AiRoleLibraryScreen({
 
     Alert.alert(`开启与【${card.name}】的对话`, undefined, [
       {
-        text: '伴侣即时短聊 (IM)',
+        text: '即时短聊 (IM)',
         onPress: () => {
           void onStartImChat(card);
         },

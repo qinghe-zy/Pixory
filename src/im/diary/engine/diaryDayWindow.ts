@@ -4,6 +4,16 @@
  * 并提供高质量、无非对话杂音的真实交互语料筛选。
  */
 
+function resolveStickerLabel(
+  stickerId: string | null | undefined,
+  metadata?: { name?: string; label?: string } | null
+): string {
+  if (metadata?.name?.trim()) return metadata.name.trim();
+  if (metadata?.label?.trim()) return metadata.label.trim();
+  if (!stickerId) return '表情';
+  return stickerId.trim() || '表情';
+}
+
 export interface LocalDayRange {
   dateStr: string; // YYYY-MM-DD
   startUtcMs: number;
@@ -43,7 +53,7 @@ export function getLocalDayRange(dateStr: string): LocalDayRange {
   };
 }
 
-const TAG_STRIP_REGEX = /\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING|NUDGE):[^\]]+\]|\[PASS\]|\[NUDGE\]/gi;
+const TAG_STRIP_REGEX = /\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING|NUDGE|STICKER):[^\]]+\]|\[PASS\]|\[NUDGE\]|[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*[^\]】\n]+[\]】]/gi;
 
 /**
  * 清洗并提取手账日记专属的对话语料：
@@ -52,7 +62,7 @@ const TAG_STRIP_REGEX = /\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING|N
  * 3. 超长对话智能保留精彩首尾，中间紧凑抽样。
  */
 export function selectDiaryDialogue(
-  messages: Array<{ role: string; content: string; type?: string; createdAt?: string }>,
+  messages: Array<{ role: string; content: string; type?: string; createdAt?: string; metadata?: any }>,
   budgetChars: number = 3600
 ): string {
   if (!messages || messages.length === 0) return '';
@@ -61,6 +71,15 @@ export function selectDiaryDialogue(
 
   for (const msg of messages) {
     if (msg.type === 'diary_card' || msg.type === 'notice' || msg.type === 'system') {
+      continue;
+    }
+
+    if (msg.type === 'sticker') {
+      const stickerLabel = resolveStickerLabel(msg.content, msg.metadata?.sticker);
+      validDialogue.push({
+        role: msg.role === 'user' ? '用户' : '伴侣',
+        content: `（发来了一张「${stickerLabel}」表情，流露出当时的心情）`,
+      });
       continue;
     }
 

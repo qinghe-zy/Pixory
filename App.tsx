@@ -95,6 +95,7 @@ import { IpCoverPickerScreen } from './src/screens/IpCoverPickerScreen';
 import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
+import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { AdvancedSettingsScreen } from './src/screens/AdvancedSettingsScreen';
 import { AppearanceSettingsScreen } from './src/screens/AppearanceSettingsScreen';
@@ -247,6 +248,10 @@ type AppRoute =
     }
   | {
       name: 'im-companion-settings';
+      space: PixorySpace;
+    }
+  | {
+      name: 'notification-settings';
       space: PixorySpace;
     }
   | {
@@ -543,7 +548,6 @@ export default function App() {
   const [personalCredentialAvailable, setPersonalCredentialAvailable] = useState<boolean | null>(null);
   const [personalUnlockVisible, setPersonalUnlockVisible] = useState(false);
   const [personalAuthBusy, setPersonalAuthBusy] = useState(false);
-  const [privacyShieldVisible, setPrivacyShieldVisible] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
   const [availableAnnouncement, setAvailableAnnouncement] = useState<RemoteAnnouncementInfo | null>(null);
   const personalGenerationRef = useRef(0);
@@ -848,7 +852,6 @@ export default function App() {
           void lockPersonalSpace('background');
           return;
         }
-        setPrivacyShieldVisible(false);
         void checkRemoteNotices().catch(() => undefined);
         resumeCompanionRuntimes();
         return;
@@ -879,6 +882,59 @@ export default function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const handleDeepLink = async (rawUrl: string | null) => {
+      if (!rawUrl || !mounted) return;
+      try {
+        const match = rawUrl.match(/threadId=([^&]+)/);
+        if (match && match[1]) {
+          const targetThreadId = decodeURIComponent(match[1]);
+          let db = await initDatabase(activeSpace);
+          let thread = await db.getFirstAsync<{ id: string; roleCardId: string | null; title: string; space: PixorySpace }>(
+            'SELECT id, roleCardId, title, space FROM ai_threads WHERE id = ? LIMIT 1;',
+            [targetThreadId]
+          );
+
+          // 跨空间健壮性兜底: 系统通知源于普通空间，若用户当前处于隐私空间，转查普通空间
+          if (!thread && activeSpace !== 'normal') {
+            db = await initDatabase('normal');
+            thread = await db.getFirstAsync<{ id: string; roleCardId: string | null; title: string; space: PixorySpace }>(
+              'SELECT id, roleCardId, title, space FROM ai_threads WHERE id = ? LIMIT 1;',
+              [targetThreadId]
+            );
+          }
+
+          if (thread && mounted) {
+            const roleCard = thread.roleCardId
+              ? await db.getFirstAsync<{ name: string; avatarUri: string | null }>(
+                  'SELECT name, avatarUri FROM ai_role_cards WHERE id = ? LIMIT 1;',
+                  [thread.roleCardId]
+                )
+              : null;
+            pushRoute({
+              name: 'im-chat',
+              space: thread.space || 'normal',
+              threadId: thread.id,
+              roleCardId: thread.roleCardId || '',
+              roleName: roleCard?.name || thread.title || '伴侣',
+              roleAvatarUri: roleCard?.avatarUri || null,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to handle deep link URL:', error);
+      }
+    };
+
+    void Linking.getInitialURL().then(handleDeepLink);
+    const subscription = Linking.addEventListener('url', (event) => void handleDeepLink(event.url));
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [activeSpace]);
 
   useEffect(() => {
     if (personalSessionState !== 'unlocked' && isPersonalRoute(currentRoute)) {
@@ -919,7 +975,6 @@ export default function App() {
       return;
     }
 
-    setPrivacyShieldVisible(true);
     clearPendingPersonalBackgroundLock();
     backgroundLockTimerRef.current = setTimeout(() => {
       backgroundLockTimerRef.current = null;
@@ -927,7 +982,6 @@ export default function App() {
         void lockPersonalSpace('background');
         return;
       }
-      setPrivacyShieldVisible(false);
     }, PERSONAL_BACKGROUND_LOCK_GRACE_MS);
   }
 
@@ -991,7 +1045,6 @@ export default function App() {
     } catch (error) {
       setPersonalSessionState('locked');
       personalSessionStateRef.current = 'locked';
-      setPrivacyShieldVisible(false);
       throw error;
     } finally {
       setPersonalAuthBusy(false);
@@ -1044,11 +1097,9 @@ export default function App() {
   async function lockPersonalSpace(reason: PersonalLockReason) {
     clearPendingPersonalBackgroundLock();
     if (personalSessionStateRef.current === 'locked' && !personalTaskTokenRef.current) {
-      setPrivacyShieldVisible(false);
       return;
     }
 
-    setPrivacyShieldVisible(true);
     setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
     personalSessionStateRef.current = 'locking';
     const lockingTaskToken = personalTaskTokenRef.current;
@@ -1092,7 +1143,6 @@ export default function App() {
 
     setPersonalSessionState('locked');
     personalSessionStateRef.current = 'locked';
-    setPrivacyShieldVisible(false);
   }
 
   function pushRoute(route: AppRoute) {
@@ -2357,10 +2407,13 @@ export default function App() {
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenProfileInfo={() => pushRoute({ name: 'profile-info-settings', space: currentRoute.space })}
         onOpenImCompanionSettings={() => pushRoute({ name: 'im-companion-settings', space: currentRoute.space })}
+        onOpenNotificationSettings={() => pushRoute({ name: 'notification-settings', space: currentRoute.space })}
       />
     );
   } else if (currentRoute.name === 'im-companion-settings') {
     content = <ImCompanionSettingsScreen onBack={popRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'notification-settings') {
+    content = <NotificationSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'password-security-settings') {
     content = <PasswordAndSecurityScreen onBack={popRoute} />;
   } else if (currentRoute.name === 'developer-mode-settings') {
@@ -2639,7 +2692,7 @@ export default function App() {
           })}
           {/* Tab bar: only show when no overlay is covering the base layer */}
           {currentRoute.name === 'root' && baseRootRoute ? (
-            <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} scrollOffset={globalScrollOffset} />
+            <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} scrollOffset={globalScrollOffset} space={activeSpace} />
           ) : null}
         </View>
         <PersonalUnlockModal
@@ -2698,12 +2751,6 @@ export default function App() {
             </View>
           ) : null}
         </AppDialog>
-        {personalSessionState === 'unlocked' ? <PersonalModeBanner /> : null}
-        {privacyShieldVisible ? (
-          <View style={styles.privacyShield}>
-            <Text style={styles.privacyShieldText}>Pixory</Text>
-          </View>
-        ) : null}
         <StatusBar style="dark" />
       </AppToastProvider>
       </KeyboardProvider>
@@ -2718,25 +2765,37 @@ function FloatingFooterProvider({ children }: { children: React.ReactNode }) {
   return <FloatingFooterContext.Provider value={floatingFooterHeight}>{children}</FloatingFooterContext.Provider>;
 }
 
-function FloatingRootFooter({ activeTab, onSelectTab, scrollOffset }: { activeTab: RootTabKey; onSelectTab: (tab: RootTabKey) => void; scrollOffset?: SharedValue<number> }) {
+function FloatingRootFooter({
+  activeTab,
+  onSelectTab,
+  scrollOffset,
+  space,
+}: {
+  activeTab: RootTabKey;
+  onSelectTab: (tab: RootTabKey) => void;
+  scrollOffset?: SharedValue<number>;
+  space: PixorySpace;
+}) {
   const [imUnread, setImUnread] = useState(0);
 
   useEffect(() => {
     let mounted = true;
     const fetchUnread = () => {
-      void getTotalImUnreadCount('normal').then((c) => {
+      void getTotalImUnreadCount(space).then((c) => {
         if (mounted) setImUnread(c);
       });
     };
     fetchUnread();
-    const unsub = GlobalHeartbeatEngine.shared.subscribe(() => {
-      fetchUnread();
+    const unsub = GlobalHeartbeatEngine.shared.subscribe((_, targetSpace) => {
+      if (!targetSpace || targetSpace === space) {
+        fetchUnread();
+      }
     });
     return () => {
       mounted = false;
       unsub();
     };
-  }, []);
+  }, [space]);
 
   return (
     <View
@@ -2847,16 +2906,6 @@ function AppOtaUpdateFetchNotice({ isReady }: { isReady: boolean }) {
   return null;
 }
 
-function PersonalModeBanner() {
-  const insets = useSafeAreaInsets();
-
-  return (
-    <View pointerEvents="none" style={[styles.personalBanner, { top: insets.top }]}>
-      <Text style={styles.personalBannerText}>隐私模式</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   gestureRoot: {
     flex: 1,
@@ -2891,33 +2940,11 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     textAlign: 'center',
   },
-  personalBanner: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.active,
-    borderRadius: 999,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-    position: 'absolute',
-    right: spacing[3],
-    top: spacing[3],
-  },
-  personalBannerText: {
-    ...typography.textStyles.micro,
-    color: colors.text.inverse,
-  },
-  privacyShield: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    backgroundColor: colors.background.page,
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  privacyShieldText: {
-    ...typography.textStyles.navTitle,
-    color: colors.text.title,
-  },
   updateNotes: {
     gap: spacing[2],
+  },
+  floatingAnchor: {
+    top: spacing[3],
   },
   updateVersion: {
     ...typography.textStyles.caption,

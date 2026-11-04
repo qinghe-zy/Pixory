@@ -1,9 +1,30 @@
 import type { AiProviderCachePolicy } from '../aiPromptCache';
 import { classifyAiProviderError, toUserProviderErrorMessage } from '../aiProviderErrorClassifier';
+import type { AgentMessage } from '../../services/agent/kernel/agentTypes';
+
+export type AiThinkingBlock =
+  | { type: 'thinking'; thinking: string; signature?: string }
+  | { type: 'redacted_thinking'; data: string };
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  arguments: string; // JSON 字符串
+}
+
+export interface AiToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>; // JSON Schema
+}
 
 export type AiStreamEvent =
   | { type: 'answer_delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
+  | { type: 'thinking_delta'; text: string }
+  | { type: 'thinking_signature'; signature: string }
+  | { type: 'tool_call_delta'; toolCallId?: string; index?: number; name?: string; argumentsDelta?: string }
+  | { type: 'tool_call_complete'; toolCall: AiToolCall }
   | { type: 'provider_usage'; rawUsage: unknown }
   | { type: 'completed'; finishReason?: string }
   | { type: 'error'; message: string };
@@ -14,7 +35,13 @@ export function dispatchAiStreamEvent(
   onEvent: AiStreamEventHandler,
   event: AiStreamEvent,
 ): Promise<void> | void {
-  if (event.type === 'answer_delta' || event.type === 'reasoning_delta') {
+  if (
+    event.type === 'answer_delta' ||
+    event.type === 'reasoning_delta' ||
+    event.type === 'thinking_delta' ||
+    event.type === 'thinking_signature' ||
+    event.type === 'tool_call_delta'
+  ) {
     void onEvent(event);
     return;
   }
@@ -44,10 +71,26 @@ export interface AiChatRequest {
   signal?: AbortSignal;
 }
 
+export interface AgentTurnRequest {
+  apiKey: string;
+  baseUrl: string;
+  modelId: string;
+  systemPrompt?: string;
+  messages: AgentMessage[];
+  tools?: AiToolDefinition[];
+  providerCachePolicy?: AiProviderCachePolicy;
+  thinkingBudget?: number;
+  thinkingDisabled?: boolean;
+  maxOutputTokens?: number;
+  temperature?: number;
+  signal?: AbortSignal;
+}
+
 export interface AiProviderAdapter {
   listModels(input: { apiKey: string; baseUrl: string; signal?: AbortSignal }): Promise<string[]>;
   verifyChatCompletion(input: { apiKey: string; baseUrl: string; modelId: string; signal?: AbortSignal }): Promise<void>;
   streamChat(input: AiChatRequest, onEvent: AiStreamEventHandler): Promise<void>;
+  streamAgentTurn?(input: AgentTurnRequest, onEvent: AiStreamEventHandler): Promise<void>;
   embedText(input: { apiKey: string; baseUrl: string; modelId: string; text: string }): Promise<number[]>;
 }
 

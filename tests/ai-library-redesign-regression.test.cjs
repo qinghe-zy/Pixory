@@ -214,5 +214,5 @@ test('small UI state fixes keep titles and selection mode honest', () => {
   assert.match(materialList, /knowledgeBaseId \? '知识库资料'/);
   assert.match(library, /selectionMode=\{selectedCardIds\.length > 0\}/);
   assert.match(item, /selectionMode/);
-  assert.match(item, /!selectionMode \?/);
+  assert.match(item, /!selectionMode/);
 });

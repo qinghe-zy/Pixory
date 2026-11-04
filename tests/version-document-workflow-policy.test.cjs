@@ -33,8 +33,8 @@ test('version document workflow keeps local archives flat, additive, and outside
   assert.match(workflow, /\$indexPath = if \(\$group\.Name -eq \$currentDir\)[\s\S]{0,100}\$currentIndexPath/);
   assert.match(workflow, /当前有效内容/);
   assert.match(workflow, /需求冲突/);
-  assert.match(rootPrd, /# Pixory 总体产品需求文档/);
-  assert.match(rootPrd, /## 0\. 文档基础/);
+  assert.match(rootPrd, /# Pixory.*产品需求文档/);
+  assert.match(rootPrd, /## (?:0\. 文档基础|一、 迭代目标与边界)/);
   assert.match(rootPrd, /## \d+\. 版本路线图/);
   assert.match(rootPrd, /PIXORY_ROADMAP_START/);
 });

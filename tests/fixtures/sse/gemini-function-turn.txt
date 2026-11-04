@@ -1,0 +1,2 @@
+data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"分析文档需求，执行章节结构检查。"},{"thoughtSignature":"G94aFkLms79xZqW210_gemini_sig"},{"text":"正在分析文档结构并准备读取块。"},{"functionCall":{"id":"call_gem_001","name":"doc_inspect_skeleton","args":{"docUri":"vfs://work/report.docx"}}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"candidatesTokenCount":75,"promptTokenCount":210,"totalTokenCount":285}}
+data: [DONE]

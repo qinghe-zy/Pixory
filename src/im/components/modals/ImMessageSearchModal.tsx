@@ -29,7 +29,7 @@ export function ImMessageSearchModal({
   visible,
   space,
   threadId,
-  companionName = '伴侣',
+  companionName = '角色',
   companionAvatarUri,
   userAvatarUri,
   onClose,

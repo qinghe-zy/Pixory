@@ -40,17 +40,17 @@ export function recoverSystemAssistantActionFromIntent(
     return { type: 'select_ip' };
   }
 
-  // 3. System function navigation recovery driven by unified SEARCHABLE_FEATURE_CATALOG
-  const recoveredRoute = recoverSystemRouteFromCatalog(request, fullContext);
-  if (recoveredRoute) {
-    return { type: 'navigate', route: recoveredRoute };
-  }
-
   // 3. Rename thread recovery
   const renameMatch = request.match(/(?:改名(?:为|成|叫)|修改(?:管家|自己|你的)?昵称(?:为|成|叫)?|把你的名字改(?:为|成|叫))\s*[「"“']?([^」"”'\n]{1,80})[」"”']?$/i)
     || reply.match(/(?:已?(?:将|把)?(?:昵称|名字)?修改为)\s*[「"“']?([^」"”'\n]{1,80})[」"”']?/i);
   if (renameMatch && renameMatch[1]?.trim()) {
     return { type: 'rename-thread', newTitle: renameMatch[1].trim() };
+  }
+
+  // 4. System function navigation recovery driven by unified SEARCHABLE_FEATURE_CATALOG
+  const recoveredRoute = recoverSystemRouteFromCatalog(request, fullContext);
+  if (recoveredRoute) {
+    return { type: 'navigate', route: recoveredRoute };
   }
 
   // 4. Select IP fallback

@@ -18,7 +18,8 @@ test('website release-facing files reference the current release', () => {
   assert.ok(read('docs/m.html').includes(`id="dl-ver-num">${version}<`));
   assert.equal(JSON.parse(read('app.json')).expo.version, rawVersion);
   // // assert.match(read('README.md'));
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.8\./);
+  const majorMinor = rawVersion.split('.').slice(0, 2).join('\\.');
+  assert.match(read('docs/pixory-product-bid-handbook.md'), new RegExp(`适用版本：Pixory ${majorMinor}`));
   // assert.match(read('README.md'));
   assert.ok(read('docs/index.html').includes(`https://mist01.com/downloads/Pixory-v${version}.apk`));
   assert.ok(read('docs/m.html').includes(`https://mist01.com/downloads/Pixory-v${version}.apk`));

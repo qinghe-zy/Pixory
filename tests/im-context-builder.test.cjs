@@ -240,6 +240,35 @@ test('IM ContextBuilder (IM-PERF-004) Four-Zone & Shadow Forking', async (t) => 
     assert.equal(layer5.content, '[系统事件: 已到预定联系时间，请主动发送消息]');
   });
 
+  await t.test('Foreground Pacing Safety: Stage 1/2/3 directives 100% absorbed into Layer 4 and never leak into Layer 5', () => {
+    const { buildProactivePromptDirective } = require('../src/im/engine/proactiveTimingEvaluator.ts');
+    const proactiveHistory = [
+      { id: '1', role: 'user', content: '好的' },
+      { id: '2', role: 'assistant', content: '嗯嗯' },
+    ];
+
+    for (const stage of [1, 2, 3]) {
+      const directive = buildProactivePromptDirective(stage, '青空');
+      const payload = buildChatPayload(
+        {
+          rolePrompt: dummyRolePrompt,
+          historyMessages: proactiveHistory,
+          now: 1700000000000,
+        },
+        directive
+      );
+
+      const layer4 = payload[payload.length - 2];
+      assert.equal(layer4.role, 'system', `Stage ${stage} must be absorbed into Layer 4 system`);
+      assert.ok(layer4.content.includes(`Stage ${stage}`), `Layer 4 must contain Stage ${stage} directive`);
+
+      const layer5 = payload[payload.length - 1];
+      assert.equal(layer5.role, 'user');
+      assert.equal(layer5.content, '[系统事件: 已到预定联系时间，请主动发送消息]');
+      assert.ok(!layer5.content.includes('Stage'), 'Layer 5 must never leak prompt directive text');
+    }
+  });
+
   await t.test('Micro-timestamp coalescing: inserts [HH:mm 主动发消息] when interval >= 5min', () => {
     const rawMessages = [
       { id: '1', role: 'user', content: '我去图书馆啦', createdAt: '2026-10-28T13:20:00.000Z' },

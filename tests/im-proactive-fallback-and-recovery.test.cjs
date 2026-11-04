@@ -41,6 +41,17 @@ test('LivingState Seed: 首次建联与过期自动生成超过跑马灯阈值�
   assert.equal(state.activityLoad, 'free');
   assert.equal(shouldSeedOrRefreshLivingState(state, eveningTs + 5 * 60 * 1000), false);
   assert.equal(shouldSeedOrRefreshLivingState(state, state.validUntil + 3 * 3600 * 1000 + 1000), true);
+
+  // 验证 24 小时全时段状态文案均为世界观中立、无现代特定道具泄露 (如美式/耳机/手机/屏幕)，且长度均 >= 16
+  const FORBIDDEN_MODERN_PROPS = ['美式', '咖啡', '耳机', '手机', '屏幕', '大灯'];
+  for (let h = 0; h < 24; h++) {
+    const testTs = new Date(2026, 9, 28, h, 30, 0).getTime();
+    const hourlyState = buildDefaultLivingState(testTs);
+    assert.ok(hourlyState.statusText.length >= 16, `Hour ${h} statusText must be >= 16 chars: ${hourlyState.statusText}`);
+    for (const prop of FORBIDDEN_MODERN_PROPS) {
+      assert.ok(!hourlyState.statusText.includes(prop), `Hour ${h} must not contain '${prop}': ${hourlyState.statusText}`);
+    }
+  }
 });
 
 test('Fallback Proactive Planner: 模型漏写 [PING] 时自动按情境+退避+作息生成兜底闹钟', () => {

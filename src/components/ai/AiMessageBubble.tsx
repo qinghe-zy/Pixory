@@ -1,6 +1,6 @@
 import { Image } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -41,6 +41,11 @@ import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
 
 import { AI_SYSTEM_AVATAR_B64 } from '../../utils/aiSystemAvatarBase64';
 const AI_SYSTEM_AVATAR = require('../../../assets/ai_system_avatar.png');
+
+import { DocumentBubbleCard } from '../document/DocumentBubbleCard';
+import { parseDocumentTag, parseDocumentPatchTag } from '../../im/engine/imTagParser';
+import { stripMetaTags } from '../../im/engine/tagAwareStreamParser';
+import { exportDocumentToShare } from '../../im/utils/documentExport';
 
 interface AiMessageBubbleProps {
   isSystemAssistant?: boolean;
@@ -103,6 +108,7 @@ interface AiMessageBubbleProps {
   pinningDocumentId?: string | null;
   onPinDocument?: (documentId: string, title: string) => void;
   onOpenDocumentActionSheet?: (documentId: string, title: string) => void;
+  onOpenDocument?: (target: { uri?: string; title?: string; content?: string | Uint8Array; mode?: 'clean' | 'diff' }) => void;
 }
 
 function InlineStreamingCursor() {
@@ -369,6 +375,7 @@ function AiMessageBubbleComponent({
   pinningDocumentId,
   onPinDocument,
   onOpenDocumentActionSheet,
+  onOpenDocument,
 }: AiMessageBubbleProps) {
   const chatAppearance = useChatAppearancePreferences(space);
   const chatTypography = useChatTypographyPreferences(space);
@@ -410,9 +417,30 @@ function AiMessageBubbleComponent({
     (!isContinuousPacing || !isMessageGenerating) &&
     ((showActionButtons && !isUser && assistantTerminal) ||
       message.versionTotal > 1);
+  const docTag = useMemo(() => (!isUser ? parseDocumentTag(message.content) : null), [isUser, message.content]);
+  const patchTag = useMemo(() => (!isUser ? parseDocumentPatchTag(message.content) : null), [isUser, message.content]);
+
+  // 流式未闭合文档嗅探：当正在生成且尚未闭合时，实时截取前文并呈现流式文档卡片
+  const streamingDoc = useMemo(() => {
+    if (isUser || !generating || docTag || patchTag) return null;
+    const match = message.content.match(/\[(?:DOCUMENT|DOC):\s*([^\]\n]+?)\]([\s\S]*)$/i);
+    if (!match) return null;
+    const title = match[1].trim();
+    const streamedBody = match[2];
+    return {
+      title,
+      charCount: streamedBody.length,
+      preText: message.content.slice(0, match.index).trim(),
+    };
+  }, [isUser, generating, docTag, patchTag, message.content]);
+
   const rawContent = message.content;
   let displayContent = rawContent;
-  if (isUser) {
+  if (!isUser && (docTag || patchTag)) {
+    displayContent = stripMetaTags(rawContent);
+  } else if (!isUser && streamingDoc) {
+    displayContent = streamingDoc.preText;
+  } else if (isUser) {
     const attachmentMarkerIndex = rawContent.indexOf('\n\n[附件]');
     if (attachmentMarkerIndex !== -1) {
       displayContent = rawContent.slice(0, attachmentMarkerIndex);
@@ -422,10 +450,12 @@ function AiMessageBubbleComponent({
     }
   }
 
+  const effectiveAssistantContent = displayContent || (streamingDoc ? '' : content);
+
   const assistantHasBody =
     !isUser &&
     (editing ||
-      Boolean(content.trim()) ||
+      Boolean(effectiveAssistantContent.trim()) ||
       waitingForFirstToken ||
       Boolean(message.errorMessage?.trim()) ||
       (!hideCitations && message.citations.length > 0));
@@ -557,57 +587,39 @@ function AiMessageBubbleComponent({
               const isPinned = attachment.documentId ? pinnedDocumentIds?.has(attachment.documentId) : false;
               const isPinning = attachment.documentId ? pinningDocumentId === attachment.documentId : false;
 
-              return (
-                <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
-                  {attachment.kind === 'image' ? (
+              if (attachment.kind === 'image') {
+                return (
+                  <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
                     <SecureImage
                       contentFit="cover"
                       space={space}
                       style={styles.attachmentImageOuter}
                       uri={attachment.localUri}
                     />
-                  ) : (
-                    <View style={styles.attachmentDocumentOuter}>
-                      <Ionicons color={aiLightColors.primaryActive} name="document-text-outline" size={30} />
-                      <Text numberOfLines={2} style={styles.attachmentDocumentTextOuter}>{attachment.name}</Text>
-                      {attachment.documentId ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          hitSlop={6}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            if (isPinning) return;
-                            if (isPinned) {
-                              onOpenDocumentActionSheet?.(attachment.documentId!, attachment.name);
-                            } else {
-                              onPinDocument?.(attachment.documentId!, attachment.name);
-                            }
-                          }}
-                          style={({ pressed }) => [
-                            styles.pinPill,
-                            isPinned && styles.pinPillActive,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          {isPinning ? (
-                            <ActivityIndicator color={aiLightColors.primary} size={10} />
-                          ) : (
-                            <>
-                              <Ionicons
-                                color={isPinned ? aiLightColors.primary : aiLightColors.mutedSoft}
-                                name={isPinned ? 'bookmark' : 'bookmark-outline'}
-                                size={11}
-                              />
-                              <Text style={[styles.pinPillText, isPinned && styles.pinPillTextActive]}>
-                                {isPinned ? '已存入 ▾' : '存入资料库'}
-                              </Text>
-                            </>
-                          )}
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  )}
-                </Pressable>
+                  </Pressable>
+                );
+              }
+
+              return (
+                <View key={attachment.id} style={{ marginVertical: 4 }}>
+                  <DocumentBubbleCard
+                    title={attachment.name}
+                    sizeBytes={attachment.fileSize ?? undefined}
+                    onPress={() => {
+                      if (onOpenDocument) {
+                        onOpenDocument({ uri: attachment.localUri, title: attachment.name });
+                      } else if (attachment.documentId) {
+                        onAttachmentPress?.(attachment);
+                      }
+                    }}
+                    onShare={() => {
+                      void exportDocumentToShare({
+                        uri: attachment.localUri,
+                        title: attachment.name,
+                      });
+                    }}
+                  />
+                </View>
               );
             })}
           </View>
@@ -757,7 +769,7 @@ function AiMessageBubbleComponent({
                 ) : waitingForFirstToken ? (
                   <AiTypingIndicator />
                 ) : (
-                  renderAssistantContentWithCursor(content, streaming)
+                  renderAssistantContentWithCursor(effectiveAssistantContent, streaming)
                 )}
                 {isFailed && message.content.trim() && message.errorMessage ? <Text style={styles.errorText}>{message.errorMessage}</Text> : null}
                 {isFailed && canRegenerate && !isSystemAssistant ? (
@@ -772,6 +784,45 @@ function AiMessageBubbleComponent({
               <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} />
             ) : null}
           </Pressable>
+        ) : null}
+        {docTag ? (
+          <View style={{ marginTop: 8, alignSelf: isUser ? 'flex-end' : 'flex-start' }}>
+            <DocumentBubbleCard
+              title={docTag.title}
+              charCount={docTag.content.length}
+              onPress={() => onOpenDocument?.({ title: docTag.title, content: docTag.content })}
+              onShare={() => {
+                void exportDocumentToShare({
+                  title: docTag.title,
+                  content: docTag.content,
+                });
+              }}
+            />
+          </View>
+        ) : patchTag ? (
+          <View style={{ marginTop: 8, alignSelf: isUser ? 'flex-end' : 'flex-start' }}>
+            <DocumentBubbleCard
+              title={patchTag.title}
+              charCount={patchTag.patchContent.length}
+              hasRevisions
+              diffSummary="基于原件差量修订"
+              onPress={() => onOpenDocument?.({ title: patchTag.title, content: patchTag.patchContent, mode: 'diff' })}
+              onShare={() => {
+                void exportDocumentToShare({
+                  title: patchTag.title,
+                  content: patchTag.patchContent,
+                });
+              }}
+            />
+          </View>
+        ) : streamingDoc ? (
+          <View style={{ marginTop: 8, alignSelf: isUser ? 'flex-end' : 'flex-start' }}>
+            <DocumentBubbleCard
+              title={streamingDoc.title}
+              charCount={streamingDoc.charCount}
+              status="streaming"
+            />
+          </View>
         ) : null}
         {footerActionsVisible ? (
           <AiMessageFooterActions

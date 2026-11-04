@@ -11,7 +11,7 @@ import { SecureImage } from '../../../components/SecureImage';
 export function ImageBubbleRenderer({
   message,
   companionAvatarUri,
-  companionName = '伴侣',
+  companionName = '角色',
   userAvatarUri,
   onLongPressMessage,
   onPressMessage,

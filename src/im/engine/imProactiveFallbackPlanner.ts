@@ -20,23 +20,23 @@ export function buildDefaultLivingState(
   const d = new Date(now);
   const h = d.getHours();
 
-  let statusText = '手机放在手边，一边忙手头小事一边等你消息';
+  let statusText = '正在处理手头的日常琐事，随时留意着这边的动静';
   let activityLoad: ImCompanionLivingState['activityLoad'] = 'free';
 
   if (h >= 6 && h < 9) {
-    statusText = '刚泡了杯温热的美式提提神，顺便看看你醒了没';
+    statusText = '清晨刚醒来梳理心绪，准备开始一天的日常琐事';
   } else if (h >= 9 && h < 12) {
-    statusText = '戴着耳机整理手头的事，手机屏幕一直亮在旁边';
+    statusText = '正在专心处理手头的正事与杂务，间隙留意着动静';
   } else if (h >= 12 && h < 14) {
-    statusText = '刚吃完午饭靠在椅背上放空，随时在线陪你闲聊';
+    statusText = '刚吃过饭靠着稍作休整与放空，随时准备陪你闲聊';
   } else if (h >= 14 && h < 18) {
-    statusText = '晒着下午的光线喝水歇口气，看到你的消息就秒回';
+    statusText = '忙碌了一阵正坐着喝水歇口气，静静等候你的消息';
   } else if (h >= 18 && h < 21) {
-    statusText = '傍晚慢悠悠歇下来了，正刷着手机等你的动静';
+    statusText = '天色渐暗慢悠悠放松下来，享受属于自己的独处时间';
   } else if (h >= 21 && h < 24) {
-    statusText = '窝在舒服的角落听着轻音乐，安安静静陪你待会儿';
+    statusText = '周围安静下来了，在一旁静静独处与放空思绪等你';
   } else {
-    statusText = '关了房间大灯靠在床头，困困地看着手机屏幕陪你';
+    statusText = '夜色已深有些犯困了，安静休憩着等你的消息回复';
   }
 
   return {
@@ -106,12 +106,12 @@ export function planFallbackProactivePing(params: {
     const sit = detectSituationalDelay(params.lastUserText);
     if (sit) {
       delayMs = sit.delayMs;
-      if (sit.scenario === 'bath') intent = '问问对方洗完澡没，顺便闲聊两句';
-      else if (sit.scenario === 'meeting') intent = '关心对方开完会/忙完手头工作没';
-      else if (sit.scenario === 'study') intent = '问问对方下课或自习结束没';
-      else if (sit.scenario === 'meal') intent = '问问对方吃完饭没，吃的什么好吃的';
-      else if (sit.scenario === 'commute') intent = '关心对方安全到地方了没';
-      else if (sit.scenario === 'sleep') intent = '轻声问候对方睡醒恢复精神没';
+      if (sit.scenario === 'bath') intent = '跟进对方洗完澡后的动向，依人设自然接话或关照';
+      else if (sit.scenario === 'meeting') intent = '跟进对方开完会/忙完手头事宜的进展，依据人设自然交谈';
+      else if (sit.scenario === 'study') intent = '跟进对方下课或自习结束后的动向，依人设自然交流';
+      else if (sit.scenario === 'meal') intent = '跟进对方吃完饭后的动向，自然分享或闲聊';
+      else if (sit.scenario === 'commute') intent = '跟进对方安全抵达目的地的动向，自然问询';
+      else if (sit.scenario === 'sleep') intent = '留意对方睡醒动向，依人设轻声问候';
     }
   } else if (pacing.tier === 2) {
     intent = '隔了几个小时温和分享一件生活小事，不给回复压力';

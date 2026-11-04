@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 70;
+export const DATABASE_VERSION = 72;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2413,4 +2413,95 @@ ALTER TABLE ai_threads ADD COLUMN living_state_json TEXT;
 ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';
 CREATE INDEX IF NOT EXISTS idx_ai_messages_delivery_status
   ON ai_messages(threadId, delivery_status);
+`;
+
+export const MIGRATION_STATEMENTS_V71 = `
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id TEXT PRIMARY KEY NOT NULL,
+  threadId TEXT REFERENCES ai_threads(id) ON DELETE SET NULL,
+  docUri TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'rolled_back')),
+  totalSteps INTEGER NOT NULL DEFAULT 0,
+  currentCheckpointId TEXT,
+  vfsRootHash TEXT,
+  space TEXT NOT NULL DEFAULT 'normal',
+  createdAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_thread
+  ON agent_runs(threadId, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_space
+  ON agent_runs(space, createdAt DESC);
+
+CREATE TABLE IF NOT EXISTS agent_step_checkpoints (
+  id TEXT PRIMARY KEY NOT NULL,
+  runId TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+  stepIndex INTEGER NOT NULL,
+  toolName TEXT NOT NULL,
+  toolArgsJson TEXT NOT NULL,
+  toolResultJson TEXT,
+  vfsTreeHash TEXT NOT NULL,
+  manifestJson TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
+  createdAt INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_run_step
+  ON agent_step_checkpoints(runId, stepIndex ASC);
+CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_tree_hash
+  ON agent_step_checkpoints(vfsTreeHash);
+
+CREATE TABLE IF NOT EXISTS doc_search_chunks (
+  id TEXT PRIMARY KEY NOT NULL,
+  docUri TEXT NOT NULL,
+  blockId TEXT NOT NULL,
+  sectionTitle TEXT,
+  rawContent TEXT NOT NULL,
+  encodedBigrams TEXT NOT NULL,
+  pageOrSectionIndex INTEGER NOT NULL DEFAULT 0,
+  space TEXT NOT NULL DEFAULT 'normal',
+  createdAt INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_search_chunks_doc_block
+  ON doc_search_chunks(docUri, blockId);
+CREATE INDEX IF NOT EXISTS idx_doc_search_chunks_space
+  ON doc_search_chunks(space);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS doc_search_chunks_fts USING fts5(
+  chunk_id UNINDEXED,
+  doc_uri UNINDEXED,
+  section_title,
+  encoded_bigrams
+);
+`;
+
+export const MIGRATION_STATEMENTS_V72 = `
+CREATE TABLE IF NOT EXISTS custom_stickers (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL DEFAULT 'normal',
+  packId TEXT,
+  name TEXT NOT NULL,
+  uri TEXT NOT NULL,
+  previewUri TEXT,
+  emotionBucket TEXT,
+  keywordsJson TEXT,
+  width INTEGER,
+  height INTEGER,
+  sortOrder INTEGER NOT NULL DEFAULT 0,
+  createdAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS custom_sticker_packs (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL DEFAULT 'normal',
+  name TEXT NOT NULL,
+  coverUri TEXT,
+  description TEXT,
+  createdAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_stickers_space ON custom_stickers(space);
+CREATE INDEX IF NOT EXISTS idx_custom_stickers_bucket ON custom_stickers(emotionBucket);
+CREATE INDEX IF NOT EXISTS idx_custom_stickers_pack ON custom_stickers(packId);
 `;

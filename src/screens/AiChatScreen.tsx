@@ -98,6 +98,8 @@ import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailM
 import { SecureImage } from "../components/SecureImage";
 import { AiScrollToLatestButton } from "../components/ai/AiScrollToLatestButton";
 import { AiSandboxViewerModal } from "../components/common/AiSandboxViewerModal";
+import { ImDocumentMinimalViewer } from "../components/document/ImDocumentMinimalViewer";
+import { exportDocumentToShare } from "../im/utils/documentExport";
 import { applySearchReplacePatch, extractArtifactTitle } from "../services/sandbox/sandboxAssembler";
 import { extractSandboxExecutableCode } from "../services/sandbox/sandboxDetector";
 import { buildSandboxDynamicPromptSection } from "../services/sandbox/sandboxIntentRouter";
@@ -351,6 +353,14 @@ const CHAT_DOCUMENT_TYPES = [
 function getFileNameFromUri(uri: string, fallback: string): string {
   const rawName = uri.split(/[\\/]/).pop()?.split("?")[0]?.trim();
   return rawName ? decodeURIComponent(rawName) : fallback;
+}
+
+function toUserFacingErrorMessage(error: unknown, fallback: string): string {
+  const rawMessage = error instanceof Error ? error.message : "";
+  if (/database is locked|finalizeAsync|SQLITE_BUSY|cannot rollback/i.test(rawMessage)) {
+    return "本地数据库繁忙，已暂停并保护当前状态，请稍后重试";
+  }
+  return rawMessage || fallback;
 }
 
 function describeAttachmentKind(kind: AiComposerAttachment["kind"]): string {
@@ -1745,6 +1755,14 @@ export function AiChatScreen({
     title?: string;
     artifactId?: string;
     messageId?: string;
+  } | null>(null);
+
+  const [docViewerState, setDocViewerState] = useState<{
+    visible: boolean;
+    title?: string;
+    uri?: string;
+    content?: string | Uint8Array;
+    mode?: 'clean' | 'diff';
   } | null>(null);
 
   const [activeTweakArtifact, setActiveTweakArtifact] = useState<{
@@ -5223,6 +5241,12 @@ export function AiChatScreen({
       }
     })().catch((error) => {
       if (!cancelled) {
+        const rawMessage = error instanceof Error ? error.message : '';
+        const isLockError = /database is locked|finalizeAsync|SQLITE_BUSY|cannot rollback/i.test(rawMessage);
+        if (isLockError) {
+          // 数据库独占写入时非致命并发锁，静默抑制，绝不泄漏为顶栏报错蓝条打扰用户
+          return;
+        }
         setErrorMessage(
           error instanceof Error ? error.message : "读取 AI 消息收藏状态失败",
         );
@@ -6610,7 +6634,7 @@ export function AiChatScreen({
       ) {
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "发送失败");
+      setErrorMessage(toUserFacingErrorMessage(error, "发送失败"));
     } finally {
       refreshSystemAssistantTask();
       finishGenerationAction(actionToken);
@@ -6697,7 +6721,7 @@ export function AiChatScreen({
       }
       editingUserMessageIdRef.current = userMessageId;
       setEditingUserMessageId(userMessageId);
-      setErrorMessage(error instanceof Error ? error.message : "重写失败");
+      setErrorMessage(toUserFacingErrorMessage(error, "重写失败"));
     } finally {
       setPendingMessageActionId(null);
       finishGenerationAction(actionToken);
@@ -6790,7 +6814,7 @@ export function AiChatScreen({
       if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "刷新失败");
+      setErrorMessage(toUserFacingErrorMessage(error, "刷新失败"));
     } finally {
       setPendingMessageActionId(null);
       finishGenerationAction(actionToken);
@@ -6891,7 +6915,7 @@ export function AiChatScreen({
       if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "继续生成失败");
+      setErrorMessage(toUserFacingErrorMessage(error, "继续生成失败"));
     } finally {
       setPendingMessageActionId(null);
       finishGenerationAction(actionToken);
@@ -6993,7 +7017,7 @@ export function AiChatScreen({
       if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "续答失败");
+      setErrorMessage(toUserFacingErrorMessage(error, "续答失败"));
     } finally {
       setPendingMessageActionId(null);
       finishGenerationAction(actionToken);
@@ -7785,6 +7809,15 @@ export function AiChatScreen({
               pinningDocumentId={pinningDocumentId}
               onPinDocument={handlePinDocument}
               onOpenDocumentActionSheet={handleOpenDocumentActionSheet}
+              onOpenDocument={(target) => {
+                setDocViewerState({
+                  visible: true,
+                  title: target.title,
+                  uri: target.uri,
+                  content: target.content,
+                  mode: target.mode,
+                });
+              }}
               onAttachmentPress={(attachment) => {
                 if (attachment.kind === "document" && attachment.documentId) {
                   onOpenSource(attachment.documentId, attachment.name);
@@ -8663,6 +8696,23 @@ export function AiChatScreen({
         }}
         title={sandboxViewerState?.title}
         visible={Boolean(sandboxViewerState?.visible)}
+      />
+      <ImDocumentMinimalViewer
+        content={docViewerState?.content}
+        documentTitle={docViewerState?.title}
+        documentUri={docViewerState?.uri}
+        initialMode={docViewerState?.mode}
+        onClose={() => setDocViewerState(null)}
+        onExport={() => {
+          if (docViewerState) {
+            void exportDocumentToShare({
+              content: docViewerState.content,
+              title: docViewerState.title,
+              uri: docViewerState.uri,
+            });
+          }
+        }}
+        visible={Boolean(docViewerState?.visible)}
       />
       <ParallaxLightSweep
         active={showSweep && appIsActive}

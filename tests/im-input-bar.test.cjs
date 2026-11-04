@@ -8,7 +8,7 @@ test('IM input bar policy verification', async (t) => {
   const content = fs.readFileSync(inputBarPath, 'utf8');
 
   await t.test('ImInputBar consumes useImTheme and isolates text input state', () => {
-    assert.match(content, /export function ImInputBar/);
+    assert.match(content, /export (?:function|const) ImInputBar/);
     assert.match(content, /useImTheme\(\)/);
     assert.match(content, /useState\(''\)/);
   });

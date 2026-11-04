@@ -31,6 +31,7 @@ import { resolveCompanionRolePrompt, type CompanionRoleCardSnapshot } from '../e
 import { scheduleProactivePingAlarm } from './imNotificationManager';
 import { isWakeupInFlight, cancelAllWakeupsForSpace } from './imWakeupGenerationService';
 import { GlobalHeartbeatEngine } from '../heartbeat/globalHeartbeatEngine';
+import { resolveStickerLabel } from '../../components/emoji/StickerSemanticResolver';
 import type { ImMessage, ImCompanionLivingState } from '../types';
 
 const BR_SPLIT_REGEX = /\[br\]/i;
@@ -239,8 +240,14 @@ export async function recoverInterruptedUserReply(
   // 聚合末尾连续未回复的用户气泡作为当前轮输入
   const trailingUserTexts: string[] = [];
   for (let i = dialogueOnly.length - 1; i >= 0; i--) {
-    if (dialogueOnly[i].role === 'user') {
-      trailingUserTexts.unshift(dialogueOnly[i].content);
+    const m = dialogueOnly[i];
+    if (m.role === 'user') {
+      if (m.type === 'sticker') {
+        const label = resolveStickerLabel(m.content, m.metadata?.sticker);
+        trailingUserTexts.unshift(`（对方发来「${label}」表情贴纸）`);
+      } else if (m.content) {
+        trailingUserTexts.unshift(m.content);
+      }
     } else {
       break;
     }
@@ -261,7 +268,7 @@ export async function recoverInterruptedUserReply(
       [thread.roleCardId]
     );
   }
-  const { rolePrompt, companionName } = resolveCompanionRolePrompt(roleRow);
+  const { rolePrompt, companionName, personaAnchor } = resolveCompanionRolePrompt(roleRow);
 
   let livingState: ImCompanionLivingState | undefined;
   if (thread.living_state_json) {
@@ -323,6 +330,7 @@ export async function recoverInterruptedUserReply(
       now,
       windowN,
       anchorMessageId,
+      personaAnchor,
     },
     combinedUserInput
   );

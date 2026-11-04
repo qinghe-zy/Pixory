@@ -24,11 +24,204 @@ export interface ParsedPingTag {
   intent: string;
 }
 
+export interface ParsedStickerTag {
+  emotion: string;
+  rawTag: string;
+}
+
+export interface ParsedDocumentTag {
+  title: string;
+  uri?: string;
+  content: string;
+  rawTag: string;
+}
+
+export interface DocumentPatchOperation {
+  op: 'replace' | 'append' | 'prepend';
+  targetBlockId?: string; // 如 "[[BLK_0002]]"，若未指定则在全文定位
+  search: string;
+  replace: string;
+}
+
+export interface ParsedDocumentPatchTag {
+  baseMsgId: string;
+  title: string;
+  patchContent: string;
+  operations: DocumentPatchOperation[];
+  rawTag: string;
+}
+
 // 模块级提升的协议标签正则 (js-hoist-regexp)
 const NUDGE_TAG_REGEX = /\[NUDGE(?::\s*([^\]]+))?\]/i;
 const STATUS_TAG_REGEX = /\[STATUS:\s*([^\]]+)\]/i;
 const HEARTBEAT_TAG_REGEX = /\[HEARTBEAT:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
 const PING_TAG_REGEX = /\[PING:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
+export const STICKER_TAG_REGEX = /[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*([^\]】\n]{1,10}?)\s*[\]】]/i;
+const DOCUMENT_BLOCK_REGEX = /\[(?:DOCUMENT|DOC):\s*([^\]\n]+)\]([\s\S]*?)\[\/(?:DOCUMENT|DOC)\]/i;
+const DOCUMENT_INLINE_REGEX = /\[(?:DOCUMENT|DOC):\s*([^|\]\n]+)\|\s*([\s\S]+?)\]/i;
+const DOCUMENT_PATCH_BLOCK_REGEX = /\[(?:DOCUMENT_PATCH|DOC_PATCH):\s*([^|\]\n]+?)\s*\|\s*([^\]\n]+?)\]([\s\S]*?)\[\/(?:DOCUMENT_PATCH|DOC_PATCH)\]/i;
+
+/**
+ * 解析大模型发回的文档卡片协议
+ * 支持多行闭合块 [DOCUMENT: 标题.docx] 正文 [/DOCUMENT]
+ * 与行内管道格式 [DOCUMENT: 标题.docx | 正文]
+ */
+export function parseDocumentTag(text: string): ParsedDocumentTag | null {
+  if (!text) return null;
+  // 1. 优先尝试块状闭合格式 [/DOCUMENT] 或 [/DOC]
+  const blockMatch = text.match(DOCUMENT_BLOCK_REGEX);
+  if (blockMatch) {
+    const title = blockMatch[1].trim();
+    const content = blockMatch[2].trim();
+    if (title && content) {
+      return {
+        title,
+        uri: title,
+        content,
+        rawTag: blockMatch[0],
+      };
+    }
+  }
+
+  // 2. 尝试行内管道格式 [DOCUMENT: filename.docx | content]
+  const inlineMatch = text.match(DOCUMENT_INLINE_REGEX);
+  if (inlineMatch) {
+    const title = inlineMatch[1].trim();
+    const content = inlineMatch[2].trim();
+    if (title && content) {
+      return {
+        title,
+        uri: title,
+        content,
+        rawTag: inlineMatch[0],
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 弹性解析 SEARCH/REPLACE 块与 APPEND 指令，容忍 4~8 个定界符与可选块锚点
+ */
+export function parsePatchOperations(patchBody: string): DocumentPatchOperation[] {
+  const ops: DocumentPatchOperation[] = [];
+  const lines = patchBody.replace(/\r\n/g, '\n').split('\n');
+
+  let currentBlockId: string | undefined;
+  let mode: 'idle' | 'search' | 'replace' | 'append' = 'idle';
+  let searchBuf: string[] = [];
+  let replaceBuf: string[] = [];
+
+  const flushAppendIfNeeded = () => {
+    if (mode === 'append' && replaceBuf.length > 0) {
+      ops.push({
+        op: 'append',
+        targetBlockId: currentBlockId,
+        search: '',
+        replace: replaceBuf.join('\n').trim(),
+      });
+      replaceBuf = [];
+      mode = 'idle';
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 1. 检测块级指令头：@@ PATCH [[BLK_0002]] @@ 或 @@ PATCH [[BLK_a3f1c2e4]] @@ 或 @@ APPEND_AFTER [[BLK_0003]] @@
+    const headerMatch = trimmed.match(/^@@\s*(PATCH|APPEND(?:_AFTER)?|PREPEND)\s*(\[\[BLK_[0-9a-fA-F_]+\]\])?\s*@@/i);
+    if (headerMatch) {
+      flushAppendIfNeeded();
+      const action = headerMatch[1].toUpperCase();
+      currentBlockId = headerMatch[2] ? headerMatch[2].toUpperCase() : undefined;
+      if (action.startsWith('APPEND')) {
+        mode = 'append';
+        replaceBuf = [];
+      }
+      continue;
+    }
+
+    // 独立出现的 [[BLK_xxxx]] 行（兼容纯数字与十六进制哈希）
+    const standaloneBlk = trimmed.match(/^(\[\[BLK_[0-9a-fA-F_]+\]\])$/i);
+    if (standaloneBlk && mode === 'idle') {
+      currentBlockId = standaloneBlk[1];
+      continue;
+    }
+
+    // 2. 检测 <<<<<<< SEARCH
+    if (/^<{4,8}\s*SEARCH/i.test(trimmed)) {
+      flushAppendIfNeeded();
+      mode = 'search';
+      searchBuf = [];
+      replaceBuf = [];
+      continue;
+    }
+
+    // 3. 检测 =======
+    if (/^={4,8}$/.test(trimmed) && mode === 'search') {
+      mode = 'replace';
+      continue;
+    }
+
+    // 4. 检测 >>>>>>> REPLACE
+    if (/^>{4,8}\s*REPLACE/i.test(trimmed) && mode === 'replace') {
+      ops.push({
+        op: 'replace',
+        targetBlockId: currentBlockId,
+        search: searchBuf.join('\n'),
+        replace: replaceBuf.join('\n'),
+      });
+      mode = 'idle';
+      searchBuf = [];
+      replaceBuf = [];
+      continue;
+    }
+
+    if (mode === 'search') {
+      searchBuf.push(line);
+    } else if (mode === 'replace' || mode === 'append') {
+      replaceBuf.push(line);
+    }
+  }
+
+  flushAppendIfNeeded();
+  return ops;
+}
+
+/**
+ * 解析大模型发回的文档补丁协议 [DOCUMENT_PATCH: baseMsgId | 标题.ext] ... [/DOCUMENT_PATCH]
+ */
+export function parseDocumentPatchTag(text: string): ParsedDocumentPatchTag | null {
+  if (!text) return null;
+  const match = text.match(DOCUMENT_PATCH_BLOCK_REGEX);
+  if (!match) return null;
+
+  const baseMsgId = match[1].trim();
+  const title = match[2].trim();
+  const patchContent = match[3].trim();
+  const operations = parsePatchOperations(patchContent);
+
+  return {
+    baseMsgId,
+    title,
+    patchContent,
+    operations,
+    rawTag: match[0],
+  };
+}
+
+/**
+ * 解析大模型返回的 [STICKER: 情绪词] 或 【表情: 情绪词】
+ */
+export function parseStickerTag(text: string): ParsedStickerTag | null {
+  if (!text) return null;
+  const match = text.match(STICKER_TAG_REGEX);
+  if (!match) return null;
+  const emotion = match[1]?.trim();
+  if (!emotion) return null;
+  return { emotion, rawTag: match[0] };
+}
 
 /**
  * 解析 [NUDGE] 或 [NUDGE: 动作描述]

@@ -1,0 +1,7 @@
+data: {"id":"gen-123","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"用户需要阅读文档前 3 个段落，我应该调用 doc_read_blocks 工具。"}}]}
+data: {"id":"gen-123","choices":[{"index":0,"delta":{"reasoning_content":"检查参数：blockIds 数组包含 BLK_001, BLK_002, BLK_003。"}}]}
+data: {"id":"gen-123","choices":[{"index":0,"delta":{"content":"我将为您检索前 3 个段落的内容。"}}]}
+data: {"id":"gen-123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_deepseek_991","type":"function","function":{"name":"doc_read_blocks","arguments":"{\"docUri\":\"vfs://work/contract.docx\","}}]}}]}
+data: {"id":"gen-123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"blockIds\":[\"BLK_001\",\"BLK_002\",\"BLK_003\"]}"}}]}}]}
+data: {"id":"gen-123","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":120,"completion_tokens":85,"total_tokens":205}}
+data: [DONE]

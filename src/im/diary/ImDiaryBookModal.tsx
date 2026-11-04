@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../database';
@@ -90,8 +90,8 @@ export function ImDiaryBookModal({
             <Ionicons color="#1E293B" name="close" size={22} />
           </Pressable>
           <View style={styles.navCenter}>
-            <Text style={styles.navTitle}>{companionName} 的伴侣日记</Text>
-            <Text style={styles.navSubtitle}>{diariesList.length > 0 ? `相伴记录 · ${diariesList.length} 篇回忆` : '伴侣专属生活日记'}</Text>
+            <Text style={styles.navTitle}>{companionName} 的生活日记</Text>
+            <Text style={styles.navSubtitle}>{diariesList.length > 0 ? `相伴记录 · ${diariesList.length} 篇回忆` : '专属生活日记'}</Text>
           </View>
           <Pressable accessibilityLabel="手账操作菜单" accessibilityRole="button" disabled={generating} onPress={() => openActionMenu(currentDiary, currentDateStr)} style={styles.navBtn}>
             <Ionicons color="#1E293B" name={generating ? 'hourglass-outline' : 'ellipsis-horizontal'} size={20} />
@@ -102,8 +102,12 @@ export function ImDiaryBookModal({
           <ImDiaryLeatherBinder thicknessLayers={computeBookThicknessLayers(spreads.length).paperEdgeCount}>
             {loading || generating ? (
               <View style={styles.emptyContainer}>
-                <Ionicons color="#64748B" name={generating ? 'sparkles' : 'book-outline'} size={38} style={{ marginBottom: 10 }} />
-                <Text style={styles.loadingText}>{generating ? '伴侣正在落笔撰写中...' : '正在翻开伴侣日记...'}</Text>
+                {generating ? (
+                  <ActivityIndicator color="#0F172A" size="small" style={{ marginBottom: 12 }} />
+                ) : (
+                  <Ionicons color="#64748B" name="book-outline" size={38} style={{ marginBottom: 10 }} />
+                )}
+                <Text style={styles.loadingText}>{generating ? '正在落笔撰写中...' : '正在翻开日记...'}</Text>
               </View>
             ) : viewport.currSpread ? (
               <ImDiaryPageCurlEngine
@@ -117,9 +121,15 @@ export function ImDiaryBookModal({
                 <Text style={styles.emptyEmoji}>📖</Text>
                 <Text style={styles.emptyTitle}>日记本还是空白的</Text>
                 <Text style={styles.emptyDesc}>多和 {companionName} 聊聊天，今晚会为你写下专属日记</Text>
-                <Pressable accessibilityRole="button" disabled={generating} onPress={() => void handleGenerateDiary(toLocalDateStr())} style={styles.generateBtn}>
+                <Pressable
+                  accessibilityLabel="即刻补写日记"
+                  accessibilityRole="button"
+                  disabled={generating}
+                  onPress={() => void handleGenerateDiary(toLocalDateStr())}
+                  style={styles.generateBtn}
+                >
                   <Ionicons color="#FFFFFF" name="sparkles" size={14} style={{ marginRight: 6 }} />
-                  <Text style={styles.generateBtnText}>唤醒伴侣即刻补写</Text>
+                  <Text style={styles.generateBtnText}>即刻补写日记</Text>
                 </Pressable>
               </View>
             )}

@@ -245,7 +245,7 @@ export function ImCompanionMemoryModal({
   const renderLoadingState = () => (
     <View style={styles.loadingContainer}>
       <ActivityIndicator color={colors.primary.default} size="small" />
-      <Text style={styles.loadingText}>正在调取伴侣默契记忆...</Text>
+      <Text style={styles.loadingText}>正在调取记忆数据...</Text>
     </View>
   );
 

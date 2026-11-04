@@ -10,6 +10,35 @@ import type { ImMessage } from '../types';
 import { calculateBubbleTypingDelay, DEFAULT_PACING_CONFIG, type ImPacingConfig } from '../config/pacingProfile';
 import { calculateHumanTypingDelay, type HumanTypingOptions } from '../config/humanTypingTimeline';
 import { sanitizeCompanionBubble } from './humanizeOutputGate';
+import { resolveSticker, resolveCompensationEmoji } from '../../components/emoji/StickerSemanticResolver';
+import { CasBlobStore } from '../../services/agent/vfs/casBlobStore';
+import { applyBatchSafely } from '../../services/sandbox/diff/fuzzyPatcher';
+import type { ParsedDocumentPatchTag } from './imTagParser';
+
+export function getStickerCooldownThreshold(style?: string | null): number {
+  if (!style) return 3;
+  const lower = style.toLowerCase();
+  if (lower.includes('concise') || lower.includes('cool') || lower.includes('tsundere')) {
+    return 5;
+  }
+  if (lower.includes('lively') || lower.includes('clingy') || lower.includes('playful')) {
+    return 1;
+  }
+  return 3;
+}
+
+export interface DispatchStickerOptions {
+  personaStyle?: string | null;
+  userTextLength?: number;
+}
+
+export interface DispatchStickerResult {
+  dispatched: boolean;
+  reason: 'cooldown_intercepted' | 'resolved_and_dispatched' | 'no_sticker_found';
+  message?: ImMessage;
+  compensationEmoji?: string;
+  stickerName?: string;
+}
 
 export class VisibilityTicker {
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -129,6 +158,7 @@ export class BurstMessageDispatcher {
   private currentBurstGroupId: string | null = null;
   private accumulatedDelay: number = 0;
   private dispatchedCountInBurst: number = 0;
+  private turnsSinceLastSticker: number = 999;
 
   constructor(
     threadId: string,
@@ -157,13 +187,16 @@ export class BurstMessageDispatcher {
     text: string,
     ticker?: VisibilityTicker,
     options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
-  ): Promise<ImMessage> {
+  ): Promise<ImMessage | null> {
+    const cleaned = sanitizeCompanionBubble(text);
+    const effectiveText = cleaned.trim();
+    if (!effectiveText) {
+      return null;
+    }
+
     if (!this.currentBurstGroupId) {
       this.beginBurst();
     }
-
-    const cleaned = sanitizeCompanionBubble(text);
-    const effectiveText = cleaned.trim() || text.trim();
 
     const isFirst = this.dispatchedCountInBurst === 0;
     const delay = options?.useHumanTimeline
@@ -212,6 +245,302 @@ export class BurstMessageDispatcher {
       visibleAt,
       createdAt: new Date(visibleAt).toISOString(),
     };
+    await insertImMessage(this.space, message);
+    ticker?.scheduleNextTick().catch(() => {});
+    return message;
+  }
+
+  getTurnsSinceLastSticker(): number {
+    return this.turnsSinceLastSticker;
+  }
+
+  setTurnsSinceLastSticker(turns: number): void {
+    this.turnsSinceLastSticker = Math.max(0, turns);
+  }
+
+  advanceTurnWithoutSticker(): void {
+    this.turnsSinceLastSticker += 1;
+  }
+
+  /**
+   * 分发大表情贴纸（严格实行尾部锚定 Tail-Anchor 与物理硬锁门禁）
+   */
+  async dispatchSticker(
+    emotionWord: string,
+    ticker?: VisibilityTicker,
+    options?: DispatchStickerOptions
+  ): Promise<DispatchStickerResult> {
+    const threshold = getStickerCooldownThreshold(options?.personaStyle);
+
+    // 处于冷却期拦截：且本轮已发出过文字台词
+    if (this.turnsSinceLastSticker < threshold && this.dispatchedCountInBurst > 0) {
+      this.turnsSinceLastSticker += 1;
+      const compensation = resolveCompensationEmoji(emotionWord);
+      return {
+        dispatched: false,
+        reason: 'cooldown_intercepted',
+        compensationEmoji: compensation,
+        stickerName: emotionWord,
+      };
+    }
+
+    // 通过门禁：解析具体贴纸（支持内置与外部导入库）
+    const sticker = resolveSticker(emotionWord, { personaStyle: options?.personaStyle || undefined });
+    if (!sticker) {
+      this.turnsSinceLastSticker += 1;
+      const compensation = resolveCompensationEmoji(emotionWord);
+      return {
+        dispatched: false,
+        reason: 'no_sticker_found',
+        compensationEmoji: compensation,
+        stickerName: emotionWord,
+      };
+    }
+
+    if (!this.currentBurstGroupId) {
+      this.beginBurst();
+    }
+
+    // 尾部锚定 (Tail-Anchor)：固定附加 250ms 节奏间隔
+    this.accumulatedDelay += 250;
+    this.dispatchedCountInBurst += 1;
+    const visibleAt = Date.now() + this.accumulatedDelay;
+
+    const message: ImMessage = {
+      id: `msg_ai_stk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      threadId: this.threadId,
+      burstGroupId: this.currentBurstGroupId || undefined,
+      role: 'assistant',
+      content: sticker.name,
+      type: 'sticker',
+      imageUri: sticker.animatedUri,
+      metadata: {
+        sticker: {
+          id: sticker.id,
+          name: sticker.name,
+          animatedUri: sticker.animatedUri,
+          previewUri: sticker.previewUri,
+          width: sticker.width,
+          height: sticker.height,
+        },
+      },
+      status: 'sent',
+      deliveryStatus: 'revealing',
+      visibleAt,
+      createdAt: new Date(visibleAt).toISOString(),
+    };
+
+    await insertImMessage(this.space, message);
+    ticker?.scheduleNextTick().catch(() => {});
+
+    // 成功发送，冷却计数归零
+    this.turnsSinceLastSticker = 0;
+
+    return {
+      dispatched: true,
+      reason: 'resolved_and_dispatched',
+      message,
+      stickerName: sticker.name,
+    };
+  }
+
+  /**
+   * 分发大模型生成的文档气泡卡片 (点击即开即读与导出)
+   */
+  async dispatchDocument(
+    doc: { title: string; uri?: string; content: string; tocSkeleton?: Array<{ blockId: string; previewText: string }> },
+    ticker?: VisibilityTicker
+  ): Promise<ImMessage> {
+    if (!this.currentBurstGroupId) {
+      this.beginBurst();
+    }
+
+    // 文档卡片间隔 200ms 自然呈现
+    this.accumulatedDelay += 200;
+    this.dispatchedCountInBurst += 1;
+    const visibleAt = Date.now() + this.accumulatedDelay;
+
+    let casHash: string | undefined;
+    let casUri: string = doc.uri || doc.title;
+    let contentToStore: string | Uint8Array = doc.content;
+
+    // 若目标是 .docx 且当前正文为 Markdown 文本，自动编译为标准的 ECMA-376 OOXML Zip 二进制包
+    const isDocxTarget = doc.title.toLowerCase().endsWith('.docx');
+    if (isDocxTarget && typeof doc.content === 'string' && !doc.content.startsWith('PK')) {
+      try {
+        const { compileMarkdownToDocx } = await import('../../services/sandbox/docx/docxCompiler');
+        contentToStore = await compileMarkdownToDocx(doc.content, doc.title);
+      } catch {
+        // 容错保持原正文
+      }
+    }
+
+    try {
+      const casStore = new CasBlobStore();
+      const putRes = await casStore.putBlob(contentToStore, this.space);
+      casHash = putRes.blobHash;
+      casUri = casStore.getBlobPath(putRes.blobHash, this.space);
+    } catch {
+      // 容错静默
+    }
+
+    const message: ImMessage = {
+      id: `msg_ai_doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      threadId: this.threadId,
+      burstGroupId: this.currentBurstGroupId || undefined,
+      role: 'assistant',
+      content: doc.title,
+      type: 'document',
+      metadata: {
+        document: {
+          title: doc.title,
+          uri: casUri,
+          casUri,
+          casHash,
+          size: typeof contentToStore === 'string' ? contentToStore.length : contentToStore.byteLength,
+          sizeBytes: typeof contentToStore === 'string' ? contentToStore.length : contentToStore.byteLength,
+          charCount: typeof doc.content === 'string' ? doc.content.length : undefined,
+          tocSkeleton: doc.tocSkeleton,
+          content: doc.content,
+        },
+      },
+      status: 'sent',
+      deliveryStatus: 'revealing',
+      visibleAt,
+      createdAt: new Date(visibleAt).toISOString(),
+    };
+
+    await insertImMessage(this.space, message);
+    ticker?.scheduleNextTick().catch(() => {});
+    return message;
+  }
+
+  /**
+   * 执行局部补丁合成并分发派生文档气泡
+   */
+  async dispatchDocumentPatch(
+    patch: ParsedDocumentPatchTag,
+    ticker?: VisibilityTicker
+  ): Promise<ImMessage> {
+    if (!this.currentBurstGroupId) {
+      this.beginBurst();
+    }
+
+    this.accumulatedDelay += 200;
+    this.dispatchedCountInBurst += 1;
+    const visibleAt = Date.now() + this.accumulatedDelay;
+
+    if (!patch.operations || patch.operations.length === 0) {
+      throw new Error(`文档补丁解析失败: 未提取到有效的 SEARCH/REPLACE 差量操作块`);
+    }
+
+    const casStore = new CasBlobStore();
+    let baseContent = '';
+    let derivedContent = '';
+
+    try {
+      const { initDatabase } = await import('../../database');
+      const db = await initDatabase(this.space);
+      const cleanBaseMsgId = (patch.baseMsgId || '').replace(/^['"]|['"]$/g, '').trim();
+
+      // 1. 优先从当前空间查找底本消息
+      let parentRow = await db.getFirstAsync<{ content: string }>(
+        `SELECT content FROM ai_messages WHERE id = ? LIMIT 1;`,
+        [cleanBaseMsgId]
+      );
+
+      // 2. 兜底容错：若模型将文件名或标题误当成了 baseMsgId，按标题检索最新底本
+      if (!parentRow && cleanBaseMsgId.length >= 2) {
+        parentRow = await db.getFirstAsync<{ content: string }>(
+          `SELECT content FROM ai_messages
+           WHERE threadId = ? AND content LIKE '{"document":%' AND content LIKE ?
+           ORDER BY createdAt DESC LIMIT 1;`,
+          [this.threadId, `%"title":"%${cleanBaseMsgId}%"%`]
+        );
+      }
+
+      if (parentRow?.content) {
+        try {
+          const parsed = JSON.parse(parentRow.content);
+          if (parsed.casHash) {
+            baseContent = (await casStore.getBlobText(parsed.casHash, this.space)) || '';
+          } else if (parsed.content) {
+            baseContent = parsed.content;
+          } else if (parsed.document?.casHash) {
+            baseContent = (await casStore.getBlobText(parsed.document.casHash, this.space)) || '';
+          } else if (parsed.document?.content) {
+            baseContent = parsed.document.content;
+          }
+        } catch {
+          baseContent = parentRow.content;
+        }
+      }
+    } catch {}
+
+    // 采用 IndexPreservingFuzzyPatcher 执行容错补丁
+    if (baseContent && patch.operations.length > 0) {
+      const hunks = patch.operations
+        .filter((op) => op.op === 'replace' && op.search)
+        .map((op, idx) => ({
+          id: op.targetBlockId || `hunk_${idx}`,
+          search: op.search,
+          replace: op.replace,
+        }));
+
+      const appends = patch.operations.filter((op) => op.op === 'append' && op.replace);
+
+      if (hunks.length > 0) {
+        const patchResult = applyBatchSafely(baseContent, hunks);
+        // 若全部 hunk 均未能匹配定位且无追加，严禁生成假修订
+        if (patchResult.appliedCount === 0 && appends.length === 0) {
+          throw new Error(`文档补丁应用失败: SEARCH 文本未能匹配到原文档有效内容 (0/${hunks.length} applied)`);
+        }
+        derivedContent = patchResult.resultText;
+      } else {
+        derivedContent = baseContent;
+      }
+
+      // 执行 append 追加
+      for (const app of appends) {
+        derivedContent = `${derivedContent.trim()}\n\n${app.replace.trim()}`;
+      }
+    } else {
+      derivedContent = patch.patchContent;
+    }
+
+    let casHash: string | undefined;
+    let casUri: string = patch.title;
+    try {
+      const putRes = await casStore.putBlob(derivedContent, this.space);
+      casHash = putRes.blobHash;
+      casUri = casStore.getBlobPath(putRes.blobHash, this.space);
+    } catch {}
+
+    const message: ImMessage = {
+      id: `msg_ai_doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      threadId: this.threadId,
+      burstGroupId: this.currentBurstGroupId || undefined,
+      role: 'assistant',
+      content: patch.title,
+      type: 'document',
+      metadata: {
+        document: {
+          title: patch.title,
+          uri: casUri,
+          casUri,
+          casHash,
+          size: derivedContent.length,
+          hasRevisions: true,
+          derivedFromMsgId: patch.baseMsgId,
+          content: derivedContent,
+        },
+      },
+      status: 'sent',
+      deliveryStatus: 'revealing',
+      visibleAt,
+      createdAt: new Date(visibleAt).toISOString(),
+    };
+
     await insertImMessage(this.space, message);
     ticker?.scheduleNextTick().catch(() => {});
     return message;

@@ -171,6 +171,7 @@ function makeInClause(values: string[]): string {
 }
 
 const EMBEDDING_WRITE_BATCH_SIZE = 100;
+const CHUNK_WRITE_BATCH_SIZE = 50;
 
 function chunkItems<T>(items: T[], size: number): T[][] {
   const batches: T[][] = [];
@@ -481,37 +482,47 @@ export const aiKnowledgeRepository = {
 
   async replaceChunks(db: SQLiteDatabase, documentId: string, chunks: ReplaceChunkInput[]): Promise<void> {
     const now = createTimestamp();
-    await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', documentId);
-    for (const chunk of chunks) {
-      await db.runAsync(
-        `INSERT INTO ai_chunks (
-          id,
-          documentId,
-          space,
-          ownerType,
-          ownerId,
-          chunkIndex,
-          text,
-          normalizedText,
-          sourceLabel,
-          locatorJson,
-          tokenEstimate,
-          createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        chunk.id,
-        documentId,
-        chunk.space,
-        chunk.ownerType,
-        chunk.ownerId,
-        chunk.chunkIndex,
-        chunk.text,
-        chunk.normalizedText,
-        chunk.sourceLabel,
-        chunk.locatorJson ?? '{}',
-        chunk.tokenEstimate ?? null,
-        now
-      );
-    }
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', documentId);
+      if (chunks.length === 0) return;
+      for (const batch of chunkItems(chunks, CHUNK_WRITE_BATCH_SIZE)) {
+        const rows = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+        const params: any[] = [];
+        for (const chunk of batch) {
+          params.push(
+            chunk.id,
+            documentId,
+            chunk.space,
+            chunk.ownerType,
+            chunk.ownerId,
+            chunk.chunkIndex,
+            chunk.text,
+            chunk.normalizedText,
+            chunk.sourceLabel,
+            chunk.locatorJson ?? '{}',
+            chunk.tokenEstimate ?? null,
+            now
+          );
+        }
+        await db.runAsync(
+          `INSERT INTO ai_chunks (
+            id,
+            documentId,
+            space,
+            ownerType,
+            ownerId,
+            chunkIndex,
+            text,
+            normalizedText,
+            sourceLabel,
+            locatorJson,
+            tokenEstimate,
+            createdAt
+          ) VALUES ${rows}`,
+          ...params
+        );
+      }
+    });
   },
 
   async searchChunksByKeyword(db: SQLiteDatabase, query: KeywordChunkQuery): Promise<AiChunkRecord[]> {

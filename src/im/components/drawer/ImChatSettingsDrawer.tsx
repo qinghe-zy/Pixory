@@ -165,7 +165,7 @@ export function ImChatSettingsDrawer({
     setPromptConfig({
       visible: true,
       title: '调整历史记忆装填轮数',
-      subtitle: '每轮包含一次用户提问与伴侣连续回复（聚合后）。设置过高可能增加等待时间。',
+      subtitle: '每轮包含一次用户提问与连续回复（聚合后）。设置过高可能增加等待时间。',
       initialValue: String(settings.contextWindowN || 20),
       placeholder: '输入 5 ~ 100 之间的轮数',
       presets: [
@@ -186,8 +186,8 @@ export function ImChatSettingsDrawer({
   const handleAdjustDnd = () => {
     setPromptConfig({
       visible: true,
-      title: '单伴侣作息免打扰设置',
-      subtitle: '免打扰期间伴侣的主动联系闹钟将自动顺延至清晨醒来后发送。',
+      title: '专属作息免打扰设置',
+      subtitle: '免打扰期间的主动联系提醒将自动顺延至清晨醒来后发送。',
       initialValue:
         settings.dndOverrideEnabled === false
           ? 'off'
@@ -200,7 +200,7 @@ export function ImChatSettingsDrawer({
         { label: '标准 (23:00~07:30)', value: '23:00-07:30' },
         { label: '夜猫 (01:00~09:00)', value: '01:00-09:00' },
         { label: '早睡 (22:00~06:30)', value: '22:00-06:30' },
-        { label: '关闭本伴侣免打扰', value: 'off' },
+        { label: '关闭专属免打扰', value: 'off' },
       ],
       onConfirm: (val) => {
         const trimmed = val.trim();
@@ -233,7 +233,7 @@ export function ImChatSettingsDrawer({
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 56, 72) }]} showsVerticalScrollIndicator={false}>
         <View style={styles.profileCard}>
-          <Pressable accessibilityLabel="伴侣头像" onPress={handleAvatarPress} style={styles.avatarWrap}>
+          <Pressable accessibilityLabel="角色头像" onPress={handleAvatarPress} style={styles.avatarWrap}>
             {companionAvatarUri ? (
               <SecureImage space={space} style={styles.avatarImg} uri={companionAvatarUri} />
             ) : (
@@ -272,7 +272,7 @@ export function ImChatSettingsDrawer({
         </Pressable>
 
         {/* 专属记忆簿入口卡片 */}
-        <Pressable accessibilityLabel="伴侣专属记忆簿" onPress={() => setMemoryModalOpen(true)} style={({ pressed }) => [styles.diaryCard, pressed && styles.rowPressed]}>
+        <Pressable accessibilityLabel="专属记忆簿" onPress={() => setMemoryModalOpen(true)} style={({ pressed }) => [styles.diaryCard, pressed && styles.rowPressed]}>
           <View style={styles.diaryLeft}>
             <View style={[styles.diaryIconBox, { backgroundColor: '#FEF3C7' }]}>
               <Ionicons color="#D97706" name="sparkles" size={19} />
@@ -290,23 +290,23 @@ export function ImChatSettingsDrawer({
           <Ionicons color="#9CA3AF" name="chevron-forward" size={18} />
         </Pressable>
 
-        <Pressable accessibilityLabel="伴侣日记本" onPress={onOpenDiary} style={({ pressed }) => [styles.diaryCard, pressed && styles.rowPressed]}>
+        <Pressable accessibilityLabel="日记手账本" onPress={onOpenDiary} style={({ pressed }) => [styles.diaryCard, pressed && styles.rowPressed]}>
           <View style={styles.diaryLeft}>
             <View style={styles.diaryIconBox}><Ionicons color="#374151" name="book-outline" size={20} /></View>
             <View style={styles.diaryTextBox}>
               <View style={styles.diaryTitleRow}>
-                <Text style={styles.diaryTitle}>伴侣日常日记</Text>
+                <Text style={styles.diaryTitle}>日常生活手账</Text>
                 <View style={styles.diaryBadge}><Text style={styles.diaryBadgeText}>专属留存</Text></View>
               </View>
-              <Text numberOfLines={1} style={styles.diaryDesc}>相伴回忆 · 翻开伴侣日常日记</Text>
+              <Text numberOfLines={1} style={styles.diaryDesc}>相伴回忆 · 翻开日常手账日记</Text>
             </View>
           </View>
           <Ionicons color="#9CA3AF" name="chevron-forward" size={18} />
         </Pressable>
 
         <View style={styles.section}>
-          <SettingRow icon="image-outline" onPress={onPickAvatarFromAlbum} title="修改伴侣头像 · 相册" />
-          <SettingRow icon="albums-outline" isLast={!companionAvatarUri} onPress={onPickAvatarFromIp} title="修改伴侣头像 · IP库" />
+          <SettingRow icon="image-outline" onPress={onPickAvatarFromAlbum} title="修改角色头像 · 相册" />
+          <SettingRow icon="albums-outline" isLast={!companionAvatarUri} onPress={onPickAvatarFromIp} title="修改角色头像 · IP库" />
           {companionAvatarUri && <SettingRow icon="trash-outline" isDestructive isLast onPress={handleConfirmClearAvatar} title="清除自定义头像" />}
         </View>
 
@@ -322,8 +322,9 @@ export function ImChatSettingsDrawer({
           <SettingRow icon="hardware-chip-outline" onPress={onOpenModelPicker} title="专属大模型" valueText={settings.modelId || '跟随全局默认'} />
           <SettingRow icon="timer-outline" onPress={handleAdjustContextWindow} title="历史记忆装填" valueText={`${settings.contextWindowN || 20} 轮`} />
           <SettingRow icon="moon-outline" onPress={handleAdjustDnd} title="专属作息免打扰" valueText={dndDisplayValue} />
-          <SettingSwitchRow icon="heart-outline" onToggle={(val) => void onUpdateSettings({ heartbeatEnabled: val })} title="伴侣主动发来消息" value={settings.heartbeatEnabled !== false} />
+          <SettingSwitchRow icon="heart-outline" onToggle={(val) => void onUpdateSettings({ heartbeatEnabled: val })} title="主动发来消息" value={settings.heartbeatEnabled !== false} />
           <SettingSwitchRow icon="notifications-outline" onToggle={(val) => void onUpdateSettings({ proactiveEnabled: val })} title="后台推演生活状态" value={settings.proactiveEnabled !== false} />
+          <SettingSwitchRow icon="bulb-outline" onToggle={(val) => void onUpdateSettings({ showThoughtBubble: val })} title="展示深度思考过程" value={settings.showThoughtBubble !== false} />
           <SettingRow
             icon="notifications-circle-outline"
             onPress={handleToggleNotificationPermission}

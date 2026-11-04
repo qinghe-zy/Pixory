@@ -21,7 +21,7 @@ test('IM chat screen and list policy verification', async (t) => {
   });
 
   await t.test('ImChatList renders FlashList with getItemType isolation', () => {
-    assert.match(listContent, /export function ImChatList/);
+    assert.match(listContent, /export (?:function|const) ImChatList/);
     assert.match(listContent, /FlashList/);
     assert.match(listContent, /getItemType=\{(?:item => item\.type \|\| 'text'|\(item\) => item\.type \|\| 'text')\}/);
     assert.match(listContent, /scrollToEnd/);

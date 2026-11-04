@@ -2302,7 +2302,7 @@ export function VideoPlayerScreen({
                   </View>
                   <View style={styles.scrubberHeaderCenter}>
                     {holdSpeedVisible ? (
-                      <View style={styles.centerBadgeRow}>
+                      <View style={[styles.centerBadgeRow, styles.holdSpeedFloatingBadge]}>
                         <Ionicons
                           color={colors.primary.hover}
                           name="play-forward"

@@ -27,6 +27,8 @@ import {
   clearPendingPing,
   markImThreadRead,
   getThreadUnreadCount,
+  updateImMessageContent,
+  deleteImMessage,
 } from '../repository/imThreadRepository';
 import {
   evaluateProactivePacing,
@@ -40,6 +42,7 @@ import {
   type ImThreadSettings,
 } from '../repository/imSettingsRepository';
 import { useImGlobalSettings } from '../services/imCompanionPreferences';
+import { CustomStickerService } from '../../components/emoji/customStickerService';
 import { VisibilityTicker, BurstMessageDispatcher } from '../engine/burstDispatcher';
 import { GlobalHeartbeatEngine } from '../heartbeat/globalHeartbeatEngine';
 import { InputAggregator } from '../engine/inputAggregator';
@@ -57,6 +60,9 @@ import {
   validateHeartbeatConsistency,
   parseNudgeTag,
   parsePingTag,
+  parseStickerTag,
+  parseDocumentTag,
+  parseDocumentPatchTag,
 } from '../engine/imTagParser';
 import {
   buildChatPayload,
@@ -102,6 +108,8 @@ import {
 } from '../services/imBackgroundStreamService';
 import { cancelInFlightWakeup } from '../services/imWakeupGenerationService';
 
+const EMOJI_DETECTION_REGEX = /\p{Extended_Pictographic}/u;
+
 export interface UseImChatSessionOptions {
   space: PixorySpace;
   threadId: string;
@@ -122,9 +130,9 @@ export function useImChatSession({
   const [initialUnreadCount, setInitialUnreadCount] = useState<number>(0);
   const [subText, setSubText] = useState<string | null>(null);
   const [userAvatarUri, setUserAvatarUri] = useState<string | null>(null);
-  const [companionName, setCompanionName] = useState<string>(initialRoleName || '伴侣');
+  const [companionName, setCompanionName] = useState<string>(initialRoleName || '角色');
   const [companionAvatarUri, setCompanionAvatarUri] = useState<string | null>(initialRoleAvatarUri || null);
-  const [rolePrompt, setRolePrompt] = useState<string>('你是一个温柔体贴、元气满满的专属 AI 伴侣。');
+  const [rolePrompt, setRolePrompt] = useState<string>('你是一个真实自然、富有共情力的专属对话角色。');
   const roleSnapshotRef = useRef<any>(null);
   const [livingState, setLivingState] = useState<ImCompanionLivingState | null>(null);
   const livingStateRef = useRef<ImCompanionLivingState | null>(null);
@@ -201,7 +209,8 @@ export function useImChatSession({
 
   useEffect(() => {
     void loadThreadSettings();
-  }, [loadThreadSettings]);
+    void CustomStickerService.hydrateCustomStickers(space);
+  }, [loadThreadSettings, space]);
 
   const handleUpdateSettings = useCallback(
     async (patch: Partial<ImThreadSettings>) => {
@@ -367,6 +376,163 @@ export function useImChatSession({
     void reloadMessages();
   }, [reloadMessages]);
 
+  const createThoughtHandlers = useCallback(() => {
+    let activeThought: {
+      id: string;
+      startTime: number;
+      content: string;
+      lastSyncTime: number;
+    } | null = null;
+    let persistedThoughtId: string | null = null;
+
+    const onThoughtProgress = (chunk: string, fullThought: string) => {
+      const showThought = threadSettingsRef.current.showThoughtBubble !== false;
+      if (!activeThought) {
+        const thoughtId = `msg_thought_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        activeThought = {
+          id: thoughtId,
+          startTime: Date.now(),
+          content: fullThought,
+          lastSyncTime: Date.now(),
+        };
+        const initialThoughtMsg: ImMessage = {
+          id: thoughtId,
+          threadId,
+          role: 'assistant',
+          content: fullThought,
+          type: 'thought',
+          status: 'sent',
+          deliveryStatus: 'delivered',
+          visibleAt: null,
+          metadata: {
+            isThinking: true,
+            durationSeconds: 0,
+            isCollapsed: false,
+          },
+          createdAt: new Date().toISOString(),
+        };
+        if (showThought && isMountedRef.current) {
+          setMessages((prev) => [...prev, initialThoughtMsg]);
+        }
+      } else {
+        activeThought.content = fullThought;
+        const now = Date.now();
+        if (now - activeThought.lastSyncTime >= 50) {
+          activeThought.lastSyncTime = now;
+          const currentId = activeThought.id;
+          if (showThought && isMountedRef.current) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === currentId ? { ...m, content: fullThought } : m))
+            );
+          }
+        }
+      }
+    };
+
+    const onThoughtCompleted = async (fullThought: string) => {
+      const showThought = threadSettingsRef.current.showThoughtBubble !== false;
+      if (!activeThought) {
+        if (fullThought.trim().length === 0) return;
+        activeThought = {
+          id: `msg_thought_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          startTime: Date.now(),
+          content: fullThought,
+          lastSyncTime: Date.now(),
+        };
+      }
+      if (fullThought.trim().length === 0) {
+        const targetId = activeThought.id;
+        if (isMountedRef.current) {
+          setMessages((prev) => prev.filter((m) => m.id !== targetId));
+        }
+        activeThought = null;
+        return;
+      }
+      const durationMs = Date.now() - activeThought.startTime;
+      const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
+      const finalThoughtMsg: ImMessage = {
+        id: activeThought.id,
+        threadId,
+        role: 'assistant',
+        content: fullThought,
+        type: 'thought',
+        status: 'sent',
+        deliveryStatus: 'delivered',
+        visibleAt: null,
+        metadata: {
+          isThinking: false,
+          durationSeconds,
+          isCollapsed: true, // 思考完成立马闭合
+        },
+        createdAt: new Date().toISOString(),
+      };
+      await insertImMessage(space, finalThoughtMsg);
+      persistedThoughtId = activeThought.id;
+      const targetId = activeThought.id;
+      if (showThought && isMountedRef.current) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === targetId ? finalThoughtMsg : m))
+        );
+      }
+      activeThought = null;
+    };
+
+    const rollbackThought = async () => {
+      const targetId = activeThought?.id || persistedThoughtId;
+      if (!targetId) return;
+      if (persistedThoughtId) {
+        await deleteImMessage(space, persistedThoughtId).catch(() => {});
+        persistedThoughtId = null;
+      }
+      activeThought = null;
+      if (isMountedRef.current) {
+        setMessages((prev) => prev.filter((m) => m.id !== targetId));
+      }
+    };
+
+    const finalizeThoughtOnError = async (isAborted: boolean = false) => {
+      if (!activeThought) return;
+      // 若流被外部中止打断（例如用户新发消息抢占），或者思考内容为空，直接清理丢弃，绝不写入数据库造成重复幽灵气泡
+      if (isAborted || activeThought.content.trim().length === 0) {
+        const targetId = activeThought.id;
+        if (isMountedRef.current) {
+          setMessages((prev) => prev.filter((m) => m.id !== targetId));
+        }
+        activeThought = null;
+        return;
+      }
+      const durationMs = Date.now() - activeThought.startTime;
+      const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
+      const finalThoughtMsg: ImMessage = {
+        id: activeThought.id,
+        threadId,
+        role: 'assistant',
+        content: activeThought.content,
+        type: 'thought',
+        status: 'sent',
+        deliveryStatus: 'delivered',
+        visibleAt: null,
+        metadata: {
+          isThinking: false,
+          durationSeconds,
+          isCollapsed: true,
+        },
+        createdAt: new Date().toISOString(),
+      };
+      await insertImMessage(space, finalThoughtMsg);
+      persistedThoughtId = activeThought.id;
+      const targetId = activeThought.id;
+      if (threadSettingsRef.current.showThoughtBubble !== false && isMountedRef.current) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === targetId ? finalThoughtMsg : m))
+        );
+      }
+      activeThought = null;
+    };
+
+    return { onThoughtProgress, onThoughtCompleted, rollbackThought, finalizeThoughtOnError };
+  }, [space, threadId]);
+
   const triggerProactiveFollowup = useCallback(async (stage: 1 | 2 | 3 = 1) => {
     if (isStreamingRef.current) return;
     if (
@@ -377,6 +543,10 @@ export function useImChatSession({
     }
 
     let registeredCtrl: AbortController | null = null;
+    let finalizeThoughtOnError: ((isAborted?: boolean) => Promise<void>) | null = null;
+    let rollbackThoughtOnError: (() => Promise<void>) | null = null;
+    let lastDispatchedMsg: ImMessage | null = null;
+    let caughtAbort = false;
     try {
       const provider = await getActiveProviderConfig(
         space,
@@ -453,7 +623,24 @@ export function useImChatSession({
         setSubText('对方正在输入...');
       }
 
-      const parser = new TagAwareStreamParser();
+      const thoughtHandlers = createThoughtHandlers();
+      finalizeThoughtOnError = thoughtHandlers.finalizeThoughtOnError;
+      rollbackThoughtOnError = thoughtHandlers.rollbackThought;
+      const { onThoughtProgress, onThoughtCompleted } = thoughtHandlers;
+      const parser = new TagAwareStreamParser({
+        onThoughtProgress,
+        onThoughtCompleted,
+        onDocumentStreamProgress: (evt) => {
+          if (isMountedRef.current) {
+            if (evt.status === 'streaming') {
+              const headingInfo = evt.latestHeading ? ` · ${evt.latestHeading}` : '';
+              setSubText(`正在起草文档: ${evt.title}${headingInfo}`);
+            } else if (evt.status === 'compiling') {
+              setSubText(`正在排版导出: ${evt.title}...`);
+            }
+          }
+        },
+      });
       let fullRaw = '';
       const dispatcher = dispatcherRef.current;
       const ticker = tickerRef.current;
@@ -471,7 +658,7 @@ export function useImChatSession({
         abortSignal: abortCtrl.signal,
       });
 
-      let lastDispatchedMsg: ImMessage | null = null;
+      lastDispatchedMsg = null;
       for await (const chunk of stream) {
         fullRaw += chunk;
         const trimmedRaw = fullRaw.trim();
@@ -483,22 +670,34 @@ export function useImChatSession({
           continue;
         }
         const sentences = parser.feed(chunk);
+        if (isMountedRef.current) {
+          if (parser.isThinking()) {
+            setSubText(threadSettingsRef.current.showThoughtBubble !== false ? '对方正在思考...' : '对方正在输入...');
+          } else {
+            setSubText('对方正在输入...');
+          }
+        }
+        let dispatchedAny = false;
         for (const s of sentences) {
           if (!s.includes('[PASS]') && !s.includes('[STAGE_FOLLOWUP:')) {
             const m = await dispatcher?.dispatchSentence(s, isMountedRef.current ? (ticker || undefined) : undefined);
-            if (m) lastDispatchedMsg = m;
-            if (isMountedRef.current) {
-              await reloadMessages();
+            if (m) {
+              lastDispatchedMsg = m;
+              dispatchedAny = true;
             }
           }
+        }
+        if (dispatchedAny && isMountedRef.current) {
+          await reloadMessages();
         }
       }
 
       // 决策解析
       const decision = parseProactiveDecision(fullRaw);
 
-      if (decision.action === 'pass') {
-        // AI 自主判定当前不宜打扰或话题完结，直接体贴静默，彻底避免无谓打扰
+      if (decision.action === 'pass' || !lastDispatchedMsg) {
+        // AI 自主判定当前不宜打扰或未产生有效对白发言，彻底回滚思考气泡保持体贴留白，杜绝幽灵思考气泡
+        await thoughtHandlers.rollbackThought();
         idleStageRef.current = 3;
         return;
       }
@@ -524,14 +723,82 @@ export function useImChatSession({
 
       if (decision.action === 'immediate_reply') {
         const trailing = parser.flush();
+        let dispatchedTrailing = false;
         for (const s of trailing) {
           if (!s.includes('[PASS]') && !s.includes('[STAGE_FOLLOWUP:')) {
             const m = await dispatcher?.dispatchSentence(s, isMountedRef.current ? (ticker || undefined) : undefined);
-            if (m) lastDispatchedMsg = m;
+            if (m) {
+              lastDispatchedMsg = m;
+              dispatchedTrailing = true;
+            }
+          }
+        }
+        if (dispatchedTrailing && isMountedRef.current) {
+          await reloadMessages();
+        }
+
+        const rawHasPatch = /\[(?:DOCUMENT_PATCH|DOC_PATCH):/i.test(fullRaw);
+        const patchTag = parseDocumentPatchTag(fullRaw);
+        if (patchTag && dispatcher) {
+          try {
+            const docMsg = await dispatcher.dispatchDocumentPatch(
+              patchTag,
+              isMountedRef.current ? (ticker || undefined) : undefined
+            );
+            lastDispatchedMsg = docMsg;
+            if (isMountedRef.current) {
+              await reloadMessages();
+            }
+          } catch {
+            // 失败补偿：派发轻量解释气泡，消除“说改好却无卡片”的假成功割裂感
+            const fallbackMsg = await dispatcher.dispatchSentence(
+              '哎呀，刚才排版工具卡了一下未能生成修订文件，原文档安全未受影响，让我再试一次吧',
+              isMountedRef.current ? (ticker || undefined) : undefined
+            );
+            if (fallbackMsg) lastDispatchedMsg = fallbackMsg;
             if (isMountedRef.current) {
               await reloadMessages();
             }
           }
+        } else if (rawHasPatch && dispatcher && !parseDocumentTag(fullRaw)) {
+          // 意图生成补丁但中途残缺中断
+          const fallbackMsg = await dispatcher.dispatchSentence(
+            '排版修补传输中断了，未生成新的修改版卡片，原文档保持不变，请随时让我重试~',
+            isMountedRef.current ? (ticker || undefined) : undefined
+          );
+          if (fallbackMsg) lastDispatchedMsg = fallbackMsg;
+          if (isMountedRef.current) {
+            await reloadMessages();
+          }
+        } else {
+          const docTag = parseDocumentTag(fullRaw);
+          if (docTag && dispatcher) {
+            const docMsg = await dispatcher.dispatchDocument(
+              { title: docTag.title, uri: docTag.uri, content: docTag.content },
+              isMountedRef.current ? (ticker || undefined) : undefined
+            );
+            lastDispatchedMsg = docMsg;
+            if (isMountedRef.current) {
+              await reloadMessages();
+            }
+          }
+        }
+
+        const stickerTag = parseStickerTag(fullRaw);
+        if (stickerTag && dispatcher) {
+          const stickerRes = await dispatcher.dispatchSticker(
+            stickerTag.emotion,
+            isMountedRef.current ? (ticker || undefined) : undefined,
+            { personaStyle: threadSettingsRef.current?.personalization?.replyStyleGear || undefined }
+          );
+          if (stickerRes.dispatched && stickerRes.message) {
+            lastDispatchedMsg = stickerRes.message;
+            if (isMountedRef.current) {
+              await reloadMessages();
+            }
+          }
+        } else if (dispatcher) {
+          dispatcher.advanceTurnWithoutSticker();
         }
 
         const aiNudge = decision.nudgeAction ? { action: decision.nudgeAction } : parseNudgeTag(fullRaw);
@@ -601,9 +868,17 @@ export function useImChatSession({
           idleStageRef.current = 3;
         }
       }
-    } catch {
-      // 容错静默
+    } catch (err: any) {
+      caughtAbort = Boolean(
+        registeredCtrl?.signal.aborted ||
+        err?.name === 'AbortError' ||
+        /abort|cancel/i.test(err?.message || '')
+      );
     } finally {
+      if (finalizeThoughtOnError) {
+        const wasAborted = caughtAbort || Boolean(registeredCtrl?.signal.aborted);
+        await finalizeThoughtOnError(wasAborted);
+      }
       if (registeredCtrl) {
         unregisterActiveStream(space, threadId, registeredCtrl);
       }
@@ -721,6 +996,10 @@ export function useImChatSession({
       );
 
       let followupDelayToSchedule: number | null | undefined = null;
+      let finalizeThoughtOnError: ((isAborted?: boolean) => Promise<void>) | null = null;
+      let rollbackThoughtOnError: (() => Promise<void>) | null = null;
+      let lastDispatchedMsg: ImMessage | null = null;
+      let caughtAbort = false;
 
       try {
         const provider = await getActiveProviderConfig(
@@ -732,7 +1011,7 @@ export function useImChatSession({
           // 无 Key 时的拟真温情兜底
           setTimeout(async () => {
             await dispatcher.dispatchSentence(
-              `我收到啦！[BR]你刚才说的“${userInput.slice(0, 15)}”真有意思~ (提示：在设置中配置 API Key 即可开启完整大模型心跳陪伴)`,
+              `我收到啦！[BR]你刚才说的“${userInput.slice(0, 15)}”真有意思~[BR]小贴士：在设置中配置 API Key 即可开启完整大模型即时对话`,
               isMountedRef.current ? (ticker || undefined) : undefined,
               { isOccupied }
             );
@@ -962,9 +1241,26 @@ export function useImChatSession({
         lastInterruptedDraftRef.current = null;
 
         // 7. 边收边切分发流 (脱钩保护：即使退出页面或退至后台也继续写完落库)
-        const parser = new TagAwareStreamParser();
+        const thoughtHandlers = createThoughtHandlers();
+        finalizeThoughtOnError = thoughtHandlers.finalizeThoughtOnError;
+        rollbackThoughtOnError = thoughtHandlers.rollbackThought;
+        const { onThoughtProgress, onThoughtCompleted } = thoughtHandlers;
+        const parser = new TagAwareStreamParser({
+          onThoughtProgress,
+          onThoughtCompleted,
+          onDocumentStreamProgress: (evt) => {
+            if (isMountedRef.current) {
+              if (evt.status === 'streaming') {
+                const headingInfo = evt.latestHeading ? ` · ${evt.latestHeading}` : '';
+                setSubText(`正在起草文档: ${evt.title}${headingInfo}`);
+              } else if (evt.status === 'compiling') {
+                setSubText(`正在排版导出: ${evt.title}...`);
+              }
+            }
+          },
+        });
         let fullRawResponse = '';
-        let lastDispatchedMsg: ImMessage | null = null;
+        lastDispatchedMsg = null;
         let recordedUsage = false;
         const textStream = streamClient.streamText(payload, {
           providerId: effectiveProviderId,
@@ -984,32 +1280,117 @@ export function useImChatSession({
           const sentences = parser.feed(chunk);
           if (isMountedRef.current) {
             if (parser.isThinking()) {
-              setSubText('对方正在思考...');
+              setSubText(threadSettingsRef.current.showThoughtBubble !== false ? '对方正在思考...' : '对方正在输入...');
             } else {
               setSubText('对方正在输入...');
             }
           }
+          let dispatchedAny = false;
           for (const s of sentences) {
-            lastDispatchedMsg = await dispatcher.dispatchSentence(
+            const m = await dispatcher.dispatchSentence(
               s,
               isMountedRef.current ? (ticker || undefined) : undefined,
               { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
             );
+            if (m) {
+              lastDispatchedMsg = m;
+              dispatchedAny = true;
+            }
+          }
+          if (dispatchedAny && isMountedRef.current) {
+            await reloadMessages();
+          }
+        }
+
+        const trailing = parser.flush();
+        let dispatchedTrailing = false;
+        for (const s of trailing) {
+          const m = await dispatcher.dispatchSentence(
+            s,
+            isMountedRef.current ? (ticker || undefined) : undefined,
+            { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
+          );
+          if (m) {
+            lastDispatchedMsg = m;
+            dispatchedTrailing = true;
+          }
+        }
+        if (dispatchedTrailing && isMountedRef.current) {
+          await reloadMessages();
+        }
+
+        // 7.4. 文档卡片分发 (新建流与补丁流双轨支持)
+        const patchTag = parseDocumentPatchTag(fullRawResponse);
+        if (patchTag) {
+          const docMsg = await dispatcher.dispatchDocumentPatch(
+            patchTag,
+            isMountedRef.current ? (ticker || undefined) : undefined
+          );
+          lastDispatchedMsg = docMsg;
+          if (isMountedRef.current) {
+            await reloadMessages();
+          }
+        } else {
+          const docTag = parseDocumentTag(fullRawResponse);
+          if (docTag) {
+            const docMsg = await dispatcher.dispatchDocument(
+              { title: docTag.title, uri: docTag.uri, content: docTag.content },
+              isMountedRef.current ? (ticker || undefined) : undefined
+            );
+            lastDispatchedMsg = docMsg;
             if (isMountedRef.current) {
               await reloadMessages();
             }
           }
         }
 
-        const trailing = parser.flush();
-        for (const s of trailing) {
-          lastDispatchedMsg = await dispatcher.dispatchSentence(
-            s,
+        // 7.5. 尾锚定大表情贴纸分发 (Tail-Anchor Reordering & Cooldown Hard Gate)
+        const stickerTag = parseStickerTag(fullRawResponse);
+        if (stickerTag) {
+          const stickerRes = await dispatcher.dispatchSticker(
+            stickerTag.emotion,
             isMountedRef.current ? (ticker || undefined) : undefined,
-            { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
+            { personaStyle: threadSettingsRef.current?.personalization?.replyStyleGear || undefined }
           );
-          if (isMountedRef.current) {
-            await reloadMessages();
+          if (stickerRes.dispatched && stickerRes.message) {
+            lastDispatchedMsg = stickerRes.message;
+            if (isMountedRef.current) {
+              await reloadMessages();
+            }
+          } else if (
+            stickerRes.reason === 'cooldown_intercepted' &&
+            stickerRes.compensationEmoji &&
+            lastDispatchedMsg
+          ) {
+            // 冷却拦截且本轮未发 Emoji 时，无感补偿追加 1 个对应 Unicode Emoji
+            const hasEmoji = EMOJI_DETECTION_REGEX.test(lastDispatchedMsg.content);
+            if (!hasEmoji) {
+              const compensated = `${lastDispatchedMsg.content} ${stickerRes.compensationEmoji}`;
+              await updateImMessageContent(space, lastDispatchedMsg.id, compensated);
+              lastDispatchedMsg.content = compensated;
+              if (isMountedRef.current) {
+                await reloadMessages();
+              }
+            }
+          }
+        } else {
+          dispatcher.advanceTurnWithoutSticker();
+        }
+
+        // 7.6. 零正文防哑火哨兵 (Zero-Dialogue Guard)
+        // 若流正常结束，模型输出了思考但没有任何对白气泡落地 (lastDispatchedMsg === null)，进行自然口语兜底
+        if (!lastDispatchedMsg) {
+          const fallbackSpeech = '刚才有点走神了，你刚刚说的我还在琢磨呢~';
+          const fallbackMsg = await dispatcher.dispatchSentence(
+            fallbackSpeech,
+            isMountedRef.current ? (ticker || undefined) : undefined,
+            { isOccupied, userTextLength: userInput.length, useHumanTimeline: false }
+          );
+          if (fallbackMsg) {
+            lastDispatchedMsg = fallbackMsg;
+            if (isMountedRef.current) {
+              await reloadMessages();
+            }
           }
         }
 
@@ -1190,13 +1571,22 @@ export function useImChatSession({
           }
         }
       } catch (err: any) {
-        if (err?.name !== 'AbortError') {
+        caughtAbort = Boolean(
+          abortCtrl.signal.aborted ||
+          err?.name === 'AbortError' ||
+          /abort|cancel/i.test(err?.message || '')
+        );
+        if (!caughtAbort) {
+          // 若本轮生成因网络/服务端异常夭折且尚未成功发出任何正文台词，回滚孤立思考气泡，防止重试后出现多个思考气泡重叠
+          if (!lastDispatchedMsg && rollbackThoughtOnError) {
+            await rollbackThoughtOnError();
+          }
           // 使用 system_notice 呈现连接异常反馈，杜绝伪造 assistant 气泡污染 Layer 3 模型上下文与语气
           const errorNotice: ImMessage = {
             id: `notice_${Date.now()}_net_err`,
             threadId,
             role: 'system',
-            content: '连接暂时不稳定，未收到伴侣回复，可长按你的消息重发或稍后再试',
+            content: '连接暂时不稳定，未收到回复，可长按你的消息重发或稍后再试',
             type: 'system_notice',
             status: 'sent',
             deliveryStatus: 'delivered',
@@ -1209,6 +1599,10 @@ export function useImChatSession({
           }
         }
       } finally {
+        if (finalizeThoughtOnError) {
+          const wasAborted = caughtAbort || Boolean(abortCtrl.signal.aborted);
+          await finalizeThoughtOnError(wasAborted);
+        }
         unregisterActiveStream(space, threadId, abortCtrl);
         isStreamingRef.current = false;
         if (isMountedRef.current) {
@@ -1372,10 +1766,103 @@ export function useImChatSession({
     }
   };
 
+  const handleSendSticker = async (sticker: { id?: string; name: string; animatedUri: string }) => {
+    await interruptCompanionActivity(false);
+
+    const msg: ImMessage = {
+      id: `im_msg_${Date.now()}_u`,
+      threadId,
+      role: 'user',
+      type: 'sticker',
+      imageUri: sticker.animatedUri,
+      content: sticker.name,
+      metadata: {
+        sticker: {
+          id: sticker.id || sticker.name,
+          name: sticker.name,
+          animatedUri: sticker.animatedUri,
+        },
+      },
+      status: 'sent',
+      visibleAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    await insertImMessage(space, msg);
+    setMessages((prev) => [...prev, msg]);
+    void triggerAiResponse(`（对方没有打字，向你发来一张「${sticker.name}」表情贴纸）`);
+  };
+
   const handleFile = async () => {
     const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (!res.canceled && res.assets[0]) {
-      void handleSend(`[文件] ${res.assets[0].name} (${Math.round((res.assets[0].size || 0) / 1024)} KB)`);
+      const asset = res.assets[0];
+      const isDoc = /\.(docx|md|markdown|txt|pdf)$/i.test(asset.name);
+      if (isDoc) {
+        await interruptCompanionActivity(true);
+
+        const { CasBlobStore } = await import('../../services/agent/vfs/casBlobStore');
+        const casStore = new CasBlobStore();
+        let casHash: string | undefined;
+        let casUri = asset.uri;
+        let sizeBytes = asset.size || 0;
+
+        try {
+          const ingestRes = await casStore.ingestFileUri(asset.uri, space, asset.name);
+          casHash = ingestRes.blobHash;
+          casUri = ingestRes.casUri;
+          sizeBytes = ingestRes.sizeBytes;
+        } catch {
+          // 容错保持本地缓存 URI
+        }
+
+        // 提取骨架概览 (tocSkeleton，仅约 300 字节)，用于微透出 Chips 与精准补丁
+        let tocSkeleton: Array<{ blockId: string; previewText: string }> | undefined;
+        try {
+          const { DocumentDriverRegistry } = await import('../../services/sandbox/drivers/driverRegistry');
+          const { MarkdownDriver } = await import('../../services/sandbox/drivers/markdownDriver');
+          const { DocxDriver } = await import('../../services/sandbox/drivers/docxDriver');
+          const { PdfDriver } = await import('../../services/sandbox/drivers/pdfDriver');
+          const registry = new DocumentDriverRegistry([new MarkdownDriver(), new DocxDriver(), new PdfDriver()]);
+          const driver = registry.getDriver(asset.name);
+          if (casHash) {
+            const rawBytes = await casStore.getBlob(casHash, space);
+            if (rawBytes) {
+              const skeletons = await driver.inspectSkeleton(rawBytes);
+              tocSkeleton = skeletons.slice(0, 4).map((s) => ({
+                blockId: s.blockId,
+                previewText: s.previewText.slice(0, 24),
+              }));
+            }
+          }
+        } catch {}
+
+        const msg: ImMessage = {
+          id: `im_msg_${Date.now()}_u`,
+          threadId,
+          role: 'user',
+          type: 'document',
+          content: asset.name,
+          metadata: {
+            document: {
+              uri: casUri,
+              casUri,
+              casHash,
+              name: asset.name,
+              title: asset.name,
+              size: sizeBytes,
+              tocSkeleton,
+            },
+          },
+          status: 'sent',
+          visibleAt: null,
+          createdAt: new Date().toISOString(),
+        };
+        await insertImMessage(space, msg);
+        setMessages((prev) => [...prev, msg]);
+        void triggerAiResponse(`我发给你了一份文档《${asset.name}》，帮我看看。`);
+      } else {
+        void handleSend(`[文件] ${asset.name} (${Math.round((asset.size || 0) / 1024)} KB)`);
+      }
     }
   };
 
@@ -1688,6 +2175,7 @@ export function useImChatSession({
     handleEditResend,
     handleRetryMessage,
     handleSend,
+    handleSendSticker,
     handleCamera,
     handlePhoto,
     handleFile,

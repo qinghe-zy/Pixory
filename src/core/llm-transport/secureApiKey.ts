@@ -64,78 +64,117 @@ export async function getActiveProviderConfig(
     disabledProviderIds: [] as string[],
   }));
 
-  let providerRow: {
+  type ProviderRow = {
     id: string;
     baseUrl: string;
     protocol: string;
     defaultChatModelId: string | null;
-  } | null = null;
+  };
 
-  // 1. 若配置了专属 Provider，优先直连
+  let chosenRow: ProviderRow | null = null;
+  let chosenApiKey: string | null = null;
+
+  // 1. 若配置了专属 Provider，优先尝试直连并读取 Key
   if (preferredProviderId) {
-    providerRow = await db.getFirstAsync<{
-      id: string;
-      baseUrl: string;
-      protocol: string;
-      defaultChatModelId: string | null;
-    }>(
+    const candidate = await db.getFirstAsync<ProviderRow>(
       `SELECT id, baseUrl, protocol, defaultChatModelId
        FROM ai_providers
        WHERE id = ?
        LIMIT 1;`,
       [preferredProviderId]
     );
+    if (candidate) {
+      const key = await readProviderApiKey(space, candidate.id);
+      if (key) {
+        chosenRow = candidate;
+        chosenApiKey = key;
+      } else {
+        // 暂存为备选
+        chosenRow = candidate;
+      }
+    }
   }
 
-  // 2. 否则查询激活且支持 chat 的首选 Provider
-  if (!providerRow) {
-    providerRow = await db.getFirstAsync<{
-      id: string;
-      baseUrl: string;
-      protocol: string;
-      defaultChatModelId: string | null;
-    }>(
+  // 2. 若专属 Provider 未配 Key，尝试查找设置中的全局默认 Provider
+  if (!chosenApiKey) {
+    try {
+      const defaultProviderId = await settingsRepository.getDefaultAiProviderId(db);
+      if (defaultProviderId && defaultProviderId !== preferredProviderId) {
+        const candidate = await db.getFirstAsync<ProviderRow>(
+          `SELECT id, baseUrl, protocol, defaultChatModelId
+           FROM ai_providers
+           WHERE id = ? AND chatEnabled = 1
+           LIMIT 1;`,
+          [defaultProviderId]
+        );
+        if (candidate) {
+          const key = await readProviderApiKey(space, candidate.id);
+          if (key) {
+            chosenRow = candidate;
+            chosenApiKey = key;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 3. 若仍无可用 Key，扫描所有已激活且支持 chat 的 Provider，选出第一个拥有有效 API Key 的服务商
+  if (!chosenApiKey) {
+    const activeProviders = await db.getAllAsync<ProviderRow>(
       `SELECT id, baseUrl, protocol, defaultChatModelId
        FROM ai_providers
        WHERE chatEnabled = 1
-       ORDER BY (lastVerifiedAt IS NOT NULL) DESC, createdAt ASC
-       LIMIT 1`
+       ORDER BY (lastVerifiedAt IS NOT NULL) DESC, createdAt ASC`
     );
+
+    for (const row of activeProviders) {
+      const key = await readProviderApiKey(space, row.id);
+      if (key) {
+        chosenRow = row;
+        chosenApiKey = key;
+        break;
+      }
+    }
+
+    // 4. 若所有 Provider 均未配 Key，且前面未获得任何 row，则取第一个 row 作为无 Key 占位
+    if (!chosenRow && activeProviders.length > 0) {
+      chosenRow = activeProviders[0];
+    }
   }
 
-  if (!providerRow) {
+  if (!chosenRow) {
     return null;
   }
 
-  // 3. 模型解析：优先使用传入的 preferredModelId，其次 defaultChatModelId，再其次查询该 Provider 支持 chat 的模型
-  let rawModelId = preferredModelId || providerRow.defaultChatModelId;
+  // 5. 模型解析：优先使用传入的 preferredModelId，其次 defaultChatModelId，再其次查询该 Provider 支持 chat 的模型
+  let rawModelId = preferredModelId || chosenRow.defaultChatModelId;
   if (!rawModelId) {
     const modelRow = await db.getFirstAsync<{ modelId: string }>(
       'SELECT modelId FROM ai_provider_models WHERE providerId = ? AND supportsChat = 1 LIMIT 1',
-      providerRow.id
+      chosenRow.id
     );
     rawModelId = modelRow?.modelId || 'deepseek-v4-flash';
   }
 
-  const modelId = normalizeProviderModelId(rawModelId, providerRow.baseUrl);
+  const modelId = normalizeProviderModelId(rawModelId, chosenRow.baseUrl);
 
-  // 4. 读取密钥（全兼容各种命名规范）
-  const apiKey = await readProviderApiKey(space, providerRow.id);
+  // 6. 确定最终 apiKey
+  const apiKey = chosenApiKey || (await readProviderApiKey(space, chosenRow.id));
 
   const protocol = (
-    providerRow.protocol === 'gemini' || providerRow.protocol === 'anthropic'
-      ? providerRow.protocol
+    chosenRow.protocol === 'gemini' || chosenRow.protocol === 'anthropic'
+      ? chosenRow.protocol
       : 'openai_compatible'
   ) as 'openai_compatible' | 'gemini' | 'anthropic';
 
   const promptCacheEnabled = Boolean(
-    cacheSettings.enabled && !cacheSettings.disabledProviderIds.includes(providerRow.id)
+    cacheSettings.enabled && !cacheSettings.disabledProviderIds.includes(chosenRow.id)
   );
 
   return {
-    providerId: providerRow.id,
+    providerId: chosenRow.id,
     modelId,
-    baseUrl: providerRow.baseUrl,
+    baseUrl: chosenRow.baseUrl,
     protocol,
     apiKey,
     promptCacheEnabled,

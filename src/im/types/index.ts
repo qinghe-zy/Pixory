@@ -20,7 +20,19 @@ export type DeliveryStatus =
 
 export type ImDeliveryStatus = DeliveryStatus;
 
-export type ImMessageType = 'text' | 'image' | 'voice' | 'system_notice' | 'diary_card';
+export type ImMessageType = 'text' | 'image' | 'voice' | 'system_notice' | 'diary_card' | 'sticker' | 'document' | 'thought';
+
+/**
+ * 动态表情贴纸预留元数据
+ */
+export interface ImStickerMetadata {
+  stickerId: string;
+  name: string;
+  animatedUri: string;
+  isAnimated: boolean;
+  width?: number;
+  height?: number;
+}
 
 /**
  * 语音消息预留元数据接口 (Reserved Voice Metadata)
@@ -43,6 +55,7 @@ export interface ImMessage {
   imageUri?: string | null;
   boundIpName?: string | null;
   voice?: ImVoiceMetadata;
+  metadata?: Record<string, any> | null;
   status: ImMessageStatus;
   deliveryStatus?: DeliveryStatus;
   /**

@@ -75,7 +75,7 @@ function parseTokenUsage(rawUsage: any): LlmTokenUsage | undefined {
   };
 }
 
-function parseSseLine(line: string): { delta: string | null; usage?: LlmTokenUsage } {
+function parseSseLine(line: string): { delta: string | null; reasoning?: string | null; usage?: LlmTokenUsage } {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) return { delta: null };
   const payload = trimmed.slice(5).trim();
@@ -84,10 +84,19 @@ function parseSseLine(line: string): { delta: string | null; usage?: LlmTokenUsa
   try {
     const json = JSON.parse(payload);
     let delta: string | null = null;
+    let reasoning: string | null = null;
 
-    // OpenAI / DeepSeek delta
+    // OpenAI / DeepSeek delta & reasoning
     const openAiDelta = json.choices?.[0]?.delta?.content;
-    if (typeof openAiDelta === 'string') {
+    const openAiReasoning = json.choices?.[0]?.delta?.reasoning_content ?? json.choices?.[0]?.delta?.reasoning;
+
+    if (typeof openAiReasoning === 'string' && openAiReasoning.length > 0) {
+      reasoning = openAiReasoning;
+    }
+
+    if (typeof openAiDelta === 'string' && openAiDelta.length > 0) {
+      delta = openAiDelta;
+    } else if (typeof openAiDelta === 'string') {
       delta = openAiDelta;
     } else if (json.type === 'content_block_delta' && json.delta?.text) {
       // Anthropic delta
@@ -95,7 +104,7 @@ function parseSseLine(line: string): { delta: string | null; usage?: LlmTokenUsa
     }
 
     const usage = parseTokenUsage(json.usage || json.message?.usage);
-    return { delta, usage };
+    return { delta, reasoning, usage };
   } catch {
     return { delta: null };
   }
@@ -133,7 +142,7 @@ export class LlmStreamClient implements ILlmStreamClient {
         ...(systemPrompt ? { system: systemPrompt } : {}),
         messages: nonSystemMsgs,
         stream: true,
-        max_tokens: options.maxTokens ?? 2048,
+        max_tokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.7,
       };
     } else {
@@ -168,6 +177,7 @@ export class LlmStreamClient implements ILlmStreamClient {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let inReasoning = false;
 
     try {
       while (true) {
@@ -182,24 +192,51 @@ export class LlmStreamClient implements ILlmStreamClient {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          const { delta, usage } = parseSseLine(line);
+          const { delta, reasoning, usage } = parseSseLine(line);
           if (usage && options.onUsage) {
             options.onUsage(usage);
           }
+          if (reasoning) {
+            if (!inReasoning) {
+              inReasoning = true;
+              yield '<think>';
+            }
+            yield reasoning;
+          }
           if (delta) {
+            if (inReasoning) {
+              inReasoning = false;
+              yield '</think>';
+            }
             yield delta;
           }
         }
       }
 
       if (buffer) {
-        const { delta, usage } = parseSseLine(buffer);
+        const { delta, reasoning, usage } = parseSseLine(buffer);
         if (usage && options.onUsage) {
           options.onUsage(usage);
         }
+        if (reasoning) {
+          if (!inReasoning) {
+            inReasoning = true;
+            yield '<think>';
+          }
+          yield reasoning;
+        }
         if (delta) {
+          if (inReasoning) {
+            inReasoning = false;
+            yield '</think>';
+          }
           yield delta;
         }
+      }
+
+      if (inReasoning) {
+        inReasoning = false;
+        yield '</think>';
       }
     } finally {
       reader.releaseLock?.();
@@ -237,7 +274,7 @@ export class LlmStreamClient implements ILlmStreamClient {
         ...(systemPrompt ? { system: systemPrompt } : {}),
         messages: nonSystemMsgs,
         stream: false,
-        max_tokens: options.maxTokens ?? 2048,
+        max_tokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.3,
       };
     } else {
@@ -268,7 +305,14 @@ export class LlmStreamClient implements ILlmStreamClient {
       const textBlock = json.content?.find((c: any) => c.type === 'text');
       text = textBlock?.text || '';
     } else {
-      text = json.choices?.[0]?.message?.content || '';
+      const msg = json.choices?.[0]?.message;
+      const reasoning = msg?.reasoning_content ?? msg?.reasoning;
+      const content = msg?.content || '';
+      if (reasoning && typeof reasoning === 'string' && reasoning.length > 0) {
+        text = `<think>${reasoning}</think>${content}`;
+      } else {
+        text = content;
+      }
     }
 
     const usage = parseTokenUsage(json.usage);

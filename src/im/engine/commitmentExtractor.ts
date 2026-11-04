@@ -18,6 +18,7 @@ const TIME_PREFIX_REGEX = /(明早|明天早上|明天下午|明天晚上|明晚
 
 // 意图/动作引导词
 const ACTION_LEAD_REGEX = /(?:准备|打算|要去|去|要|安排了|约了|得|得去|约好)?\s*([^\s,，。!！?？~]{2,25})/;
+const STICKER_NARRATIVE_REGEX = /表情贴纸|对方发来|\[STICKER|^[（(]对方/i;
 
 /**
  * 从单句中尝试抽取承诺/未来待办事宜
@@ -27,6 +28,11 @@ export function extractCommitmentFromUserText(
   now: number = Date.now()
 ): ExtractedCommitment | null {
   if (!text || text.length < 4 || text.length > 80) return null;
+
+  // 物理阻断表情贴纸与旁白提示语，绝不提取为约定待办
+  if (STICKER_NARRATIVE_REGEX.test(text)) {
+    return null;
+  }
 
   // 排除疑问句（用户问 AI“你明天有空吗”等）
   if (text.includes('吗') || text.includes('?') || text.includes('？') || text.includes('你明天') || text.includes('你后天')) {

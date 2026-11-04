@@ -30,6 +30,7 @@ import { HIBERNATION_CUTOFF_MS } from '../heartbeat/proactivePacingGuard';
 import { buildChatPayload } from '../engine/imContextBuilder';
 import { parseStatusTag, parsePingTag } from '../engine/imTagParser';
 import { stripMetaTags } from '../engine/tagAwareStreamParser';
+import { sanitizeCompanionBubble } from '../engine/humanizeOutputGate';
 import { advanceLivingState } from '../engine/imAgencyEngine';
 import { isTimeInSleepPeriod, getNextMorning730 } from '../engine/naturalTimeParser';
 import { planFallbackProactivePing } from '../engine/imProactiveFallbackPlanner';
@@ -41,7 +42,9 @@ import type { ImMessage, ImCompanionLivingState } from '../types';
 export { resolveCompanionRolePrompt };
 
 // 模块级提升的分句正则常量 (js-hoist-regexp)
-const BR_SPLIT_REGEX = /\[br\]/i;
+const BR_SPLIT_REGEX = /\[br\s*\/?\]|<\/?br\s*\/?>/i;
+const THINK_BLOCK_MATCH_REGEX = /<(?:think|thought)>([\s\S]*?)<\/(?:think|thought)>/i;
+const THINK_BLOCK_STRIP_REGEX = /<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/gi;
 const HEADLESS_GENERATION_TIMEOUT_MS = 35000;
 
 // 并发唤醒互斥锁与用户抢占取消表
@@ -186,7 +189,7 @@ export async function executeWakeupGeneration(
     );
   }
 
-  const { rolePrompt, companionName } = resolveCompanionRolePrompt(role, undefined, personalization);
+  const { rolePrompt, companionName, personaAnchor } = resolveCompanionRolePrompt(role, undefined, personalization);
   const windowN = thread.context_window_n || 20;
 
   // 3. 并行加载完整五层记忆与世代快照 (async-parallel，容错兼容轻量测试 Mock)
@@ -270,6 +273,7 @@ export async function executeWakeupGeneration(
       milestones: personalization?.milestones,
       windowN,
       anchorMessageId,
+      personaAnchor,
     },
     ''
   );
@@ -328,19 +332,50 @@ export async function executeWakeupGeneration(
   // 6. 解析新预约的主动闹钟 [PING: ...]
   const nextPing = parsePingTag(fullRawResponse, now, updatedLiving, effectiveDnd);
 
-  // 7. 切分短句气泡并持久化落库
-  const rawSentences = fullRawResponse.split(BR_SPLIT_REGEX);
+  // 7. 剥离深度思考块与切分短句气泡并持久化落库
+  let thoughtText = '';
+  let textWithoutThought = fullRawResponse;
+  const thinkMatch = fullRawResponse.match(THINK_BLOCK_MATCH_REGEX);
+  if (thinkMatch) {
+    thoughtText = thinkMatch[1].trim();
+    textWithoutThought = fullRawResponse.replace(THINK_BLOCK_STRIP_REGEX, '');
+  }
+
+  const rawSentences = textWithoutThought.split(BR_SPLIT_REGEX);
   const cleanSentences = rawSentences
-    .map((s) => stripMetaTags(s))
+    .map((s) => sanitizeCompanionBubble(stripMetaTags(s)))
     .filter((s) => s.length > 0 && s !== '[PASS]');
 
-  if (cleanSentences.length === 0) {
+  if (cleanSentences.length === 0 && !thoughtText) {
     await clearPendingPing(space, threadId);
     return false;
   }
 
   const baseMsgTime = Math.max(effectiveContextNow, lastMsgTime + 1000);
   const burstGroupId = `burst_wakeup_${baseMsgTime}`;
+
+  // 若模型包含了深度思考内容，以独立的思考气泡率先入库（默认闭合）
+  if (thoughtText.length > 0) {
+    const thoughtMsg: ImMessage = {
+      id: `im_msg_${baseMsgTime}_thought_w`,
+      threadId,
+      burstGroupId,
+      role: 'assistant',
+      content: thoughtText,
+      type: 'thought',
+      status: 'sent',
+      deliveryStatus: 'delivered',
+      visibleAt: null,
+      metadata: {
+        isThinking: false,
+        durationSeconds: 2,
+        isCollapsed: true, // 默认单行闭合
+      },
+      createdAt: new Date(baseMsgTime).toISOString(),
+    };
+    await insertImMessage(space, thoughtMsg);
+  }
+
   for (let i = 0; i < cleanSentences.length; i++) {
     const sentence = cleanSentences[i];
     const msg: ImMessage = {
@@ -349,10 +384,11 @@ export async function executeWakeupGeneration(
       burstGroupId,
       role: 'assistant',
       content: sentence,
+      type: 'text',
       status: 'sent',
       deliveryStatus: 'delivered',
       visibleAt: null,
-      createdAt: new Date(baseMsgTime + i * 500).toISOString(),
+      createdAt: new Date(baseMsgTime + (i + 1) * 500).toISOString(),
     };
     await insertImMessage(space, msg);
   }
@@ -399,9 +435,9 @@ export async function executeWakeupGeneration(
   GlobalHeartbeatEngine.shared.notifyListeners(threadId, space);
   if (unreadDelta > 0 && space === 'normal') {
     try {
-      const { postCompanionNotification } = await import('../../native/pixoryMediaModule');
+      const { postCompanionNotificationSafely } = await import('./imNotificationManager');
       const previewText = cleanSentences.join(' ').slice(0, 80);
-      void postCompanionNotification(threadId, companionName, previewText);
+      void postCompanionNotificationSafely(space, threadId, companionName, previewText);
     } catch {}
   }
 

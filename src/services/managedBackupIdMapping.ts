@@ -29,6 +29,7 @@ const DECLARED_REFERENCE_TABLES: Record<string, string> = {
   'ai_continuity_import_sessions.preImportBranchRootMessageId': 'ai_messages',
   'ai_continuity_import_sessions.importedBranchRootMessageId': 'ai_messages',
   'ai_continuity_import_sessions.importAnchorMessageId': 'ai_messages',
+  'agent_step_checkpoints.runId': 'agent_runs',
 };
 const DECLARED_ARRAY_REFERENCE_TABLES: Record<string, string> = {
   'ai_thread_summary_segments.sourceSegmentIds': 'ai_thread_summary_segments',

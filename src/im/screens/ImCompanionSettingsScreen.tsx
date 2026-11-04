@@ -91,7 +91,7 @@ export function ImCompanionSettingsScreen({
         >
           <Ionicons name="chevron-back" size={24} color={colors.text.title} />
         </Pressable>
-        <Text style={styles.headerTitle}>伴聊设置</Text>
+        <Text style={styles.headerTitle}>聊天设置</Text>
         <View style={styles.headerPlaceholder} />
       </View>
 
@@ -101,10 +101,11 @@ export function ImCompanionSettingsScreen({
         <View style={styles.card}>
           <View style={styles.row}>
             <View style={styles.labelCol}>
-              <Text style={styles.rowTitle}>所有伴侣心跳总开关</Text>
-              <Text style={styles.rowSub}>一键关闭或开启所有伴侣的主动关怀</Text>
+              <Text style={styles.rowTitle}>所有角色主动问候总开关</Text>
+              <Text style={styles.rowSub}>一键关闭或开启所有角色的主动关怀</Text>
             </View>
             <Switch
+              accessibilityLabel="所有角色主动问候总开关"
               value={settings.globalHeartbeatEnabled}
               onValueChange={(val) => void update({ globalHeartbeatEnabled: val })}
               trackColor={{ true: colors.primary.default, false: colors.border.strong }}
@@ -113,10 +114,11 @@ export function ImCompanionSettingsScreen({
           <View style={styles.divider} />
           <View style={styles.row}>
             <View style={styles.labelCol}>
-              <Text style={styles.rowTitle}>所有伴侣后台发消息</Text>
+              <Text style={styles.rowTitle}>所有角色后台发消息</Text>
               <Text style={styles.rowSub}>允许未打开应用时接收预埋心跳消息</Text>
             </View>
             <Switch
+              accessibilityLabel="所有角色后台发消息"
               value={settings.globalProactiveEnabled}
               onValueChange={(val) => void update({ globalProactiveEnabled: val })}
               trackColor={{ true: colors.primary.default, false: colors.border.strong }}
@@ -131,10 +133,11 @@ export function ImCompanionSettingsScreen({
             <View style={styles.labelCol}>
               <Text style={styles.rowTitle}>夜间免打扰守卫</Text>
               <Text style={styles.rowSub}>
-                免打扰时段内伴侣的主动联系闹钟顺延至次日清晨苏醒后发送
+                免打扰时段内的主动联系提醒顺延至次日清晨苏醒后发送
               </Text>
             </View>
             <Switch
+              accessibilityLabel="夜间免打扰守卫"
               value={settings.globalDndEnabled !== false}
               onValueChange={(val) => void update({ globalDndEnabled: val })}
               trackColor={{ true: colors.primary.default, false: colors.border.strong }}
@@ -213,6 +216,7 @@ export function ImCompanionSettingsScreen({
               <Text style={styles.rowSub}>长句自动增加拟人打字耗时（默认关闭）</Text>
             </View>
             <Switch
+              accessibilityLabel="根据消息长度自动添加延时"
               value={settings.charDelayEnabled}
               onValueChange={(val) => void update({ charDelayEnabled: val })}
               trackColor={{ true: colors.primary.default, false: colors.border.strong }}

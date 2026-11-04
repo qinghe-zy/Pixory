@@ -143,7 +143,9 @@ test.skip('message context menu delegates its presentation to the shared anchore
 });
 
 test('select text opens a full-screen selectable message reader', () => {
-  const modal = read('src/components/ai/AiMessageTextSelectionModal.tsx');
+  const modal = fs.existsSync(path.join(root, 'src/components/common/MessageTextSelectionModal.tsx'))
+    ? read('src/components/common/MessageTextSelectionModal.tsx')
+    : read('src/components/ai/AiMessageTextSelectionModal.tsx');
 
   assert.match(modal, /presentationStyle="fullScreen"/);
   assert.match(modal, /选择文本/);

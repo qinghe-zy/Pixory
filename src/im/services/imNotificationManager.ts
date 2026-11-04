@@ -10,6 +10,7 @@
 import { Platform, PermissionsAndroid, Linking } from 'react-native';
 import { scheduleDiaryAlarm, cancelDiaryAlarm, postCompanionNotification, cancelCompanionNotification } from '../../native/pixoryMediaModule';
 import { initDatabase, type PixorySpace } from '../../database/index';
+import { settingsRepository } from '../../database/repositories/settingsRepository';
 import { formatImPreviewText } from '../utils/formatImPreviewText';
 
 /**
@@ -40,8 +41,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
     const granted = await PermissionsAndroid.request(
       'android.permission.POST_NOTIFICATIONS' as any,
       {
-        title: '开启伴侣关怀通知',
-        message: 'Pixory 需要通知权限，以便在应用关闭后准时接收伴侣的主动问候与关怀。',
+        title: '开启关怀通知',
+        message: 'Pixory 需要通知权限，以便在应用关闭后准时接收主动问候与关怀。',
         buttonPositive: '开启',
         buttonNegative: '暂不',
       }
@@ -76,6 +77,54 @@ export async function scheduleStagedMessageAlarm(
     const jobId = `im_staged_${threadId}`;
     const result = await scheduleDiaryAlarm(visibleAtMs, jobId);
     return result === 'exact' || result === 'inexact';
+  } catch {
+    return false;
+  }
+}
+
+function isWithinDndTime(now: Date, dndStart: string, dndEnd: string): boolean {
+  try {
+    const [startH, startM] = dndStart.split(':').map((v) => parseInt(v, 10) || 0);
+    const [endH, endM] = dndEnd.split(':').map((v) => parseInt(v, 10) || 0);
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+
+    if (startMinutes <= endMinutes) {
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    } else {
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 安全格式化并发送伴侣系统通知（尊重通知管理、防窥脱敏与夜间勿扰偏好）
+ */
+export async function postCompanionNotificationSafely(
+  space: PixorySpace,
+  threadId: string,
+  companionTitle: string,
+  content: string
+): Promise<boolean> {
+  if (space === 'personal') return false;
+  if (Platform.OS !== 'android') return false;
+
+  try {
+    const db = await initDatabase(space);
+    const settings = await settingsRepository.getNotificationSettings(db);
+    if (!settings.enabled) return false;
+
+    if (settings.dndEnabled && isWithinDndTime(new Date(), settings.dndStart, settings.dndEnd)) {
+      return false;
+    }
+
+    const effectiveTitle = settings.showAvatar ? (companionTitle || '新消息') : '新消息';
+    const effectiveContent = settings.showContent ? (content || '给你发送了一条新消息') : '你收到了一条新消息';
+
+    return await postCompanionNotification(threadId, effectiveTitle, effectiveContent);
   } catch {
     return false;
   }
@@ -179,14 +228,14 @@ export async function handleImAlarmHeadless(jobId: string): Promise<void> {
           [stagedRows.length, cleanPreview, new Date(now).toISOString(), threadId]
         );
 
-        // 4. 发送系统通知（仅普通空间，严格遵守隐私规范）
+        // 4. 发送系统通知（仅普通空间，严格遵守隐私规范与通知设置）
         try {
           const threadRow = await db.getFirstAsync<{ title?: string }>(
             'SELECT title FROM ai_threads WHERE id = ?',
             [threadId]
           );
-          const companionTitle = threadRow?.title || 'AI 伴侣';
-          await postCompanionNotification(threadId, companionTitle, cleanPreview);
+          const companionTitle = threadRow?.title || '新消息';
+          await postCompanionNotificationSafely(space, threadId, companionTitle, cleanPreview);
         } catch {}
       }
     } catch {
