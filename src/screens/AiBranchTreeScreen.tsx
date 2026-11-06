@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   loadBranchTree,
@@ -96,6 +96,7 @@ export function AiBranchTreeScreen({
       branchRootMessageId: selectedNode.branchRootMessageId,
       branchVersionIndex: selectedNode.branchVersionIndex,
       currentBranchScopes,
+      node: selectedNode,
       space,
       threadId,
     })
@@ -122,6 +123,10 @@ export function AiBranchTreeScreen({
   }, [currentBranchScopes, selectedNode, snapshotVisible, space, threadId]);
 
   function selectNode(nodeId: string) {
+    if (selectedNode?.id === nodeId) {
+      openSnapshotNode(nodeId);
+      return;
+    }
     const node = nodes.find((item) => item.id === nodeId) ?? null;
     setSelectedNode(node);
   }
@@ -176,10 +181,6 @@ export function AiBranchTreeScreen({
     }
   }
 
-
-
-
-
   return (
     <AiLightScaffold
       bodyStyle={styles.fullScreenBody}
@@ -196,14 +197,48 @@ export function AiBranchTreeScreen({
     >
       {loading ? (
         <View style={styles.stateScreen}>
-          <ActivityIndicator color={aiLightColors.primary} />
-          <Text style={styles.stateText}>正在整理路线</Text>
+          <View style={styles.skeletonBox}>
+            <View style={styles.skeletonNode} />
+            <View style={styles.skeletonLine} />
+            <View style={styles.skeletonBranchRow}>
+              <View style={[styles.skeletonNode, styles.skeletonNodeSide]} />
+              <View style={[styles.skeletonNode, styles.skeletonNodeActive]} />
+            </View>
+          </View>
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={aiLightColors.primary} size="small" />
+            <Text style={styles.stateText}>正在整理路线拓扑</Text>
+          </View>
+        </View>
+      ) : errorMessage && nodes.length === 0 ? (
+        <View style={styles.stateScreen}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons color={aiLightColors.primary} name="alert-circle-outline" size={32} />
+          </View>
+          <Text style={styles.stateTitle}>路线整理失败</Text>
+          <Text style={styles.stateText}>{errorMessage}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void loadTree()}
+            style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.actionButtonText}>重新整理</Text>
+          </Pressable>
         </View>
       ) : nodes.length === 0 ? (
         <View style={styles.stateScreen}>
-          <Ionicons color={aiLightColors.primary} name="git-branch-outline" size={24} />
-          <Text style={styles.stateTitle}>暂无分支</Text>
-          <Text style={styles.stateText}>改写消息或重新生成回复后，会在这里形成创作路线。</Text>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons color={aiLightColors.primary} name="git-branch-outline" size={32} />
+          </View>
+          <Text style={styles.stateTitle}>暂无分支路线</Text>
+          <Text style={styles.stateText}>当前对话为单一主线。在聊天中改写消息或重新生成回复后，会在这里形成创作路线分叉。</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onBack}
+            style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.actionButtonText}>返回对话</Text>
+          </Pressable>
         </View>
       ) : (
         <BranchTreeCanvas
@@ -231,6 +266,26 @@ const styles = StyleSheet.create({
     gap: 0,
     paddingHorizontal: 0,
   },
+  actionButton: {
+    backgroundColor: aiLightColors.primary,
+    borderRadius: radius.pill,
+    marginTop: spacing[2],
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[2],
+  },
+  actionButtonText: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.onDark,
+  },
+  emptyIconCircle: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(208, 124, 96, 0.08)',
+    borderRadius: radius.pill,
+    height: 64,
+    justifyContent: 'center',
+    marginBottom: spacing[1],
+    width: 64,
+  },
   headerIcon: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
@@ -240,6 +295,45 @@ const styles = StyleSheet.create({
     height: spacing[10],
     justifyContent: 'center',
     width: spacing[10],
+  },
+  loadingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    marginTop: spacing[2],
+  },
+  pressed: {
+    opacity: 0.78,
+  },
+  skeletonBox: {
+    alignItems: 'center',
+    gap: spacing[2],
+    marginBottom: spacing[2],
+    opacity: 0.45,
+  },
+  skeletonBranchRow: {
+    flexDirection: 'row',
+    gap: spacing[4],
+  },
+  skeletonLine: {
+    backgroundColor: aiLightColors.hairline,
+    height: spacing[6],
+    width: 2,
+  },
+  skeletonNode: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    height: 52,
+    width: 90,
+  },
+  skeletonNodeActive: {
+    borderColor: aiLightColors.primary,
+    borderWidth: 1.5,
+  },
+  skeletonNodeSide: {
+    borderStyle: 'dashed',
   },
   stateScreen: {
     alignItems: 'center',
@@ -251,6 +345,8 @@ const styles = StyleSheet.create({
   stateText: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+    lineHeight: 18,
+    maxWidth: 280,
     textAlign: 'center',
   },
   stateTitle: {

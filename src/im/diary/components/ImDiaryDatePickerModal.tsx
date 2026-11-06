@@ -42,7 +42,7 @@ export function ImDiaryDatePickerModal({
   onSelectDate,
 }: ImDiaryDatePickerModalProps) {
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+    <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
       <Pressable onPress={onClose} style={styles.backdrop}>
         <Pressable onPress={(e) => e.stopPropagation()} style={styles.sheetContainer}>
           <View style={styles.sheetHeader}>

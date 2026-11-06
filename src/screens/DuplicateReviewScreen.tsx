@@ -109,6 +109,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
         ) : null}
 
         <PageStateBlock
+          emptyActionLabel="返回上一页"
           emptyDescription={activeTab === 'exact' ? '暂时没有完全相同的素材。' : '暂时没有需要复核的相似图片。'}
           emptyIconName="checkmark-circle-outline"
           emptyTitle="没有疑似重复"
@@ -117,6 +118,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
           loading={isLoading}
           loadingDescription="正在读取重复素材。"
           loadingTitle="读取疑似重复"
+          onEmptyAction={onBack}
           onRetry={reload}
         >
           <View style={styles.groupList}>

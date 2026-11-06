@@ -5,7 +5,8 @@ import {
   StyleSheet,
   Text,
   View,
-  RefreshControl,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -27,6 +28,8 @@ export interface ImThreadListProps {
   refreshTrigger?: number;
   ListHeaderComponent?: React.ComponentType<any> | React.ReactElement | null;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  scrollEventThrottle?: number;
 }
 
 const SKELETON_ROWS = [1, 2, 3];
@@ -45,11 +48,12 @@ export function ImThreadList({
   refreshTrigger,
   ListHeaderComponent,
   contentContainerStyle,
+  onScroll,
+  scrollEventThrottle = 16,
 }: ImThreadListProps) {
   const theme = useImTheme();
   const [threads, setThreads] = useState<ImThreadListItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -66,102 +70,99 @@ export function ImThreadList({
     void loadData();
   }, [loadData, refreshTrigger]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
-  };
+  const renderItem = useCallback(
+    ({ item }: { item: ImThreadListItem }) => {
+      const formattedPreview = formatImPreviewText(
+        item.lastMessagePreview,
+        '刚刚建立了联络'
+      );
+      const unreadCount = item.unreadCount ?? 0;
+      const a11yLabel =
+        unreadCount > 0
+          ? `打开与 ${item.title} 的聊天，${unreadCount} 条未读消息`
+          : `打开与 ${item.title} 的聊天`;
 
-  const renderItem = ({ item }: { item: ImThreadListItem }) => {
-    const formattedPreview = formatImPreviewText(
-      item.lastMessagePreview,
-      '刚刚建立了联络'
-    );
-    const unreadCount = item.unreadCount ?? 0;
-    const a11yLabel =
-      unreadCount > 0
-        ? `打开与 ${item.title} 的聊天，${unreadCount} 条未读消息`
-        : `打开与 ${item.title} 的聊天`;
-
-    return (
-      <Pressable
-        accessibilityLabel={a11yLabel}
-        accessibilityRole="button"
-        onPress={() => onOpenImChat(item)}
-        style={({ pressed }) => [
-          styles.threadRow,
-          {
-            backgroundColor: item.isPinned
-              ? colors.background.soft
-              : colors.background.surface,
-            borderBottomColor: theme.colors.headerBorder,
-          },
-          pressed ? styles.rowPressed : null,
-        ]}
-      >
-        {/* 头像、未读红点与在线呼吸点 */}
-        <View
-          style={[
-            styles.avatarWrap,
+      return (
+        <Pressable
+          accessibilityLabel={a11yLabel}
+          accessibilityRole="button"
+          onPress={() => onOpenImChat(item)}
+          style={({ pressed }) => [
+            styles.threadRow,
             {
-              width: 44,
-              height: 44,
-              borderRadius: theme.radii.avatarRadius,
+              backgroundColor: item.isPinned
+                ? colors.background.soft
+                : colors.background.surface,
+              borderBottomColor: theme.colors.headerBorder,
             },
+            pressed ? styles.rowPressed : null,
           ]}
         >
-          {item.avatarUri ? (
-            <SecureImage
-              space={space}
-              style={[
-                styles.avatarImage,
-                { borderRadius: theme.radii.avatarRadius },
-              ]}
-              uri={item.avatarUri}
-            />
-          ) : (
-            <View
-              style={[
-                styles.avatarPlaceholder,
-                { borderRadius: theme.radii.avatarRadius },
-              ]}
-            >
-              <Text style={styles.avatarLetter}>{item.title.slice(0, 1)}</Text>
-            </View>
-          )}
-          {/* 伴侣在线微型呼吸光斑 */}
-          <View style={styles.livingIndicator} />
-          {/* 微信风格右上角未读消息红点角标 */}
-          {unreadCount > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>
-                {unreadCount > 99 ? '99+' : String(unreadCount)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* 中间文字摘要 */}
-        <View style={styles.copyContainer}>
-          <View style={styles.titleRow}>
-            <Text numberOfLines={1} style={styles.titleText}>
-              {item.title}
-            </Text>
-            {item.lastMessageAt ? (
-              <Text style={styles.timeText}>
-                {formatWeChatTime(item.lastMessageAt)}
-              </Text>
+          {/* 头像、未读红点与在线呼吸点 */}
+          <View
+            style={[
+              styles.avatarWrap,
+              {
+                width: 44,
+                height: 44,
+                borderRadius: theme.radii.avatarRadius,
+              },
+            ]}
+          >
+            {item.avatarUri ? (
+              <SecureImage
+                space={space}
+                style={[
+                  styles.avatarImage,
+                  { borderRadius: theme.radii.avatarRadius },
+                ]}
+                uri={item.avatarUri}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.avatarPlaceholder,
+                  { borderRadius: theme.radii.avatarRadius },
+                ]}
+              >
+                <Text style={styles.avatarLetter}>{item.title.slice(0, 1)}</Text>
+              </View>
+            )}
+            {/* 伴侣在线微型呼吸光斑 */}
+            <View style={styles.livingIndicator} />
+            {/* 微信风格右上角未读消息红点角标 */}
+            {unreadCount > 0 ? (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>
+                  {unreadCount > 99 ? '99+' : String(unreadCount)}
+                </Text>
+              </View>
             ) : null}
           </View>
-          <Text numberOfLines={1} style={styles.previewText}>
-            {formattedPreview}
-          </Text>
-        </View>
-      </Pressable>
-    );
-  };
 
-  const renderEmptyOrLoading = () => {
+          {/* 中间文字摘要 */}
+          <View style={styles.copyContainer}>
+            <View style={styles.titleRow}>
+              <Text numberOfLines={1} style={styles.titleText}>
+                {item.title}
+              </Text>
+              {item.lastMessageAt ? (
+                <Text style={styles.timeText}>
+                  {formatWeChatTime(item.lastMessageAt)}
+                </Text>
+              ) : null}
+            </View>
+            <Text numberOfLines={1} style={styles.previewText}>
+              {formattedPreview}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    },
+    [onOpenImChat, space, theme]
+  );
+
+  const renderEmptyOrLoading = useCallback(() => {
     if (initialLoading) {
       return (
         <View accessibilityLabel="正在加载会话列表" style={styles.skeletonWrap}>
@@ -208,12 +209,13 @@ export function ImThreadList({
         ) : null}
       </View>
     );
-  };
+  }, [initialLoading, onOpenRoleLibrary, theme]);
 
   return (
     <FlatList
       ListEmptyComponent={renderEmptyOrLoading}
       ListHeaderComponent={ListHeaderComponent}
+      bounces={false}
       contentContainerStyle={[
         styles.listContent,
         contentContainerStyle,
@@ -221,10 +223,10 @@ export function ImThreadList({
       ]}
       data={threads}
       keyExtractor={(item) => item.id}
-      refreshControl={
-        <RefreshControl onRefresh={handleRefresh} refreshing={refreshing} />
-      }
+      onScroll={onScroll}
+      overScrollMode="never"
       renderItem={renderItem}
+      scrollEventThrottle={scrollEventThrottle}
       style={styles.list}
     />
   );

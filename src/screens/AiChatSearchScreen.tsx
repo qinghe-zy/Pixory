@@ -168,8 +168,16 @@ export function AiChatSearchScreen({
 
         {hasQuery && !loading && results.length === 0 && !errorMessage ? (
           <View style={styles.stateBox}>
-            <Ionicons color={aiLightColors.muted} name="chatbubble-ellipses-outline" size={24} />
+            <Ionicons color={aiLightColors.muted} name="chatbubble-ellipses-outline" size={32} />
             <Text style={styles.stateTitle}>没有匹配结果</Text>
+            <Text style={styles.stateText}>当前路线中未找到与 “{query}” 相关的消息</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setQuery('')}
+              style={({ pressed }) => [styles.clearSearchBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.clearSearchBtnText}>清空搜索</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -311,6 +319,21 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
     textAlign: 'center',
+  },
+  clearSearchBtn: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing[2],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  clearSearchBtnText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.primaryActive,
+    fontWeight: '600',
   },
   loadingBox: {
     alignItems: 'center',

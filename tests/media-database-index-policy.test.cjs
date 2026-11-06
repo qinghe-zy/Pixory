@@ -50,6 +50,11 @@ test('media and chat hot queries use the intended composite indexes without temp
         threadId TEXT NOT NULL,
         createdAt TEXT NOT NULL
       );
+      CREATE TABLE ai_message_versions (
+        id TEXT PRIMARY KEY,
+        threadId TEXT NOT NULL,
+        originalMessageId TEXT NOT NULL
+      );
     `);
     db.exec(readPerformanceIndexStatements());
 

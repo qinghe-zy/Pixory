@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -41,48 +43,55 @@ export function ImPromptModal({
   };
 
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+    <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
       <Pressable onPress={onClose} style={styles.backdrop}>
-        <Pressable onPress={(e) => e.stopPropagation()} style={styles.dialogCard}>
-          <Text style={styles.title}>{title}</Text>
-          {Boolean(subtitle) && <Text style={styles.subtitle}>{subtitle}</Text>}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardAvoiding}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()} style={styles.dialogCard}>
+            <Text style={styles.title}>{title}</Text>
+            {Boolean(subtitle) && <Text style={styles.subtitle}>{subtitle}</Text>}
 
-          {presets && presets.length > 0 && (
-            <View style={styles.presetsRow}>
-              {presets.map((p) => {
-                const active = value === p.value;
-                return (
-                  <Pressable
-                    key={p.value}
-                    onPress={() => setValue(p.value)}
-                    style={[styles.presetChip, active && styles.presetChipActive]}
-                  >
-                    <Text style={[styles.presetText, active && styles.presetTextActive]}>{p.label}</Text>
-                  </Pressable>
-                );
-              })}
+            {presets && presets.length > 0 && (
+              <View style={styles.presetsRow}>
+                {presets.map((p) => {
+                  const active = value === p.value;
+                  return (
+                    <Pressable
+                      key={p.value}
+                      onPress={() => setValue(p.value)}
+                      style={[styles.presetChip, active && styles.presetChipActive]}
+                    >
+                      <Text style={[styles.presetText, active && styles.presetTextActive]}>{p.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            <TextInput
+              autoFocus
+              maxLength={60}
+              onChangeText={setValue}
+              onSubmitEditing={handleConfirm}
+              placeholder={placeholder}
+              placeholderTextColor="#999999"
+              returnKeyType="done"
+              style={styles.input}
+              value={value}
+            />
+
+            <View style={styles.actionRow}>
+              <Pressable onPress={onClose} style={[styles.btn, styles.cancelBtn]}>
+                <Text style={styles.cancelText}>取消</Text>
+              </Pressable>
+              <Pressable onPress={handleConfirm} style={[styles.btn, styles.confirmBtn]}>
+                <Text style={styles.confirmText}>确定</Text>
+              </Pressable>
             </View>
-          )}
-
-          <TextInput
-            autoFocus
-            maxLength={60}
-            onChangeText={setValue}
-            placeholder={placeholder}
-            placeholderTextColor="#999999"
-            style={styles.input}
-            value={value}
-          />
-
-          <View style={styles.actionRow}>
-            <Pressable onPress={onClose} style={[styles.btn, styles.cancelBtn]}>
-              <Text style={styles.cancelText}>取消</Text>
-            </Pressable>
-            <Pressable onPress={handleConfirm} style={[styles.btn, styles.confirmBtn]}>
-              <Text style={styles.confirmText}>确定</Text>
-            </Pressable>
-          </View>
-        </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );
@@ -90,6 +99,7 @@ export function ImPromptModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  keyboardAvoiding: { width: '100%', alignItems: 'center' },
   dialogCard: { width: '100%', maxWidth: 320, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.16, shadowRadius: 18, elevation: 12 },
   title: { fontSize: 17, fontWeight: '700', color: '#1A1C1C', textAlign: 'center', marginBottom: 4 },
   subtitle: { fontSize: 13, color: '#666666', textAlign: 'center', marginBottom: 14, lineHeight: 18 },

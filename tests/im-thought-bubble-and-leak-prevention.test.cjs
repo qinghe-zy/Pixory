@@ -6,13 +6,15 @@ const ts = require('typescript');
 
 function loadModule(relativePath, mockRequire = {}) {
   let targetPath = path.resolve(__dirname, relativePath);
-  if (!targetPath.endsWith('.ts') && !targetPath.endsWith('.js')) {
+  if (!targetPath.endsWith('.ts') && !targetPath.endsWith('.tsx') && !targetPath.endsWith('.js') && !targetPath.endsWith('.jsx')) {
     if (fs.existsSync(targetPath + '.ts')) targetPath += '.ts';
+    else if (fs.existsSync(targetPath + '.tsx')) targetPath += '.tsx';
     else if (fs.existsSync(targetPath + '.js')) targetPath += '.js';
+    else if (fs.existsSync(targetPath + '.jsx')) targetPath += '.jsx';
   }
   const code = fs.readFileSync(targetPath, 'utf8');
   const transpiled = ts.transpileModule(code, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
   }).outputText;
   const m = { exports: {} };
   const customRequire = (reqPath) => {
@@ -55,6 +57,38 @@ test('TagAwareStreamParser: Thought callbacks stream progress and completion wit
     assert.ok(progressChunks.length >= 1);
   });
 
+  await t.test('Does not leak English or parenthesized reasoning chunks into dialogue during streaming feed', () => {
+    let completedThought = null;
+    const progressChunks = [];
+    const parser = new TagAwareStreamParser({
+      onThoughtProgress: (chunk, full) => {
+        progressChunks.push(chunk);
+      },
+      onThoughtCompleted: (full) => {
+        completedThought = full;
+      },
+    });
+
+    // 模拟 DeepSeek-R1 流式推理：在 <think> 中分析提示词，包含角色名括号与英文 CoT
+    const chunk1 = '<think>The context says it is 3:45 AM, and the scheduled contact time arrived. ';
+    const s1 = parser.feed(chunk1);
+    assert.deepEqual(s1, [], 'chunk1 must not produce dialogue');
+
+    const chunk2 = 'Lumine (Genshin Impact) should send a message proactively. She is concerned (deep night). ';
+    const s2 = parser.feed(chunk2);
+    assert.deepEqual(s2, [], 'chunk2 with parentheses must not trigger premature thinking end or dialogue leak');
+
+    const chunk3 = 'Keep it in character (calm, direct). Let us keep it natural.</think>还盯着屏幕呢？[BR]汤我喝完了[BR]快去睡吧';
+    const s3 = parser.feed(chunk3);
+    assert.deepEqual(s3, ['还盯着屏幕呢？', '汤我喝完了']);
+
+    const s4 = parser.flush();
+    assert.deepEqual(s4, ['快去睡吧']);
+
+    assert.ok(completedThought.includes('Lumine (Genshin Impact)'));
+    assert.ok(completedThought.includes('(calm, direct)'));
+  });
+
   await t.test('Rescues dialogue and sentences when unclosed <think> contains spoken text and [BR]', () => {
     let completedThought = null;
     const parser = new TagAwareStreamParser({
@@ -90,6 +124,32 @@ test('TagAwareStreamParser: Thought callbacks stream progress and completion wit
 
     assert.equal(completedThought, '(头发干了，人醒明白了，看他在不在。）');
     assert.deepEqual(s2, ['我这边醒了有一阵了，收拾完也没事干。']);
+  });
+
+  await t.test('Rescues dialogue when </think> is placed after dialogue so speech is never swallowed into thought', () => {
+    let completedThought = null;
+    const parser = new TagAwareStreamParser({
+      onThoughtCompleted: (full) => {
+        completedThought = full;
+      },
+    });
+
+    // 现场复现：模型输出了 </think>，但将台词放到了 </think> 之前
+    const input = '<think>（他那边忽然没声，回了个走神。）刚才那话你听清了没[BR]我正等着你往下说呢[NEXT_FOLLOWUP: 40s]</think>';
+    const s1 = parser.feed(input);
+    const s2 = parser.flush();
+    const all = [...s1, ...s2];
+
+    assert.equal(completedThought, '（他那边忽然没声，回了个走神。）');
+    assert.deepEqual(all, ['刚才那话你听清了没', '我正等着你往下说呢']);
+  });
+
+  await t.test('stripMetaTags strips orphan and matched think tags completely', () => {
+    const { stripMetaTags } = loadModule('../src/im/engine/tagAwareStreamParser.ts');
+    assert.equal(stripMetaTags('<think>内心活动</think>正常对白'), '正常对白');
+    assert.equal(stripMetaTags('<think>裸露开标签'), '裸露开标签');
+    assert.equal(stripMetaTags('裸露闭标签</think>'), '裸露闭标签');
+    assert.equal(stripMetaTags('<thought>旧标签</thought>台词'), '台词');
   });
 
   await t.test('Splits sentences across </br>, <br>, <br/>, and [BR] variants', () => {
@@ -138,6 +198,7 @@ test('BubbleRegistry: Registers thought bubble renderer for companion thought me
     '../../components/emoji/StickerBubbleRenderer': { StickerBubbleRenderer: () => null },
     '../components/renderers/DocumentBubbleRenderer': { DocumentBubbleRenderer: () => null },
     '../components/renderers/ThoughtBubbleRenderer': { ThoughtBubbleRenderer: () => null },
+    '../components/renderers/VoiceBubbleRenderer': { VoiceBubbleRenderer: () => null },
   });
 
   assert.equal(BubbleRegistry.has('thought'), true);
@@ -208,4 +269,23 @@ test('Thought Display Setting & Silent Thinking Defense: Thread Settings & Anti-
   assert.ok(sessionCode.includes('deleteImMessage'), 'useImChatSession must import deleteImMessage for orphan thought rollback');
   assert.ok(sessionCode.includes('rollbackThoughtOnError'), 'useImChatSession must track rollbackThoughtOnError');
   assert.ok(sessionCode.includes('Zero-Dialogue Guard'), 'useImChatSession must have Zero-Dialogue Guard to prevent mute companions');
+});
+
+test('Context Builder: Cleans Rule 8 from IM protocol prompt and evicts error system notices', () => {
+  const contextBuilderCode = fs.readFileSync(path.resolve(__dirname, '../src/im/engine/imContextBuilder.ts'), 'utf8');
+  assert.ok(!contextBuilderCode.includes('8. 【深度思考与内心活动规范'), 'Rule 8 must be removed from IM_PROTOCOL_PROMPT');
+  assert.ok(!contextBuilderCode.includes('若你在回复前进行了深度思考（<think>'), 'Must not prompt model with <think> tags');
+  assert.ok(contextBuilderCode.includes('连接暂时不稳定'), 'Must detect network error notice in coalesceHistoryBurstMessages');
+
+  const { coalesceHistoryBurstMessages } = loadModule('../src/im/engine/imContextBuilder.ts');
+  const mockMessages = [
+    { id: '1', role: 'user', content: '喂', type: 'text' },
+    { id: '2', role: 'system', content: '连接暂时不稳定，未收到回复，可长按你的消息重发或稍后再试', type: 'system_notice' },
+    { id: '3', role: 'user', content: '人呢', type: 'text' },
+  ];
+  const coalesced = coalesceHistoryBurstMessages(mockMessages);
+  // error notice must be evicted, not turned into role: 'user'
+  assert.equal(coalesced.length, 2);
+  assert.equal(coalesced[0].content, '喂');
+  assert.equal(coalesced[1].content, '人呢');
 });

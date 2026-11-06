@@ -240,7 +240,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
           {!showArchived ? (
             <>
               <Section title="长期记住" caption="确认后会稳定用于相关会话。">
-                {confirmed.length ? confirmed.map(renderMemory) : <Empty text="还没有长期记住的内容。" />}
+                {confirmed.length ? confirmed.map(renderMemory) : <Empty actionLabel="手动添加" onAction={() => setManualVisible(true)} text="还没有长期记住的内容。" />}
               </Section>
               <Section title="最近对话" caption="先放在这里，系统会谨慎观察，不会轻易长期保存。">
                 {working.length ? working.map(renderMemory) : <Empty text="最近还没有形成可用记忆。" />}
@@ -333,8 +333,18 @@ function Section({ title, caption, children }: { title: string; caption: string;
   );
 }
 
-function Empty({ text }: { text: string }) {
-  return <Text style={styles.empty}>{text}</Text>;
+function Empty({ text, onAction, actionLabel }: { text: string; onAction?: () => void; actionLabel?: string }) {
+  return (
+    <View style={styles.emptyBox}>
+      <Ionicons color={aiLightColors.mutedSoft} name="bookmark-outline" size={16} />
+      <Text style={styles.emptyText}>{text}</Text>
+      {onAction && actionLabel ? (
+        <Pressable hitSlop={8} onPress={onAction} style={({ pressed }) => [styles.emptyActionBtn, pressed && { opacity: 0.75 }]}>
+          <Text style={styles.emptyActionText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -344,6 +354,28 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.textStyles.bodyStrong, color: aiLightColors.ink },
   caption: { ...typography.textStyles.caption, color: aiLightColors.muted, marginTop: spacing[1] },
   list: { gap: rhythm.compactGridGap, marginTop: spacing[3] },
+  emptyBox: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingVertical: spacing[2],
+  },
+  emptyText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.mutedSoft,
+    flex: 1,
+  },
+  emptyActionBtn: {
+    backgroundColor: aiLightColors.primarySoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  emptyActionText: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.primaryActive,
+    fontWeight: '600',
+  },
   empty: { ...typography.textStyles.caption, color: aiLightColors.mutedSoft, paddingVertical: spacing[2] },
   memoryItem: {
     backgroundColor: aiLightColors.canvas,

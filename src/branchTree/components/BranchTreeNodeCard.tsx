@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { aiLightColors } from '../../components/ai/aiLightTheme';
-import { radius, rhythm, spacing, typography } from '../../design/tokens';
+import { radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import type { BranchTreeLayoutNode } from '../engine/types';
 
 interface BranchTreeNodeCardProps {
@@ -23,7 +24,7 @@ function formatTime(isoString: string): string {
   }
 }
 
-export function BranchTreeNodeCard({ node, selected }: BranchTreeNodeCardProps) {
+export const BranchTreeNodeCard = memo(function BranchTreeNodeCard({ node, selected }: BranchTreeNodeCardProps) {
   const isUser = node.role === 'user';
   const roleText = isUser ? '👤 你' : '🤖 AI';
   const timeText = formatTime(node.createdAt);
@@ -47,12 +48,19 @@ export function BranchTreeNodeCard({ node, selected }: BranchTreeNodeCardProps) 
       ) : null}
       
       <View style={styles.metaRow}>
-        <Text numberOfLines={1} style={styles.roleLabel}>
-          {roleText} · v{node.versionIndex}/{node.versionTotal}
+        <View style={[styles.roleBadge, isUser ? styles.roleBadgeUser : styles.roleBadgeAi]}>
+          <Text numberOfLines={1} style={styles.roleLabel}>
+            {roleText}
+          </Text>
+        </View>
+        <Text numberOfLines={1} style={styles.versionChip}>
+          v{node.versionIndex}/{node.versionTotal}
         </Text>
-        <Text numberOfLines={1} style={styles.timeLabel}>
-          {timeText}
-        </Text>
+        {timeText ? (
+          <Text numberOfLines={1} style={styles.timeLabel}>
+            {timeText}
+          </Text>
+        ) : null}
       </View>
       
       <View style={styles.divider} />
@@ -68,11 +76,13 @@ export function BranchTreeNodeCard({ node, selected }: BranchTreeNodeCardProps) 
       ) : null}
       
       {selected ? (
-        <Text style={styles.hintText}>双击展开</Text>
+        <View style={styles.hintContainer}>
+          <Text style={styles.hintText}>点击展开快照 ▾</Text>
+        </View>
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   activePathCard: {
@@ -88,7 +98,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     color: aiLightColors.muted,
-    marginTop: spacing[1.5],
+    marginTop: spacing[1],
     paddingHorizontal: spacing[1.5],
     paddingVertical: 1,
   },
@@ -100,22 +110,24 @@ const styles = StyleSheet.create({
     minHeight: 70,
     padding: spacing[2],
     width: 120,
+    ...shadows.sm,
   },
   divider: {
     backgroundColor: aiLightColors.hairline,
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     marginVertical: spacing[1],
     width: '100%',
   },
   headBadge: {
     backgroundColor: '#D07C60',
-    borderBottomLeftRadius: 4,
-    borderTopRightRadius: 6,
+    borderBottomLeftRadius: radius.xs,
+    borderTopRightRadius: radius.sm,
     paddingHorizontal: 4,
-    paddingVertical: 2,
+    paddingVertical: 1.5,
     position: 'absolute',
     right: -1,
     top: -1,
+    zIndex: 1,
   },
   headBadgeText: {
     color: aiLightColors.onDark,
@@ -126,37 +138,68 @@ const styles = StyleSheet.create({
   headCard: {
     borderColor: '#D07C60',
     borderWidth: 1.5,
+    backgroundColor: '#FDFAF8',
+  },
+  hintContainer: {
+    alignSelf: 'center',
+    backgroundColor: '#FCF2EE',
+    borderColor: 'rgba(208, 124, 96, 0.28)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: -20,
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+    position: 'absolute',
+    zIndex: 10,
+    ...shadows.sm,
   },
   hintText: {
     ...typography.textStyles.micro,
-    alignSelf: 'center',
-    bottom: -18,
     color: '#D07C60',
-    position: 'absolute',
+    fontWeight: '600',
   },
   inactivePathCard: {
     backgroundColor: aiLightColors.canvas,
     borderColor: '#D1C9BE',
     borderStyle: 'dashed',
     borderWidth: 1,
+    opacity: 0.9,
   },
   metaRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: rhythm.microGap,
+    gap: 3,
     justifyContent: 'space-between',
+  },
+  roleBadge: {
+    borderRadius: radius.xs,
+    paddingHorizontal: 3,
+    paddingVertical: 0.5,
+  },
+  roleBadgeAi: {
+    backgroundColor: 'rgba(208, 124, 96, 0.08)',
+  },
+  roleBadgeUser: {
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
   },
   roleLabel: {
     color: aiLightColors.muted,
     fontFamily: typography.family.base,
-    fontSize: 10,
+    fontSize: 9.5,
+  },
+  versionChip: {
+    color: '#8A7A70',
+    fontFamily: typography.family.mono,
+    fontSize: 9,
   },
   selectedCard: {
+    borderColor: '#D07C60',
+    borderWidth: 1.5,
+    elevation: 4,
     shadowColor: '#D07C60',
     shadowOffset: { height: 2, width: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4, // Android shadow
+    shadowOpacity: 0.32,
+    shadowRadius: 5,
   },
   summary: {
     color: aiLightColors.ink,
@@ -167,6 +210,6 @@ const styles = StyleSheet.create({
   timeLabel: {
     color: aiLightColors.muted,
     fontFamily: typography.family.mono,
-    fontSize: 9,
+    fontSize: 8.5,
   },
 });

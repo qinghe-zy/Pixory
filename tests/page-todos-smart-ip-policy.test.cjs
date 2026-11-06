@@ -150,3 +150,10 @@ test.skip('settings entry is visibly marked unavailable instead of looking broke
   assert.match(meSource, /unavailableBadge/);
   assert.match(meSource, /<Text style=\{styles\.unavailableBadge\}>未开放<\/Text>/);
 });
+
+test('IP detail screen material count includes both images and videos', () => {
+  const ipDetailSource = readProjectFile('src/screens/IpDetailScreen.tsx');
+  assert.match(ipDetailSource, /totalMaterialCount\s*=\s*ip\s*\?\s*\(ip\.imageCount\s*\?\?\s*0\)\s*\+\s*\(ip\.videoCount\s*\?\?\s*0\)\s*:\s*0/);
+  assert.match(ipDetailSource, /查看全部\s*\{totalMaterialCount\}\s*项素材/);
+  assert.match(ipDetailSource, /label="素材数量"\s*value=\{String\(totalMaterialCount\)\}/);
+});

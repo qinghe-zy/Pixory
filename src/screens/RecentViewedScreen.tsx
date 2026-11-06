@@ -173,7 +173,8 @@ export function RecentViewedScreen({
         >
           <PageStateBlock
             loadingComponent={<GallerySkeleton />}
-            emptyActionLabel={undefined}
+            emptyActionLabel="返回上一页"
+            onEmptyAction={onBack}
             emptyDescription="打开过图片详情后，这里会展示最近查看过的图片。"
         emptyIconName="time-outline"
         emptyTitle="还没有最近查看"

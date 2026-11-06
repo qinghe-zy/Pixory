@@ -8,11 +8,14 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../database';
 import { useImGlobalSettings } from '../services/imCompanionPreferences';
 import type { ImIntervalMode, ImCharSpeedGear } from '../config/pacingProfile';
 import { getMemoryModelProviderConfig } from '../../core/llm-transport/secureApiKey';
+import { AppDialog } from '../../components/AppDialog';
+import { setVoiceReplyEnabledForAll } from '../repository/imSettingsRepository';
 import { colors } from '../../design/tokens/colors';
 import { rhythm } from '../../design/tokens/rhythm';
 import { spacing } from '../../design/tokens/spacing';
@@ -80,6 +83,55 @@ export function ImCompanionSettingsScreen({
   const currentDndStart = settings.globalDndStartTime || '23:00';
   const currentDndEnd = settings.globalDndEndTime || '07:30';
 
+  const [confirmDialog, setConfirmDialog] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    danger?: boolean;
+    primaryLabel?: string;
+    secondaryLabel?: string | null;
+    onPrimary?: () => void;
+  } | null>(null);
+
+  const handleBulkSetVoice = (enabled: boolean) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setConfirmDialog({
+      visible: true,
+      title: enabled ? '一键开启所有会话语音回复' : '一键关闭所有会话语音回复',
+      message: enabled
+        ? '确定将所有伴聊会话的模型语音回复统一开启吗？伴侣将在日常交流中按需发送微信拟真语音条。'
+        : '确定将所有伴聊会话的模型语音回复统一关闭吗？关闭后所有角色仅通过纯文字与表情交流。',
+      danger: !enabled,
+      primaryLabel: enabled ? '确认开启' : '确认关闭',
+      secondaryLabel: '取消',
+      onPrimary: async () => {
+        try {
+          const count = await setVoiceReplyEnabledForAll(space, enabled);
+          await update({ globalVoiceReplyEnabled: enabled });
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          setConfirmDialog({
+            visible: true,
+            title: '设置成功',
+            message: `已为当前空间全部 ${count} 个伴聊会话统一${enabled ? '开启' : '关闭'}模型语音回复。`,
+            primaryLabel: '确定',
+            secondaryLabel: null,
+            onPrimary: () => setConfirmDialog(null),
+          });
+        } catch (err: any) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+          setConfirmDialog({
+            visible: true,
+            title: '操作失败',
+            message: err?.message || '批量更新会话语音设置失败，请重试。',
+            primaryLabel: '确定',
+            secondaryLabel: null,
+            onPrimary: () => setConfirmDialog(null),
+          });
+        }
+      },
+    });
+  };
+
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
       <View style={styles.header}>
@@ -123,6 +175,40 @@ export function ImCompanionSettingsScreen({
               onValueChange={(val) => void update({ globalProactiveEnabled: val })}
               trackColor={{ true: colors.primary.default, false: colors.border.strong }}
             />
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <View style={styles.labelCol}>
+              <Text style={styles.rowTitle}>所有角色回复语音总开关</Text>
+              <Text style={styles.rowSub}>默认允许伴侣在聊天中发送微信拟真语音条</Text>
+            </View>
+            <Switch
+              accessibilityLabel="所有角色回复语音总开关"
+              value={settings.globalVoiceReplyEnabled !== false}
+              onValueChange={(val) => void update({ globalVoiceReplyEnabled: val })}
+              trackColor={{ true: colors.primary.default, false: colors.border.strong }}
+            />
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.bulkVoiceRow}>
+            <Pressable
+              onPress={() => handleBulkSetVoice(true)}
+              style={({ pressed }) => [styles.bulkVoiceBtn, pressed && styles.btnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="一键开启所有会话语音回复"
+            >
+              <Ionicons name="mic-outline" size={16} color={colors.primary.default} style={{ marginRight: 6 }} />
+              <Text style={styles.bulkVoiceBtnText}>一键开启全部会话</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleBulkSetVoice(false)}
+              style={({ pressed }) => [styles.bulkVoiceBtn, styles.bulkVoiceBtnDestructive, pressed && styles.btnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="一键关闭所有会话语音回复"
+            >
+              <Ionicons name="mic-off-outline" size={16} color="#EF4444" style={{ marginRight: 6 }} />
+              <Text style={[styles.bulkVoiceBtnText, { color: '#EF4444' }]}>一键关闭全部会话</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -267,12 +353,60 @@ export function ImCompanionSettingsScreen({
           </View>
         </View>
       </ScrollView>
+
+      <AppDialog
+        visible={Boolean(confirmDialog?.visible)}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message}
+        primaryLabel={confirmDialog?.primaryLabel || '确定'}
+        onPrimary={() => {
+          const fn = confirmDialog?.onPrimary;
+          if (fn) {
+            fn();
+          } else {
+            setConfirmDialog(null);
+          }
+        }}
+        secondaryLabel={confirmDialog?.secondaryLabel}
+        onClose={() => setConfirmDialog(null)}
+        danger={confirmDialog?.danger}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.page },
+  bulkVoiceRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  bulkVoiceBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: metrics.minTouchSize,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background.tag,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  bulkVoiceBtnDestructive: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FEE2E2',
+  },
+  bulkVoiceBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary.default,
+  },
+  btnPressed: {
+    opacity: 0.7,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

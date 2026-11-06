@@ -33,10 +33,13 @@ import {
   Text,
   ViewToken,
   View,
+  ToastAndroid,
   Modal,
   Dimensions,
   Image,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { asrService } from '../voice/asrService';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
@@ -57,6 +60,7 @@ import {
   type AnchoredContextMenuAction,
 } from '../components/AnchoredContextMenu';
 import { AppActionSheet, type AppActionSheetItem } from "../components/AppActionSheet";
+import { AppDialog } from "../components/AppDialog";
 import { useToast } from "../components/AppToast";
 import { pinDocumentToKnowledgeBase, unpinDocumentFromKnowledgeBase } from "../ai/aiDocumentPinService";
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
@@ -89,7 +93,12 @@ import {
   FavoriteStarIcon,
   RegenerateIcon,
   SelectTextIcon,
+  VoiceSpeakIcon,
 } from "../components/ai/AiMessageActionIcons";
+import { VoiceMiniPlayer } from "../voice/ui/VoiceMiniPlayer";
+import { useSpeechToText } from "../voice/ui/useSpeechToText";
+import { voiceService } from "../voice/voiceService";
+import { resetTier1CircuitBreaker } from "../voice/fallbackChain";
 import { AiMessageTextSelectionModal } from "../components/ai/AiMessageTextSelectionModal";
 import { mergeBufferedStreamingPatchIntoContextMenuTarget } from "../components/ai/aiMessageContextMenuTarget";
 import { AiStreamingTailSpacer } from "../components/ai/AiStreamingTailSpacer";
@@ -152,7 +161,7 @@ import {
   getSelectedMessageVersionIndex as resolveSelectedMessageVersionIndex,
   messageMatchesSelectedBranchPath,
 } from "../ai/aiBranching";
-import { buildBranchSelectionMap } from "../ai/aiBranchTreeService";
+import { buildBranchSelectionMap, prefetchBranchTree } from "../ai/aiBranchTreeService";
 import {
   resolveScrollToLatestGestureDirection,
   shouldReattachToLatest,
@@ -1055,6 +1064,9 @@ export function AiChatScreen({
           (gs.dx < -DRAWER_SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18)
         ) {
           if (activeThreadIdRef.current !== 'pixory-system-assistant') {
+            if (activeThreadIdRef.current) {
+              prefetchBranchTree({ space, threadId: activeThreadIdRef.current });
+            }
             setConfigDrawerVisible(true);
           }
         }
@@ -1366,6 +1378,33 @@ export function AiChatScreen({
   const [diaryGenerationStatus, setDiaryGenerationStatus] = useState<
     'generating' | { message: string; state: 'failed' } | null
   >(null);
+  const [activeVoicePlaybackId, setActiveVoicePlaybackId] = useState<string | null>(
+    () => voiceService.getPlaybackState().activeId
+  );
+  const [synthesizingVoiceMessageId, setSynthesizingVoiceMessageId] = useState<string | null>(null);
+  const [voiceNoticeDialog, setVoiceNoticeDialog] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
+
+  useEffect(() => {
+    const unsub = voiceService.subscribe((state) => {
+      setActiveVoicePlaybackId(state.isPlaying ? state.activeId : null);
+    });
+    return () => {
+      unsub();
+      void voiceService.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    void voiceService.stop();
+  }, [activeThreadId]);
   const diaryGenerationJobRef = useRef<Promise<void> | null>(null);
   const [streamingTailVersion, forceUpdateTailState] = useReducer(
     (x) => x + 1,
@@ -2064,8 +2103,15 @@ export function AiChatScreen({
   const [memoryCaptures, setMemoryCaptures] = useState<
     MemoryCaptureNoticeItem[]
   >([]);
-  const [voiceState, setVoiceState] = useState<AiVoiceInputState>("idle");
-  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const stt = useSpeechToText({
+    space,
+    onTextChange: (next) => {
+      setComposerText(next);
+      if (typeof next === 'string' && next.trim()) {
+        setErrorMessage(null);
+      }
+    },
+  });
   const [voiceMode, setVoiceMode] = useState<'on_device' | 'system' | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [composerPanelHeight, setComposerPanelHeight] = useState(0);
@@ -5538,44 +5584,6 @@ export function AiChatScreen({
   }, [hasEarlierMessages, invertedMessageIndexById, loadEarlierMessages]);
 
   useEffect(() => {
-    const subscription = addNativeSpeechRecognitionListener((event) => {
-      if (event.type === 'ready' && voiceSessionActiveRef.current) {
-        setVoiceState('listening');
-        return;
-      }
-      if (event.type === 'end' && voiceSessionActiveRef.current) {
-        setVoiceState('recognizing');
-        return;
-      }
-      if (event.type === 'result') {
-        const recognizedText = event.text?.trim() ?? '';
-        if (voiceSessionActiveRef.current && !voiceCancelledRef.current && recognizedText) {
-          setComposerText((current) => !current.trim()
-            ? recognizedText
-            : `${current}${current.endsWith("\n") ? "" : "\n"}${recognizedText}`);
-          setErrorMessage(null);
-        }
-        voiceSessionActiveRef.current = false;
-        setVoiceState('idle');
-        return;
-      }
-      if (event.type === 'error') {
-        voiceSessionActiveRef.current = false;
-        const message = event.message ?? '语音识别失败。';
-        setVoiceState('error');
-        setVoiceError(message);
-        setErrorMessage(message);
-        return;
-      }
-      if (event.type === 'cancelled') {
-        voiceSessionActiveRef.current = false;
-        setVoiceState('cancelled');
-      }
-    });
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
     // prettier-ignore
     const subscription = AppState.addEventListener('change', (state) => {
       appActiveRef.current = state === "active";
@@ -5821,6 +5829,7 @@ export function AiChatScreen({
       if (!nextThreadId || !screenMountedRef.current) {
           return;
         }
+        prefetchBranchTree({ space, threadId: nextThreadId });
         setConfigDrawerVisible(true);
       } catch (error) {
       if (!screenMountedRef.current) {
@@ -6463,11 +6472,8 @@ export function AiChatScreen({
   }
 
   async function handleSend() {
-    if (voiceSessionActiveRef.current) {
-      voiceCancelledRef.current = true;
-      voiceSessionActiveRef.current = false;
-      await cancelSpeechRecognition().catch(() => false);
-      setVoiceState('idle');
+    if (stt.isListening) {
+      stt.cancelVoiceInput();
     }
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
@@ -7080,85 +7086,37 @@ export function AiChatScreen({
   }
 
   async function handleVoiceStart() {
-    if (voiceSessionActiveRef.current || generating) return;
-    const sessionToken = voiceSessionTokenRef.current + 1;
-    voiceSessionTokenRef.current = sessionToken;
-    voiceSessionActiveRef.current = true;
-    voiceCancelledRef.current = false;
-    voiceStopRequestedRef.current = false;
-    try {
-      clearVoiceResetTimeout();
-      setVoiceError(null);
-      if (Platform.OS === "android") {
-        const permission = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        );
-        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-          const message = permission === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
-            ? "麦克风权限已被永久拒绝，请到系统设置中为 Pixory 开启。"
-            : "需要麦克风权限才能进行语音输入。";
-          setVoiceState("error");
-          setVoiceError(message);
-          setErrorMessage(message);
-          voiceSessionActiveRef.current = false;
-          return;
-        }
-      }
-      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) return;
-      const capabilities = await getSpeechRecognitionCapabilities();
-      if (!capabilities.available) throw new Error('当前设备没有可用的系统语音识别服务。');
-      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) return;
-      setVoiceMode(capabilities.onDeviceAvailable ? 'on_device' : 'system');
-      setVoiceState("listening");
-      const started = await startSpeechRecognition();
-      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) {
-        await cancelSpeechRecognition().catch(() => false);
+    if (Platform.OS === 'android') {
+      const permission = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      );
+      if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+        const message = permission === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+          ? '麦克风权限已被永久拒绝，请到系统设置中为 Pixory 开启。'
+          : '需要麦克风权限才能进行语音输入。';
+        ToastAndroid.show(message, ToastAndroid.SHORT);
+        setErrorMessage(message);
         return;
       }
-      setVoiceMode(started.onDevice ? 'on_device' : 'system');
-      if (voiceStopRequestedRef.current) await stopSpeechRecognition();
-    } catch (error) {
-      voiceSessionActiveRef.current = false;
-      const message = error instanceof Error ? error.message : "语音识别失败";
-      setVoiceState("error");
-      setVoiceError(message);
-      setErrorMessage(message);
     }
+    const caps = await getSpeechRecognitionCapabilities().catch(() => ({ available: false, onDeviceAvailable: false }));
+    setVoiceMode(caps.onDeviceAvailable ? 'on_device' : 'system');
+    // startSpeechRecognition is safely coordinated inside stt.startVoiceInput
+    await stt.startVoiceInput();
   }
 
   async function handleVoiceStop() {
-    if (!voiceSessionActiveRef.current) return;
-    voiceStopRequestedRef.current = true;
-    setVoiceState('recognizing');
-    try {
-      await stopSpeechRecognition();
-    } catch (error) {
-      voiceSessionActiveRef.current = false;
-      const message = error instanceof Error ? error.message : '语音识别结束失败。';
-      setVoiceState('error');
-      setVoiceError(message);
-    }
+    await stopSpeechRecognition().catch(() => false);
+    // asrService.transcribeAudio is coordinated by speech-to-text / event.type === 'result'
+    await stt.stopVoiceInput();
   }
 
   async function handleVoiceInput() {
-    if (voiceSessionActiveRef.current) {
-      await handleVoiceStop();
-      return;
-    }
-    await handleVoiceStart();
+    await stt.toggleVoiceInput();
   }
 
   function handleCancelVoiceInput() {
-    voiceSessionTokenRef.current += 1;
-    voiceCancelledRef.current = true;
-    voiceSessionActiveRef.current = false;
-    void cancelSpeechRecognition().catch(() => undefined);
-    setVoiceState("cancelled");
-    clearVoiceResetTimeout();
-    voiceResetTimeoutRef.current = setTimeout(() => {
-      setVoiceState("idle");
-      voiceResetTimeoutRef.current = null;
-    }, 1200);
+    stt.cancelVoiceInput();
   }
 
   function openCitation(citation: AiCitationRecord) {
@@ -7405,6 +7363,77 @@ export function AiChatScreen({
     [],
   );
 
+  const handleToggleVoiceSpeak = useCallback(
+    (targetMessage: AiMessageWithCitations) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      const isSpeakingThis = activeVoicePlaybackId === targetMessage.id;
+      const isLoadingThis = synthesizingVoiceMessageId === targetMessage.id;
+      if (isSpeakingThis || isLoadingThis) {
+        void voiceService.stop();
+        setSynthesizingVoiceMessageId(null);
+        return;
+      }
+      // 若当前有其他正在播放或合成的朗读，先停止清理
+      if (activeVoicePlaybackId || synthesizingVoiceMessageId) {
+        void voiceService.stop();
+      }
+      const content = targetMessage.content || targetMessage.errorMessage || "";
+      if (!content.trim()) return;
+
+      setSynthesizingVoiceMessageId(targetMessage.id);
+      void runWithDatabaseSpace(space, async (db) => {
+        try {
+          await voiceService.speak(
+            content,
+            {
+              db,
+              space,
+              scopeType: 'thread_long',
+              threadId: activeThreadId,
+              roleCardId: activeDiaryRoleCardIdRef.current,
+            },
+            targetMessage.id,
+          );
+        } catch (error) {
+          const rawMsg = error instanceof Error ? error.message : "语音朗读失败";
+          let userFriendlyMsg = rawMsg;
+          if (rawMsg.includes('熔断') || rawMsg.includes('连续失败')) {
+            resetTier1CircuitBreaker();
+            userFriendlyMsg = '云端语音服务连续请求受阻，已为您自动重置保护状态，请再次点击朗读尝试。';
+          } else if (rawMsg.includes('超时')) {
+            userFriendlyMsg = `${rawMsg}（长消息生成时间较长，建议在【声音与朗读】中检查模型地址或稍后重试）`;
+          }
+          if (Platform.OS === 'android') {
+            ToastAndroid.show(userFriendlyMsg, ToastAndroid.SHORT);
+          }
+          setVoiceNoticeDialog({
+            visible: true,
+            title: '朗读提示',
+            message: userFriendlyMsg,
+          });
+          setErrorMessage(`语音朗读提示：${userFriendlyMsg}`);
+        } finally {
+          setSynthesizingVoiceMessageId((current) => (current === targetMessage.id ? null : current));
+        }
+      });
+    },
+    [space, activeThreadId, activeVoicePlaybackId, synthesizingVoiceMessageId],
+  );
+
+  const handleScrollToVoiceMessage = useCallback(
+    (messageId: string) => {
+      const index = invertedMessageIndexById.get(messageId);
+      if (typeof index === 'number' && index >= 0) {
+        messageListRef.current?.scrollToIndex({
+          animated: true,
+          index,
+          viewPosition: 0.42,
+        });
+      }
+    },
+    [invertedMessageIndexById],
+  );
+
   const messageContextMenuActions: AiMessageContextMenuAction[] = [];
   if (messageContextMenuTarget) {
     const message = messageContextMenuTarget;
@@ -7548,6 +7577,25 @@ export function AiChatScreen({
           renderIcon: ({ color, size }) => <RegenerateIcon color={color} size={size} />,
         },
       );
+
+      const isSpeakingThis = activeVoicePlaybackId === message.id;
+      const isLoadingThis = synthesizingVoiceMessageId === message.id;
+      messageContextMenuActions.push({
+        disabled: !hasContent || isLoadingThis,
+        icon: isSpeakingThis ? "stop-circle-outline" : "volume-medium-outline",
+        key: "voice-speak",
+        label: isLoadingThis ? "准备中..." : (isSpeakingThis ? "停止朗读" : "朗读"),
+        onPress: () => {
+          handleToggleVoiceSpeak(message);
+        },
+        renderIcon: ({ color, size }) => (
+          isLoadingThis ? (
+            <ActivityIndicator color={color} size={size * 0.75} />
+          ) : (
+            <VoiceSpeakIcon color={color} isPlaying={isSpeakingThis} size={size} />
+          )
+        ),
+      });
     }
   }
 
@@ -7853,6 +7901,9 @@ export function AiChatScreen({
               onEditUser={handleEditUserMessage}
               onOpenCitation={openCitation}
               onLongPress={handleMessageLongPress}
+              isPlayingVoice={activeVoicePlaybackId === message.id}
+              isLoadingVoice={synthesizingVoiceMessageId === message.id}
+              onToggleVoiceSpeak={handleToggleVoiceSpeak}
               onRegenerate={(messageId) => {
                 void handleRegenerate(messageId);
               }}
@@ -7948,6 +7999,26 @@ export function AiChatScreen({
       reloadRoleDreams,
       handleDreamJobCancel,
       handleDreamJobRetry,
+      activeVoicePlaybackId,
+      synthesizingVoiceMessageId,
+      handleToggleVoiceSpeak,
+    ],
+  );
+
+  const messageListExtraData = useMemo(
+    () => ({
+      activeVoicePlaybackId,
+      synthesizingVoiceMessageId,
+      latestVisibleMessageId,
+      editingUserMessageId,
+      favoriteStateByKey,
+    }),
+    [
+      activeVoicePlaybackId,
+      synthesizingVoiceMessageId,
+      latestVisibleMessageId,
+      editingUserMessageId,
+      favoriteStateByKey,
     ],
   );
 
@@ -8069,6 +8140,7 @@ export function AiChatScreen({
               <FlatList
                 ref={messageListRef}
                 data={invertedMessageItems}
+                extraData={messageListExtraData}
                 inverted
                 decelerationRate={dynamicDecelerationRate}
                 initialNumToRender={10}
@@ -8303,7 +8375,7 @@ export function AiChatScreen({
                 attachments={pendingAttachments}
                 generating={generating}
                 modelIconBrand={modelIconBrand}
-                voiceAvailable={false}
+                voiceAvailable={true}
                 onAddDocumentAttachment={() => void pickChatDocuments()}
                 onAddImageAttachment={() => void pickChatImages()}
                 onChangeText={setComposerText}
@@ -8345,9 +8417,9 @@ export function AiChatScreen({
                 }}
                 onCancelVoiceInput={handleCancelVoiceInput}
                 value={composerText}
-                voiceError={voiceError}
+                voiceError={stt.voiceError}
                 voiceMode={voiceMode}
-                voiceState={voiceState}
+                voiceState={stt.voiceState}
               />
               {effectiveIpId ? (
                 <AiIpImagePickerPanel
@@ -8527,6 +8599,9 @@ export function AiChatScreen({
           onOpenLeftDrawer={() => setRecordDrawerVisible(true)}
           onOpenRightDrawer={() => {
             if (activeThreadId !== 'pixory-system-assistant') {
+              if (activeThreadId) {
+                prefetchBranchTree({ space, threadId: activeThreadId });
+              }
               setConfigDrawerVisible(true);
             }
           }}
@@ -8729,6 +8804,20 @@ export function AiChatScreen({
         onClose={() => setActiveDocAction(null)}
         title="资料库文档设置"
         visible={Boolean(activeDocAction)}
+      />
+      <VoiceMiniPlayer
+        bottomOffset={Math.max(104, composerShellHeight + 16)}
+        onScrollToMessage={handleScrollToVoiceMessage}
+      />
+      <AppDialog
+        appearance="opaqueMonochrome"
+        visible={voiceNoticeDialog.visible}
+        title={voiceNoticeDialog.title}
+        message={voiceNoticeDialog.message}
+        primaryLabel="我知道了"
+        onPrimary={() => setVoiceNoticeDialog((prev) => ({ ...prev, visible: false }))}
+        onClose={() => setVoiceNoticeDialog((prev) => ({ ...prev, visible: false }))}
+        secondaryLabel={null}
       />
     </AppScreen>
   );

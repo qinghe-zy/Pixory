@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { FormTextareaRow } from '../components/FormTextareaRow';
@@ -247,6 +246,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
                 placeholder="例如：海报、立绘、封面"
                 placeholderTextColor={colors.text.placeholder}
                 returnKeyType="done"
+                onSubmitEditing={() => addTag()}
                 selectionColor={colors.primary.default}
                 style={styles.tagInput}
                 value={tagInput}
@@ -301,29 +301,6 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
             value={isFavorite}
           />
         </LightFormSection>
-
-        <DevOnlyCard
-          description="仅用于开发回归，快速填入图片管理编辑用例，避免自动化输入污染正式字段。"
-          title="开发回归入口"
-        >
-          <Pressable
-            accessibilityLabel="应用最终回归编辑预设"
-            hitSlop={8}
-            onPress={() => {
-              setOriginalFilename('final_edited_image.png');
-              setTags(['editTagA', 'editTagB']);
-              setTagInput('');
-              setNote('final edited note');
-              setIsFavorite(false);
-              if (submitError) {
-                clearSubmitError();
-              }
-            }}
-            style={({ pressed }) => [styles.devPresetButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.devPresetLabel}>应用最终回归编辑预设</Text>
-          </Pressable>
-        </DevOnlyCard>
       </View>
     </FormScreenScaffold>
   );
@@ -429,21 +406,6 @@ const styles = StyleSheet.create({
   helperText: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
-  },
-  devPresetButton: {
-    alignItems: 'center',
-    backgroundColor: colors.background.tag,
-    borderColor: colors.primary.hover,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: 'center',
-    minHeight: componentTokens.common.minTouchSize,
-    paddingHorizontal: spacing[4],
-  },
-  devPresetLabel: {
-    ...typography.textStyles.caption,
-    color: colors.primary.default,
-    fontWeight: '500',
   },
   pressed: {
     opacity: 0.82,

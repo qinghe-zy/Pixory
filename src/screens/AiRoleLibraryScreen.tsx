@@ -1,16 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { deleteRoleCards, listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
-import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiRoleLibraryItem } from '../components/ai/AiRoleLibraryItem';
 import { aiLightColors } from '../components/ai/aiLightTheme';
+import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import type { PixorySpace } from '../database';
-import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
 import { globalScrollState } from '../utils/scrollState';
 
 interface AiRoleLibraryScreenProps {
@@ -24,6 +24,9 @@ interface AiRoleLibraryScreenProps {
   onStartImChat?: (card: AiRoleCardRecord) => Promise<void> | void;
   onApplyRoleToThread?: (roleCardId: string) => Promise<void> | void;
 }
+
+type RoleCategoryFilter = 'all' | 'manual' | 'imported';
+type RoleViewMode = 'waterfall' | 'list';
 
 export function AiRoleLibraryScreen({
   space,
@@ -41,6 +44,11 @@ export function AiRoleLibraryScreen({
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [busyRoleId, setBusyRoleId] = useState<string | null>(null);
+  const [chatChoiceCard, setChatChoiceCard] = useState<AiRoleCardRecord | null>(null);
+
+  const [viewMode, setViewMode] = useState<RoleViewMode>('waterfall');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<RoleCategoryFilter>('all');
 
   const loadCards = useCallback(async () => {
     const nextCards = await listRoleCards(space);
@@ -51,12 +59,22 @@ export function AiRoleLibraryScreen({
     void loadCards();
   }, [loadCards]);
 
-  function toggleSelected(card: AiRoleCardRecord) {
-    if (globalScrollState.isScrolling) return;
-    setSelectedCardIds((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id]);
-  }
+  useEffect(() => {
+    if (!status) return;
+    const timer = setTimeout(() => {
+      setStatus(null);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [status]);
 
-  async function startChat(card: AiRoleCardRecord) {
+  const toggleSelected = useCallback((card: AiRoleCardRecord) => {
+    if (globalScrollState.isScrolling) return;
+    setSelectedCardIds((current) =>
+      current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id]
+    );
+  }, []);
+
+  const startChat = useCallback(async (card: AiRoleCardRecord) => {
     if (mode === 'apply_to_thread' && onApplyRoleToThread) {
       setBusyRoleId(card.id);
       setStatus(null);
@@ -80,22 +98,22 @@ export function AiRoleLibraryScreen({
       return;
     }
 
-    Alert.alert(`开启与【${card.name}】的对话`, undefined, [
-      {
-        text: '即时短聊 (IM)',
-        onPress: () => {
-          void onStartImChat(card);
-        },
-      },
-      {
-        text: '深度长聊 (剧情)',
-        onPress: () => {
-          void onStartChatWithRole(card.id);
-        },
-      },
-      { text: '取消', style: 'cancel' },
-    ]);
-  }
+    // 打开系统统一的黑白底部操作抽屉 AppActionSheet
+    setChatChoiceCard(card);
+  }, [mode, onApplyRoleToThread, onStartChatWithRole, onStartImChat]);
+
+  const handlePressCard = useCallback((card: AiRoleCardRecord) => {
+    if (selectedCardIds.length) {
+      toggleSelected(card);
+      return;
+    }
+    onOpenRoleDetail(card.id);
+  }, [selectedCardIds, toggleSelected, onOpenRoleDetail]);
+
+  const handleStartChat = useCallback((card: AiRoleCardRecord) => {
+    if (busyRoleId) return;
+    void startChat(card);
+  }, [busyRoleId, startChat]);
 
   async function deleteSelectedCards() {
     const ids = selectedCardIds;
@@ -110,64 +128,203 @@ export function AiRoleLibraryScreen({
     await loadCards();
   }
 
+  // 过滤后的卡片集合
+  const filteredCards = useMemo(() => {
+    return cards.filter((card) => {
+      // 1. 分类筛选
+      if (categoryFilter === 'manual' && card.sourceType && card.sourceType !== 'pixory_manual') {
+        return false;
+      }
+      if (categoryFilter === 'imported' && (!card.sourceType || card.sourceType === 'pixory_manual')) {
+        return false;
+      }
+      // 2. 检索词筛选
+      if (!searchQuery.trim()) {
+        return true;
+      }
+      const q = searchQuery.trim().toLowerCase();
+      const nameMatch = card.name.toLowerCase().includes(q);
+      const descMatch = (card.description || '').toLowerCase().includes(q);
+      const promptMatch = (card.prompt || '').toLowerCase().includes(q);
+      const tagMatch = (card.tags || []).some((t) => t.toLowerCase().includes(q));
+      return nameMatch || descMatch || promptMatch || tagMatch;
+    });
+  }, [cards, categoryFilter, searchQuery]);
+
+  // 瀑布流双列均分
+  const leftColumnCards = useMemo(
+    () => filteredCards.filter((_, idx) => idx % 2 === 0),
+    [filteredCards]
+  );
+  const rightColumnCards = useMemo(
+    () => filteredCards.filter((_, idx) => idx % 2 === 1),
+    [filteredCards]
+  );
+
+  const manualCount = useMemo(
+    () => cards.filter((c) => !c.sourceType || c.sourceType === 'pixory_manual').length,
+    [cards]
+  );
+  const importedCount = useMemo(
+    () => cards.filter((c) => c.sourceType && c.sourceType !== 'pixory_manual').length,
+    [cards]
+  );
+
   const selectionFooter = selectedCardIds.length ? (
-    <View style={styles.selectionFooter}>
-      <View style={styles.selectionCopy}>
-        <Text style={styles.selectionTitle}>已选择 {selectedCardIds.length} 张角色卡</Text>
-        <Text style={styles.selectionMeta}>只删除已保存的角色卡，不影响已有聊天记录。</Text>
+    <View style={styles.dockContainer}>
+      <View style={styles.dockBadge}>
+        <Text style={styles.dockBadgeText}>
+          已选 <Text style={styles.dockBadgeBold}>{selectedCardIds.length}</Text> 张
+        </Text>
       </View>
-      <View style={styles.selectionActions}>
-        <AiLightButton label="删除" onPress={() => setDeleteConfirmVisible(true)} variant="outline" />
-        <AiLightButton label="取消选择" onPress={() => setSelectedCardIds([])} variant="ghost" />
+      <View style={styles.dockActions}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setSelectedCardIds([])}
+          style={({ pressed }) => [styles.dockCancelBtn, pressed && styles.pressed]}
+        >
+          <Text style={styles.dockCancelText}>取消</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setDeleteConfirmVisible(true)}
+          style={({ pressed }) => [styles.dockDeleteBtn, pressed && styles.pressed]}
+        >
+          <Ionicons color="#FFFFFF" name="trash-outline" size={14} />
+          <Text style={styles.dockDeleteText}>删除</Text>
+        </Pressable>
       </View>
     </View>
   ) : null;
 
+  const headerRightActions = (
+    <View style={styles.headerActions}>
+      <Pressable
+        accessibilityLabel="切换视图"
+        accessibilityRole="button"
+        hitSlop={spacing[2]}
+        onPress={() => setViewMode((prev) => (prev === 'waterfall' ? 'list' : 'waterfall'))}
+        style={({ pressed }) => [styles.headerIconButton, pressed && styles.pressed]}
+      >
+        <Ionicons
+          color={aiLightColors.ink}
+          name={viewMode === 'waterfall' ? 'list-outline' : 'grid-outline'}
+          size={20}
+        />
+      </Pressable>
+
+      <Pressable
+        accessibilityLabel="新建角色"
+        accessibilityRole="button"
+        hitSlop={spacing[2]}
+        onPress={onCreateRole}
+        style={({ pressed }) => [
+          styles.headerIconButton,
+          styles.headerAddButton,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Ionicons color={aiLightColors.primaryActive} name="add-outline" size={22} />
+      </Pressable>
+    </View>
+  );
+
   return (
     <AiLightScaffold
+      contentContainerStyle={viewMode === 'list' ? styles.listScreenContainer : styles.waterfallScreenContainer}
       footer={selectionFooter}
       onBack={onBack}
-      rightAction={(
-        <Pressable accessibilityLabel="新建角色" accessibilityRole="button" onPress={onCreateRole} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.primaryActive} name="add" size={metrics.iconSizeMd} />
-        </Pressable>
-      )}
+      rightAction={headerRightActions}
       scrollable
-      subtitle={mode === 'apply_to_thread' ? '选择角色应用到当前会话' : '选择角色开始新对话'}
+      subtitle={mode === 'apply_to_thread' ? '选择角色应用到当前会话' : `共 ${cards.length} 位陪伴伙伴`}
       title="角色库"
     >
+      {/* 状态通知 */}
       {status ? <Text accessibilityLiveRegion="polite" style={styles.status}>{status}</Text> : null}
-      {cards.length ? (
-        <View style={styles.list}>
-          {cards.map((card) => (
-            <AiRoleLibraryItem
-              card={card}
-              actionLabel={mode === 'apply_to_thread' ? '应用' : undefined}
-              key={card.id}
-              selected={selectedCardIds.includes(card.id)}
-              selectionMode={selectedCardIds.length > 0}
-              space={space}
-              onLongPress={toggleSelected}
-              onPress={(nextCard) => {
-                if (selectedCardIds.length) {
-                  toggleSelected(nextCard);
-                  return;
-                }
-                onOpenRoleDetail(nextCard.id);
-              }}
-              onStartChat={(nextCard) => {
-                if (busyRoleId) {
-                  return;
-                }
-                void startChat(nextCard);
-              }}
+
+      {/* 嵌入式搜索与分类筛选栏 */}
+      {cards.length > 0 ? (
+        <View style={styles.filterSection}>
+          <View style={styles.searchBar}>
+            <Ionicons color={aiLightColors.muted} name="search-outline" size={16} />
+            <TextInput
+              onChangeText={setSearchQuery}
+              placeholder="搜索角色名、设定或标签..."
+              placeholderTextColor={aiLightColors.muted}
+              style={styles.searchInput}
+              value={searchQuery}
             />
-          ))}
+            {searchQuery.length > 0 ? (
+              <Pressable hitSlop={spacing[2]} onPress={() => setSearchQuery('')}>
+                <Ionicons color={aiLightColors.muted} name="close-circle" size={16} />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <View style={styles.categoryPillRow}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setCategoryFilter('all')}
+              style={[
+                styles.categoryPill,
+                categoryFilter === 'all' && styles.categoryPillActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  categoryFilter === 'all' && styles.categoryPillTextActive,
+                ]}
+              >
+                全部 {cards.length}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setCategoryFilter('manual')}
+              style={[
+                styles.categoryPill,
+                categoryFilter === 'manual' && styles.categoryPillActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  categoryFilter === 'manual' && styles.categoryPillTextActive,
+                ]}
+              >
+                自建 {manualCount}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setCategoryFilter('imported')}
+              style={[
+                styles.categoryPill,
+                categoryFilter === 'imported' && styles.categoryPillActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  categoryFilter === 'imported' && styles.categoryPillTextActive,
+                ]}
+              >
+                导入 {importedCount}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      ) : (
+      ) : null}
+
+      {/* 角色卡集合渲染 */}
+      {cards.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.title}>还没有角色</Text>
-          <Text style={styles.meta}>创建或导入角色卡后，可以在这里直接开聊。</Text>
+          <Ionicons color={aiLightColors.mutedSoft} name="people-outline" size={56} />
+          <Text style={styles.emptyTitle}>还没有角色</Text>
+          <Text style={styles.emptyMeta}>创建或导入角色卡后，可以在这里直接开聊。</Text>
           <View style={styles.emptyActions}>
             <Pressable accessibilityRole="button" onPress={onCreateRole} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
               <Text style={styles.actionButtonText}>新建角色</Text>
@@ -177,9 +334,115 @@ export function AiRoleLibraryScreen({
             </Pressable>
           </View>
         </View>
+      ) : filteredCards.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons color={aiLightColors.mutedSoft} name="search-outline" size={48} />
+          <Text style={styles.emptyTitle}>未找到匹配的角色</Text>
+          <Text style={styles.emptyMeta}>换个关键词或切换分类试试。</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setSearchQuery('');
+              setCategoryFilter('all');
+            }}
+            style={({ pressed }) => [styles.actionButton, styles.outlineButton, pressed && styles.pressed]}
+          >
+            <Text style={[styles.actionButtonText, styles.outlineButtonText]}>清除搜索与筛选</Text>
+          </Pressable>
+        </View>
+      ) : viewMode === 'waterfall' ? (
+        /* 双列瀑布流模式 */
+        <View style={styles.waterfallGrid}>
+          <View style={styles.waterfallColumn}>
+            {leftColumnCards.map((card) => (
+              <AiRoleLibraryItem
+                actionLabel={mode === 'apply_to_thread' ? '应用' : undefined}
+                card={card}
+                key={card.id}
+                layoutMode="waterfall"
+                onLongPress={toggleSelected}
+                onPress={handlePressCard}
+                onStartChat={handleStartChat}
+                selected={selectedCardIds.includes(card.id)}
+                selectionMode={selectedCardIds.length > 0}
+                space={space}
+              />
+            ))}
+          </View>
+          <View style={styles.waterfallColumn}>
+            {rightColumnCards.map((card) => (
+              <AiRoleLibraryItem
+                actionLabel={mode === 'apply_to_thread' ? '应用' : undefined}
+                card={card}
+                key={card.id}
+                layoutMode="waterfall"
+                onLongPress={toggleSelected}
+                onPress={handlePressCard}
+                onStartChat={handleStartChat}
+                selected={selectedCardIds.includes(card.id)}
+                selectionMode={selectedCardIds.length > 0}
+                space={space}
+              />
+            ))}
+          </View>
+        </View>
+      ) : (
+        /* 列表模式：严格不加左右边框，全宽通栏伸展，信息横向充分利用 */
+        <View style={styles.list}>
+          {filteredCards.map((card) => (
+            <AiRoleLibraryItem
+              actionLabel={mode === 'apply_to_thread' ? '应用' : undefined}
+              card={card}
+              key={card.id}
+              layoutMode="list"
+              onLongPress={toggleSelected}
+              onPress={handlePressCard}
+              onStartChat={handleStartChat}
+              selected={selectedCardIds.includes(card.id)}
+              selectionMode={selectedCardIds.length > 0}
+              space={space}
+            />
+          ))}
+        </View>
       )}
+
+      {/* 统一黑白底部操作抽屉：选择对话模式 */}
+      <AppActionSheet
+        cancelLabel="取消"
+        closeOnSelect
+        items={[
+          {
+            key: 'im',
+            label: '即时短聊 (IM)',
+            meta: '日常即时对话与微伴侣互动',
+            icon: 'chatbubble-ellipses-outline',
+            onPress: () => {
+              if (chatChoiceCard && onStartImChat) {
+                void onStartImChat(chatChoiceCard);
+              }
+            },
+          },
+          {
+            key: 'chat',
+            label: '深度长聊 (剧情)',
+            meta: '长文本剧情对话与角色专属指令',
+            icon: 'sparkles-outline',
+            onPress: () => {
+              if (chatChoiceCard) {
+                void onStartChatWithRole(chatChoiceCard.id);
+              }
+            },
+          },
+        ]}
+        message="选择你喜欢的交流模式开启新对话"
+        onClose={() => setChatChoiceCard(null)}
+        title={chatChoiceCard ? `开启与【${chatChoiceCard.name}】的对话` : '开启对话'}
+        visible={Boolean(chatChoiceCard)}
+      />
+
+      {/* 统一黑白弹窗：批量删除角色卡 */}
       <AppDialog
-        accent="ai"
+        appearance="opaqueMonochrome"
         danger
         message={`将删除 ${selectedCardIds.length} 张已保存角色卡。已有聊天记录会保留当时的角色快照。`}
         onClose={() => setDeleteConfirmVisible(false)}
@@ -187,7 +450,8 @@ export function AiRoleLibraryScreen({
           void deleteSelectedCards();
         }}
         primaryDisabled={!selectedCardIds.length}
-        primaryLabel="删除"
+        primaryLabel="确认删除"
+        secondaryLabel="取消"
         title="删除所选角色卡？"
         visible={deleteConfirmVisible}
       />
@@ -196,31 +460,105 @@ export function AiRoleLibraryScreen({
 }
 
 const styles = StyleSheet.create({
-  addButton: {
+  waterfallScreenContainer: {
+    paddingHorizontal: spacing[3],
+    paddingBottom: spacing[8],
+  },
+  listScreenContainer: {
+    paddingHorizontal: 0,
+    paddingBottom: spacing[8],
+  },
+  headerActions: {
     alignItems: 'center',
-    borderColor: aiLightColors.primary,
+    flexDirection: 'row',
+    gap: spacing[1.5],
+  },
+  headerIconButton: {
+    alignItems: 'center',
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    height: metrics.iconButtonSize,
+    height: 34,
     justifyContent: 'center',
-    width: metrics.iconButtonSize,
+    width: 34,
   },
+  headerAddButton: {
+    borderColor: aiLightColors.primary,
+  },
+  filterSection: {
+    gap: spacing[2],
+    marginBottom: spacing[2],
+    paddingHorizontal: spacing[1],
+  },
+  searchBar: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.underlaySurface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    height: 36,
+    paddingHorizontal: spacing[3],
+  },
+  searchInput: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    flex: 1,
+    height: '100%',
+    padding: 0,
+  },
+  categoryPillRow: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  categoryPill: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  categoryPillActive: {
+    backgroundColor: aiLightColors.primarySoft,
+  },
+  categoryPillText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  categoryPillTextActive: {
+    color: aiLightColors.primaryActive,
+    fontWeight: '600',
+  },
+  // 列表模式：全宽无左右边框
   list: {
-    gap: rhythm.listCardGap,
+    width: '100%',
+  },
+  // 瀑布流网格
+  waterfallGrid: {
+    flexDirection: 'row',
+    gap: spacing[2],
+    width: '100%',
+  },
+  waterfallColumn: {
+    flex: 1,
   },
   status: {
     ...typography.textStyles.caption,
     color: aiLightColors.primaryActive,
+    paddingHorizontal: spacing[2],
   },
   emptyState: {
     alignItems: 'center',
-    padding: spacing[4],
+    gap: rhythm.inlineGap,
+    paddingVertical: spacing[10],
   },
-  title: {
+  emptyTitle: {
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
+    fontSize: 16,
   },
-  meta: {
+  emptyMeta: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
     textAlign: 'center',
@@ -228,50 +566,97 @@ const styles = StyleSheet.create({
   emptyActions: {
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    marginTop: spacing[2],
+    marginTop: spacing[3],
   },
   actionButton: {
-    backgroundColor: aiLightColors.ink,
-    borderRadius: radius.xs,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
     alignItems: 'center',
+    backgroundColor: aiLightColors.ink,
+    borderRadius: radius.pill,
     justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: spacing[4],
   },
   actionButtonText: {
     ...typography.textStyles.caption,
-    fontWeight: '600',
     color: aiLightColors.onDark,
+    fontWeight: '600',
   },
   outlineButton: {
     backgroundColor: 'transparent',
-    borderWidth: StyleSheet.hairlineWidth,
     borderColor: aiLightColors.ink,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   outlineButtonText: {
     color: aiLightColors.ink,
   },
-  selectionFooter: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
+  dockContainer: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1.5],
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.12,
+        shadowRadius: 24,
+      },
+      android: { elevation: 12 },
+    }),
   },
-  selectionCopy: {
-    gap: rhythm.microGap,
+  dockBadge: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1.5],
   },
-  selectionTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
+  dockBadgeText: {
+    color: '#4B5563',
+    fontSize: 12,
   },
-  selectionMeta: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
+  dockBadgeBold: {
+    color: '#111827',
+    fontWeight: '700',
   },
-  selectionActions: {
-    gap: rhythm.inlineGap,
+  dockActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  dockCancelBtn: {
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  dockCancelText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dockDeleteBtn: {
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  dockDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.78,

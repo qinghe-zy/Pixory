@@ -59,7 +59,7 @@ test('database schema migration 72 provides custom_stickers and custom_sticker_p
   const schemaSource = read('src/database/schema.ts');
   const dbSource = read('src/database/db.ts');
 
-  assert.ok(schemaSource.includes('DATABASE_VERSION = 72'), 'DATABASE_VERSION must be 72');
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*(?:7[2-9]|[8-9][0-9])/, 'DATABASE_VERSION must be >= 72');
   assert.ok(schemaSource.includes('MIGRATION_STATEMENTS_V72'), 'Must export MIGRATION_STATEMENTS_V72');
   assert.ok(schemaSource.includes('CREATE TABLE IF NOT EXISTS custom_stickers'));
   assert.ok(schemaSource.includes('CREATE TABLE IF NOT EXISTS custom_sticker_packs'));

@@ -216,17 +216,22 @@ test('settingsRepository supports chat appearance, typography 5 gears, and profi
   await settingsRepo.setProfileAvatarFrameEnabled(mockDb, true);
   assert.equal(await settingsRepo.getProfileAvatarFrameEnabled(mockDb), true);
 
-  // 3. Chat appearance defaults: avatar 6dp (WeChat style), bubble 16dp, bubble color #95EC69 (WeChat green)
+  // 3. Chat appearance defaults: avatar 6dp, bubble 16dp, user bubble color #95EC69, assistant bubble color #FFFFFF
   assert.equal(await settingsRepo.getChatAvatarRadius(mockDb), 6);
   assert.equal(await settingsRepo.getChatBubbleRadius(mockDb), 16);
   assert.equal(await settingsRepo.getChatUserBubbleColor(mockDb), '#95EC69');
+  assert.equal(await settingsRepo.getChatAssistantBubbleColor(mockDb), '#FFFFFF');
 
   await settingsRepo.setChatAvatarRadius(mockDb, 14);
   assert.equal(await settingsRepo.getChatAvatarRadius(mockDb), 14);
   await settingsRepo.setChatBubbleRadius(mockDb, 20);
   assert.equal(await settingsRepo.getChatBubbleRadius(mockDb), 20);
+  await settingsRepo.setChatBubbleRadius(mockDb, 0);
+  assert.equal(await settingsRepo.getChatBubbleRadius(mockDb), 0);
   await settingsRepo.setChatUserBubbleColor(mockDb, '#DCEBFA');
   assert.equal(await settingsRepo.getChatUserBubbleColor(mockDb), '#DCEBFA');
+  await settingsRepo.setChatAssistantBubbleColor(mockDb, '#EDE9FE');
+  assert.equal(await settingsRepo.getChatAssistantBubbleColor(mockDb), '#EDE9FE');
 
   // 4. All typography dimensions default strictly to gear_2 (standard)
   assert.equal(await settingsRepo.getChatFontSizeGear(mockDb), 'gear_2');
@@ -252,26 +257,41 @@ test('AiMessageBubble action bar places version pagination leftmost and auto-fil
   assert.match(bubbleCode, /onRegenerate/);
 });
 
-test('MeScreen minimalist mode enforces 8px margin, 10px empty line spacing, no section titles, and 20px monochrome icons', () => {
+test('MeScreen minimalist mode enforces full-bleed edge-to-edge layout, physical gap spacing, no section titles, and 20px monochrome icons', () => {
   const meCode = read('src/screens/MeScreen.tsx');
 
   assert.match(meCode, /profileStyleMode === 'minimalist'/);
-  assert.match(meCode, /minimalistInsetGroup/);
-  assert.match(meCode, /marginHorizontal:\s*8/);
+  assert.match(meCode, /minimalistGroup/);
   assert.match(meCode, /minimalistGap/);
-  assert.match(meCode, /height:\s*10/);
   assert.match(meCode, /color="#1A1C1C"/);
   assert.match(meCode, /size=\{20\}/);
 });
 
-test('ChatAppearanceSettingsScreen provides 168dp live preview, WeChat green swatch, and 5-gear typography', () => {
+test('ChatAppearanceSettingsScreen provides live preview, AI bubble customization, 0dp slider, and 5-gear typography', () => {
   const chatAppearanceCode = read('src/screens/ChatAppearanceSettingsScreen.tsx');
 
   assert.match(chatAppearanceCode, /ai_system_avatar\.png/);
   assert.match(chatAppearanceCode, /#95EC69/);
-  assert.match(chatAppearanceCode, /微信风格/);
+  assert.match(chatAppearanceCode, /经典草绿/);
+  assert.match(chatAppearanceCode, /AI气泡颜色/);
+  assert.match(chatAppearanceCode, /min=\{0\}/);
+  assert.match(chatAppearanceCode, /12dp/);
   assert.match(chatAppearanceCode, /gear_1/);
   assert.match(chatAppearanceCode, /gear_2/);
   assert.match(chatAppearanceCode, /gear_5/);
   assert.match(chatAppearanceCode, /恢复默认标准/);
+  assert.match(chatAppearanceCode, /normalizeHexColor/);
+  assert.match(chatAppearanceCode, /customColorPreviewDot/);
+  assert.match(chatAppearanceCode, /customColorInputError/);
+  // Strict check: no 微信 or wechat wording in ChatAppearanceSettingsScreen
+  assert.doesNotMatch(chatAppearanceCode, /微信/);
+  assert.doesNotMatch(chatAppearanceCode, /wechat/i);
+});
+
+test('Chat appearance bubble radius and beak threshold policy: bubble radius > 12 hides beak, <= 12 shows beak', () => {
+  const imThemeCode = read('src/im/theme/imTheme.ts');
+  const beakCode = read('src/im/components/common/ImBubbleBeak.tsx');
+
+  assert.match(imThemeCode, /effectiveBubbleRadius\s*<=\s*12/);
+  assert.match(beakCode, /theme\.radii\.bubbleRadius\s*>\s*12/);
 });

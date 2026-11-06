@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View, Platform, ToastAndroid } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View, Platform, ToastAndroid } from 'react-native';
 
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { generateAndSetRecoveryKey } from '../services/personalSystemService';
@@ -74,9 +74,10 @@ export function RecoveryKeyModal({ visible, onClose, initialKey }: Props) {
   if (!visible) return null;
 
   return (
-    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.panel}>
+    <Modal animationType="fade" statusBarTranslucent transparent visible={visible} onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <View style={styles.backdrop}>
+          <View style={styles.panel}>
           
           <View style={styles.header}>
             <Text style={styles.title}>恢复密钥</Text>
@@ -166,6 +167,7 @@ export function RecoveryKeyModal({ visible, onClose, initialKey }: Props) {
 
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

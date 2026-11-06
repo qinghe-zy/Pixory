@@ -110,8 +110,9 @@ export function Live2DPetManagerModal({
   }, [activeCategory]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal animationType="slide" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
       <View style={styles.overlay}>
+        <Pressable accessibilityLabel="关闭模型管理" onPress={onClose} style={StyleSheet.absoluteFillObject} />
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>2D 模型管理</Text>

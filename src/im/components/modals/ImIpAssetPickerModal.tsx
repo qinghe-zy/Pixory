@@ -138,10 +138,19 @@ export function ImIpAssetPickerModal({
     onClose();
   };
 
+  const handleRequestClose = () => {
+    if (step === 'select_images') {
+      setStep('select_ip');
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <Modal
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleRequestClose}
+      statusBarTranslucent
       transparent={false}
       visible={visible}
     >
@@ -159,13 +168,7 @@ export function ImIpAssetPickerModal({
           <Pressable
             accessibilityLabel="返回"
             accessibilityRole="button"
-            onPress={() => {
-              if (step === 'select_images') {
-                setStep('select_ip');
-              } else {
-                onClose();
-              }
-            }}
+            onPress={handleRequestClose}
             style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
           >
             <Ionicons color="#111111" name="chevron-back" size={24} />
@@ -223,6 +226,22 @@ export function ImIpAssetPickerModal({
               contentContainerStyle={styles.imageGridContent}
               data={images}
               keyExtractor={(item) => String(item.id)}
+              ListEmptyComponent={
+                !loading ? (
+                  <View style={styles.emptyBox}>
+                    <Ionicons color="#9CA3AF" name="images-outline" size={48} />
+                    <Text style={styles.emptyText}>该 IP 下暂无素材图片</Text>
+                    <Pressable
+                      accessibilityLabel="选择其他 IP"
+                      accessibilityRole="button"
+                      onPress={() => setStep('select_ip')}
+                      style={({ pressed }) => [styles.emptyBackBtn, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.emptyBackBtnText}>选择其他 IP</Text>
+                    </Pressable>
+                  </View>
+                ) : null
+              }
               numColumns={GRID_COLUMNS}
               renderItem={({ item }) => {
                 const isSelected = selectedImageIds.has(item.id);
@@ -245,33 +264,35 @@ export function ImIpAssetPickerModal({
             />
 
             {/* 底部发送操作条 */}
-            <View style={styles.bottomBar}>
-              <Text style={styles.selectedCountText}>
-                已选 {selectedImageIds.size} 张
-              </Text>
-              <Pressable
-                disabled={selectedImageIds.size === 0}
-                onPress={handleConfirmSend}
-                style={[
-                  styles.sendActionBtn,
-                  {
-                    backgroundColor:
-                      selectedImageIds.size > 0
-                        ? theme.colors.sendButtonBackground
-                        : '#E5E7EB',
-                  },
-                ]}
-              >
-                <Text
+            {images.length > 0 && (
+              <View style={styles.bottomBar}>
+                <Text style={styles.selectedCountText}>
+                  已选 {selectedImageIds.size} 张
+                </Text>
+                <Pressable
+                  disabled={selectedImageIds.size === 0}
+                  onPress={handleConfirmSend}
                   style={[
-                    styles.sendActionBtnText,
-                    { color: selectedImageIds.size > 0 ? '#111111' : '#9CA3AF' },
+                    styles.sendActionBtn,
+                    {
+                      backgroundColor:
+                        selectedImageIds.size > 0
+                          ? theme.colors.sendButtonBackground
+                          : '#E5E7EB',
+                    },
                   ]}
                 >
-                  发送到聊天
-                </Text>
-              </Pressable>
-            </View>
+                  <Text
+                    style={[
+                      styles.sendActionBtnText,
+                      { color: selectedImageIds.size > 0 ? '#111111' : '#9CA3AF' },
+                    ]}
+                  >
+                    发送到聊天
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -366,6 +387,18 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  emptyBackBtn: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 100,
+    marginTop: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  emptyBackBtnText: {
+    color: '#111827',
+    fontSize: 13,
+    fontWeight: '600',
   },
   imagesContainer: {
     flex: 1,

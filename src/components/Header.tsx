@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StatusBar, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, componentTokens, layout, shadows, spacing, typography } from '../design/tokens';
@@ -16,6 +16,8 @@ interface HeaderProps {
   compactBack?: boolean;
   rightSlot?: ReactNode;
   sideWidth?: number;
+  style?: StyleProp<ViewStyle>;
+  titleStyle?: StyleProp<TextStyle>;
 }
 
 const DECORATIVE_TITLE_BY_PAGE: Record<string, string> = {
@@ -38,6 +40,8 @@ export function Header({
   compactBack = false,
   rightSlot,
   sideWidth = componentTokens.iconButton.size,
+  style,
+  titleStyle,
 }: HeaderProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight =
@@ -53,6 +57,7 @@ export function Header({
           minHeight: layout.headerHeight,
           paddingTop: statusBarHeight + layout.pageTopOffset,
         },
+        style,
       ]}
     >
       <View style={[styles.side, styles.leadingSide, { minWidth: onBack ? sideWidth : 0 }]}>
@@ -61,7 +66,13 @@ export function Header({
 
       <View style={styles.titleWrap}>
         {titleSlot ?? (
-          <Text numberOfLines={1} style={titleVariant === 'brand' ? typography.textStyles.brandLogo : typography.textStyles.navTitle}>
+          <Text
+            numberOfLines={1}
+            style={[
+              titleVariant === 'brand' ? typography.textStyles.brandLogo : typography.textStyles.navTitle,
+              titleStyle,
+            ]}
+          >
             {title}
           </Text>
         )}

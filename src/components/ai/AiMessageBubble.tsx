@@ -33,13 +33,13 @@ import {
   EditIcon,
   FavoriteStarIcon,
   RegenerateIcon,
+  VoiceSpeakIcon,
 } from './AiMessageActionIcons';
 import { formatAiFullMinute } from '../../utils/aiTimeFormatters';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 import type { AiMessageAttachmentRecord } from '../../database/repositories/aiThreadRepository';
 import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
 
-import { AI_SYSTEM_AVATAR_B64 } from '../../utils/aiSystemAvatarBase64';
 const AI_SYSTEM_AVATAR = require('../../../assets/ai_system_avatar.png');
 
 import { DocumentBubbleCard } from '../document/DocumentBubbleCard';
@@ -109,6 +109,9 @@ interface AiMessageBubbleProps {
   onPinDocument?: (documentId: string, title: string) => void;
   onOpenDocumentActionSheet?: (documentId: string, title: string) => void;
   onOpenDocument?: (target: { uri?: string; title?: string; content?: string | Uint8Array; mode?: 'clean' | 'diff' }) => void;
+  isPlayingVoice?: boolean;
+  isLoadingVoice?: boolean;
+  onToggleVoiceSpeak?: (message: AiMessageWithCitations) => void;
 }
 
 function InlineStreamingCursor() {
@@ -136,6 +139,9 @@ type AiMessageFooterActionsProps = {
   onOpenCitation: (citation: AiCitationRecord) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
+  isPlayingVoice?: boolean;
+  isLoadingVoice?: boolean;
+  onToggleVoiceSpeak?: (message: AiMessageWithCitations) => void;
 };
 
 export function AiMessageFooterActions({
@@ -155,6 +161,9 @@ export function AiMessageFooterActions({
   onRegenerate,
   onSelectVersion,
   onToggleFavorite,
+  isPlayingVoice = false,
+  isLoadingVoice = false,
+  onToggleVoiceSpeak,
 }: AiMessageFooterActionsProps) {
   const isUser = message.role === 'user';
   const actionPending = pendingActionMessageId === message.id;
@@ -165,6 +174,7 @@ export function AiMessageFooterActions({
   const canReplyToAssistant = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'reply' && Boolean(message.content.trim()) && message.status === 'completed';
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
+  const canSpeak = !isUser && (!generating || isPlayingVoice || isLoadingVoice) && Boolean((message.content || '').trim()) && (message.status === 'completed' || message.status === 'stopped') && Boolean(onToggleVoiceSpeak);
   const textReplyActionLabel = replyActionMode === 'reply' ? 'AI续写' : '续答';
 
   const starScale = useRef(new Animated.Value(1)).current;
@@ -291,6 +301,26 @@ export function AiMessageFooterActions({
                 <ContinueReplyIcon color="#94A3B8" size={16} />
               </Pressable>
             ) : null}
+            {canSpeak ? (
+              <Pressable
+                accessibilityLabel={
+                  isPlayingVoice
+                    ? "停止朗读"
+                    : isLoadingVoice
+                      ? "正在准备朗读，点击取消"
+                      : "朗读消息"
+                }
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => onToggleVoiceSpeak?.(message)}
+                style={({ pressed }) => [
+                  styles.messageActionButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <VoiceSpeakIcon isPlaying={isPlayingVoice} isLoading={isLoadingVoice} size={16} />
+              </Pressable>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -376,6 +406,9 @@ function AiMessageBubbleComponent({
   onPinDocument,
   onOpenDocumentActionSheet,
   onOpenDocument,
+  isPlayingVoice,
+  isLoadingVoice = false,
+  onToggleVoiceSpeak,
 }: AiMessageBubbleProps) {
   const chatAppearance = useChatAppearancePreferences(space);
   const chatTypography = useChatTypographyPreferences(space);
@@ -550,7 +583,7 @@ function AiMessageBubbleComponent({
             {showAssistantAvatar ? (
               <View style={[styles.avatar, { borderRadius: chatAppearance.avatarRadius }]}>
                 {isSystemAssistant ? (
-                  <ExpoImage source={{ uri: AI_SYSTEM_AVATAR_B64 }} style={styles.avatarImage} />
+                  <ExpoImage source={AI_SYSTEM_AVATAR} style={styles.avatarImage} />
                 ) : assistantAvatar?.avatarUri ? (
                   <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
                 ) : (
@@ -833,6 +866,9 @@ function AiMessageBubbleComponent({
             message={message}
             pendingActionMessageId={pendingActionMessageId}
             showActionButtons={showActionButtons}
+            isPlayingVoice={isPlayingVoice}
+            isLoadingVoice={isLoadingVoice}
+            onToggleVoiceSpeak={onToggleVoiceSpeak}
             onCopy={(targetMessage) => {
               onCopy(targetMessage);
               setCopyFeedbackVisible(true);
@@ -886,7 +922,9 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
       previous.assistantAvatar?.avatarUri === next.assistantAvatar?.avatarUri &&
       previous.userProfile?.avatarEnabled === next.userProfile?.avatarEnabled &&
       previous.userProfile?.avatarUri === next.userProfile?.avatarUri &&
-      previous.userProfile?.nickname === next.userProfile?.nickname
+      previous.userProfile?.nickname === next.userProfile?.nickname &&
+      previous.isPlayingVoice === next.isPlayingVoice &&
+      previous.isLoadingVoice === next.isLoadingVoice
     );
   }
 
@@ -944,7 +982,9 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.assistantAvatar?.avatarUri === next.assistantAvatar?.avatarUri &&
     previous.userProfile?.avatarEnabled === next.userProfile?.avatarEnabled &&
     previous.userProfile?.avatarUri === next.userProfile?.avatarUri &&
-    previous.userProfile?.nickname === next.userProfile?.nickname
+    previous.userProfile?.nickname === next.userProfile?.nickname &&
+    previous.isPlayingVoice === next.isPlayingVoice &&
+    previous.isLoadingVoice === next.isLoadingVoice
   );
 }
 

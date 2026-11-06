@@ -61,6 +61,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
   return (
     <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Batches" onBack={onBack} scrollable title="导入批次">
       <PageStateBlock
+        emptyActionLabel="返回上一页"
         emptyDescription="旧图片不会被强行补批次；这里会从下一次导入开始记录。"
         emptyIconName="file-tray-stacked-outline"
         emptyTitle="暂无导入批次"
@@ -69,6 +70,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
         loading={isLoading}
         loadingDescription="正在读取本地 SQLite 中的新导入批次。"
         loadingTitle="读取导入批次"
+        onEmptyAction={onBack}
         onRetry={reload}
       >
         <View style={styles.list}>

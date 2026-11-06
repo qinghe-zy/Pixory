@@ -337,13 +337,26 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mod
         <View style={styles.renamePanel}>
           <Text style={styles.resultLabel}>重命名</Text>
           <TextInput
+            autoFocus
             onChangeText={setRenameValue}
+            onSubmitEditing={submitRename}
             placeholder="标签名称"
             placeholderTextColor={colors.text.placeholder}
+            returnKeyType="done"
             selectionColor={colors.primary.default}
             style={styles.renameInput}
             value={renameValue}
           />
+          <Pressable
+            accessibilityLabel="取消重命名"
+            onPress={() => {
+              setRenameTag(null);
+              setRenameValue('');
+            }}
+            style={({ pressed }) => [styles.resultCancelAction, pressed && styles.pressed]}
+          >
+            <Text style={styles.resultCancelActionText}>取消</Text>
+          </Pressable>
           <Pressable onPress={submitRename} style={({ pressed }) => [styles.resultAction, pressed && styles.pressed]}>
             <Text style={styles.resultActionText}>保存</Text>
           </Pressable>
@@ -616,6 +629,15 @@ const styles = StyleSheet.create({
     backgroundColor: protoColors.surfaceContainerHigh,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
+  },
+  resultCancelAction: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  resultCancelActionText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   resultActionText: {
     ...typography.textStyles.caption,

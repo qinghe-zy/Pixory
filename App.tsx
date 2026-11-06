@@ -61,6 +61,7 @@ import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
+import { VoiceSettingsScreen } from './src/voice/ui/VoiceSettingsScreen';
 import { ImChatScreen } from './src/im/screens/ImChatScreen';
 import { ImHomeScreen } from './src/im/screens/ImHomeScreen';
 import { ImCompanionSettingsScreen } from './src/im/screens/ImCompanionSettingsScreen';
@@ -277,6 +278,7 @@ type AppRoute =
   | { name: 'companion-runtime-manager'; space: PixorySpace; threadId: string }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
+  | { name: 'voice-settings'; space: PixorySpace }
   | { name: 'settings'; space: PixorySpace }
   | { name: 'advanced-settings'; space: PixorySpace }
   | { name: 'password-security-settings'; space: PixorySpace }
@@ -1581,6 +1583,7 @@ export default function App() {
                 });
               }}
               onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
+              onOpenRoleCardDetail={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: activeSpace })}
               refreshToken={aiHomeRefreshToken}
               space={activeSpace}
             />
@@ -2377,6 +2380,8 @@ export default function App() {
     content = <ProductDocumentationScreen onBack={popRoute} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'voice-settings') {
+    content = <VoiceSettingsScreen space={currentRoute.space} onBack={popRoute} />;
   } else if (currentRoute.name === 'advanced-settings') {
     content = <AdvancedSettingsScreen space={currentRoute.space} onBack={popRoute} />;
   } else if (currentRoute.name === 'performance-settings') {
@@ -2407,6 +2412,7 @@ export default function App() {
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenProfileInfo={() => pushRoute({ name: 'profile-info-settings', space: currentRoute.space })}
         onOpenImCompanionSettings={() => pushRoute({ name: 'im-companion-settings', space: currentRoute.space })}
+        onOpenVoiceSettings={() => pushRoute({ name: 'voice-settings', space: currentRoute.space })}
         onOpenNotificationSettings={() => pushRoute({ name: 'notification-settings', space: currentRoute.space })}
       />
     );

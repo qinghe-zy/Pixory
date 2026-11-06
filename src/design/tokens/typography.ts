@@ -101,10 +101,10 @@ export const typography = {
     },
     navTitle: {
       fontFamily: displayFontFamily,
-      fontSize: 24,
-      lineHeight: 32,
+      fontSize: 18,
+      lineHeight: 25,
       fontWeight: '600',
-      letterSpacing: 0,
+      letterSpacing: -0.2,
       color: colors.text.heading,
     },
     pageTitle: {

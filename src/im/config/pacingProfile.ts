@@ -21,6 +21,7 @@ export interface ImGlobalPacingSettings {
   globalDndEnabled?: boolean;
   globalDndStartTime?: string;
   globalDndEndTime?: string;
+  globalVoiceReplyEnabled?: boolean;
 }
 
 export const DEFAULT_IM_GLOBAL_SETTINGS: ImGlobalPacingSettings = {
@@ -35,6 +36,7 @@ export const DEFAULT_IM_GLOBAL_SETTINGS: ImGlobalPacingSettings = {
   globalDndEnabled: true,
   globalDndStartTime: '23:00',
   globalDndEndTime: '07:30',
+  globalVoiceReplyEnabled: true,
 };
 
 export interface ImPacingConfig {

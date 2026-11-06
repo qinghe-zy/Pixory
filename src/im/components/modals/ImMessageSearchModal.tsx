@@ -91,6 +91,8 @@ export function ImMessageSearchModal({
         <FlatList
           contentContainerStyle={styles.listContent}
           data={results}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           ListEmptyComponent={
             query.trim().length > 0 ? (

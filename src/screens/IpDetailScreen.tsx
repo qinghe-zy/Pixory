@@ -135,6 +135,7 @@ export function IpDetailScreen({
   );
 
   const ip = data?.ip;
+  const totalMaterialCount = ip ? (ip.imageCount ?? 0) + (ip.videoCount ?? 0) : 0;
   const groups = data?.groups ?? [];
   const recentImages = data?.recentImages ?? [];
   const recentImportBatches = data?.recentImportBatches ?? [];
@@ -370,7 +371,7 @@ export function IpDetailScreen({
               {QUICK_ACTIONS.map((action) => {
                 let subtitle: string = action.subtitle;
                 if (action.key === 'create-group') subtitle = `${ip.groupCount} 个现有分组`;
-                if (action.key === 'all-images') subtitle = `${ip.imageCount} 个项目归档`;
+                if (action.key === 'all-images') subtitle = `${totalMaterialCount} 个项目归档`;
                 
                 return (
                   <Pressable
@@ -397,7 +398,7 @@ export function IpDetailScreen({
               </View>
               {recentImages.length > 0 ? (
                 <Pressable onPress={onOpenAllImages} style={({ pressed }) => [styles.recentSectionAction, pressed && styles.pressed]}>
-                  <Text style={styles.recentSectionActionText}>全部图片</Text>
+                  <Text style={styles.recentSectionActionText}>全部素材</Text>
                   <MaterialIcons color="#767676" name="chevron-right" size={14} />
                 </Pressable>
               ) : null}
@@ -479,7 +480,7 @@ export function IpDetailScreen({
               {recentImages.length > 0 ? (
                 <View style={styles.recentViewAllDivider}>
                   <Pressable onPress={onOpenAllImages} style={({ pressed }) => [styles.viewAllPrompt, pressed && styles.pressed]}>
-                    <Text style={styles.viewAllPromptText}>查看全部 {ip.imageCount} 项素材</Text>
+                    <Text style={styles.viewAllPromptText}>查看全部 {totalMaterialCount} 项素材</Text>
                     <MaterialIcons color="#1a1c1c" name="arrow-forward" size={15} />
                   </Pressable>
                 </View>
@@ -503,7 +504,7 @@ export function IpDetailScreen({
 
           <View style={[styles.managementSummary, { marginTop: 0 }]}>
             <View style={styles.statsStrip}>
-              <StatBlock label="素材数量" value={String(ip.imageCount)} />
+              <StatBlock label="素材数量" value={String(totalMaterialCount)} />
               <StatBlock label="分组数量" value={String(ip.groupCount)} />
               <StatBlock label="标签数量" value={String(ip.tagCount)} />
             </View>

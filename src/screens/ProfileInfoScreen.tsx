@@ -168,8 +168,10 @@ export function ProfileInfoScreen({ onBack, space }: ProfileInfoScreenProps) {
               <TextInput
                 maxLength={24}
                 onChangeText={setNickname}
+                onSubmitEditing={handleSaveNickname}
                 placeholder="请输入昵称"
                 placeholderTextColor="#94A3B8"
+                returnKeyType="done"
                 style={styles.nicknameInput}
                 value={nickname}
               />

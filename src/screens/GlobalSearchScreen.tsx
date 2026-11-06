@@ -29,7 +29,6 @@ import {
 
 import { searchActions, getRandomRecommendedActions, type MatchedAction } from '../services/searchActionService';
 
-import { AI_SYSTEM_AVATAR_B64 } from '../utils/aiSystemAvatarBase64';
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
 
 interface GlobalSearchScreenProps {
@@ -342,6 +341,7 @@ export function GlobalSearchScreen({
         >
           <Pressable style={{ flex: 1 }} onPress={() => setHistoryEditMode(false)}>
           <PageStateBlock
+            emptyActionLabel={keyword.trim() ? '清空搜索' : undefined}
             emptyDescription="尝试更换关键词或检查输入是否正确"
             emptyIconName="search-outline"
             emptyTitle="未找到搜索结果"
@@ -350,6 +350,7 @@ export function GlobalSearchScreen({
             loading={isSearchLoading}
             loadingDescription="正在搜索..."
             loadingTitle="搜索中"
+            onEmptyAction={keyword.trim() ? () => onChangeQuery('') : undefined}
             onRetry={reload}
           >
             {showHistory ? (
@@ -596,7 +597,7 @@ function IpSection({ items, totalCount, onOpen, query, space, activeFilter, onVi
                 <Text style={protoStyles.ipDesc} numberOfLines={1}>核心素材库与记录</Text>
               </View>
               <View style={protoStyles.ipMetaRow}>
-                <View style={protoStyles.metaPill}><Text style={protoStyles.metaPillText}>{item.imageCount} 项素材</Text></View>
+                <View style={protoStyles.metaPill}><Text style={protoStyles.metaPillText}>{item.imageCount + (item.videoCount ?? 0)} 项素材</Text></View>
                 <View style={protoStyles.metaPill}><Text style={protoStyles.metaPillText}>{item.groupCount} 个分组</Text></View>
               </View>
             </View>
@@ -1769,7 +1770,7 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
           <View style={actionStyles.actionIconBox}>
             {item.id === 'system-assistant-toggle' ? (
               <ExpoImage
-                source={{ uri: AI_SYSTEM_AVATAR_B64 }}
+                source={AI_SYSTEM_AVATAR}
                 style={{ width: '100%', height: '100%', borderRadius: 12 }}
                 contentFit="cover"
               />

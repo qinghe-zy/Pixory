@@ -24,12 +24,15 @@ import type {
 } from '../../repository/imSettingsRepository';
 import { BUBBLE_SKIN_PRESETS } from '../../theme/imTheme';
 import { ImCustomBubbleColorModal } from './ImCustomBubbleColorModal';
+import { VoicePresetPicker } from '../../../voice/ui/VoicePresetPicker';
 
 export interface ImCompanionPersonaModalProps {
   visible: boolean;
   onClose: () => void;
   space: PixorySpace;
   companionName: string;
+  threadId?: string;
+  roleCardId?: string;
   settings: ImThreadSettings;
   onUpdateSettings: (patch: Partial<ImThreadSettings>) => Promise<void>;
 }
@@ -62,7 +65,10 @@ const PROACTIVE_FREQ_OPTIONS: Array<{ key: ImProactiveFrequencyGear; label: stri
 export function ImCompanionPersonaModal({
   visible,
   onClose,
+  space,
   companionName,
+  threadId,
+  roleCardId,
   settings,
   onUpdateSettings,
 }: ImCompanionPersonaModalProps) {
@@ -374,6 +380,25 @@ export function ImCompanionPersonaModal({
                 </Pressable>
               </View>
             </View>
+
+            {/* 6. 专属音色与语音条设置 */}
+            {threadId ? (
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons color="#10B981" name="mic-outline" size={18} />
+                  <Text style={styles.sectionTitle}>伴侣专属音色与语音条</Text>
+                </View>
+                <Text style={styles.sectionTip}>
+                  独立为伴聊会话配置专属音色，支持微信语音条朗读与自动合成。
+                </Text>
+                <VoicePresetPicker
+                  space={space}
+                  scopeType="thread_im"
+                  scopeId={threadId}
+                  showVoiceBubbleSwitch
+                />
+              </View>
+            ) : null}
           </ScrollView>
 
           {/* Bottom Save Action */}

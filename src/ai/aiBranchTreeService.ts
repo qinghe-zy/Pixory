@@ -343,8 +343,55 @@ export async function adoptBranchSelection(input: {
         threadId: input.threadId,
       });
     });
+    invalidateBranchTreeCache(input.threadId);
     return selection;
   });
+}
+
+const BRANCH_TREE_CACHE_TTL_MS = 10000;
+const BRANCH_TREE_CACHE_MAX_ENTRIES = 8;
+const branchTreeCache = new Map<string, { result: AiBranchTreeResult; timestamp: number }>();
+const inFlightBranchTreeRequests = new Map<string, Promise<AiBranchTreeResult>>();
+
+function pruneBranchTreeCache(now = Date.now()): void {
+  for (const [key, entry] of branchTreeCache.entries()) {
+    if (now - entry.timestamp >= BRANCH_TREE_CACHE_TTL_MS) {
+      branchTreeCache.delete(key);
+    }
+  }
+  while (branchTreeCache.size >= BRANCH_TREE_CACHE_MAX_ENTRIES) {
+    const oldestKey = branchTreeCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    branchTreeCache.delete(oldestKey);
+  }
+}
+
+export function invalidateBranchTreeCache(threadId?: string): void {
+  if (threadId) {
+    for (const key of branchTreeCache.keys()) {
+      if (key.includes(`:${threadId}:`) || key.endsWith(`:${threadId}`)) {
+        branchTreeCache.delete(key);
+      }
+    }
+    for (const key of inFlightBranchTreeRequests.keys()) {
+      if (key.includes(`:${threadId}:`) || key.endsWith(`:${threadId}`)) {
+        inFlightBranchTreeRequests.delete(key);
+      }
+    }
+  } else {
+    branchTreeCache.clear();
+    inFlightBranchTreeRequests.clear();
+  }
+}
+
+export function prefetchBranchTree(input: {
+  space: PixorySpace;
+  threadId: string;
+  currentBranchScopes?: AiBranchScope[];
+}): void {
+  void loadBranchTree(input).catch(() => {});
 }
 
 async function buildBranchTreeFromDatabase(input: {
@@ -358,9 +405,12 @@ async function buildBranchTreeFromDatabase(input: {
   const metadataRows = await aiThreadRepository.listBranchRouteMetadata(input.db, input.threadId);
   const currentThread = await aiThreadRepository.findThreadById(input.db, input.threadId);
   const currentScopes = await normalizeCurrentScopes(input.db, input.currentBranchScopes, currentThread);
-  const persistedCurrentScopes = currentThread?.currentBranchRootMessageId && currentThread.currentBranchVersionIndex != null
-    ? await aiThreadRepository.resolveBranchLineage(input.db, currentThread.currentBranchRootMessageId, currentThread.currentBranchVersionIndex)
-    : [];
+  const persistedCurrentScopes =
+    input.currentBranchScopes === undefined && currentThread?.currentBranchRootMessageId && currentThread.currentBranchVersionIndex != null
+      ? currentScopes
+      : (currentThread?.currentBranchRootMessageId && currentThread.currentBranchVersionIndex != null
+          ? await aiThreadRepository.resolveBranchLineage(input.db, currentThread.currentBranchRootMessageId, currentThread.currentBranchVersionIndex)
+          : []);
   const metadataByKey = new Map(
     metadataRows.map((row) => [metadataKey(row.branchRootMessageId, row.branchVersionIndex), row])
   );
@@ -389,14 +439,42 @@ export async function loadBranchTree(input: {
   space: PixorySpace;
   threadId: string;
   currentBranchScopes?: AiBranchScope[];
+  forceRefresh?: boolean;
 }): Promise<AiBranchTreeResult> {
-  return runWithDatabaseSpace(input.space, (db) =>
+  const scopeKeyPart =
+    input.currentBranchScopes && input.currentBranchScopes.length > 0
+      ? input.currentBranchScopes.map((s) => `${s.branchRootMessageId}:${s.branchVersionIndex}`).sort().join(',')
+      : 'default';
+  const cacheKey = `${input.space}:${input.threadId}:${scopeKeyPart}`;
+  const now = Date.now();
+  const cached = branchTreeCache.get(cacheKey);
+  if (!input.forceRefresh && cached && now - cached.timestamp < BRANCH_TREE_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  const existingInFlight = inFlightBranchTreeRequests.get(cacheKey);
+  if (!input.forceRefresh && existingInFlight) {
+    return existingInFlight;
+  }
+
+  const loadPromise = runWithDatabaseSpace(input.space, (db) =>
     buildBranchTreeFromDatabase({
       currentBranchScopes: input.currentBranchScopes,
       db,
       threadId: input.threadId,
     })
-  );
+  )
+    .then((result) => {
+      pruneBranchTreeCache(Date.now());
+      branchTreeCache.set(cacheKey, { result, timestamp: Date.now() });
+      return result;
+    })
+    .finally(() => {
+      inFlightBranchTreeRequests.delete(cacheKey);
+    });
+
+  inFlightBranchTreeRequests.set(cacheKey, loadPromise);
+  return loadPromise;
 }
 
 function toPreviewMessage(message: AiMessageRecord, label?: string): AiBranchPreviewMessage {
@@ -440,18 +518,22 @@ export async function loadBranchTreePreview(input: {
   branchRootMessageId: string;
   branchVersionIndex: number;
   currentBranchScopes?: AiBranchScope[];
+  node?: AiBranchTreeNode;
 }): Promise<AiBranchTreePreview | null> {
   return runWithDatabaseSpace(input.space, async (db) => {
-    const result = await buildBranchTreeFromDatabase({
-      currentBranchScopes: input.currentBranchScopes,
-      db,
-      threadId: input.threadId,
-    });
-    const node = result.nodes.find(
-      (item) =>
-        item.branchRootMessageId === input.branchRootMessageId &&
-        item.branchVersionIndex === input.branchVersionIndex
-    );
+    let node = input.node;
+    if (!node) {
+      const result = await buildBranchTreeFromDatabase({
+        currentBranchScopes: input.currentBranchScopes,
+        db,
+        threadId: input.threadId,
+      });
+      node = result.nodes.find(
+        (item) =>
+          item.branchRootMessageId === input.branchRootMessageId &&
+          item.branchVersionIndex === input.branchVersionIndex
+      );
+    }
     const root = await aiThreadRepository.findMessageById(db, input.branchRootMessageId);
     if (!node || !root) {
       return null;
@@ -496,4 +578,5 @@ export async function updateBranchRouteStatus(input: {
       threadId: input.threadId,
     });
   });
+  invalidateBranchTreeCache(input.threadId);
 }

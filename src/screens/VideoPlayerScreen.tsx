@@ -212,6 +212,9 @@ export function VideoPlayerScreen({
   const drawerTranslateX = useRef(new Animated.Value(320)).current;
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const gestureFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -238,6 +241,12 @@ export function VideoPlayerScreen({
   const isScrubbingRef = useRef(false);
   const holdWasPlayingRef = useRef(false);
   const isHoldingFastForwardRef = useRef(false);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const holdSpeedRef = useRef(holdSpeed);
+  holdSpeedRef.current = holdSpeed;
+  const controlsVisibleRef = useRef(controlsVisible);
+  const controlsVisibleBeforeHoldRef = useRef(false);
   const scrubStartTimeRef = useRef(0);
   const verticalGestureStartValueRef = useRef(0);
   const verticalGestureKindRef = useRef<"brightness" | "volume" | null>(null);
@@ -285,6 +294,11 @@ export function VideoPlayerScreen({
   }, [space]);
 
   useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    controlsVisibleRef.current = controlsVisible;
     Animated.timing(controlsOpacity, {
       toValue: controlsVisible ? 1 : 0,
       duration: controlsVisible ? 140 : 180,
@@ -626,6 +640,7 @@ export function VideoPlayerScreen({
     const playingSubscription = player.addListener(
       "playingChange",
       (payload) => {
+        isPlayingRef.current = payload.isPlaying;
         setIsPlaying(payload.isPlaying);
       },
     );
@@ -656,8 +671,14 @@ export function VideoPlayerScreen({
   useEffect(() => {
     resetHideTimer();
     return () => {
+      if (isHoldingFastForwardRef.current) {
+        applyPitchPreservingRate(player, speedRef.current);
+        isHoldingFastForwardRef.current = false;
+      }
       clearHideTimer();
       clearLongPressTimer();
+      clearHoldProgressInterval();
+      setHoldSpeedVisible(false);
       clearPreviewSeekTimer();
       safePausePlayer();
       void ScreenOrientation.lockAsync(
@@ -798,9 +819,11 @@ export function VideoPlayerScreen({
         onPanResponderGrant: (event) => {
           surfaceGestureModeRef.current = "pending";
           lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
+          controlsVisibleBeforeHoldRef.current = controlsVisibleRef.current;
           if (isPlayerLocked || isVideoSwitchTransitioning) {
             return;
           }
+          clearLongPressTimer();
           longPressTimerRef.current = setTimeout(() => {
             if (surfaceGestureModeRef.current !== "pending") {
               return;
@@ -903,25 +926,20 @@ export function VideoPlayerScreen({
             cancelScrub();
           } else {
             clearLongPressTimer();
+            clearHoldProgressInterval();
+            setHoldSpeedVisible(false);
           }
           surfaceGestureModeRef.current = null;
         },
         onShouldBlockNativeResponder: () => true,
       }),
     [
-      activeVideoId,
-      currentIndex,
-      duration,
       externalSource,
-      holdSpeed,
       isLandscape,
       isPlayerLocked,
-      isPlaying,
       isVideoSwitchTransitioning,
-      playbackOrder,
       player,
       queue.length,
-      speed,
       surfaceWidth,
       surfaceHeight,
     ],
@@ -1040,10 +1058,16 @@ export function VideoPlayerScreen({
 
   function clearLongPressTimer() {
     if (longPressTimerRef.current) {
-      clearInterval(longPressTimerRef.current);
+      clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-    setHoldSpeedVisible(false);
+  }
+
+  function clearHoldProgressInterval() {
+    if (holdProgressIntervalRef.current) {
+      clearInterval(holdProgressIntervalRef.current);
+      holdProgressIntervalRef.current = null;
+    }
   }
 
   function clearPreviewSeekTimer() {
@@ -1067,6 +1091,7 @@ export function VideoPlayerScreen({
   function safePausePlayer() {
     try {
       player.pause();
+      isPlayingRef.current = false;
       setIsPlaying(false);
     } catch {
       // The expo-video shared object may already be released during teardown.
@@ -1076,11 +1101,13 @@ export function VideoPlayerScreen({
   function safePlayPlayer() {
     try {
       player.play();
+      isPlayingRef.current = true;
       setIsPlaying(true);
     } catch (error) {
       showToast(
         error instanceof Error ? `播放失败：${error.message}` : "播放失败",
       );
+      isPlayingRef.current = false;
       setIsPlaying(false);
     }
   }
@@ -1093,29 +1120,35 @@ export function VideoPlayerScreen({
 
   function startHoldFastForward() {
     clearLongPressTimer();
+    clearHideTimer();
+    clearHoldProgressInterval();
     isHoldingFastForwardRef.current = true;
-    holdWasPlayingRef.current = isPlaying;
+    holdWasPlayingRef.current = isPlayingRef.current;
     setHoldSpeedVisible(true);
-    const previousSpeed = player.playbackRate;
-    applyPitchPreservingRate(player, holdSpeed);
+    applyPitchPreservingRate(player, holdSpeedRef.current);
     safePlayPlayer();
-    longPressTimerRef.current = setInterval(() => {
+    holdProgressIntervalRef.current = setInterval(() => {
       currentTimeRef.current = player.currentTime;
       setCurrentTime(player.currentTime);
     }, 150);
-    return () => {
-      applyPitchPreservingRate(player, previousSpeed);
-      clearLongPressTimer();
-    };
   }
 
   function finishHoldFastForward() {
-    applyPitchPreservingRate(player, speed);
+    applyPitchPreservingRate(player, speedRef.current);
     if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
       safePausePlayer();
     }
     isHoldingFastForwardRef.current = false;
     clearLongPressTimer();
+    clearHoldProgressInterval();
+    setHoldSpeedVisible(false);
+    if (controlsVisibleBeforeHoldRef.current) {
+      setControlsVisible(true);
+      resetHideTimer();
+    } else {
+      setControlsVisible(false);
+      clearHideTimer();
+    }
   }
 
   function togglePlay() {
@@ -1377,8 +1410,14 @@ export function VideoPlayerScreen({
     }
     setIsVideoSwitchTransitioning(true);
     swipeSettlingRef.current = true;
+    if (isHoldingFastForwardRef.current) {
+      applyPitchPreservingRate(player, speedRef.current);
+      isHoldingFastForwardRef.current = false;
+    }
     clearHideTimer();
     clearLongPressTimer();
+    clearHoldProgressInterval();
+    setHoldSpeedVisible(false);
     setSpeedMenuVisible(false);
     setQueueVisible(false);
     setMoreVisible(false);
@@ -1507,8 +1546,14 @@ export function VideoPlayerScreen({
   }
 
   function beginScrub(source: "controls" | "surface" = "controls") {
+    if (isHoldingFastForwardRef.current) {
+      applyPitchPreservingRate(player, speedRef.current);
+      isHoldingFastForwardRef.current = false;
+    }
     clearHideTimer();
     clearLongPressTimer();
+    clearHoldProgressInterval();
+    setHoldSpeedVisible(false);
     const isSurfaceSource = source === "surface";
     setIsSurfaceScrubbing(isSurfaceSource);
     if (isSurfaceSource) {
@@ -2149,9 +2194,48 @@ export function VideoPlayerScreen({
         </View>
       ) : null}
 
+      {holdSpeedVisible ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.holdSpeedCenterContainer,
+            {
+              bottom: insets.bottom + (isLandscape ? spacing[3] : spacing[6]),
+            },
+          ]}
+        >
+          <View
+            accessibilityLabel={`${holdSpeed}倍速快进`}
+            accessibilityRole="text"
+            style={[
+              styles.holdSpeedBadge,
+              styles.holdSpeedFloatingBadge,
+              styles.holdSpeedCenterBadge,
+            ]}
+          >
+            <Ionicons
+              color={colors.primary.hover}
+              name="play-forward"
+              size={14}
+            />
+            <Text style={styles.holdSpeedBadgeText}>
+              {holdSpeed}x 快进
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <Animated.View
-        pointerEvents={controlsVisible && !isPlayerLocked ? "box-none" : "none"}
-        style={[styles.controlsLayer, { opacity: controlsOpacity }]}
+        pointerEvents={
+          controlsVisible && !isPlayerLocked && !holdSpeedVisible
+            ? "box-none"
+            : "none"
+        }
+        style={[
+          styles.controlsLayer,
+          { opacity: controlsOpacity },
+          holdSpeedVisible ? styles.layerHiddenDuringHold : null,
+        ]}
       >
         {!isPlayerLocked && (
           <>
@@ -2301,18 +2385,7 @@ export function VideoPlayerScreen({
                     </Text>
                   </View>
                   <View style={styles.scrubberHeaderCenter}>
-                    {holdSpeedVisible ? (
-                      <View style={[styles.centerBadgeRow, styles.holdSpeedFloatingBadge]}>
-                        <Ionicons
-                          color={colors.primary.hover}
-                          name="play-forward"
-                          size={13}
-                        />
-                        <Text style={styles.holdSpeedBadgeText}>
-                          {holdSpeed}x 快进
-                        </Text>
-                      </View>
-                    ) : isScrubbing ? (
+                    {isScrubbing ? (
                       <View style={styles.centerBadgeRow}>
                         <Text style={styles.scrubBubbleTimeInline}>
                           {formatDuration(displayTime * 1000)}
@@ -2332,6 +2405,15 @@ export function VideoPlayerScreen({
                 </View>
                 <View
                   {...seekPanResponder.panHandlers}
+                  accessibilityLabel="视频播放进度"
+                  accessibilityRole="progressbar"
+                  accessibilityValue={{
+                    min: 0,
+                    max: Math.round(duration),
+                    now: Math.round(displayTime),
+                    text: `${formatDuration(displayTime * 1000)} / ${formatDuration(duration * 1000)}`,
+                  }}
+                  accessible={true}
                   ref={progressTrackRef}
                   onLayout={(event) =>
                     handleProgressTrackLayout(event.nativeEvent.layout.width)
@@ -2339,9 +2421,6 @@ export function VideoPlayerScreen({
                   style={styles.progressHitArea}
                 >
                   <View style={styles.progressTrackBg}>
-                    <View
-                      style={[styles.progressTrackBuffer, { width: "84%" }]}
-                    />
                     <View
                       style={[
                         styles.progressTrackFill,
@@ -2592,8 +2671,12 @@ export function VideoPlayerScreen({
       </Animated.View>
 
       <Animated.View
-        pointerEvents={controlsVisible ? "box-none" : "none"}
-        style={[StyleSheet.absoluteFillObject, { opacity: controlsOpacity }]}
+        pointerEvents={controlsVisible && !holdSpeedVisible ? "box-none" : "none"}
+        style={[
+          StyleSheet.absoluteFillObject,
+          { opacity: controlsOpacity },
+          holdSpeedVisible ? styles.layerHiddenDuringHold : null,
+        ]}
       >
         {isPlayerLocked ? (
           <Pressable
@@ -2642,7 +2725,7 @@ export function VideoPlayerScreen({
             key: String(ip.id),
             label: ip.name,
             icon: "albums-outline" as const,
-            meta: `${ip.imageCount} 个素材`,
+            meta: `${ip.imageCount + (ip.videoCount ?? 0)} 个素材`,
             onPress: () => void saveExternalVideoToIp(ip.id),
           })),
         ]}
@@ -2916,7 +2999,37 @@ const styles = StyleSheet.create({
   holdSpeedBadgeText: {
     ...typography.textStyles.micro,
     color: colors.text.inverse,
+    fontSize: 12,
     fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  holdSpeedCenterContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    zIndex: 40,
+  },
+  holdSpeedCenterBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.88)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+    marginBottom: 0,
+  },
+  layerHiddenDuringHold: {
+    opacity: 0,
   },
   bottomBar: {
     backgroundColor: "rgba(0, 0, 0, 0.42)",
@@ -2945,32 +3058,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     minWidth: 0,
   },
-  progressTrack: {
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderRadius: radius.pill,
-    height: 3,
-    position: "relative",
-  },
   progressHitArea: {
     justifyContent: "center",
-    minHeight: 34,
-  },
-  landscapeProgressHitArea: {
-    minHeight: 24,
-  },
-  progressFill: {
-    backgroundColor: colors.primary.hover,
-    borderRadius: radius.pill,
-    height: "100%",
-  },
-  progressKnob: {
-    backgroundColor: colors.text.inverse,
-    borderRadius: radius.pill,
-    height: 8,
-    marginLeft: -4,
-    position: "absolute",
-    top: -2.5,
-    width: 8,
+    minHeight: 36,
   },
   scrubBubble: {
     alignItems: "center",
@@ -3368,16 +3458,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(226,226,226,0.3)",
     borderRadius: radius.pill,
     height: 4,
+    overflow: "hidden",
     position: "relative",
     width: "100%",
-  },
-  progressTrackBuffer: {
-    backgroundColor: "rgba(226,226,226,0.5)",
-    borderRadius: radius.pill,
-    height: "100%",
-    position: "absolute",
-    left: 0,
-    top: 0,
   },
   progressTrackFill: {
     backgroundColor: "#ffffff",

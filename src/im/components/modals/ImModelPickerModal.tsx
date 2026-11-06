@@ -78,8 +78,9 @@ export function ImModelPickerModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal animationType="slide" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
       <View style={styles.scrim}>
+        <Pressable accessibilityLabel="点击遮罩关闭" onPress={onClose} style={StyleSheet.absoluteFillObject} />
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>选择专属模型</Text>

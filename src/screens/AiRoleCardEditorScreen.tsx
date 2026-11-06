@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiAvatarPicker } from '../components/ai/AiAvatarPicker';
 import { AiRoleCardImportPreview } from '../components/ai/AiRoleCardImportPreview';
+import { VoicePresetPicker } from '../voice/ui/VoicePresetPicker';
 import { SecureImage } from '../components/SecureImage';
 import { applyRoleCardToThread } from '../ai/aiChatService';
 import { listRoleCards, saveImportedRoleCard, saveRoleCard } from '../ai/aiRoleCardService';
@@ -408,6 +409,20 @@ export function AiRoleCardEditorScreen({
             />
           </View>
         </View>
+
+        {/* 专属音色模型绑定 */}
+        {roleCardId ? (
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>角色专属音色</Text>
+            <View style={styles.avatarCard}>
+              <VoicePresetPicker
+                space={space}
+                scopeType="role"
+                scopeId={roleCardId}
+              />
+            </View>
+          </View>
+        ) : null}
 
         {/* Action Buttons Stack */}
         <View style={styles.actionsStack}>

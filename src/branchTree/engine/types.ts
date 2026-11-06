@@ -43,6 +43,12 @@ export interface BranchTreeLayoutNode extends BranchTreeNode {
 
 export interface BranchTreeLayoutEdge extends BranchTreeEdge {
   path: string;
+  bounds?: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  };
 }
 
 export interface BranchTreeLayout {

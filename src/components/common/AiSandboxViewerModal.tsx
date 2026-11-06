@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -253,6 +254,26 @@ export function AiSandboxViewerModal({
     }
   }, []);
 
+  const handleShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
+    const url = request.url;
+    if (!url) return false;
+    // 允许内部加载沙盒自身内容或空白页
+    if (url === 'about:blank' || url.startsWith('data:') || (baseUrl && url.startsWith(baseUrl)) || (url.startsWith('https://') && url.includes('.sandbox.pixory.local'))) {
+      return true;
+    }
+    // 拦截任何非 HTTP/HTTPS 危险协议逃逸（intent://, file://, tel:, sms:, market: 等）
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return false;
+    }
+    // 针对常规外部 http/https 链接，拦截内嵌跳转并提示使用系统浏览器打开，防止在沙盒内提权
+    const displayUrl = url.length > 80 ? `${url.slice(0, 77)}...` : url;
+    Alert.alert('打开外部链接', `即将离开沙盒并在外部浏览器中访问：\n${displayUrl}`, [
+      { text: '取消', style: 'cancel' },
+      { text: '前往', onPress: () => { void Linking.openURL(url); } },
+    ]);
+    return false;
+  }, [baseUrl]);
+
   const errorCount = useMemo(() => {
     return consoleEvents.filter((e) => e.type === 'CONSOLE_ERROR' || e.type === 'CDN_LOAD_ERROR').length;
   }, [consoleEvents]);
@@ -422,6 +443,7 @@ export function AiSandboxViewerModal({
                 key={`sb_wv_${reloadKey}`}
                 mixedContentMode="never"
                 onMessage={handleMessage}
+                onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
                 originWhitelist={['*']}
                 renderError={(e) => (
                   <View style={styles.errorContainer}>

@@ -8,7 +8,7 @@
  * 4. 过滤剥离 [STATUS:...]、[MOOD:...] 等协议元数据，保留正常中文方括号。
  */
 
-const META_TAG_REGEX = /[[\[【]\s*(STATUS|MOOD|STICKER|表情|HEARTBEAT|VOICE|NUDGE|NEXT_FOLLOWUP|STAGE_FOLLOWUP|PASS|PING)(?:[:：][^\]】\n]+)?\s*[\]】]/gi;
+const META_TAG_REGEX = /[[\[【]\s*(STATUS|MOOD|HEARTBEAT|NUDGE|NEXT_FOLLOWUP|STAGE_FOLLOWUP|PASS|PING)(?:[:：][^\]】\n]+)?\s*[\]】]/gi;
 const VALID_TAG_PREFIXES = [
   'BR]',
   'STICKER:',
@@ -34,7 +34,9 @@ const VALID_TAG_PREFIXES = [
   '/DOCUMENT_PATCH]',
   '/DOC_PATCH]',
 ];
-const SPLIT_PATTERN = /(\[br\s*\/?\]|<\/?br\s*\/?>|[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*[^\]】\n]{1,10}?\s*[\]】])/i;
+const SPLIT_PATTERN = /(\[br\s*\/?\]|<\/?br\s*\/?>|[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*[^\]】\n]{1,10}?\s*[\]】]|[[\[【]\s*(?:VOICE|语音)\s*[:：]\s*[^\]】\n]+?\s*[\]】])/i;
+const THINK_BLOCK_STRIP_REGEX = /<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/gi;
+const THINK_TAG_STRIP_REGEX = /<\/?(?:think|thought)\s*\/?>/gi;
 const MAX_TAG_BUFFER_LEN = 80;
 
 export interface DocumentStreamProgressEvent {
@@ -72,9 +74,12 @@ export function stripMetaTags(text: string): string {
     .replace(/\[(?:DOCUMENT|DOC):\s*[^\]\n]+\][\s\S]*?\[\/(?:DOCUMENT|DOC)\]/gi, '')
     .replace(/\[(?:DOCUMENT|DOC):\s*[^|\]\n]+\|\s*[\s\S]+?\]/gi, '')
     .replace(/\[(?:DOCUMENT_PATCH|DOC_PATCH):\s*[^|\]\n]+\|\s*[^\]\n]+\][\s\S]*?\[\/(?:DOCUMENT_PATCH|DOC_PATCH)\]/gi, '')
+    .replace(THINK_BLOCK_STRIP_REGEX, '')
     // 2. 孤儿开闭标签强行剥离 (防止网络丢包、流中断或流切分残留)
     .replace(/\[\/?(?:DOCUMENT|DOC|DOCUMENT_PATCH|DOC_PATCH)(?::[^\]\n]*)?\]/gi, '')
     .replace(META_TAG_REGEX, '')
+    // 3. 剥离深度思考遗留标签 (防止流切分边界残存裸露 <think> 或 </think>)
+    .replace(THINK_TAG_STRIP_REGEX, '')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
@@ -94,22 +99,22 @@ export function extractThoughtAndDialogue(raw: string): { thought: string; dialo
   // 1. 优先寻找 br 之前的最后一个封闭括号（）或 )（内心独白结束标记）
   const lastCloseParen = Math.max(beforeBr.lastIndexOf('）'), beforeBr.lastIndexOf(')'));
   if (lastCloseParen !== -1 && lastCloseParen < brIdx) {
-    const thought = raw.slice(0, lastCloseParen + 1).trim();
-    const dialogue = raw.slice(lastCloseParen + 1).trimStart();
+    const thought = raw.slice(0, lastCloseParen + 1).replace(THINK_TAG_STRIP_REGEX, '').trim();
+    const dialogue = raw.slice(lastCloseParen + 1).replace(THINK_TAG_STRIP_REGEX, '').trimStart();
     return { thought, dialogue };
   }
 
   // 2. 寻找 br 之前的换行标记
   const lastDoubleNewline = beforeBr.lastIndexOf('\n\n');
   if (lastDoubleNewline !== -1) {
-    const thought = raw.slice(0, lastDoubleNewline).trim();
-    const dialogue = raw.slice(lastDoubleNewline + 2).trimStart();
+    const thought = raw.slice(0, lastDoubleNewline).replace(THINK_TAG_STRIP_REGEX, '').trim();
+    const dialogue = raw.slice(lastDoubleNewline + 2).replace(THINK_TAG_STRIP_REGEX, '').trimStart();
     return { thought, dialogue };
   }
   const lastNewline = beforeBr.lastIndexOf('\n');
   if (lastNewline !== -1) {
-    const thought = raw.slice(0, lastNewline).trim();
-    const dialogue = raw.slice(lastNewline + 1).trimStart();
+    const thought = raw.slice(0, lastNewline).replace(THINK_TAG_STRIP_REGEX, '').trim();
+    const dialogue = raw.slice(lastNewline + 1).replace(THINK_TAG_STRIP_REGEX, '').trimStart();
     return { thought, dialogue };
   }
 
@@ -119,14 +124,14 @@ export function extractThoughtAndDialogue(raw: string): { thought: string; dialo
     const lastPunc = puncMatches[puncMatches.length - 1];
     if (lastPunc.index !== undefined) {
       const splitPoint = lastPunc.index + lastPunc[0].length;
-      const thought = raw.slice(0, splitPoint).trim();
-      const dialogue = raw.slice(splitPoint).trimStart();
+      const thought = raw.slice(0, splitPoint).replace(THINK_TAG_STRIP_REGEX, '').trim();
+      const dialogue = raw.slice(splitPoint).replace(THINK_TAG_STRIP_REGEX, '').trimStart();
       return { thought, dialogue };
     }
   }
 
   // 4. 兜底：若之前没有标点，但出现了 [BR]，则 [BR] 及其前置词句必定是对白
-  return { thought: '', dialogue: raw.trimStart() };
+  return { thought: '', dialogue: raw.replace(THINK_TAG_STRIP_REGEX, '').trimStart() };
 }
 
 export class TagAwareStreamParser {
@@ -209,6 +214,7 @@ export class TagAwareStreamParser {
 
         const splitIdx = nextFence + 3 + matchAfter.index;
         const rawSentence = this.buffer.slice(0, splitIdx);
+        const matchedDelimiter = matchAfter[0];
         this.buffer = this.buffer.slice(splitIdx + matchAfter[0].length);
 
         const totalFences = (rawSentence.match(/```/g) || []).length;
@@ -219,6 +225,12 @@ export class TagAwareStreamParser {
         const cleaned = stripMetaTags(rawSentence);
         if (cleaned.length > 0) {
           readySentences.push(cleaned);
+          this.emittedCount += 1;
+        }
+
+        // 如果切分界标本身是内容标签（如 [VOICE: ...] 或 [STICKER: ...]），则将其自身作为一个独立气泡发射
+        if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(matchedDelimiter)) {
+          readySentences.push(matchedDelimiter.trim());
           this.emittedCount += 1;
         }
         continue;
@@ -238,6 +250,7 @@ export class TagAwareStreamParser {
 
       // 处于正常文本中，安全切分
       const rawSentence = this.buffer.slice(0, match.index);
+      const matchedDelimiter = match[0];
       this.buffer = this.buffer.slice(match.index + match[0].length);
 
       const totalFences = (rawSentence.match(/```/g) || []).length;
@@ -248,6 +261,12 @@ export class TagAwareStreamParser {
       const cleaned = stripMetaTags(rawSentence);
       if (cleaned.length > 0) {
         readySentences.push(cleaned);
+        this.emittedCount += 1;
+      }
+
+      // 如果切分界标本身是内容标签（如 [VOICE: ...] 或 [STICKER: ...]），则将其自身作为一个独立气泡发射
+      if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(matchedDelimiter)) {
+        readySentences.push(matchedDelimiter.trim());
         this.emittedCount += 1;
       }
     }
@@ -277,17 +296,25 @@ export class TagAwareStreamParser {
         }
 
         if (closeIdx !== -1) {
-          // 找到了闭合标签，将当前思考增量与完整思考内容通过回调通知外部
-          const finalThoughtPart = this.buffer.slice(0, closeIdx);
-          this.fullThoughtBuffer += finalThoughtPart;
-          if (this.fullThoughtBuffer.length > this.emittedThoughtLen) {
-            const chunk = this.fullThoughtBuffer.slice(this.emittedThoughtLen);
-            this.options?.onThoughtProgress?.(chunk, this.fullThoughtBuffer);
-            this.emittedThoughtLen = this.fullThoughtBuffer.length;
+          // 找到了闭合标签，严防模型把对白台词包进 </think> 之前导致正文被全量吞没
+          const rawCandidate = this.fullThoughtBuffer + this.buffer.slice(0, closeIdx);
+          const rescued = extractThoughtAndDialogue(rawCandidate);
+          let actualThought = rawCandidate.replace(THINK_TAG_STRIP_REGEX, '').trim();
+          let rescuedDialogue = '';
+          if (rescued && rescued.dialogue.trim().length > 0) {
+            actualThought = rescued.thought;
+            rescuedDialogue = rescued.dialogue;
           }
-          this.options?.onThoughtCompleted?.(this.fullThoughtBuffer);
 
-          this.buffer = this.buffer.slice(closeIdx + closeTagLen);
+          if (actualThought.length > this.emittedThoughtLen) {
+            const chunk = actualThought.slice(this.emittedThoughtLen);
+            this.options?.onThoughtProgress?.(chunk, actualThought);
+            this.emittedThoughtLen = actualThought.length;
+          }
+          this.options?.onThoughtCompleted?.(actualThought);
+
+          this.fullThoughtBuffer = actualThought;
+          this.buffer = rescuedDialogue + this.buffer.slice(closeIdx + closeTagLen);
           this.inThinking = false;
           // 恢复思考块前暂存的有效文本
           if (this.preThinkContent.length > 0) {
@@ -508,8 +535,8 @@ export class TagAwareStreamParser {
         return [];
       }
 
-      // 检查末尾是否存在独白括号闭合后紧随的未切分台词： (独白...) 台词正文
-      const parenDialogueMatch = combined.match(/^([\s\S]*?[）\)])\s*([^（\(]+)$/);
+      // 检查末尾是否存在独白括号闭合后紧随的未切分台词： (独白...) 台词正文 (必须以括号开头)
+      const parenDialogueMatch = combined.match(/^([\(（][\s\S]*?[）\)])\s*([^\(（]+)$/);
       if (parenDialogueMatch && parenDialogueMatch[2].trim().length > 0) {
         const thoughtPart = parenDialogueMatch[1].trim();
         const dialoguePart = parenDialogueMatch[2].trim();
@@ -569,6 +596,26 @@ export class TagAwareStreamParser {
     }
 
     let processedText = text;
+
+    // 0. 优先解构语音条 [VOICE: ...] 或表情包 [STICKER: ...]，保证气泡类型纯净
+    if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(processedText)) {
+      const parts: string[] = [];
+      let rem = processedText;
+      let m: RegExpMatchArray | null;
+      while ((m = rem.match(SPLIT_PATTERN)) && m.index !== undefined) {
+        const before = rem.slice(0, m.index).trim();
+        if (before) parts.push(before);
+        if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(m[0])) {
+          parts.push(m[0].trim());
+        }
+        rem = rem.slice(m.index + m[0].length);
+      }
+      if (rem.trim()) parts.push(rem.trim());
+      if (parts.length > 0) {
+        this.emittedCount += parts.length;
+        return parts;
+      }
+    }
 
     // 1. 自动闭合未闭合的代码栅栏 (防止流中断或网络丢包导致 Markdown 代码块丢失闭合标记而惨遭逐行切碎)
     const fenceMatches = processedText.match(/```/g);

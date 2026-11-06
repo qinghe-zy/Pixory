@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Alert, AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { AppState, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../../database';
 import type { ImThreadSettings } from '../../repository/imSettingsRepository';
 import { SecureImage } from '../../../components/SecureImage';
+import { AppDialog } from '../../../components/AppDialog';
 import { ImPromptModal } from '../modals/ImPromptModal';
 import { ImCompanionMemoryModal } from '../modals/ImCompanionMemoryModal';
 import { ImCompanionPersonaModal } from '../modals/ImCompanionPersonaModal';
@@ -69,6 +70,13 @@ export function ImChatSettingsDrawer({
   const [hasNotificationPermission, setHasNotificationPermission] = useState<boolean>(true);
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
   const [telemetryExpanded, setTelemetryExpanded] = useState(false);
   const [telemetry, setTelemetry] = useState<ImUsageTelemetryRecord | null>(null);
   const [promptConfig, setPromptConfig] = useState<{
@@ -131,17 +139,29 @@ export function ImChatSettingsDrawer({
   };
 
   const handleConfirmClearAvatar = () => {
-    Alert.alert('恢复默认头像', '确定清除当前自定义头像并恢复默认头像吗？', [
-      { text: '取消', style: 'cancel' },
-      { text: '清除', style: 'destructive', onPress: onClearAvatar },
-    ]);
+    setConfirmDialog({
+      visible: true,
+      title: '恢复默认头像',
+      message: '确定清除当前自定义头像并恢复默认头像吗？',
+      danger: true,
+      onConfirm: () => {
+        setConfirmDialog(null);
+        onClearAvatar();
+      },
+    });
   };
 
   const handleConfirmClearBackground = () => {
-    Alert.alert('清除聊天背景', '确定清除当前聊天背景吗？', [
-      { text: '取消', style: 'cancel' },
-      { text: '清除', style: 'destructive', onPress: onClearBackground },
-    ]);
+    setConfirmDialog({
+      visible: true,
+      title: '清除聊天背景',
+      message: '确定清除当前聊天背景吗？',
+      danger: true,
+      onConfirm: () => {
+        setConfirmDialog(null);
+        onClearBackground();
+      },
+    });
   };
 
   const handleAdjustNudge = () => {
@@ -325,6 +345,7 @@ export function ImChatSettingsDrawer({
           <SettingSwitchRow icon="heart-outline" onToggle={(val) => void onUpdateSettings({ heartbeatEnabled: val })} title="主动发来消息" value={settings.heartbeatEnabled !== false} />
           <SettingSwitchRow icon="notifications-outline" onToggle={(val) => void onUpdateSettings({ proactiveEnabled: val })} title="后台推演生活状态" value={settings.proactiveEnabled !== false} />
           <SettingSwitchRow icon="bulb-outline" onToggle={(val) => void onUpdateSettings({ showThoughtBubble: val })} title="展示深度思考过程" value={settings.showThoughtBubble !== false} />
+          <SettingSwitchRow icon="mic-circle-outline" onToggle={(val) => void onUpdateSettings({ voiceReplyEnabled: val })} title="允许模型回复语音" value={settings.voiceReplyEnabled !== false} />
           <SettingRow
             icon="notifications-circle-outline"
             onPress={handleToggleNotificationPermission}
@@ -439,7 +460,21 @@ export function ImChatSettingsDrawer({
         onUpdateSettings={onUpdateSettings}
         settings={settings}
         space={space}
+        threadId={threadId}
+        roleCardId={roleCardId}
         visible={personaModalOpen}
+      />
+
+      <AppDialog
+        appearance="opaqueMonochrome"
+        visible={Boolean(confirmDialog?.visible)}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message}
+        danger={confirmDialog?.danger}
+        primaryLabel="确定清除"
+        secondaryLabel="取消"
+        onPrimary={() => confirmDialog?.onConfirm()}
+        onClose={() => setConfirmDialog(null)}
       />
     </View>
   );

@@ -7,6 +7,7 @@ import {
   type NativeSyntheticEvent,
   type ScrollView,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +40,8 @@ interface ScreenScaffoldProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   showHeader?: boolean;
   fullScreen?: boolean;
+  headerStyle?: StyleProp<ViewStyle>;
+  titleStyle?: StyleProp<TextStyle>;
 }
 
 export function ScreenScaffold({
@@ -64,6 +67,8 @@ export function ScreenScaffold({
   onScroll,
   showHeader = true,
   fullScreen = false,
+  headerStyle,
+  titleStyle,
 }: ScreenScaffoldProps) {
   const insets = useSafeAreaInsets();
 
@@ -80,14 +85,16 @@ export function ScreenScaffold({
       scrollable={scrollable}
     >
       {showHeader ? (
-          <Header
+        <Header
           compactBack={compactBack}
           decorativeTitle={decorativeTitle}
           onBack={onBack}
           rightSlot={rightAction}
+          style={headerStyle}
           subtitle={subtitle}
           title={title ?? ''}
           titleSlot={titleSlot}
+          titleStyle={titleStyle}
           titleVariant={titleVariant}
         />
       ) : fullScreen ? null : (

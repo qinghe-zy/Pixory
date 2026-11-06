@@ -16,6 +16,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +29,8 @@ import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.webkit.MimeTypeMap
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
@@ -68,6 +71,9 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   override fun getName(): String = "PixoryMediaModule"
 
   private val ioExecutor = Executors.newFixedThreadPool(2)
+  private var activeMediaRecorder: MediaRecorder? = null
+  private var activeRecordingFile: File? = null
+  private var activeRecordingStartTime: Long = 0L
   private var speechRecognitionPromise: Promise? = null
   private var mediaDeletePromise: Promise? = null
   private var directSpeechRecognizer: SpeechRecognizer? = null
@@ -283,9 +289,33 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     directSpeechOnDevice = false
   }
 
+  private fun cancelActiveMediaRecorderInternal() {
+    val recorder = activeMediaRecorder
+    val file = activeRecordingFile
+    activeMediaRecorder = null
+    activeRecordingFile = null
+    try {
+      recorder?.stop()
+    } catch (_: Exception) {}
+    try {
+      recorder?.release()
+    } catch (_: Exception) {}
+    try {
+      if (file != null && file.exists()) {
+        file.delete()
+      }
+    } catch (_: Exception) {}
+  }
+
   override fun onHostResume() = Unit
-  override fun onHostPause() = cancelDirectSpeechRecognizer(false)
-  override fun onHostDestroy() = cancelDirectSpeechRecognizer(false)
+  override fun onHostPause() = cancelDirectSpeechRecognizer(false).also {
+    cancelActiveMediaRecorderInternal()
+  }
+  override fun onHostDestroy() {
+    cancelDirectSpeechRecognizer(false)
+    cancelActiveMediaRecorderInternal()
+    releaseTextToSpeech()
+  }
 
   override fun onConfigurationChanged(newConfig: Configuration) = Unit
 
@@ -315,7 +345,293 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     reactContext.unregisterComponentCallbacks(this)
     ioExecutor.shutdownNow()
     if (latestInstance === this) latestInstance = null
+    cancelActiveMediaRecorderInternal()
+    releaseTextToSpeech()
     super.invalidate()
+  }
+
+  @Volatile
+  private var textToSpeech: TextToSpeech? = null
+  @Volatile
+  private var ttsInitialized = false
+  private val ttsLock = Any()
+
+  private fun ensureTextToSpeech(callback: (tts: TextToSpeech?, error: String?) -> Unit) {
+    synchronized(ttsLock) {
+      val existing = textToSpeech
+      if (existing != null && ttsInitialized) {
+        callback(existing, null)
+        return
+      }
+      try {
+        var localTts: TextToSpeech? = null
+        localTts = TextToSpeech(reactContext) { status ->
+          synchronized(ttsLock) {
+            if (status == TextToSpeech.SUCCESS) {
+              ttsInitialized = true
+              textToSpeech = localTts
+              callback(localTts, null)
+            } else {
+              ttsInitialized = false
+              textToSpeech = null
+              callback(null, "TTS_INIT_FAILED")
+            }
+          }
+        }
+        textToSpeech = localTts
+      } catch (e: Exception) {
+        textToSpeech = null
+        ttsInitialized = false
+        callback(null, e.message ?: "TTS_CREATION_FAILED")
+      }
+    }
+  }
+
+  private fun releaseTextToSpeech() {
+    synchronized(ttsLock) {
+      try {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+      } catch (_: Exception) {}
+      textToSpeech = null
+      ttsInitialized = false
+    }
+  }
+
+  @ReactMethod
+  fun getTtsCapabilities(promise: Promise) {
+    ensureTextToSpeech { tts, error ->
+      if (tts == null) {
+        promise.resolve(Arguments.createMap().apply {
+          putBoolean("available", false)
+          putBoolean("languageAvailable", false)
+          putInt("voicesCount", 0)
+          putString("error", error ?: "UNKNOWN")
+        })
+        return@ensureTextToSpeech
+      }
+      val langStatus = tts.isLanguageAvailable(Locale.CHINESE)
+      val langOk = langStatus == TextToSpeech.LANG_AVAILABLE ||
+        langStatus == TextToSpeech.LANG_COUNTRY_AVAILABLE ||
+        langStatus == TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+      val voicesCount = try {
+        tts.voices?.size ?: 0
+      } catch (_: Exception) {
+        0
+      }
+      val defaultEngine = tts.defaultEngine ?: ""
+      promise.resolve(Arguments.createMap().apply {
+        putBoolean("available", true)
+        putBoolean("languageAvailable", langOk)
+        putInt("voicesCount", voicesCount)
+        putString("enginePackage", defaultEngine)
+      })
+    }
+  }
+
+  @ReactMethod
+  fun synthesizeTtsToFile(
+    text: String,
+    rate: Double,
+    pitch: Double,
+    targetFilePath: String,
+    promise: Promise
+  ) {
+    if (text.isBlank()) {
+      promise.reject("TTS_EMPTY_TEXT", "合成文本不能为空。")
+      return
+    }
+    ensureTextToSpeech { tts, error ->
+      if (tts == null) {
+        promise.reject("TTS_UNAVAILABLE", error ?: "本地语音引擎不可用。")
+        return@ensureTextToSpeech
+      }
+      try {
+        val cleanPath = when {
+          targetFilePath.startsWith("file:///") -> targetFilePath.substring(7)
+          targetFilePath.startsWith("file://") -> "/" + targetFilePath.substring(7).trimStart('/')
+          targetFilePath.startsWith("file:") -> "/" + targetFilePath.substring(5).trimStart('/')
+          else -> targetFilePath
+        }
+        val file = File(cleanPath)
+        file.parentFile?.mkdirs()
+        if (file.exists()) {
+          file.delete()
+        }
+
+        val langResult = tts.setLanguage(Locale.CHINESE)
+        if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+          val simResult = tts.setLanguage(Locale.SIMPLIFIED_CHINESE)
+          if (simResult == TextToSpeech.LANG_MISSING_DATA || simResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts.setLanguage(Locale.CHINA)
+          }
+        }
+        tts.setSpeechRate(rate.toFloat().coerceIn(0.5f, 2.5f))
+        val safePitch = (1.0f + (pitch.toFloat() / 100f)).coerceIn(0.5f, 2.0f)
+        tts.setPitch(safePitch)
+
+        val utteranceId = "pixory_tts_${System.currentTimeMillis()}_${file.name}"
+        val params = Bundle().apply {
+          putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+        }
+
+        var completed = false
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+          override fun onStart(id: String?) {}
+
+          override fun onDone(id: String?) {
+            if (id == utteranceId && !completed) {
+              completed = true
+              val result = Arguments.createMap().apply {
+                putString("filePath", targetFilePath)
+                putDouble("byteSize", file.length().toDouble())
+              }
+              promise.resolve(result)
+            }
+          }
+
+          @Deprecated("Deprecated in Java")
+          override fun onError(id: String?) {
+            if (id == utteranceId && !completed) {
+              completed = true
+              promise.reject("TTS_SYNTHESIS_FAILED", "本地语音合成失败。")
+            }
+          }
+
+          override fun onError(id: String?, errorCode: Int) {
+            if (id == utteranceId && !completed) {
+              completed = true
+              promise.reject("TTS_SYNTHESIS_FAILED", "本地语音合成错误: $errorCode")
+            }
+          }
+        })
+
+        val result = tts.synthesizeToFile(text, params, file, utteranceId)
+        if (result != TextToSpeech.SUCCESS) {
+          promise.reject("TTS_CALL_FAILED", "启动语音合成失败: $result")
+        }
+      } catch (e: Exception) {
+        promise.reject("TTS_EXCEPTION", e.message ?: "语音合成抛出异常。")
+      }
+    }
+  }
+
+  @ReactMethod
+  fun stopTtsPlayback(promise: Promise) {
+    try {
+      textToSpeech?.stop()
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.resolve(false)
+    }
+  }
+
+  @ReactMethod
+  fun startAudioRecording(targetFilePath: String, promise: Promise) {
+    if (ContextCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      promise.reject("RECORD_PERMISSION_DENIED", "需要麦克风权限才能录制语音。")
+      return
+    }
+    // 防御性重置：若已有未正常停止的残留录音任务，先行自愈释放
+    if (activeMediaRecorder != null) {
+      cancelActiveMediaRecorderInternal()
+    }
+    try {
+      val cleanPath = when {
+        targetFilePath.startsWith("file:///") -> targetFilePath.substring(7)
+        targetFilePath.startsWith("file://") -> "/" + targetFilePath.substring(7).trimStart('/')
+        targetFilePath.startsWith("file:") -> "/" + targetFilePath.substring(5).trimStart('/')
+        else -> targetFilePath
+      }
+      val file = File(cleanPath)
+      file.parentFile?.mkdirs()
+      if (file.exists()) {
+        file.delete()
+      }
+      val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        MediaRecorder(reactContext)
+      } else {
+        @Suppress("DEPRECATION")
+        MediaRecorder()
+      }
+      recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+      recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+      recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+      recorder.setAudioEncodingBitRate(128000)
+      recorder.setAudioSamplingRate(44100)
+      recorder.setOutputFile(file.absolutePath)
+      recorder.prepare()
+      recorder.start()
+
+      activeMediaRecorder = recorder
+      activeRecordingFile = file
+      activeRecordingStartTime = System.currentTimeMillis()
+
+      val result = Arguments.createMap().apply {
+        putString("filePath", file.absolutePath)
+      }
+      promise.resolve(result)
+    } catch (e: Exception) {
+      cancelActiveMediaRecorderInternal()
+      promise.reject("RECORD_START_FAILED", e.message ?: "录音启动失败。")
+    }
+  }
+
+  @ReactMethod
+  fun stopAudioRecording(promise: Promise) {
+    val recorder = activeMediaRecorder
+    val file = activeRecordingFile
+    val startTime = activeRecordingStartTime
+    if (recorder == null || file == null) {
+      promise.reject("RECORD_NOT_ACTIVE", "当前没有正在进行的录音。")
+      return
+    }
+    try {
+      recorder.stop()
+      recorder.release()
+      activeMediaRecorder = null
+      activeRecordingFile = null
+      val durationMs = (System.currentTimeMillis() - startTime).coerceAtLeast(0L)
+      val result = Arguments.createMap().apply {
+        putString("filePath", file.absolutePath)
+        putDouble("durationMs", durationMs.toDouble())
+        putDouble("fileSize", file.length().toDouble())
+      }
+      promise.resolve(result)
+    } catch (e: Exception) {
+      try {
+        recorder.release()
+      } catch (_: Exception) {}
+      activeMediaRecorder = null
+      activeRecordingFile = null
+      try {
+        if (file.exists()) {
+          file.delete()
+        }
+      } catch (_: Exception) {}
+      promise.reject("RECORD_STOP_FAILED", e.message ?: "录音停止失败。")
+    }
+  }
+
+  @ReactMethod
+  fun cancelAudioRecording(promise: Promise) {
+    cancelActiveMediaRecorderInternal()
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun getAudioRecordingAmplitude(promise: Promise) {
+    val recorder = activeMediaRecorder
+    if (recorder == null) {
+      promise.resolve(0)
+      return
+    }
+    try {
+      val amp = recorder.maxAmplitude
+      promise.resolve(amp)
+    } catch (_: Exception) {
+      promise.resolve(0)
+    }
   }
 
   @ReactMethod

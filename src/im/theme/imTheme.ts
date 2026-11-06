@@ -303,6 +303,7 @@ export function buildImThemeFromPreferences(
     avatarRadius?: number;
     bubbleRadius?: number;
     userBubbleColor?: string;
+    assistantBubbleColor?: string;
     bubbleSkinPreset?: string;
     hasWallpaper?: boolean;
   },
@@ -316,6 +317,16 @@ export function buildImThemeFromPreferences(
   let rightBg = baseTheme.colors.bubbleRightBackground;
   let rightText = baseTheme.colors.bubbleRightText;
   let rightBorder = baseTheme.colors.bubbleRightBorder;
+
+  let leftBg = baseTheme.colors.bubbleLeftBackground;
+  let leftText = baseTheme.colors.bubbleLeftText;
+  let leftBorder = baseTheme.colors.bubbleLeftBorder;
+
+  if (appearance?.assistantBubbleColor && appearance.assistantBubbleColor !== 'transparent') {
+    leftBg = appearance.assistantBubbleColor;
+    leftText = calculateContrastingTextColor(appearance.assistantBubbleColor);
+    leftBorder = 'transparent';
+  }
 
   if (skin) {
     rightBg = skin.bubbleRightBackground;
@@ -335,10 +346,15 @@ export function buildImThemeFromPreferences(
   const systemNoticeBackground = hasWallpaper ? 'rgba(0, 0, 0, 0.32)' : baseTheme.colors.systemNoticeBackground;
   const systemNoticeText = hasWallpaper ? '#FFFFFF' : baseTheme.colors.systemNoticeText;
 
+  const effectiveBubbleRadius = appearance?.bubbleRadius ?? baseTheme.radii.bubbleRadius;
+
   return {
     ...baseTheme,
     colors: {
       ...baseTheme.colors,
+      bubbleLeftBackground: leftBg,
+      bubbleLeftText: leftText,
+      bubbleLeftBorder: leftBorder,
       bubbleRightBackground: rightBg,
       bubbleRightText: rightText,
       bubbleRightBorder: rightBorder,
@@ -354,12 +370,16 @@ export function buildImThemeFromPreferences(
     radii: {
       ...baseTheme.radii,
       avatarRadius: appearance?.avatarRadius ?? baseTheme.radii.avatarRadius,
-      bubbleRadius: appearance?.bubbleRadius ?? baseTheme.radii.bubbleRadius,
+      bubbleRadius: effectiveBubbleRadius,
     },
     metrics: {
       ...baseTheme.metrics,
       bubbleSpacingSameSpeaker: Math.max(14, Math.round(pSpacing * 1.4)),
       bubbleSpacingDiffSpeaker: Math.max(24, Math.round(pSpacing * 2.4)),
+    },
+    flags: {
+      ...baseTheme.flags,
+      showBeak: (baseTheme.flags.showBeak ?? true) && effectiveBubbleRadius <= 12,
     },
   };
 }

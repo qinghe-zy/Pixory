@@ -73,6 +73,7 @@ export interface ImThreadSettings {
   dndEndTime?: string | null;
   personalization?: ImCompanionPersonalization | null;
   showThoughtBubble?: boolean;
+  voiceReplyEnabled?: boolean;
 }
 
 export async function getImThreadSettings(
@@ -101,6 +102,7 @@ export async function getImThreadSettings(
 
   let personalization: ImCompanionPersonalization | null = null;
   let showThoughtBubble = true;
+  let voiceReplyEnabled = true;
   if (row?.im_settings_json) {
     try {
       const parsed = JSON.parse(row.im_settings_json);
@@ -109,6 +111,9 @@ export async function getImThreadSettings(
       }
       if (parsed && typeof parsed.showThoughtBubble === 'boolean') {
         showThoughtBubble = parsed.showThoughtBubble;
+      }
+      if (parsed && typeof parsed.voiceReplyEnabled === 'boolean') {
+        voiceReplyEnabled = parsed.voiceReplyEnabled;
       }
     } catch {}
   }
@@ -126,6 +131,7 @@ export async function getImThreadSettings(
     dndEndTime: row?.dnd_end_time ?? null,
     personalization,
     showThoughtBubble,
+    voiceReplyEnabled,
   };
 }
 
@@ -178,7 +184,11 @@ export async function updateImThreadSettings(
     fields.push('dnd_end_time = ?');
     values.push(settings.dndEndTime);
   }
-  if (settings.personalization !== undefined || settings.showThoughtBubble !== undefined) {
+  if (
+    settings.personalization !== undefined ||
+    settings.showThoughtBubble !== undefined ||
+    settings.voiceReplyEnabled !== undefined
+  ) {
     const existingRow = await db.getFirstAsync<{ im_settings_json: string | null }>(
       'SELECT im_settings_json FROM ai_threads WHERE id = ? LIMIT 1;',
       [threadId]
@@ -195,6 +205,9 @@ export async function updateImThreadSettings(
     if (settings.showThoughtBubble !== undefined) {
       parsedSettings.showThoughtBubble = settings.showThoughtBubble;
     }
+    if (settings.voiceReplyEnabled !== undefined) {
+      parsedSettings.voiceReplyEnabled = settings.voiceReplyEnabled;
+    }
     fields.push('im_settings_json = ?');
     values.push(JSON.stringify(parsedSettings));
   }
@@ -203,6 +216,38 @@ export async function updateImThreadSettings(
     values.push(threadId);
     await db.runAsync(`UPDATE ai_threads SET ${fields.join(', ')} WHERE id = ?;`, values);
   }
+}
+
+/**
+ * 批量更新当前空间下所有伴聊会话的模型语音回复开关
+ * 聊天设置中「一键开启/关闭所有会话语音回复」核心复用此接口
+ */
+export async function setVoiceReplyEnabledForAll(
+  space: PixorySpace,
+  enabled: boolean
+): Promise<number> {
+  const db = await initDatabase(space);
+  const rows = await db.getAllAsync<{ id: string; im_settings_json: string | null }>(
+    'SELECT id, im_settings_json FROM ai_threads;'
+  );
+  let updatedCount = 0;
+  await db.withTransactionAsync(async () => {
+    for (const row of rows) {
+      let parsedSettings: Record<string, any> = {};
+      if (row.im_settings_json) {
+        try {
+          parsedSettings = JSON.parse(row.im_settings_json) || {};
+        } catch {}
+      }
+      parsedSettings.voiceReplyEnabled = enabled;
+      await db.runAsync(
+        'UPDATE ai_threads SET im_settings_json = ? WHERE id = ?;',
+        [JSON.stringify(parsedSettings), row.id]
+      );
+      updatedCount++;
+    }
+  });
+  return updatedCount;
 }
 
 export async function updateRoleAvatar(

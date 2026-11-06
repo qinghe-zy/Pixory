@@ -37,9 +37,8 @@ export function extractAndValidateSql(rawOutput: string): SqlExtractionResult {
   }
 
   // 5. 剥离字符串常量（'...'）与双引号标识符（"..."）用于语法纯度与危险指令校验
-  const strippedForValidation = cleaned
-    .replace(/'(?:''|[^'])*'/g, "''")
-    .replace(/"(?:""|[^"])*"/g, '""');
+  const strippedLiterals = cleaned.replace(/'(?:''|[^'])*'/g, "''");
+  const strippedForValidation = strippedLiterals.replace(/"(?:""|[^"])*"/g, '""');
 
   // 6. 阻断多语句注入（除末尾已剥离的分号外，语句内部不应包含未被引号包裹的分号）
   if (strippedForValidation.includes(';')) {
@@ -51,7 +50,13 @@ export function extractAndValidateSql(rawOutput: string): SqlExtractionResult {
     return { safe: false, sql: null, reason: 'contains_forbidden_keywords' };
   }
 
-  // 8. 长度保护
+  // 8. 必须显式引用沙盒文档表 _doc_table（支持 "_doc_table"、`_doc_table`、[_doc_table] 或 _doc_table）
+  // 检查剥离了单引号字面量后的 SQL，防止通过 ' _doc_table ' 伪造绕过
+  if (!/\b_doc_table\b/i.test(strippedLiterals)) {
+    return { safe: false, sql: null, reason: 'must_reference_doc_table' };
+  }
+
+  // 9. 长度保护
   if (cleaned.length > 2500) {
     return { safe: false, sql: null, reason: 'sql_too_long' };
   }

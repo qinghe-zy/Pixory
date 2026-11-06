@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -55,15 +55,32 @@ export function BranchTreeCanvas({
   snapshotVisible,
 }: BranchTreeCanvasProps) {
   const layout = useMemo(() => layoutBranchTreeGraph(graph), [graph]);
-  const [viewport, setViewport] = useState<BranchTreeViewportSize>({ height: 0, width: 0 });
-  const [transformState, setTransformState] = useState<BranchTreeViewportTransform>({
-    scale: 1,
-    translateX: 0,
-    translateY: 0,
+  const initialDimensions = useMemo(() => Dimensions.get('window'), []);
+  const headCenterPoint = useMemo(
+    () =>
+      layout.headNode
+        ? {
+            x: layout.headNode.x + BRANCH_TREE_NODE_WIDTH / 2,
+            y: layout.headNode.y + BRANCH_TREE_NODE_HEIGHT / 2,
+          }
+        : null,
+    [layout.headNode]
+  );
+  const initialTransform = useMemo(() => {
+    if (!headCenterPoint || initialDimensions.width <= 0 || initialDimensions.height <= 0) {
+      return { scale: 1, translateX: 0, translateY: 0 };
+    }
+    return buildRecenterTransform(headCenterPoint, initialDimensions, 0.8);
+  }, [headCenterPoint, initialDimensions]);
+
+  const [viewport, setViewport] = useState<BranchTreeViewportSize>({
+    height: initialDimensions.height,
+    width: initialDimensions.width,
   });
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const scale = useSharedValue(1);
+  const [transformState, setTransformState] = useState<BranchTreeViewportTransform>(initialTransform);
+  const translateX = useSharedValue(initialTransform.translateX);
+  const translateY = useSharedValue(initialTransform.translateY);
+  const scale = useSharedValue(initialTransform.scale);
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
   const pinchStartScale = useSharedValue(1);
@@ -119,20 +136,18 @@ export function BranchTreeCanvas({
 
   const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
 
-  const headCenterPoint = layout.headNode
-    ? {
-        x: layout.headNode.x + BRANCH_TREE_NODE_WIDTH / 2,
-        y: layout.headNode.y + BRANCH_TREE_NODE_HEIGHT / 2,
-      }
-    : null;
   const [headOutside, setHeadOutside] = useState(false);
   const didInitialFocusRef = useRef(false);
 
   function handleLayout(event: LayoutChangeEvent) {
-    setViewport({
-      height: event.nativeEvent.layout.height,
-      width: event.nativeEvent.layout.width,
-    });
+    const nextWidth = event.nativeEvent.layout.width;
+    const nextHeight = event.nativeEvent.layout.height;
+    if (Math.abs(nextHeight - viewport.height) > 10 || Math.abs(nextWidth - viewport.width) > 10) {
+      setViewport({
+        height: nextHeight,
+        width: nextWidth,
+      });
+    }
   }
 
   function recenterHead() {
@@ -144,6 +159,18 @@ export function BranchTreeCanvas({
     translateX.value = withTiming(next.translateX);
     translateY.value = withTiming(next.translateY);
     setTransformState(next);
+  }
+
+  function zoomIn() {
+    const nextScale = Math.min(BRANCH_TREE_MAX_SCALE, scale.value * 1.25);
+    scale.value = withTiming(nextScale);
+    syncTransform(translateX.value, translateY.value, nextScale);
+  }
+
+  function zoomOut() {
+    const nextScale = Math.max(BRANCH_TREE_MIN_SCALE, scale.value * 0.8);
+    scale.value = withTiming(nextScale);
+    syncTransform(translateX.value, translateY.value, nextScale);
   }
 
   useEffect(() => {
@@ -228,6 +255,43 @@ export function BranchTreeCanvas({
           <Text style={styles.recenterText}>最新节点已偏离 · 一键回正</Text>
         </Pressable>
       ) : null}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.floatingToolbar,
+          { bottom: snapshotVisible ? 310 : 32 },
+        ]}
+      >
+        <Pressable
+          accessibilityLabel="放大视口"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={zoomIn}
+          style={({ pressed }) => [styles.toolButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.toolButtonText}>+</Text>
+        </Pressable>
+        <View style={styles.toolDivider} />
+        <Pressable
+          accessibilityLabel="缩小视口"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={zoomOut}
+          style={({ pressed }) => [styles.toolButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.toolButtonText}>−</Text>
+        </Pressable>
+        <View style={styles.toolDivider} />
+        <Pressable
+          accessibilityLabel="一键回正至最新HEAD"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={recenterHead}
+          style={({ pressed }) => [styles.toolButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.toolButtonIconText}>⌖</Text>
+        </Pressable>
+      </View>
       {snapshotVisible ? (
         <BranchTreeDrawer
           loading={snapshotLoading}
@@ -261,6 +325,44 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: 0,
+  },
+  floatingToolbar: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    elevation: 3,
+    flexDirection: 'row',
+    position: 'absolute',
+    right: spacing[4],
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    zIndex: 10,
+  },
+  toolButton: {
+    alignItems: 'center',
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  toolButtonIconText: {
+    color: '#D07C60',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  toolButtonText: {
+    color: aiLightColors.ink,
+    fontSize: 18,
+    fontWeight: '400',
+    lineHeight: 20,
+  },
+  toolDivider: {
+    backgroundColor: aiLightColors.hairline,
+    height: 18,
+    width: StyleSheet.hairlineWidth,
   },
   pressed: {
     opacity: 0.76,

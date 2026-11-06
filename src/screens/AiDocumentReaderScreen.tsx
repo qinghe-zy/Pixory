@@ -80,7 +80,11 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
           </View>
         ) : errorMessage ? (
           <View style={styles.stateBlock}>
+            <Ionicons color={aiLightColors.muted} name="alert-circle-outline" size={32} />
             <Text style={styles.errorText}>{errorMessage}</Text>
+            <Pressable accessibilityLabel="返回上一页" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.stateButton, pressed && { opacity: 0.75 }]}>
+              <Text style={styles.stateButtonText}>返回上一页</Text>
+            </Pressable>
           </View>
         ) : reader ? (
           webViewMode ? reader : (
@@ -90,7 +94,11 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
           )
         ) : (
           <View style={styles.stateBlock}>
+            <Ionicons color={aiLightColors.muted} name="document-text-outline" size={32} />
             <Text style={styles.stateText}>没有可打开的文档</Text>
+            <Pressable accessibilityLabel="返回上一页" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.stateButton, pressed && { opacity: 0.75 }]}>
+              <Text style={styles.stateButtonText}>返回上一页</Text>
+            </Pressable>
           </View>
         )}
       </View>
@@ -176,5 +184,19 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     color: aiLightColors.primaryActive,
     textAlign: 'center',
+  },
+  stateButton: {
+    backgroundColor: aiLightColors.userBubble,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+  },
+  stateButtonText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '600',
   },
 });

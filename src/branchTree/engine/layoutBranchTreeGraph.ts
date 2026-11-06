@@ -27,6 +27,19 @@ function buildBezierPath(from: BranchTreeLayoutNode, to: BranchTreeLayoutNode): 
   return `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
 }
 
+function buildBezierBounds(from: BranchTreeLayoutNode, to: BranchTreeLayoutNode) {
+  const startX = from.x + BRANCH_TREE_NODE_WIDTH / 2;
+  const startY = from.y + BRANCH_TREE_NODE_HEIGHT;
+  const endX = to.x + BRANCH_TREE_NODE_WIDTH / 2;
+  const endY = to.y;
+  return {
+    bottom: Math.max(startY, endY),
+    left: Math.min(startX, endX),
+    right: Math.max(startX, endX),
+    top: Math.min(startY, endY),
+  };
+}
+
 export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout {
   const depths = new Map<string, number>();
   const lanes = new Map<string, number>();
@@ -163,6 +176,7 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
     }
     acc.push({
       ...edge,
+      bounds: buildBezierBounds(from, to),
       path: buildBezierPath(from, to),
     });
     return acc;

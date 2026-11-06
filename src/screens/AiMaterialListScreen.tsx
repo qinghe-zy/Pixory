@@ -257,6 +257,28 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
     </View>
   ) : null;
 
+  const renderEmptyComponent = () => (
+    <View style={styles.emptyState}>
+      <Ionicons color={aiLightColors.muted} name="document-text-outline" size={44} style={{ marginBottom: spacing[2] }} />
+      <Text style={styles.emptyTitle}>还没有参考资料</Text>
+      <Text style={styles.emptyDescription}>
+        {threadId
+          ? '导入文档、长文本或素材后，AI 即可在回答时引用相关知识背景。'
+          : '各个会话沉淀的知识与参考资料会统一聚合在此处展示。'}
+      </Text>
+      {threadId && onImportMaterial ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setSourceSheetVisible(true)}
+          style={({ pressed }) => [styles.emptyActionButton, pressed && styles.pressed]}
+        >
+          <Ionicons color="#ffffff" name="add" size={16} />
+          <Text style={styles.emptyActionText}>添加资料</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
   return (
     <AiLightScaffold
       bodyStyle={styles.body}
@@ -276,7 +298,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
             contentContainerStyle={styles.list}
             data={conversationGroups}
             keyExtractor={(group) => `${group.ownerType}:${group.ownerId}`}
-            ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.title}>还没有资料</Text></View>}
+            ListEmptyComponent={renderEmptyComponent()}
             ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
             onEndReached={() => { void loadMore(); }}
             onEndReachedThreshold={0.6}
@@ -319,7 +341,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
             contentContainerStyle={styles.list}
             data={items}
             keyExtractor={(item) => item.id}
-            ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.title}>还没有材料</Text></View>}
+            ListEmptyComponent={renderEmptyComponent()}
             ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
             onEndReached={() => { void loadMore(); }}
             onEndReachedThreshold={0.6}
@@ -480,7 +502,36 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    padding: spacing[4],
+    justifyContent: 'center',
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[4],
+    gap: spacing[2],
+  },
+  emptyTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  emptyDescription: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
+  },
+  emptyActionButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.primary,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+  },
+  emptyActionText: {
+    ...typography.textStyles.bodyStrong,
+    color: '#ffffff',
+    fontSize: 13,
   },
   selectionFooter: {
     backgroundColor: aiLightColors.surface,

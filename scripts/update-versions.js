@@ -9,7 +9,7 @@ const compare = (a, b) => {
     const delta = (left[i] || 0) - (right[i] || 0);
     if (delta) return Math.sign(delta);
   }
-  return 0;
+  return left.length - right.length;
 };
 
 // Validate every file and anchor before writing any of the planned changes.

@@ -1272,18 +1272,7 @@ export const aiThreadRepository = {
         AND descendant.status IN ('completed', 'stopped', 'failed')
        GROUP BY
          branch_versions.branchRootMessageId,
-         branch_versions.branchVersionIndex,
-         branch_versions.rootThreadId,
-         branch_versions.rootRole,
-         branch_versions.rootContent,
-         branch_versions.rootCreatedAt,
-         branch_versions.rootUpdatedAt,
-         branch_versions.versionContent,
-         branch_versions.versionCreatedAt,
-         branch_versions.versionUpdatedAt,
-         branch_versions.versionTotal,
-         branch_versions.parentBranchRootMessageId,
-         branch_versions.parentBranchVersionIndex
+         branch_versions.branchVersionIndex
        ORDER BY branch_versions.rootCreatedAt ASC, branch_versions.branchRootMessageId ASC, branch_versions.branchVersionIndex ASC`,
       threadId,
       threadId,

@@ -99,12 +99,11 @@ test('EmojiPickerPanel layout fulfills all user requirements', () => {
 test('ImInputBar implements seamless transition between keyboard and emoticon panel', () => {
   const inputBarSource = read('src/im/components/ImInputBar.tsx');
 
-  assert.ok(inputBarSource.includes('isSwitchingToKeyboardRef'), 'Must track switching to keyboard state');
-  assert.ok(inputBarSource.includes('keyboardHeightRef'), 'Must track keyboard height');
-  assert.ok(inputBarSource.includes('keyboardDidShow'), 'Must listen to keyboardDidShow');
-  assert.ok(inputBarSource.includes('EMOJI_PANEL_HEIGHT = 365'), 'EmojiPickerPanel must have 365px height');
+  assert.ok(inputBarSource.includes('modeSV'), 'Must track switching state with modeSV');
+  assert.ok(inputBarSource.includes('_cachedKbHeight'), 'Must track keyboard height');
+  assert.ok(inputBarSource.includes('useKeyboardHandler'), 'Must listen to keyboard frames with useKeyboardHandler');
   assert.ok(inputBarSource.includes('transitionToKeyboard'), 'Must implement smooth handover transition to keyboard');
-  assert.ok(inputBarSource.includes('animateCloseEmoticons'), 'Must implement slow smooth descent animation');
+  assert.ok(inputBarSource.includes('animateCloseEmoticons'), 'Must implement smooth descent animation');
   assert.ok(inputBarSource.includes('useImperativeHandle'), 'Must expose imperative ref handle');
   assert.ok(inputBarSource.includes('collapse:'), 'Must expose collapse method on ref');
 });

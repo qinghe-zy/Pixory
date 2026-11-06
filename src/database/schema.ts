@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 72;
+export const DATABASE_VERSION = 73;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -562,6 +562,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_messages_visible_at ON ai_messages(threadId, v
 CREATE INDEX IF NOT EXISTS idx_ai_messages_burst_group ON ai_messages(threadId, burst_group_id);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_branch ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
+CREATE INDEX IF NOT EXISTS idx_ai_message_versions_thread ON ai_message_versions(threadId, originalMessageId);
 CREATE INDEX IF NOT EXISTS idx_ai_message_attachments_message ON ai_message_attachments(messageId, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_knowledge_space_updated_at ON ai_knowledge_bases(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status ON ai_documents(space, ownerType, ownerId, parserStatus);
@@ -606,6 +607,7 @@ CREATE TABLE IF NOT EXISTS ai_message_versions (
   FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
+CREATE INDEX IF NOT EXISTS idx_ai_message_versions_thread ON ai_message_versions(threadId, originalMessageId);
 `;
 
 export const MIGRATION_STATEMENTS_V21 = `
@@ -2504,4 +2506,46 @@ CREATE TABLE IF NOT EXISTS custom_sticker_packs (
 CREATE INDEX IF NOT EXISTS idx_custom_stickers_space ON custom_stickers(space);
 CREATE INDEX IF NOT EXISTS idx_custom_stickers_bucket ON custom_stickers(emotionBucket);
 CREATE INDEX IF NOT EXISTS idx_custom_stickers_pack ON custom_stickers(packId);
+`;
+
+export const MIGRATION_STATEMENTS_V73 = `
+CREATE TABLE IF NOT EXISTS voice_presets (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  engine_kind TEXT NOT NULL,
+  base_url TEXT,
+  model TEXT,
+  voice_id TEXT NOT NULL,
+  rate REAL NOT NULL DEFAULT 1.0,
+  pitch REAL NOT NULL DEFAULT 0.0,
+  style TEXT,
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS voice_bindings (
+  scope_type TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  preset_id TEXT,
+  rate_override REAL,
+  pitch_override REAL,
+  voice_bubble_enabled INTEGER,
+  auto_read_enabled INTEGER,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id)
+);
+
+CREATE TABLE IF NOT EXISTS voice_audio_cache (
+  cache_key TEXT PRIMARY KEY NOT NULL,
+  file_path TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  byte_size INTEGER NOT NULL,
+  engine_kind TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_cache_last_used ON voice_audio_cache(last_used_at);
+CREATE INDEX IF NOT EXISTS idx_voice_bindings_preset ON voice_bindings(preset_id);
 `;

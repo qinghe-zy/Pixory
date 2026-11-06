@@ -430,8 +430,35 @@ export function AiHistoryScreen({
           keyExtractor={(thread) => thread.id}
           ListEmptyComponent={(
             <View style={styles.emptyState}>
-              <Text style={styles.title}>{searchText.trim() ? '没有找到匹配会话' : '没有历史会话'}</Text>
-              <Text style={styles.meta}>{searchText.trim() ? '换个关键词试试。' : '开始聊天后，最近会话会出现在这里。'}</Text>
+              <Ionicons
+                color={aiLightColors.muted}
+                name={filter === 'archived' ? 'trash-outline' : searchText.trim() ? 'search-outline' : 'chatbubbles-outline'}
+                size={40}
+                style={{ marginBottom: spacing[2] }}
+              />
+              <Text style={styles.title}>
+                {filter === 'archived'
+                  ? '回收站是空的'
+                  : searchText.trim()
+                  ? '没有找到匹配会话'
+                  : '没有历史会话'}
+              </Text>
+              <Text style={styles.meta}>
+                {filter === 'archived'
+                  ? '移入回收站的聊天记录会展示在这里。'
+                  : searchText.trim()
+                  ? '换个关键词试试。'
+                  : '开始聊天后，最近会话会出现在这里。'}
+              </Text>
+              {searchText.trim() ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setSearchText('')}
+                  style={({ pressed }) => [styles.emptyActionButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.emptyActionText}>清空搜索</Text>
+                </Pressable>
+              ) : null}
             </View>
           )}
           ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
@@ -876,7 +903,24 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    padding: spacing[4],
+    justifyContent: 'center',
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[4],
+  },
+  emptyActionButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[1.5],
+  },
+  emptyActionText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '600',
   },
   selectionFooter: {
     gap: rhythm.cardContentGap,

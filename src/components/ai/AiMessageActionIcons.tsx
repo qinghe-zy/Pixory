@@ -1,4 +1,6 @@
-import Svg, { Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, View } from 'react-native';
+import Svg, { Circle, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 
 export interface ActionIconProps {
   color?: string;
@@ -222,6 +224,186 @@ export function DeleteIcon({ color = '#EF4444', size = 18 }: ActionIconProps) {
         stroke={color}
         strokeLinecap="round"
         strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </Svg>
+  );
+}
+
+/** 原生驱动匀速持续旋转加载圈 (60fps 无缝旋转) */
+function ContinuousSpinIcon({ size = 16, color = '#2563EB' }: { size?: number; color?: string }) {
+  const spinAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 850,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spinAnim]);
+
+  const spin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        alignItems: 'center',
+        justifyContent: 'center',
+        transform: [{ rotate: spin }],
+      }}
+    >
+      <Svg fill="none" height={size} viewBox="0 0 24 24" width={size}>
+        <Circle
+          cx="12"
+          cy="12"
+          r="9"
+          stroke={color}
+          strokeOpacity="0.22"
+          strokeWidth="2.2"
+        />
+        <Path
+          d="M12 3a9 9 0 0 1 9 9"
+          stroke={color}
+          strokeLinecap="round"
+          strokeWidth="2.4"
+        />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** 播放中动态声波条动效 (4 柱不同频率、振幅的原生跳动声波均衡器) */
+function SoundWaveBarsIcon({ size = 16, color = '#2563EB' }: { size?: number; color?: string }) {
+  const bar1 = useRef(new Animated.Value(0.35)).current;
+  const bar2 = useRef(new Animated.Value(0.9)).current;
+  const bar3 = useRef(new Animated.Value(0.55)).current;
+  const bar4 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const createLoop = (anim: Animated.Value, minVal: number, maxVal: number, duration: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue: maxVal,
+            duration,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: minVal,
+            duration,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+
+    const l1 = createLoop(bar1, 0.25, 1.0, 320);
+    const l2 = createLoop(bar2, 0.35, 1.0, 240);
+    const l3 = createLoop(bar3, 0.2, 0.95, 380);
+    const l4 = createLoop(bar4, 0.3, 0.85, 280);
+
+    l1.start();
+    l2.start();
+    l3.start();
+    l4.start();
+
+    return () => {
+      l1.stop();
+      l2.stop();
+      l3.stop();
+      l4.stop();
+    };
+  }, [bar1, bar2, bar3, bar4]);
+
+  const barHeight = Math.max(10, size * 0.85);
+  const barWidth = Math.max(1.8, size * 0.12);
+  const barRadius = barWidth / 2;
+  const barGap = Math.max(1.5, size * 0.1);
+
+  const bars = [
+    { anim: bar1, key: 'b1' },
+    { anim: bar2, key: 'b2' },
+    { anim: bar3, key: 'b3' },
+    { anim: bar4, key: 'b4' },
+  ];
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {bars.map(({ anim, key }, index) => (
+        <Animated.View
+          key={key}
+          style={{
+            width: barWidth,
+            height: barHeight,
+            borderRadius: barRadius,
+            backgroundColor: color,
+            marginRight: index < bars.length - 1 ? barGap : 0,
+            transform: [{ scaleY: anim }],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** 语音朗读极简小喇叭图标 - 支持加载态持续旋转圈、播放态4柱动态跳动声波、停止态线框小喇叭复原 */
+export function VoiceSpeakIcon({
+  color = '#94A3B8',
+  activeColor = '#2563EB',
+  isPlaying = false,
+  isLoading = false,
+  size = 16,
+}: ActionIconProps & { activeColor?: string; isPlaying?: boolean; isLoading?: boolean }) {
+  if (isLoading) {
+    return <ContinuousSpinIcon color={activeColor} size={size} />;
+  }
+
+  if (isPlaying) {
+    return <SoundWaveBarsIcon color={activeColor} size={size} />;
+  }
+
+  return (
+    <Svg fill="none" height={size} viewBox="0 0 24 24" width={size}>
+      <Polygon
+        points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <Path
+        d="M15.54 8.46a5 5 0 0 1 0 7.07"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeOpacity={0.65}
+        strokeWidth="2"
+      />
+      <Path
+        d="M19.07 4.93a10 10 0 0 1 0 14.14"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeOpacity={0.35}
         strokeWidth="2"
       />
     </Svg>

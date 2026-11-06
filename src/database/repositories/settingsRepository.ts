@@ -212,6 +212,8 @@ function parseNumberRecord(value: string | null): Record<string, number> | undef
   }
 }
 
+const HEX_COLOR_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 export const settingsRepository = {
   async getValue(db: SQLiteDatabase, key: string): Promise<string | null> {
     const row = await db.getFirstAsync<AppSettingRecord>(
@@ -595,16 +597,16 @@ export const settingsRepository = {
     const value = await this.getValue(db, CHAT_BUBBLE_RADIUS_KEY);
     if (!value) return 16;
     const num = Number.parseFloat(value);
-    return Number.isFinite(num) ? Math.min(28, Math.max(4, num)) : 16;
+    return Number.isFinite(num) ? Math.min(28, Math.max(0, num)) : 16;
   },
 
   async setChatBubbleRadius(db: SQLiteDatabase, radius: number): Promise<void> {
-    await this.setValue(db, CHAT_BUBBLE_RADIUS_KEY, String(Math.min(28, Math.max(4, radius))));
+    await this.setValue(db, CHAT_BUBBLE_RADIUS_KEY, String(Math.min(28, Math.max(0, radius))));
   },
 
   async getChatUserBubbleColor(db: SQLiteDatabase): Promise<string> {
     const value = await this.getValue(db, CHAT_USER_BUBBLE_COLOR_KEY);
-    return value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : '#95EC69';
+    return value && HEX_COLOR_REGEX.test(value) ? value : '#95EC69';
   },
 
   async setChatUserBubbleColor(db: SQLiteDatabase, color: string): Promise<void> {
@@ -613,7 +615,7 @@ export const settingsRepository = {
 
   async getChatAssistantBubbleColor(db: SQLiteDatabase): Promise<string> {
     const value = await this.getValue(db, CHAT_ASSISTANT_BUBBLE_COLOR_KEY);
-    return value || 'transparent';
+    return value && HEX_COLOR_REGEX.test(value) ? value : '#FFFFFF';
   },
 
   async setChatAssistantBubbleColor(db: SQLiteDatabase, color: string): Promise<void> {

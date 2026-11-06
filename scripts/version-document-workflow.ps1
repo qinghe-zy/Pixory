@@ -173,7 +173,10 @@ function New-RequiredDocument([pscustomobject]$Definition, [string]$FromVersion,
 
 ## 用户版
 
-使用非专业术语描述用户能感知的变化、收益、限制和升级注意事项。
+官方发版日志标准格式（极简、专业、客观）：
+- 只写重要的核心功能更新，简单写，聚焦用户实际收益，严禁透露开发过程、内部实现与执行标准；
+- 所有 bug 修复与 UI 优化一律统一标准化收尾，严禁单列为更新项：
+  `体验与稳定性优化：优化了部分场景的使用体验，解决了一些已知问题。`
 "@ }
     'Release-Notes-Internal.md' { @"
 

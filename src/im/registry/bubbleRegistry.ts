@@ -7,6 +7,7 @@ import { DiaryCardRenderer } from '../components/renderers/DiaryCardRenderer';
 import { StickerBubbleRenderer } from '../../components/emoji/StickerBubbleRenderer';
 import { DocumentBubbleRenderer } from '../components/renderers/DocumentBubbleRenderer';
 import { ThoughtBubbleRenderer } from '../components/renderers/ThoughtBubbleRenderer';
+import { VoiceBubbleRenderer } from '../components/renderers/VoiceBubbleRenderer';
 
 export interface OpenDocumentTarget {
   uri?: string;
@@ -44,6 +45,7 @@ registry.set('diary_card', DiaryCardRenderer);
 registry.set('sticker', StickerBubbleRenderer as any);
 registry.set('document', DocumentBubbleRenderer);
 registry.set('thought', ThoughtBubbleRenderer);
+registry.set('voice', VoiceBubbleRenderer);
 
 /**
  * 气泡渲染器注册表 (插件化高扩展契约)

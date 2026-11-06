@@ -43,6 +43,7 @@ export interface ImVoiceMetadata {
   durationMs: number;
   waveform?: number[];
   transcription?: string;
+  isPlayed?: boolean;
 }
 
 export interface ImMessage {

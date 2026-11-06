@@ -21,14 +21,17 @@ export function PasswordInput({
   return (
     <View style={styles.passwordInputWrap}>
       <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.text.placeholder}
         secureTextEntry={secureTextEntry}
         style={styles.passwordInput}
+        textContentType="password"
         value={value}
       />
-      <Pressable accessibilityLabel={showPassword ? '隐藏密码' : '显示密码'} hitSlop={8} onPress={onToggleShowPassword} style={styles.passwordToggle}>
+      <Pressable accessibilityLabel={showPassword ? '隐藏密码' : '显示密码'} hitSlop={12} onPress={onToggleShowPassword} style={styles.passwordToggle}>
         <Ionicons color={colors.text.secondary} name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} />
       </Pressable>
     </View>

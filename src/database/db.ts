@@ -80,6 +80,7 @@ import {
   MIGRATION_STATEMENTS_V70,
   MIGRATION_STATEMENTS_V71,
   MIGRATION_STATEMENTS_V72,
+  MIGRATION_STATEMENTS_V73,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -95,6 +96,8 @@ const MEDIA_PERFORMANCE_INDEX_STATEMENTS = `
     ON image_assets(mediaType, deletedAt, lastViewedAt DESC, id DESC);
   CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_id
     ON ai_messages(threadId, createdAt DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_ai_message_versions_thread
+    ON ai_message_versions(threadId, originalMessageId);
 `;
 
 function getDatabaseNameForSpace(space: PixorySpace): string {
@@ -396,6 +399,10 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
 
 export async function ensureAgentVfsSchema(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(MIGRATION_STATEMENTS_V71);
+}
+
+export async function ensureVoiceSchema(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(MIGRATION_STATEMENTS_V73);
 }
 
 async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
@@ -735,6 +742,10 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V72);
     }
 
+    if (currentVersion < 73) {
+      await database.execAsync(MIGRATION_STATEMENTS_V73);
+    }
+
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
     await ensureAiMemoryLineageSchema(database);
@@ -746,6 +757,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     await ensureAiCompanionMemorySchema(database);
     await ensureImThreadSettingsSchema(database);
     await ensureAgentVfsSchema(database);
+    await ensureVoiceSchema(database);
 
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

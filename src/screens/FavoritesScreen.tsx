@@ -300,7 +300,18 @@ export function FavoritesScreen({
           emptyComponent={
             !combinedLoading && images.length === 0 ? (
               <View style={{ marginTop: 100 }}>
-                <EmptyState title="还没有收藏图片" description="给图片加星标后，这里会展示当前所有收藏图片。" iconName="star-outline" variant="inline" />
+                {hasActiveFilters ? (
+                  <EmptyState
+                    actionLabel="清除筛选"
+                    description="尝试调整或清除筛选条件查看更多内容。"
+                    iconName="filter-outline"
+                    onAction={() => setActiveFilters(EMPTY_FAVORITE_FILTERS)}
+                    title="没有匹配的收藏内容"
+                    variant="inline"
+                  />
+                ) : (
+                  <EmptyState title="还没有收藏图片" description="给图片加星标后，这里会展示当前所有收藏图片。" iconName="star-outline" variant="inline" />
+                )}
               </View>
             ) : null
           }
@@ -314,13 +325,18 @@ export function FavoritesScreen({
               middleContent={undefined}
               bottomContent={undefined}
               topLeftActions={
-                <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
-                  <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
-                    <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={8} onPress={onBack} style={({ pressed }) => [{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: -4 }, pressed && { opacity: 0.6 }]}>
+                    <Ionicons color="#111827" name="chevron-back" size={24} />
                   </Pressable>
-                  <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
-                    <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
-                  </Pressable>
+                  <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
+                    <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                      <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                      <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
+                    </Pressable>
+                  </View>
                 </View>
               }
               topRightActions={
@@ -409,13 +425,18 @@ export function FavoritesScreen({
             count={undefined}
             animatedStyle={heroStyle}
             topLeftActions={
-              <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
-                <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
-                  <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={8} onPress={onBack} style={({ pressed }) => [{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: -4 }, pressed && { opacity: 0.6 }]}>
+                  <Ionicons color="#111827" name="chevron-back" size={24} />
                 </Pressable>
-                <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
-                  <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
-                </Pressable>
+                <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
+                  <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                    <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>图片</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>
+                    <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? { color: '#FFFFFF', fontWeight: '700' } : null, { fontSize: 13 }]}>AI</Text>
+                  </Pressable>
+                </View>
               </View>
             }
             topRightActions={
@@ -423,6 +444,13 @@ export function FavoritesScreen({
               </View>
             }
           />
+        }
+        ListEmptyComponent={
+          !aiFavoritesLoading && aiMessages.length === 0 ? (
+            <View style={{ marginTop: 100 }}>
+              <EmptyState title="还没有收藏 AI 消息" description="在 AI 回复下点亮星标后，这里会展示收藏消息。" iconName="star-outline" variant="inline" />
+            </View>
+          ) : null
         }
         ListFooterComponent={aiFavoritesLoadingMore ? <Text style={styles.aiFavoriteMeta}>正在加载更多…</Text> : null}
         onEndReached={loadMoreAiFavorites}

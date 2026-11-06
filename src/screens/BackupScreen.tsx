@@ -372,6 +372,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
 
         {space === 'normal' ? (
           <PageStateBlock
+            emptyActionLabel="返回素材库"
             emptyDescription="创建 IP 后，可以导出单个 IP 资产包。"
             emptyIconName="archive-outline"
             emptyTitle="没有可导出的 IP"
@@ -380,6 +381,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
             loading={isLoading}
             loadingDescription="正在读取可导出的 IP。"
             loadingTitle="读取备份信息"
+            onEmptyAction={onBack}
             onRetry={reload}
           >
             <View style={styles.ipSection}>

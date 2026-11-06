@@ -33,9 +33,8 @@ function extractAndValidateSql(rawOutput) {
   }
 
   // 5. 剥离字符串常量（'...'）与双引号标识符（"..."）用于语法纯度与危险指令校验
-  const strippedForValidation = cleaned
-    .replace(/'(?:''|[^'])*'/g, "''")
-    .replace(/"(?:""|[^"])*"/g, '""');
+  const strippedLiterals = cleaned.replace(/'(?:''|[^'])*'/g, "''");
+  const strippedForValidation = strippedLiterals.replace(/"(?:""|[^"])*"/g, '""');
 
   // 6. 阻断多语句注入（除末尾已剥离的分号外，语句内部不应包含未被引号包裹的分号）
   if (strippedForValidation.includes(';')) {
@@ -47,7 +46,13 @@ function extractAndValidateSql(rawOutput) {
     return { safe: false, sql: null, reason: 'contains_forbidden_keywords' };
   }
 
-  // 8. 长度保护
+  // 8. 必须显式引用沙盒文档表 _doc_table（支持 "_doc_table"、`_doc_table`、[_doc_table] 或 _doc_table）
+  // 检查剥离了单引号字面量后的 SQL，防止通过 ' _doc_table ' 伪造绕过
+  if (!/\b_doc_table\b/i.test(strippedLiterals)) {
+    return { safe: false, sql: null, reason: 'must_reference_doc_table' };
+  }
+
+  // 9. 长度保护
   if (cleaned.length > 2500) {
     return { safe: false, sql: null, reason: 'sql_too_long' };
   }
@@ -87,5 +92,25 @@ assert.strictEqual(r4b.reason, 'multiple_statements_forbidden');
 // Case 6: 非 SELECT 拒绝
 const r5 = extractAndValidateSql('UPDATE _doc_table SET a = 1');
 assert.strictEqual(r5.safe, false);
+
+// Case 7: 未引用 _doc_table 的跨表或探测查询拦截
+const r6 = extractAndValidateSql('SELECT * FROM ai_messages');
+assert.strictEqual(r6.safe, false);
+assert.strictEqual(r6.reason, 'must_reference_doc_table');
+
+// Case 8: 各种合法引用 _doc_table 语法（双引号、方括号、反引号包裹表名）
+const r7 = extractAndValidateSql('SELECT * FROM "_doc_table" WHERE "id" = 1');
+assert.strictEqual(r7.safe, true, 'Double-quoted _doc_table should be allowed');
+
+const r8 = extractAndValidateSql('SELECT * FROM [_doc_table]');
+assert.strictEqual(r8.safe, true, 'Bracket-quoted _doc_table should be allowed');
+
+const r9 = extractAndValidateSql('SELECT * FROM `_doc_table`');
+assert.strictEqual(r9.safe, true, 'Backtick-quoted _doc_table should be allowed');
+
+// Case 9: 试图用单引号伪造表名绕过检测（例如在字符串常量里出现 _doc_table 但实际查 sqlite_master）
+const r10 = extractAndValidateSql("SELECT ' _doc_table ' FROM sqlite_master");
+assert.strictEqual(r10.safe, false);
+assert.strictEqual(r10.reason, 'must_reference_doc_table');
 
 console.log('sqlSafetyGuard tests passed! ✓');

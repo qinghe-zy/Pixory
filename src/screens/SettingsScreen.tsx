@@ -23,6 +23,7 @@ interface SettingsScreenProps {
   onOpenProviderSettings?: () => void;
   onOpenProfileInfo?: () => void;
   onOpenImCompanionSettings?: () => void;
+  onOpenVoiceSettings?: () => void;
   onOpenNotificationSettings?: () => void;
 }
 
@@ -38,6 +39,7 @@ export function SettingsScreen({
   onOpenProviderSettings,
   onOpenProfileInfo,
   onOpenImCompanionSettings,
+  onOpenVoiceSettings,
   onOpenNotificationSettings,
 }: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
@@ -66,7 +68,9 @@ export function SettingsScreen({
 
   return (
     <ScreenScaffold
+      backgroundColor="#F6F6F7"
       contentContainerStyle={styles.scrollContent}
+      headerStyle={styles.header}
       onBack={onBack}
       scrollable
       title="设置"
@@ -128,6 +132,14 @@ export function SettingsScreen({
               icon="chatbubbles-outline"
               title="聊天设置"
               onPress={onOpenImCompanionSettings}
+              showBorder={Boolean(onOpenVoiceSettings || onOpenNotificationSettings)}
+            />
+          ) : null}
+          {onOpenVoiceSettings ? (
+            <SettingsRow
+              icon="volume-medium-outline"
+              title="声音与朗读"
+              onPress={onOpenVoiceSettings}
               showBorder={Boolean(onOpenNotificationSettings)}
             />
           ) : null}
@@ -199,33 +211,39 @@ function SettingsRow({
 const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 0,
+    gap: 0,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 6,
   },
   container: {
-    paddingVertical: 10,
-    backgroundColor: '#F9F9F9',
-    gap: 10,
+    paddingTop: 12,
+    paddingBottom: 32,
+    backgroundColor: '#F6F6F7',
+    gap: 12,
   },
   insetGroup: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    marginHorizontal: 8,
-    overflow: 'hidden',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E8E8EC',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: spacing[4],
-    minHeight: 50,
+    paddingLeft: 16,
+    minHeight: 64,
     backgroundColor: '#FFFFFF',
   },
   rowPressed: {
-    backgroundColor: '#F3F3F4',
+    backgroundColor: '#F4F4F6',
   },
   rowIcon: {
     width: 28,
     alignItems: 'flex-start',
     position: 'relative',
-    marginRight: spacing[1],
+    marginRight: 4,
   },
   redDot: {
     position: 'absolute',
@@ -241,13 +259,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingRight: spacing[4],
-    paddingVertical: 14,
-    minHeight: 50,
+    paddingRight: 16,
+    paddingVertical: 16,
+    minHeight: 64,
   },
   rowContentBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border.subtle,
+    borderBottomColor: '#E2E8F0',
   },
   rowTitle: {
     ...typography.textStyles.body,

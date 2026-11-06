@@ -142,6 +142,7 @@ export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBa
 
         <View style={styles.filesSection}>
           <PageStateBlock
+            emptyActionLabel="返回上一页"
             emptyContainerStyle={styles.emptyStateWrap}
             emptyDescription="生成备份或导出包后，这里会显示文件占用。"
             emptyIconName="archive-outline"
@@ -151,6 +152,7 @@ export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBa
             loading={isLoading}
             loadingDescription="正在读取备份导出文件。"
             loadingTitle="正在统计…"
+            onEmptyAction={onBack}
             onRetry={reload}
           >
             <View style={styles.list}>

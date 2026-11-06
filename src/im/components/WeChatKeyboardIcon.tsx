@@ -16,9 +16,9 @@ export interface WeChatKeyboardIconProps {
  * 4. 第三排 居中空格键长条 (fill)
  */
 export const WeChatKeyboardIcon = React.memo(function WeChatKeyboardIcon({
-  size = 26,
+  size = 28,
   color = '#181818',
-  strokeWidth = 1.8,
+  strokeWidth = 1.9,
 }: WeChatKeyboardIconProps) {
   return (
     <Svg fill="none" height={size} viewBox="0 0 28 28" width={size}>

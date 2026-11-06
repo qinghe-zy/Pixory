@@ -10,7 +10,7 @@ import type {
   BranchTreeViewportTransform,
 } from './types';
 
-export const BRANCH_TREE_VIEWPORT_OVERSCAN = 1200;
+export const BRANCH_TREE_VIEWPORT_OVERSCAN = 360;
 
 export interface BranchTreeVisibleWindow {
   bottom: number;
@@ -51,6 +51,9 @@ function nodeTouchesWindow(node: BranchTreeLayoutNode, window: BranchTreeVisible
 }
 
 function edgeTouchesWindow(edge: BranchTreeLayoutEdge, window: BranchTreeVisibleWindow): boolean {
+  if (edge.bounds) {
+    return intersectsWindow(edge.bounds, window);
+  }
   const numbers = edge.path.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
   if (numbers.length < 8 || numbers.some((value) => !Number.isFinite(value))) {
     return false;

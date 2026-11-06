@@ -18,7 +18,7 @@ import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GlobalGroupListItem, type IpListItem, type PixorySpace } from '../database';
-import { typography } from '../design/tokens';
+import { radius, typography } from '../design/tokens';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
@@ -292,6 +292,15 @@ export function GlobalGroupsScreen({
                 <MaterialIcons name="folder-open" size={32} color={protoColors.outlineVariant} />
                 <Text style={styles.emptyInlineTitle}>还没有分组</Text>
                 <Text style={styles.emptyInlineDesc}>分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。</Text>
+                {onCreateFirstIp ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={onCreateFirstIp}
+                    style={({ pressed }) => [styles.emptyActionBtn, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.emptyActionBtnText}>前往 IP 库</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null
           }
@@ -583,6 +592,20 @@ const styles = StyleSheet.create({
     color: protoColors.outline,
     textAlign: 'center',
     paddingHorizontal: 24,
+  },
+  emptyActionBtn: {
+    alignItems: 'center',
+    backgroundColor: protoColors.primary,
+    borderRadius: radius.pill,
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  emptyActionBtnText: {
+    fontFamily: typography.family.base,
+    fontSize: 12,
+    fontWeight: '600',
+    color: protoColors.onPrimary,
   },
   sectionHeader: {
     alignItems: 'center',

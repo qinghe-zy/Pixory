@@ -159,6 +159,7 @@ interface ThreadRecoveryRow {
   proactive_enabled?: number | null;
   context_window_n: number | null;
   living_state_json: string | null;
+  im_settings_json?: string | null;
 }
 
 /**
@@ -189,11 +190,21 @@ export async function recoverInterruptedUserReply(
 
   const db = await initDatabase(space);
   const thread = await db.getFirstAsync<ThreadRecoveryRow>(
-    `SELECT id, roleCardId, providerId, modelId, proactive_enabled, context_window_n, living_state_json
+    `SELECT id, roleCardId, providerId, modelId, proactive_enabled, context_window_n, living_state_json, im_settings_json
      FROM ai_threads WHERE id = ? LIMIT 1;`,
     [threadId]
   );
   if (!thread) return false;
+
+  let voiceReplyEnabled = true;
+  if (thread.im_settings_json) {
+    try {
+      const parsed = JSON.parse(thread.im_settings_json);
+      if (typeof parsed?.voiceReplyEnabled === 'boolean') {
+        voiceReplyEnabled = parsed.voiceReplyEnabled;
+      }
+    } catch {}
+  }
 
   const windowN = thread.context_window_n || 20;
   let anchorMessageId: string | undefined;
@@ -216,6 +227,12 @@ export async function recoverInterruptedUserReply(
   }
   if (historyMessages.length === 0) {
     historyMessages = (await getVisibleImMessages(space, threadId, Math.max(windowN * 3, 80))).reverse();
+  }
+
+  // 防幽灵竞态守卫：若最新一条消息已是系统提示 (例如网络异常胶囊)，说明会话已被显式捕获处理，严禁后台再次幽灵生成
+  const latestAnyMsg = historyMessages[historyMessages.length - 1];
+  if (latestAnyMsg && (latestAnyMsg.type === 'system_notice' || latestAnyMsg.role === 'system')) {
+    return false;
   }
 
   const dialogueOnly = historyMessages.filter((m) => m.role === 'user' || m.role === 'assistant');
@@ -331,6 +348,7 @@ export async function recoverInterruptedUserReply(
       windowN,
       anchorMessageId,
       personaAnchor,
+      voiceReplyEnabled,
     },
     combinedUserInput
   );
@@ -374,7 +392,7 @@ export async function recoverInterruptedUserReply(
     void updateThreadLivingState(space, threadId, updatedLiving);
   }
 
-  const cleanSentences = fullRawResponse
+  const cleanSentences = stripMetaTags(fullRawResponse)
     .split(BR_SPLIT_REGEX)
     .map((s) => stripMetaTags(s))
     .filter((s) => s.length > 0 && s !== '[PASS]');

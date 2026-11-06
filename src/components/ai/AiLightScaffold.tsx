@@ -1,8 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode, RefObject } from 'react';
 import {
   Platform,
-  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -67,45 +65,69 @@ export function AiLightScaffold({
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const computedTopPadding = customTopPadding !== undefined ? customTopPadding : statusBarHeight + layout.pageTopOffset;
+  const resolvedBgColor = backgroundColor ?? aiLightColors.canvas;
 
   return (
-    <AppScreen
-      backgroundColor={backgroundColor ?? aiLightColors.canvas}
-      backgroundVariant={backgroundVariant}
-      contentStyle={contentContainerStyle}
-      footer={footer}
-      footerStyle={styles.footer}
-      onScroll={onScroll}
-      scrollViewRef={scrollViewRef}
-      scrollable={scrollable}
-    >
-      {showHeader ? (
-        <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: computedTopPadding }]}>
-          <View style={styles.side}>
-            {onBack ? <BackButton onPress={onBack} color={aiLightColors.ink} /> : null}
+    <View style={styles.scaffoldContainer}>
+      {/* 顶部状态栏背景同色遮罩：固定在最顶层，防止页面滚动上滑时内容穿透并与状态栏时钟/电量文字重叠 */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.statusBarShield,
+          {
+            height: statusBarHeight,
+            backgroundColor: resolvedBgColor,
+          },
+        ]}
+      />
+      <AppScreen
+        backgroundColor={resolvedBgColor}
+        backgroundVariant={backgroundVariant}
+        contentStyle={contentContainerStyle}
+        footer={footer}
+        footerStyle={styles.footer}
+        onScroll={onScroll}
+        scrollViewRef={scrollViewRef}
+        scrollable={scrollable}
+      >
+        {showHeader ? (
+          <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: computedTopPadding }]}>
+            <View style={styles.side}>
+              {onBack ? <BackButton onPress={onBack} color={aiLightColors.ink} /> : null}
+            </View>
+            <View style={styles.titleWrap}>
+              {titleSlot ?? (
+                <Text numberOfLines={1} style={styles.title}>
+                  {title}
+                </Text>
+              )}
+              {subtitle ? <Text numberOfLines={1} style={styles.subtitle}>{subtitle}</Text> : null}
+            </View>
+            <View style={styles.side}>{rightAction}</View>
           </View>
-          <View style={styles.titleWrap}>
-            {titleSlot ?? (
-              <Text numberOfLines={1} style={styles.title}>
-                {title}
-              </Text>
-            )}
-            {subtitle ? <Text numberOfLines={1} style={styles.subtitle}>{subtitle}</Text> : null}
-          </View>
-          <View style={styles.side}>{rightAction}</View>
+        ) : (
+          <View style={{ paddingTop: computedTopPadding }} />
+        )}
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+        <View pointerEvents={loading ? 'none' : 'auto'} style={[{ flex: 1 }, bodyStyle, loading && styles.loadingContent]}>
+          {children}
         </View>
-      ) : (
-        <View style={{ paddingTop: computedTopPadding }} />
-      )}
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      <View pointerEvents={loading ? 'none' : 'auto'} style={[{ flex: 1 }, bodyStyle, loading && styles.loadingContent]}>
-        {children}
-      </View>
-    </AppScreen>
+      </AppScreen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  scaffoldContainer: {
+    flex: 1,
+  },
+  statusBarShield: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 99,
+  },
   header: {
     alignItems: 'center',
     borderBottomColor: aiLightColors.hairline,

@@ -21,6 +21,9 @@ export function ImBubbleBeak({ direction, customColor }: ImBubbleBeakProps) {
   if (!theme.flags.showBeak) {
     return null;
   }
+  if (theme.radii.bubbleRadius > 12) {
+    return null;
+  }
 
   const { beakWidth, beakHeight, beakOffsetTop } = theme.metrics;
   const isLeft = direction === 'left';

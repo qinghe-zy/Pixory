@@ -16,6 +16,8 @@ export interface ImMessageActionMenuProps {
   onDelete: (message: ImMessage) => void;
   onEditResend?: (message: ImMessage) => void;
   onSelectText?: (message: ImMessage) => void;
+  onToggleVoiceTranscript?: (message: ImMessage) => void;
+  onSpeakMessage?: (message: ImMessage) => void;
 }
 
 export function ImMessageActionMenu({
@@ -27,11 +29,19 @@ export function ImMessageActionMenu({
   onDelete,
   onEditResend,
   onSelectText,
+  onToggleVoiceTranscript,
+  onSpeakMessage,
 }: ImMessageActionMenuProps) {
   if (!visible || !message) return null;
 
+  const isVoiceMessage = message.type === 'voice' || Boolean(message.voice);
+  const isVoiceTranscriptExpanded = Boolean(message.metadata?.isTranscriptExpanded);
+
   const handleCopy = async () => {
-    const text = message.content
+    const rawContent = isVoiceMessage
+      ? message.voice?.transcription || message.content
+      : message.content;
+    const text = rawContent
       .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE):[^\]]+\]/gi, '')
       .replace(/\[BR\]/g, '\n')
       .trim();
@@ -45,6 +55,20 @@ export function ImMessageActionMenu({
   const isUserMessage = message.role === 'user';
   const actions: AnchoredContextMenuAction[] = [];
 
+  // 1. 语音消息专属：优先放置【转文字 / 隐藏文字】
+  if (isVoiceMessage && onToggleVoiceTranscript) {
+    actions.push({
+      key: 'toggle_transcript',
+      icon: 'chatbubble-ellipses-outline',
+      label: isVoiceTranscriptExpanded ? '隐藏文字' : '转文字',
+      onPress: () => {
+        onToggleVoiceTranscript(message);
+        onClose();
+      },
+    });
+  }
+
+  // 2. 通用复制操作
   actions.push({
     key: 'copy',
     icon: 'copy-outline',
@@ -52,6 +76,20 @@ export function ImMessageActionMenu({
     onPress: handleCopy,
   });
 
+  // 3. 文本消息专属：长按支持【朗读】
+  if (!isVoiceMessage && onSpeakMessage && message.content) {
+    actions.push({
+      key: 'speak',
+      icon: 'volume-high-outline',
+      label: '朗读',
+      onPress: () => {
+        onSpeakMessage(message);
+        onClose();
+      },
+    });
+  }
+
+  // 4. 选择文本操作
   if (onSelectText && message.content) {
     actions.push({
       key: 'select_text',
@@ -64,6 +102,7 @@ export function ImMessageActionMenu({
     });
   }
 
+  // 5. 重新编辑操作
   if (isUserMessage && onEditResend) {
     actions.push({
       key: 'edit',
@@ -76,6 +115,7 @@ export function ImMessageActionMenu({
     });
   }
 
+  // 6. 删除操作
   actions.push({
     key: 'delete',
     icon: 'trash-outline',

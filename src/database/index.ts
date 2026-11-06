@@ -32,4 +32,5 @@ export {
 } from './repositories/settingsRepository';
 export { tagRepository } from './repositories/tagRepository';
 export { customStickerRepository } from './repositories/customStickerRepository';
+export { voiceRepository } from './repositories/voiceRepository';
 export type * from './types';

@@ -36,19 +36,28 @@ function toBranchTreeNode(node: AiBranchTreeNode): BranchTreeNode {
   };
 }
 
+let cachedNodesRef: AiBranchTreeNode[] | null = null;
+let cachedGraphRef: BranchTreeGraph | null = null;
+
 export function buildPixoryBranchTreeGraph(nodes: AiBranchTreeNode[]): BranchTreeGraph {
+  if (cachedNodesRef === nodes && cachedGraphRef) {
+    return cachedGraphRef;
+  }
+
   const sortedNodes = [...nodes].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const mainSequenceNodes = sortedNodes.filter((n) => n.parentBranchRootMessageId === null);
+  const mainSequenceIndexMap = new Map<string, number>();
+  mainSequenceNodes.forEach((n, idx) => {
+    mainSequenceIndexMap.set(`${n.branchRootMessageId}:${n.branchVersionIndex}`, idx);
+  });
 
-  return buildBranchTreeGraph(
+  const graph = buildBranchTreeGraph(
     sortedNodes.map((node) => {
       let parentId = node.parentBranchRootMessageId;
       let parentVersionIndex = node.parentBranchVersionIndex;
 
       if (parentId === null) {
-        const myIndex = mainSequenceNodes.findIndex(
-          (n) => n.branchRootMessageId === node.branchRootMessageId && n.branchVersionIndex === node.branchVersionIndex
-        );
+        const myIndex = mainSequenceIndexMap.get(`${node.branchRootMessageId}:${node.branchVersionIndex}`) ?? -1;
         if (myIndex > 0) {
           const prev = mainSequenceNodes[myIndex - 1];
           parentId = prev.branchRootMessageId;
@@ -71,6 +80,10 @@ export function buildPixoryBranchTreeGraph(nodes: AiBranchTreeNode[]): BranchTre
       };
     })
   );
+
+  cachedNodesRef = nodes;
+  cachedGraphRef = graph;
+  return graph;
 }
 
 function toSnapshotMessage(message: AiBranchTreePreview['selectedMessage']): BranchTreeSnapshotMessage {

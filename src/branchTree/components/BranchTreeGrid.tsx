@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { aiLightColors } from '../../components/ai/aiLightTheme';
@@ -34,13 +35,29 @@ function buildGridPositions(size: number, step: number, windowStart = 0, windowE
   return positions;
 }
 
-export function BranchTreeGrid({ height, largeStep = 100, smallStep = 20, visibleWindow, width }: BranchTreeGridProps) {
-  const left = clamp(visibleWindow?.left ?? 0, 0, width);
-  const right = clamp(visibleWindow?.right ?? width, 0, width);
-  const top = clamp(visibleWindow?.top ?? 0, 0, height);
-  const bottom = clamp(visibleWindow?.bottom ?? height, 0, height);
-  const dotXs = buildGridPositions(width, smallStep, left, right);
-  const dotYs = buildGridPositions(height, smallStep, top, bottom);
+export const BranchTreeGrid = memo(function BranchTreeGrid({
+  height,
+  largeStep = 100,
+  smallStep = 20,
+  visibleWindow,
+  width,
+}: BranchTreeGridProps) {
+  if (!visibleWindow || visibleWindow.right <= visibleWindow.left || visibleWindow.bottom <= visibleWindow.top) {
+    return <View pointerEvents="none" style={styles.root} />;
+  }
+
+  const left = clamp(visibleWindow.left, 0, width);
+  const right = clamp(visibleWindow.right, 0, width);
+  const top = clamp(visibleWindow.top, 0, height);
+  const bottom = clamp(visibleWindow.bottom, 0, height);
+  const rawDotXs = buildGridPositions(width, smallStep, left, right);
+  const rawDotYs = buildGridPositions(height, smallStep, top, bottom);
+
+  const totalDots = rawDotXs.length * rawDotYs.length;
+  const dotStride = totalDots > 100 ? Math.ceil(Math.sqrt(totalDots / 80)) : 1;
+  const dotXs = dotStride > 1 ? rawDotXs.filter((_, idx) => idx % dotStride === 0) : rawDotXs;
+  const dotYs = dotStride > 1 ? rawDotYs.filter((_, idx) => idx % dotStride === 0) : rawDotYs;
+
   const lineXs = buildGridPositions(width, largeStep, left, right);
   const lineYs = buildGridPositions(height, largeStep, top, bottom);
   const lineHeight = Math.max(0, bottom - top);
@@ -70,7 +87,7 @@ export function BranchTreeGrid({ height, largeStep = 100, smallStep = 20, visibl
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   dot: {

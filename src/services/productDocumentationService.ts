@@ -1,10 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { PRODUCT_MANUAL_MARKDOWN } from '../content/productManualMarkdown';
-import { README_MARKDOWN } from '../content/readmeMarkdown';
-import { HANDBOOK_MARKDOWN } from '../content/handbookMarkdown';
-import { FEATURES_MARKDOWN } from '../content/featuresMarkdown';
-import { ALGORITHMS_MARKDOWN } from '../content/algorithmsMarkdown';
 import { ensureLocalDirectory, getAiDocumentsDir, joinStoragePath } from './fileStorageService';
 
 export type ProductDocKey = 'readme' | 'manual' | 'handbook' | 'feature' | 'algorithms';
@@ -18,13 +13,25 @@ const PRODUCT_DOC_ASSET_CACHE_DIR_NAME = 'product_documentation_assets_v2';
 const cachedProductDocumentationMarkdown = new Map<ProductDocKey, string>();
 const productDocumentationMarkdownPromises = new Map<ProductDocKey, Promise<string>>();
 
-const DOC_CONTENTS: Record<ProductDocKey, string> = {
-  readme: README_MARKDOWN,
-  manual: PRODUCT_MANUAL_MARKDOWN,
-  handbook: HANDBOOK_MARKDOWN,
-  feature: FEATURES_MARKDOWN,
-  algorithms: ALGORITHMS_MARKDOWN,
-};
+/**
+ * 按需动态分包加载文档内容，彻底杜绝冷启动将 100KB+ Markdown 纯文本静态常驻在 JS 堆内存中
+ */
+async function getRawProductDocumentationMarkdown(docKey: ProductDocKey): Promise<string> {
+  switch (docKey) {
+    case 'manual':
+      return (await import('../content/productManualMarkdown')).PRODUCT_MANUAL_MARKDOWN;
+    case 'readme':
+      return (await import('../content/readmeMarkdown')).README_MARKDOWN;
+    case 'handbook':
+      return (await import('../content/handbookMarkdown')).HANDBOOK_MARKDOWN;
+    case 'feature':
+      return (await import('../content/featuresMarkdown')).FEATURES_MARKDOWN;
+    case 'algorithms':
+      return (await import('../content/algorithmsMarkdown')).ALGORITHMS_MARKDOWN;
+    default:
+      return '';
+  }
+}
 
 function normalizeProductDocumentationMarkdown(markdown: string): string {
   return markdown.replace(PRODUCT_DOC_ASSET_PATH_PATTERN, (_match, relativePath: string) => {
@@ -159,7 +166,7 @@ async function buildCachedAssetDataUri(relativePath: string): Promise<string | n
 
 async function buildProductDocumentationMarkdownWithCachedAssets(docKey: ProductDocKey): Promise<string> {
   const replacements = new Map<string, string>();
-  const rawMarkdown = DOC_CONTENTS[docKey];
+  const rawMarkdown = await getRawProductDocumentationMarkdown(docKey);
   const assetPaths = extractProductDocumentationAssetPaths(rawMarkdown);
 
   await Promise.all(
@@ -183,7 +190,8 @@ async function resolveProductDocumentationMarkdown(docKey: ProductDocKey): Promi
     console.warn('Pixory product documentation markdown fallback to remote assets.', {
       error: error instanceof Error ? error.message : 'unknown error',
     });
-    const fallback = normalizeProductDocumentationMarkdown(DOC_CONTENTS[docKey]);
+    const raw = await getRawProductDocumentationMarkdown(docKey);
+    const fallback = normalizeProductDocumentationMarkdown(raw);
     cachedProductDocumentationMarkdown.set(docKey, fallback);
     return fallback;
   }
@@ -209,5 +217,5 @@ export async function getProductDocumentationMarkdown(docKey: ProductDocKey = 'm
 }
 
 export function getPreloadedProductDocumentationMarkdown(docKey: ProductDocKey = 'manual'): string {
-  return cachedProductDocumentationMarkdown.get(docKey) ?? normalizeProductDocumentationMarkdown(DOC_CONTENTS[docKey]);
+  return cachedProductDocumentationMarkdown.get(docKey) ?? '';
 }

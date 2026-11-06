@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   PanResponder,
@@ -19,6 +19,7 @@ import type {
   TypographyGear,
 } from '../database';
 import { colors, rhythm, spacing, typography } from '../design/tokens';
+import { calculateContrastingTextColor } from '../im/theme/imTheme';
 import {
   AI_CHAT_FONT_SIZE_CONFIGS,
   AI_CHAT_LETTER_SPACING_CONFIGS,
@@ -34,14 +35,33 @@ interface ChatAppearanceSettingsScreenProps {
   space: PixorySpace;
 }
 
+function normalizeHexColor(input: string): string | null {
+  const trimmed = input.trim();
+  const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(withHash)) {
+    return withHash.toUpperCase();
+  }
+  return null;
+}
+
 const PRESET_COLOR_SWATCHES = [
-  { label: '微信绿', hex: '#95EC69', textHex: '#000000' },
+  { label: '经典草绿', hex: '#95EC69', textHex: '#000000' },
   { label: '纯净白', hex: '#FFFFFF', textHex: '#0F172A' },
   { label: '经典浅灰', hex: '#F1F5F9', textHex: '#0F172A' },
   { label: '冰川雾蓝', hex: '#DCEBFA', textHex: '#1E3A8A' },
   { label: '薰衣草紫', hex: '#EDE9FE', textHex: '#5B21B6' },
   { label: '薄荷淡青', hex: '#D1FAE5', textHex: '#065F46' },
   { label: '暖阳淡橙', hex: '#FFEDD5', textHex: '#9A3412' },
+] as const;
+
+const PRESET_AI_COLOR_SWATCHES = [
+  { label: '纯净白', hex: '#FFFFFF', textHex: '#0F172A' },
+  { label: '经典浅灰', hex: '#F1F5F9', textHex: '#0F172A' },
+  { label: '冰川雾蓝', hex: '#DCEBFA', textHex: '#1E3A8A' },
+  { label: '薰衣草紫', hex: '#EDE9FE', textHex: '#5B21B6' },
+  { label: '薄荷淡青', hex: '#D1FAE5', textHex: '#065F46' },
+  { label: '暖阳淡橙', hex: '#FFEDD5', textHex: '#9A3412' },
+  { label: '水墨玄黑', hex: '#26282B', textHex: '#FFFFFF' },
 ] as const;
 
 const TYPOGRAPHY_GEAR_KEYS: readonly TypographyGear[] = [
@@ -121,6 +141,9 @@ function TouchSlider({
   return (
     <View style={styles.sliderContainer}>
       <View
+        accessibilityLabel="滑杆调节"
+        accessibilityRole="adjustable"
+        accessibilityValue={{ min, max, now: value }}
         ref={trackRef}
         style={styles.sliderTrack}
         onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
@@ -141,6 +164,9 @@ function TouchSlider({
           const isSelected = value === mark.value;
           return (
             <Pressable
+              accessibilityLabel={`${mark.label}快捷选择`}
+              accessibilityRole="button"
+              hitSlop={6}
               key={mark.value}
               onPress={() => onChange(mark.value)}
               style={[
@@ -174,9 +200,11 @@ export function ChatAppearanceSettingsScreen({
     avatarRadius,
     bubbleRadius,
     userBubbleColor,
+    assistantBubbleColor,
     setChatAvatarRadius,
     setChatBubbleRadius,
     setChatUserBubbleColor,
+    setChatAssistantBubbleColor,
   } = useChatAppearancePreferences(space);
 
   const {
@@ -193,8 +221,17 @@ export function ChatAppearanceSettingsScreen({
   } = useChatTypographyPreferences(space);
 
   const [customHexInput, setCustomHexInput] = useState(userBubbleColor);
+  const [customAiHexInput, setCustomAiHexInput] = useState(assistantBubbleColor || '#FFFFFF');
   const [isAppearanceExpanded, setIsAppearanceExpanded] = useState(true);
   const [isFineTuneExpanded, setIsFineTuneExpanded] = useState(false);
+
+  useEffect(() => {
+    setCustomHexInput(userBubbleColor);
+  }, [userBubbleColor]);
+
+  useEffect(() => {
+    setCustomAiHexInput(assistantBubbleColor || '#FFFFFF');
+  }, [assistantBubbleColor]);
 
   // 判定当前是否所有排版项处于同一全局档位
   const currentGlobalGear: TypographyGear | null = useMemo(() => {
@@ -218,17 +255,20 @@ export function ChatAppearanceSettingsScreen({
 
   // 气泡圆角地标提示
   const getBubbleRadiusHint = (r: number) => {
-    if (r === 14) return '14dp · 微信风格';
+    if (r === 0) return '0dp · 方角硬朗';
+    if (r === 4) return '4dp · 经典微弧';
     if (r === 8) return '8dp · 利落微弧';
-    if (r === 18) return '18dp · 饱满圆润';
-    if (r === 24) return '24dp · 胶囊曲率';
+    if (r === 12) return '12dp · 微圆 (箭头临界)';
+    if (r === 18) return '18dp · 饱满圆润 (隐藏箭头)';
+    if (r === 24) return '24dp · 胶囊曲率 (隐藏箭头)';
+    if (r > 12) return `${r}dp · (隐藏箭头)`;
     return `${r}dp`;
   };
 
   // 头像圆角地标提示
   const getAvatarRadiusHint = (r: number) => {
-    if (r === 6) return '6dp · 微信风格';
     if (r === 0) return '0dp · 方形硬朗';
+    if (r === 6) return '6dp · 经典微圆';
     if (r === 12) return '12dp · 柔和圆角';
     if (r === 20) return '20dp · 纯圆';
     return `${r}dp`;
@@ -268,34 +308,41 @@ export function ChatAppearanceSettingsScreen({
           <View style={styles.previewCard}>
             {/* 消息 1：用户在上（只发 1 行，右侧展示用户真实头像） */}
             <View style={styles.previewUserRow}>
-              <View
-                style={[
-                  styles.previewUserBubble,
-                  {
-                    backgroundColor: userBubbleColor,
-                    borderRadius: bubbleRadius,
-                  },
-                ]}
-              >
-                <Text
-                  numberOfLines={1}
+              <View style={styles.previewBubbleWrap}>
+                {bubbleRadius <= 12 ? (
+                  <View
+                    style={[
+                      styles.previewRightBeak,
+                      {
+                        borderLeftColor: userBubbleColor,
+                      },
+                    ]}
+                  />
+                ) : null}
+                <View
                   style={[
-                    styles.previewUserText,
+                    styles.previewUserBubble,
                     {
-                      fontSize,
-                      lineHeight,
-                      letterSpacing,
-                      color:
-                        userBubbleColor.toLowerCase() === '#95ec69'
-                          ? '#000000'
-                          : userBubbleColor.toLowerCase() === '#ffffff'
-                          ? '#0F172A'
-                          : '#0F172A',
+                      backgroundColor: userBubbleColor,
+                      borderRadius: bubbleRadius,
                     },
                   ]}
                 >
-                  帮我整理今天新导入的照片素材。
-                </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.previewUserText,
+                      {
+                        fontSize,
+                        lineHeight,
+                        letterSpacing,
+                        color: calculateContrastingTextColor(userBubbleColor),
+                      },
+                    ]}
+                  >
+                    帮我整理今天新导入的照片素材。
+                  </Text>
+                </View>
               </View>
               <View style={[styles.previewUserAvatar, { borderRadius: avatarRadius }]}>
                 {profileAvatarUri ? (
@@ -309,7 +356,7 @@ export function ChatAppearanceSettingsScreen({
               </View>
             </View>
 
-            {/* 消息 2：系统管家在下（回复 2 行，左侧展示管家头像） */}
+            {/* 消息 2：伴聊AI在下（回复 2 行，展示伴聊气泡颜色与圆角） */}
             <View style={styles.previewAssistantRow}>
               <Image
                 source={require('../../assets/ai_system_avatar.png')}
@@ -319,21 +366,43 @@ export function ChatAppearanceSettingsScreen({
                 ]}
               />
               <View style={styles.previewAssistantBody}>
-                <Text style={styles.previewSenderName}>系统管家</Text>
-                <View style={styles.previewAssistantBubble}>
-                  <Text
-                    numberOfLines={2}
+                <Text style={styles.previewSenderName}>伴聊小依 (伴聊演示)</Text>
+                <View style={styles.previewBubbleWrapLeft}>
+                  {bubbleRadius <= 12 ? (
+                    <View
+                      style={[
+                        styles.previewLeftBeak,
+                        {
+                          borderRightColor: assistantBubbleColor || '#FFFFFF',
+                        },
+                      ]}
+                    />
+                  ) : null}
+                  <View
                     style={[
-                      styles.previewAssistantText,
+                      styles.previewAssistantBubble,
                       {
-                        fontSize,
-                        lineHeight,
-                        letterSpacing,
+                        backgroundColor: assistantBubbleColor || '#FFFFFF',
+                        borderRadius: bubbleRadius,
+                        borderColor: (assistantBubbleColor || '#FFFFFF').toLowerCase() === '#ffffff' ? '#E2E8F0' : 'transparent',
                       },
                     ]}
                   >
-                    {"已为你按拍摄时间整理完毕，\n你可以随时在画板中查看或引用。"}
-                  </Text>
+                    <Text
+                      numberOfLines={2}
+                      style={[
+                        styles.previewAssistantText,
+                        {
+                          fontSize,
+                          lineHeight,
+                          letterSpacing,
+                          color: calculateContrastingTextColor(assistantBubbleColor || '#FFFFFF'),
+                        },
+                      ]}
+                    >
+                      {"已为你按拍摄时间整理完毕，\n你可以随时在画板中查看或引用。"}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -412,14 +481,102 @@ export function ChatAppearanceSettingsScreen({
                   maxLength={9}
                   onChangeText={(text) => {
                     setCustomHexInput(text);
-                    if (/^#[0-9A-Fa-f]{6}$/.test(text)) {
-                      setChatUserBubbleColor(text);
+                    const valid = normalizeHexColor(text);
+                    if (valid) {
+                      setChatUserBubbleColor(valid);
                     }
                   }}
                   placeholder="#95EC69"
-                  style={styles.customColorInput}
+                  style={[
+                    styles.customColorInput,
+                    !normalizeHexColor(customHexInput) && customHexInput.length > 0 && styles.customColorInputError,
+                  ]}
                   textAlignVertical="center"
                   value={customHexInput}
+                />
+                <View
+                  style={[
+                    styles.customColorPreviewDot,
+                    { backgroundColor: normalizeHexColor(customHexInput) || 'transparent' },
+                    normalizeHexColor(customHexInput) === '#FFFFFF' && styles.swatchCircleBorder,
+                  ]}
+                />
+              </View>
+
+              <View style={styles.innerDivider} />
+
+              {/* 1b. AI伴聊气泡颜色 (仅对伴聊有效) */}
+              <View style={styles.subHeaderRow}>
+                <Text style={styles.subItemTitle}>AI气泡颜色</Text>
+                <Text style={styles.subItemNotice}>仅伴聊有效</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.swatchesScroll}
+              >
+                {PRESET_AI_COLOR_SWATCHES.map((swatch) => {
+                  const isSelected =
+                    (assistantBubbleColor || '#FFFFFF').toLowerCase() === swatch.hex.toLowerCase();
+                  return (
+                    <Pressable
+                      key={swatch.hex}
+                      onPress={() => {
+                        setChatAssistantBubbleColor(swatch.hex);
+                        setCustomAiHexInput(swatch.hex);
+                      }}
+                      style={[
+                        styles.swatchItem,
+                        isSelected && styles.swatchItemActive,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.swatchCircle,
+                          { backgroundColor: swatch.hex },
+                          swatch.hex === '#FFFFFF' && styles.swatchCircleBorder,
+                        ]}
+                      >
+                        {isSelected ? (
+                          <Ionicons
+                            color={swatch.textHex}
+                            name="checkmark"
+                            size={18}
+                          />
+                        ) : null}
+                      </View>
+                      <Text style={styles.swatchLabel}>{swatch.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.customColorRow}>
+                <Text style={styles.customColorLabel}>自定义 Hex 色值：</Text>
+                <TextInput
+                  autoCapitalize="characters"
+                  maxLength={9}
+                  onChangeText={(text) => {
+                    setCustomAiHexInput(text);
+                    const valid = normalizeHexColor(text);
+                    if (valid) {
+                      setChatAssistantBubbleColor(valid);
+                    }
+                  }}
+                  placeholder="#FFFFFF"
+                  style={[
+                    styles.customColorInput,
+                    !normalizeHexColor(customAiHexInput) && customAiHexInput.length > 0 && styles.customColorInputError,
+                  ]}
+                  textAlignVertical="center"
+                  value={customAiHexInput}
+                />
+                <View
+                  style={[
+                    styles.customColorPreviewDot,
+                    { backgroundColor: normalizeHexColor(customAiHexInput) || 'transparent' },
+                    normalizeHexColor(customAiHexInput) === '#FFFFFF' && styles.swatchCircleBorder,
+                  ]}
                 />
               </View>
 
@@ -434,13 +591,14 @@ export function ChatAppearanceSettingsScreen({
               </View>
               <TouchSlider
                 landmarks={[
+                  { value: 0, label: '直角 0dp' },
+                  { value: 4, label: '经典 4dp' },
                   { value: 8, label: '利落 8dp' },
-                  { value: 14, label: '微信 14dp' },
-                  { value: 18, label: '饱满 18dp' },
+                  { value: 12, label: '微圆 12dp' },
                   { value: 24, label: '胶囊 24dp' },
                 ]}
                 max={28}
-                min={4}
+                min={0}
                 onChange={(val) => setChatBubbleRadius(val)}
                 value={bubbleRadius}
               />
@@ -457,7 +615,7 @@ export function ChatAppearanceSettingsScreen({
               <TouchSlider
                 landmarks={[
                   { value: 0, label: '方形 0dp' },
-                  { value: 6, label: '微信 6dp' },
+                  { value: 6, label: '经典 6dp' },
                   { value: 12, label: '柔和 12dp' },
                   { value: 20, label: '纯圆 20dp' },
                 ]}
@@ -474,6 +632,13 @@ export function ChatAppearanceSettingsScreen({
             >
               <View style={styles.collapsedBarLeft}>
                 <View style={[styles.miniColorDot, { backgroundColor: userBubbleColor }]} />
+                <View
+                  style={[
+                    styles.miniColorDot,
+                    { backgroundColor: assistantBubbleColor || '#FFFFFF' },
+                    (assistantBubbleColor || '#FFFFFF').toUpperCase() === '#FFFFFF' && styles.swatchCircleBorder,
+                  ]}
+                />
                 <Text style={styles.collapsedBarText}>
                   气泡 {bubbleRadius}dp · 头像 {avatarRadius}dp
                 </Text>
@@ -803,8 +968,43 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
-  previewUserBubble: {
+  previewBubbleWrap: {
+    position: 'relative',
     maxWidth: '78%',
+  },
+  previewBubbleWrapLeft: {
+    position: 'relative',
+    alignSelf: 'flex-start',
+    maxWidth: '92%',
+  },
+  previewRightBeak: {
+    position: 'absolute',
+    right: -5,
+    top: 9,
+    width: 0,
+    height: 0,
+    borderTopWidth: 5,
+    borderBottomWidth: 5,
+    borderLeftWidth: 6,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    zIndex: 1,
+  },
+  previewLeftBeak: {
+    position: 'absolute',
+    left: -5,
+    top: 9,
+    width: 0,
+    height: 0,
+    borderTopWidth: 5,
+    borderBottomWidth: 5,
+    borderRightWidth: 6,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    zIndex: 1,
+  },
+  previewUserBubble: {
+    maxWidth: '100%',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -861,6 +1061,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
     marginBottom: 2,
+  },
+  subItemNotice: {
+    ...typography.textStyles.micro,
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
   },
   subHeaderRow: {
     flexDirection: 'row',
@@ -943,17 +1149,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.text.primary,
   },
-  wechatBadge: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  wechatBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#15803D',
-  },
   customColorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -982,6 +1177,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: typography.family.mono,
     color: colors.text.primary,
+  },
+  customColorInputError: {
+    borderColor: '#EF4444',
+  },
+  customColorPreviewDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0, 0, 0, 0.12)',
   },
   // ── 滑杆组件 ──
   sliderContainer: {

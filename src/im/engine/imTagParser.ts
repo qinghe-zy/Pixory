@@ -29,6 +29,11 @@ export interface ParsedStickerTag {
   rawTag: string;
 }
 
+export interface ParsedVoiceTag {
+  text: string;
+  rawTag: string;
+}
+
 export interface ParsedDocumentTag {
   title: string;
   uri?: string;
@@ -57,6 +62,7 @@ const STATUS_TAG_REGEX = /\[STATUS:\s*([^\]]+)\]/i;
 const HEARTBEAT_TAG_REGEX = /\[HEARTBEAT:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
 const PING_TAG_REGEX = /\[PING:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
 export const STICKER_TAG_REGEX = /[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*([^\]】\n]{1,10}?)\s*[\]】]/i;
+const VOICE_TAG_REGEX = /[[\[【]\s*(?:VOICE|语音)\s*[:：]\s*([^\]】\n]+?)\s*[\]】]/i;
 const DOCUMENT_BLOCK_REGEX = /\[(?:DOCUMENT|DOC):\s*([^\]\n]+)\]([\s\S]*?)\[\/(?:DOCUMENT|DOC)\]/i;
 const DOCUMENT_INLINE_REGEX = /\[(?:DOCUMENT|DOC):\s*([^|\]\n]+)\|\s*([\s\S]+?)\]/i;
 const DOCUMENT_PATCH_BLOCK_REGEX = /\[(?:DOCUMENT_PATCH|DOC_PATCH):\s*([^|\]\n]+?)\s*\|\s*([^\]\n]+?)\]([\s\S]*?)\[\/(?:DOCUMENT_PATCH|DOC_PATCH)\]/i;
@@ -221,6 +227,18 @@ export function parseStickerTag(text: string): ParsedStickerTag | null {
   const emotion = match[1]?.trim();
   if (!emotion) return null;
   return { emotion, rawTag: match[0] };
+}
+
+/**
+ * 解析大模型返回的 [VOICE: 语音内容] 或 【语音: 语音内容】
+ */
+export function parseVoiceTag(text: string): ParsedVoiceTag | null {
+  if (!text) return null;
+  const match = text.match(VOICE_TAG_REGEX);
+  if (!match) return null;
+  const voiceContent = match[1]?.trim();
+  if (!voiceContent) return null;
+  return { text: voiceContent, rawTag: match[0] };
 }
 
 /**

@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Keyboard, StyleSheet, View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Keyboard, Platform, StyleSheet, View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,6 +48,22 @@ export function FormScreenScaffold({
   backgroundColor,
 }: FormScreenScaffoldProps) {
   const insets = useSafeAreaInsets();
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   function handlePrimaryPress() {
     if (primaryAction.loading || primaryAction.disabled) {
@@ -79,25 +95,27 @@ export function FormScreenScaffold({
         </View>
       </ScreenScaffold>
 
-      <View pointerEvents="box-none" style={[styles.floatingWrap, { bottom: insets.bottom + spacing[4] }]}>
-        <BlurView intensity={30} style={styles.glassPill} tint="light">
-          <Pressable
-            disabled={primaryAction.disabled || primaryAction.loading}
-            onPress={handlePrimaryPress}
-            style={({ pressed }) => [
-              styles.pillButton,
-              pressed && styles.pillButtonPressed,
-              (primaryAction.disabled || primaryAction.loading) && styles.pillButtonDisabled,
-            ]}
-          >
-            {primaryAction.loading ? (
-              <ActivityIndicator color={premiumColors.buttonText} />
-            ) : (
-              <Text style={styles.pillButtonText}>{primaryAction.label}</Text>
-            )}
-          </Pressable>
-        </BlurView>
-      </View>
+      {!isKeyboardVisible && (
+        <View pointerEvents="box-none" style={[styles.floatingWrap, { bottom: insets.bottom + spacing[4] }]}>
+          <BlurView intensity={30} style={styles.glassPill} tint="light">
+            <Pressable
+              disabled={primaryAction.disabled || primaryAction.loading}
+              onPress={handlePrimaryPress}
+              style={({ pressed }) => [
+                styles.pillButton,
+                pressed && styles.pillButtonPressed,
+                (primaryAction.disabled || primaryAction.loading) && styles.pillButtonDisabled,
+              ]}
+            >
+              {primaryAction.loading ? (
+                <ActivityIndicator color={premiumColors.buttonText} />
+              ) : (
+                <Text style={styles.pillButtonText}>{primaryAction.label}</Text>
+              )}
+            </Pressable>
+          </BlurView>
+        </View>
+      )}
     </View>
   );
 }

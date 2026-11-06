@@ -573,14 +573,14 @@ export function AllImagesScreen({
 
       <PageStateBlock
         loadingComponent={<GallerySkeleton />}
-        emptyActionLabel={commonButtonCopy.importImages}
+        emptyActionLabel={hasActiveFilters ? '清除筛选' : commonButtonCopy.importImages}
         emptyDescription={
           !hasActiveFilters
             ? '上传第一张图片后，就可以在这里按分组和标签进行管理'
             : '这个筛选条件下暂时没有素材。'
         }
         emptyTitle={!hasActiveFilters ? '您的个人素材库' : commonEmptyStateCopy.noSearchResultTitle}
-        onEmptyAction={onImportImages}
+        onEmptyAction={hasActiveFilters ? () => setActiveFilters(EMPTY_FILTERS) : onImportImages}
         errorMessage={errorMessage}
         isEmpty={!isLoading && images.length === 0}
         loading={isLoading}

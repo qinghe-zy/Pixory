@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiRoleCardRail, buildRoleLibraryShortcuts, setCachedRoleCards, type RoleShortcut } from '../components/ai/AiRoleCardRail';
 import { AiActiveSpectrum } from '../components/ai/AiActiveSpectrum';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { SecureImage } from '../components/SecureImage';
@@ -25,7 +26,6 @@ import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 import { globalScrollState } from '../utils/scrollState';
 import { FloatingFooterContext } from '../components/AppScreen';
-import { AI_SYSTEM_AVATAR_B64 } from '../utils/aiSystemAvatarBase64';
 import { PersonalCredentialPrompt } from '../components/PersonalCredentialPrompt';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
@@ -52,6 +52,7 @@ export async function preloadAiHomeData(space: PixorySpace): Promise<void> {
     ]);
     homeThreadCache[space] = threads;
     homeRoleCardCache[space] = roleCards;
+    setCachedRoleCards(space, roleCards);
     void ensureSystemAssistantThread(space).catch(() => undefined);
   } catch {
     // 忽略静默预热异常
@@ -79,11 +80,6 @@ interface AiHomeScreenProps {
   onExportRole?: () => void;
 }
 
-interface RoleShortcut {
-  avatarUri: string;
-  name: string;
-  roleCardId: string;
-}
 
 export function AiHomeScreen({
   footer,
@@ -232,6 +228,7 @@ export function AiHomeScreen({
     void listRoleCards(space)
       .then((nextRoleCards) => {
         homeRoleCardCache[space] = nextRoleCards;
+        setCachedRoleCards(space, nextRoleCards);
         if (isMounted) {
           setLoadedRoleCards({ space, roleCards: nextRoleCards });
           recordDiagnosticEvent({ eventType: 'home_roles_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextRoleCards.length } });
@@ -324,37 +321,12 @@ export function AiHomeScreen({
               </Pressable>
             </Animated.View>
 
-            <View style={styles.roleRailWrap}>
-              <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.roleRailScroll} contentContainerStyle={styles.roleRailContent}>
-                {roleShortcuts.length ? (
-                  roleShortcuts.map((role) => (
-                    <Pressable
-                      accessibilityLabel={`使用角色 ${role.name} 开始聊天`}
-                      accessibilityRole="button"
-                      key={role.roleCardId}
-                      onPress={() => onStartChatWithRole(role.roleCardId)}
-                      style={({ pressed }) => [styles.roleShortcut, pressed && styles.pressed]}
-                    >
-                      <View style={styles.roleAvatarContainer}>
-                        <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
-                        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.sm, overflow: 'hidden' }]}>
-                          <LiquidGlassBezel contentIntensity="none" radius={radius.sm} />
-                        </View>
-                      </View>
-                      <Text numberOfLines={1} style={styles.roleName}>{role.name}</Text>
-                    </Pressable>
-                  ))
-                ) : (
-                  <View style={styles.emptyRoleHint}>
-                    <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconSizeMd} />
-                    <Text style={styles.emptyRoleText}>有头像的角色会显示在这里</Text>
-                  </View>
-                )}
-              </ScrollView>
-              <Pressable accessibilityLabel="打开角色库" accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.roleLibraryButton, pressed && styles.pressed]}>
-                <Ionicons color="#5e5e5e" name="ellipsis-vertical" size={20} />
-              </Pressable>
-            </View>
+            <AiRoleCardRail
+              onOpenRoleLibrary={onOpenRoleLibrary}
+              onSelectRole={onStartChatWithRole}
+              shortcuts={roleShortcuts}
+              space={space}
+            />
           </View>
 
           {/* Recent chat section */}
@@ -631,15 +603,6 @@ export function AiHomeScreen({
 
 
 
-function buildRoleLibraryShortcuts(roleCards: AiRoleCardRecord[]): RoleShortcut[] {
-  return roleCards
-    .filter((roleCard): roleCard is AiRoleCardRecord & { avatarUri: string } => Boolean(roleCard.avatarUri))
-    .map((roleCard) => ({
-      avatarUri: roleCard.avatarUri,
-      name: roleCard.name,
-      roleCardId: roleCard.id,
-    }));
-}
 
 function formatAiHomeFullMinute(value: string | null | undefined): string {
   return formatAiFullMinute(value);
@@ -659,7 +622,7 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
   if (thread.id === 'pixory-system-assistant') {
     return (
       <ExpoImage
-        source={{ uri: AI_SYSTEM_AVATAR_B64 }}
+        source={AI_SYSTEM_AVATAR}
         style={styles.threadAvatarImage}
       />
     );

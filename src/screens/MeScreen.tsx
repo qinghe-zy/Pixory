@@ -428,7 +428,7 @@ export function MeScreen({
 
   return (
     <ScreenScaffold
-      backgroundColor="#f9f9f9"
+      backgroundColor={profileStyleMode === "minimalist" ? "#F6F6F7" : "#f9f9f9"}
       contentContainerStyle={profileStyleMode === 'minimalist' ? styles.minimalistScrollContent : undefined}
       errorMessage={errorMessage}
       footer={footer}
@@ -437,8 +437,8 @@ export function MeScreen({
     >
       {profileStyleMode === 'minimalist' ? (
         <View style={styles.minimalistContainer}>
-          {/* Group 1: 个人资料 */}
-          <View style={styles.minimalistInsetGroup}>
+          {/* Group 1: 个人资料与空间入口 */}
+          <View style={styles.minimalistGroup}>
             <Pressable
               accessibilityLabel="个人信息"
               accessibilityRole="button"
@@ -502,43 +502,21 @@ export function MeScreen({
                 <Ionicons color="#C4C7C7" name="chevron-forward" size={17} />
               </View>
             </Pressable>
-          </View>
 
-          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
-          <View style={styles.minimalistGap} />
-
-          {/* Group 2: 独立隐私空间通道 */}
-          <View style={styles.minimalistInsetGroup}>
             <MinimalistRow
               icon={isPersonalMode ? "lock-open-outline" : "lock-closed-outline"}
               iconColor={isPersonalMode ? colors.primary.active : "#1A1C1C"}
               onPress={handlePersonalToggle}
-              showBorder
+              showBorder={false}
               title={isPersonalMode ? "隐私空间 (已解锁)" : "隐私空间"}
               valueText={isPersonalMode ? "轻触返回普通空间" : "轻触解锁进入"}
             />
           </View>
 
-          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
           <View style={styles.minimalistGap} />
 
-          {/* Group 3: 聊天视觉与排版定制（单独占一行，上下空10px，无副标题解释） */}
-          <View style={styles.minimalistInsetGroup}>
-            <MinimalistRow
-              icon="chatbubble-ellipses-outline"
-              onPress={() => {
-                if (onOpenChatAppearance) onOpenChatAppearance();
-              }}
-              showBorder
-              title="聊天视觉与排版定制"
-            />
-          </View>
-
-          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
-          <View style={styles.minimalistGap} />
-
-          {/* Group 4: 核心素材 (收藏图片、最近查看) */}
-          <View style={styles.minimalistInsetGroup}>
+          {/* Group 2: 收藏与偏好 */}
+          <View style={styles.minimalistGroup}>
             <MinimalistRow
               icon="heart-outline"
               onPress={() => handleEntryPress("favorites")}
@@ -553,19 +531,26 @@ export function MeScreen({
               title="最近查看"
               valueText={String(data?.recentViewedCount ?? 0)}
             />
+            <MinimalistRow
+              icon="chatbubble-ellipses-outline"
+              onPress={() => {
+                if (onOpenChatAppearance) onOpenChatAppearance();
+              }}
+              showBorder={false}
+              title="聊天视觉与排版定制"
+            />
           </View>
 
-          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
           <View style={styles.minimalistGap} />
 
-          {/* Group 5: 常用工具 (回收站、备份导出、重复检测、存储占用) */}
-          <View style={styles.minimalistInsetGroup}>
+          {/* Group 3: 常用工具与数据管理 */}
+          <View style={styles.minimalistGroup}>
             <MinimalistRow
-              icon="trash-outline"
-              onPress={() => handleEntryPress("trash")}
+              icon="pie-chart-outline"
+              onPress={() => handleEntryPress("storage-usage")}
               showBorder
-              title="回收站"
-              valueText={data?.deletedImageCount ? String(data.deletedImageCount) : undefined}
+              title="存储占用"
+              valueText={formatFileSize(imageBytes + videoBytes)}
             />
             <MinimalistRow
               icon="archive-outline"
@@ -580,30 +565,29 @@ export function MeScreen({
               title="重复检测"
             />
             <MinimalistRow
-              icon="pie-chart-outline"
-              onPress={() => handleEntryPress("storage-usage")}
-              showBorder
-              title="存储占用"
-              valueText={formatFileSize(imageBytes + videoBytes)}
+              icon="trash-outline"
+              onPress={() => handleEntryPress("trash")}
+              showBorder={false}
+              title="回收站"
+              valueText={data?.deletedImageCount ? String(data.deletedImageCount) : undefined}
             />
           </View>
 
-          {/* 10px 窄空行物理分隔（坚决不写分类文字标题） */}
           <View style={styles.minimalistGap} />
 
-          {/* Group 6: 系统设置 (关于、设置) */}
-          <View style={styles.minimalistInsetGroup}>
-            <MinimalistRow
-              icon="information-circle-outline"
-              onPress={() => handleEntryPress("about")}
-              showBorder
-              title="关于"
-            />
+          {/* Group 4: 系统设置与关于 */}
+          <View style={styles.minimalistGroup}>
             <MinimalistRow
               icon="settings-outline"
               onPress={() => handleEntryPress("settings")}
               showBorder
               title="设置"
+            />
+            <MinimalistRow
+              icon="information-circle-outline"
+              onPress={() => handleEntryPress("about")}
+              showBorder={false}
+              title="关于"
             />
           </View>
         </View>
@@ -1718,27 +1702,28 @@ const styles = StyleSheet.create({
   // ── 简约模式视觉样式 ──
   minimalistScrollContent: {
     paddingHorizontal: 0,
-    paddingVertical: 10,
+    paddingVertical: 0,
     gap: 0,
   },
   minimalistContainer: {
-    backgroundColor: '#F9F9F9',
+    backgroundColor: '#F6F6F7',
+    paddingBottom: 28,
   },
   minimalistGap: {
-    height: 10,
+    height: 12,
   },
-  minimalistInsetGroup: {
+  minimalistGroup: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    marginHorizontal: 8,
-    overflow: 'hidden',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E8E8EC',
   },
   minimalistProfileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 16,
-    minHeight: 76,
+    minHeight: 84,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E2E8F0',
@@ -1786,11 +1771,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 16,
-    minHeight: 58,
+    minHeight: 64,
     backgroundColor: '#FFFFFF',
   },
   minimalistRowPressed: {
-    backgroundColor: '#F3F3F4',
+    backgroundColor: '#F4F4F6',
   },
   minimalistRowIcon: {
     width: 28,
@@ -1804,7 +1789,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingRight: 16,
     paddingVertical: 16,
-    minHeight: 58,
+    minHeight: 64,
   },
   minimalistRowContentBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,

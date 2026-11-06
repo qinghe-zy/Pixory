@@ -163,6 +163,7 @@ function mapMessageRow(row: RawMessageRow): ImMessage {
   let imageUri: string | null = null;
   let boundIpName: string | null = null;
   let metadata: Record<string, any> | null = null;
+  let voice: import('../types').ImVoiceMetadata | undefined = undefined;
 
   const docData = tryParseDocumentRowContent(row.content);
   if (docData) {
@@ -171,6 +172,20 @@ function mapMessageRow(row: RawMessageRow): ImMessage {
     metadata = { document: docData };
   } else if (row.role === 'system') {
     type = 'system_notice';
+  } else if (row.content && row.content.startsWith('{') && (row.content.startsWith('{"type":"voice"') || row.content.includes('"type":"voice"'))) {
+    try {
+      const parsed = JSON.parse(row.content);
+      type = 'voice';
+      content = parsed.transcription ?? parsed.text ?? '';
+      voice = {
+        audioUri: parsed.audioUri ?? '',
+        durationMs: parsed.durationMs ?? 1000,
+        transcription: parsed.transcription ?? parsed.text ?? '',
+        isPlayed: Boolean(parsed.isPlayed),
+      };
+    } catch {
+      // 容错保持普通文本
+    }
   } else if (row.content && row.content.startsWith('{"type":"thought"')) {
     try {
       const parsed = JSON.parse(row.content);
@@ -216,6 +231,7 @@ function mapMessageRow(row: RawMessageRow): ImMessage {
     type,
     imageUri,
     boundIpName,
+    voice,
     metadata,
     status: row.status === 'failed' ? 'failed' : 'sent',
     deliveryStatus: (row.delivery_status as any) || 'delivered',
@@ -721,6 +737,16 @@ export async function insertImMessage(
       text: message.content || '[图片]',
     });
     cleanPreview = message.boundIpName ? `[图片·${message.boundIpName}]` : '[图片]';
+  } else if (message.type === 'voice') {
+    rawContent = JSON.stringify({
+      type: 'voice',
+      audioUri: message.voice?.audioUri ?? '',
+      durationMs: message.voice?.durationMs ?? 1000,
+      transcription: message.voice?.transcription ?? message.content,
+      isPlayed: Boolean(message.voice?.isPlayed),
+    });
+    const s = Math.max(1, Math.round((message.voice?.durationMs ?? 1000) / 1000));
+    cleanPreview = `[语音 ${s}"]`;
   } else if (message.type === 'thought') {
     rawContent = JSON.stringify({
       type: 'thought',
@@ -1350,4 +1376,23 @@ export async function updateImMessageContent(
 ): Promise<void> {
   const db = await initDatabase(space);
   await db.runAsync(`UPDATE ai_messages SET content = ? WHERE id = ?;`, [newContent, messageId]);
+}
+
+/**
+ * 更新语音消息音频路径与播放状态
+ */
+export async function updateImMessageVoice(
+  space: PixorySpace,
+  messageId: string,
+  voice: import('../types').ImVoiceMetadata
+): Promise<void> {
+  const db = await initDatabase(space);
+  const rawContent = JSON.stringify({
+    type: 'voice',
+    audioUri: voice.audioUri,
+    durationMs: voice.durationMs,
+    transcription: voice.transcription,
+    isPlayed: voice.isPlayed,
+  });
+  await db.runAsync(`UPDATE ai_messages SET content = ? WHERE id = ?;`, [rawContent, messageId]);
 }

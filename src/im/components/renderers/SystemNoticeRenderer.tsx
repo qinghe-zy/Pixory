@@ -53,7 +53,7 @@ export function SystemNoticeRenderer({ message, onRetryMessage }: BubbleRenderer
             style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
           >
             <Ionicons color="#5B9CF6" name="refresh-outline" size={13} style={{ marginRight: 2 }} />
-            <Text style={styles.retryText}>点击重试</Text>
+            <Text style={styles.retryText}>重试</Text>
           </Pressable>
         )}
       </View>

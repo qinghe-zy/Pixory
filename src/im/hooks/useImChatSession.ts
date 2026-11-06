@@ -1,5 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Alert, LayoutAnimation, Share } from 'react-native';
+import { LayoutAnimation, Share, Platform, ToastAndroid } from 'react-native';
+import { voiceService } from '../../voice/voiceService';
+import { asrService } from '../../voice/asrService';
+import { runWithDatabaseSpace } from '../../database';
+
+export interface ImSessionDialogState {
+  visible: boolean;
+  title: string;
+  message?: string;
+  danger?: boolean;
+  primaryLabel?: string;
+  onPrimary?: () => void;
+  secondaryLabel?: string | null;
+  tertiaryLabel?: string;
+  onTertiary?: () => void;
+  actionLayout?: 'stack' | 'horizontal' | 'primaryThenSplit';
+}
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -28,6 +44,7 @@ import {
   markImThreadRead,
   getThreadUnreadCount,
   updateImMessageContent,
+  updateImMessageVoice,
   deleteImMessage,
 } from '../repository/imThreadRepository';
 import {
@@ -135,6 +152,10 @@ export function useImChatSession({
   const [rolePrompt, setRolePrompt] = useState<string>('你是一个真实自然、富有共情力的专属对话角色。');
   const roleSnapshotRef = useRef<any>(null);
   const [livingState, setLivingState] = useState<ImCompanionLivingState | null>(null);
+  const [sessionDialog, setSessionDialog] = useState<ImSessionDialogState | null>(null);
+  const closeSessionDialog = useCallback(() => {
+    setSessionDialog(null);
+  }, []);
   const livingStateRef = useRef<ImCompanionLivingState | null>(null);
   livingStateRef.current = livingState;
   const [ipModalVisible, setIpModalVisible] = useState(false);
@@ -478,12 +499,13 @@ export function useImChatSession({
     };
 
     const rollbackThought = async () => {
-      const targetId = activeThought?.id || persistedThoughtId;
-      if (!targetId) return;
+      // 关键防丢失铁律：如果思考已经完成并落库 (persistedThoughtId 存在)，严禁在流异常或中断时回滚删除！
+      // 思考成果是模型真实计算的时间结晶，删除已完成的思考气泡会破坏聊天记录真实性并造成气泡闪烁消失。
       if (persistedThoughtId) {
-        await deleteImMessage(space, persistedThoughtId).catch(() => {});
-        persistedThoughtId = null;
+        return;
       }
+      const targetId = activeThought?.id;
+      if (!targetId) return;
       activeThought = null;
       if (isMountedRef.current) {
         setMessages((prev) => prev.filter((m) => m.id !== targetId));
@@ -530,7 +552,13 @@ export function useImChatSession({
       activeThought = null;
     };
 
-    return { onThoughtProgress, onThoughtCompleted, rollbackThought, finalizeThoughtOnError };
+    return {
+      onThoughtProgress,
+      onThoughtCompleted,
+      rollbackThought,
+      finalizeThoughtOnError,
+      hasPersistedThought: () => Boolean(persistedThoughtId),
+    };
   }, [space, threadId]);
 
   const triggerProactiveFollowup = useCallback(async (stage: 1 | 2 | 3 = 1) => {
@@ -614,6 +642,7 @@ export function useImChatSession({
           livingState: livingStateRef.current || undefined,
           windowN,
           anchorMessageId: activeAnchorId,
+          voiceReplyEnabled: threadSettingsRef.current?.voiceReplyEnabled !== false,
         },
         promptDirective
       );
@@ -962,8 +991,9 @@ export function useImChatSession({
 
   // 核心大模型流式回复分发器（支持切页/退后台脱钩连续落盘）
   const triggerAiResponse = useCallback(
-    async (userInput: string, imageBase64?: string | null) => {
+    async (userInput: string, imageBase64?: string | null, isRetryPrompt?: boolean) => {
       const dispatcher = dispatcherRef.current ?? new BurstMessageDispatcher(threadId, space);
+      dispatcher.voiceReplyEnabled = threadSettingsRef.current?.voiceReplyEnabled !== false;
       const ticker = tickerRef.current;
 
       if (inactivityTimerRef.current) {
@@ -998,6 +1028,8 @@ export function useImChatSession({
       let followupDelayToSchedule: number | null | undefined = null;
       let finalizeThoughtOnError: ((isAborted?: boolean) => Promise<void>) | null = null;
       let rollbackThoughtOnError: (() => Promise<void>) | null = null;
+      let hasPersistedThoughtFn: (() => boolean) | null = null;
+      let parserInstance: TagAwareStreamParser | null = null;
       let lastDispatchedMsg: ImMessage | null = null;
       let caughtAbort = false;
 
@@ -1228,6 +1260,7 @@ export function useImChatSession({
             windowN,
             anchorMessageId: anchorMessageIdRef.current,
             currentImageBase64: imageBase64,
+            voiceReplyEnabled: threadSettingsRef.current?.voiceReplyEnabled !== false,
             interruptedDraft: lastInterruptedDraftRef.current,
             pendingDiaryHook,
             diaryContext,
@@ -1235,6 +1268,7 @@ export function useImChatSession({
             styleEntrainmentNotice,
             diversityNotice,
             burstShapeHint: burstPlan.hint,
+            retryWithoutReThinking: Boolean(isRetryPrompt),
           },
           userInput
         );
@@ -1244,6 +1278,7 @@ export function useImChatSession({
         const thoughtHandlers = createThoughtHandlers();
         finalizeThoughtOnError = thoughtHandlers.finalizeThoughtOnError;
         rollbackThoughtOnError = thoughtHandlers.rollbackThought;
+        hasPersistedThoughtFn = thoughtHandlers.hasPersistedThought;
         const { onThoughtProgress, onThoughtCompleted } = thoughtHandlers;
         const parser = new TagAwareStreamParser({
           onThoughtProgress,
@@ -1259,6 +1294,7 @@ export function useImChatSession({
             }
           },
         });
+        parserInstance = parser;
         let fullRawResponse = '';
         lastDispatchedMsg = null;
         let recordedUsage = false;
@@ -1577,25 +1613,77 @@ export function useImChatSession({
           /abort|cancel/i.test(err?.message || '')
         );
         if (!caughtAbort) {
-          // 若本轮生成因网络/服务端异常夭折且尚未成功发出任何正文台词，回滚孤立思考气泡，防止重试后出现多个思考气泡重叠
-          if (!lastDispatchedMsg && rollbackThoughtOnError) {
-            await rollbackThoughtOnError();
+          console.warn('[ImChatSession] Stream error occurred during generation:', err);
+          // 1. 紧急抢救：大模型可能在流断开前已吐出台词正文（但未遇到 [BR] 滞留在 parser 内部缓冲区）
+          // 在判定失败前，先紧急 flush 冲刷抢救正文！
+          if (parserInstance) {
+            try {
+              const trailing = parserInstance.flush();
+              let rescuedAny = false;
+              for (const s of trailing) {
+                const m = await dispatcher.dispatchSentence(
+                  s,
+                  isMountedRef.current ? (ticker || undefined) : undefined,
+                  { isOccupied, userTextLength: userInput.length, useHumanTimeline: false }
+                );
+                if (m) {
+                  lastDispatchedMsg = m;
+                  rescuedAny = true;
+                }
+              }
+              if (rescuedAny && isMountedRef.current) {
+                await reloadMessages();
+              }
+            } catch (flushErr) {
+              console.warn('[ImChatSession] Emergency flush on stream error failed:', flushErr);
+            }
           }
-          // 使用 system_notice 呈现连接异常反馈，杜绝伪造 assistant 气泡污染 Layer 3 模型上下文与语气
-          const errorNotice: ImMessage = {
-            id: `notice_${Date.now()}_net_err`,
-            threadId,
-            role: 'system',
-            content: '连接暂时不稳定，未收到回复，可长按你的消息重发或稍后再试',
-            type: 'system_notice',
-            status: 'sent',
-            deliveryStatus: 'delivered',
-            visibleAt: Date.now(),
-            createdAt: new Date().toISOString(),
-          };
-          await insertImMessage(space, errorNotice);
-          if (isMountedRef.current) {
-            await reloadMessages();
+
+          // 2. 若依然没有成功发出任何正文台词：
+          if (!lastDispatchedMsg) {
+            const hasThought = hasPersistedThoughtFn ? hasPersistedThoughtFn() : false;
+            if (hasThought) {
+              // 思考已完整产生并落库，仅因 Token 截断或网关关闭导致正文缺失：
+              // 绝不直接向聊天流插入「已完成思考，但回复生成中断」报错胶囊！平滑输出温情口语承接，情感不断连
+              try {
+                const warmReplies = [
+                  '刚才琢磨了一下你说的，我们接着聊呀~',
+                  '嗯……我刚想了想，接着刚才的话题说吧~',
+                  '刚才稍微走神想了会儿，你继续说，我听着呢~',
+                ];
+                const fallbackText = warmReplies[Math.floor(Math.random() * warmReplies.length)];
+                const warmMsg = await dispatcher.dispatchSentence(
+                  fallbackText,
+                  isMountedRef.current ? (ticker || undefined) : undefined,
+                  { isOccupied, userTextLength: userInput.length, useHumanTimeline: false }
+                );
+                if (warmMsg) {
+                  lastDispatchedMsg = warmMsg;
+                  if (isMountedRef.current) {
+                    await reloadMessages();
+                  }
+                }
+              } catch {}
+            } else if (!caughtAbort && !abortCtrl.signal.aborted) {
+              if (rollbackThoughtOnError) {
+                await rollbackThoughtOnError();
+              }
+              const errorNotice: ImMessage = {
+                id: `notice_${Date.now()}_net_err`,
+                threadId,
+                role: 'system',
+                content: '连接暂时不稳定，未收到回复',
+                type: 'system_notice',
+                status: 'sent',
+                deliveryStatus: 'delivered',
+                visibleAt: Date.now(),
+                createdAt: new Date().toISOString(),
+              };
+              await insertImMessage(space, errorNotice);
+              if (isMountedRef.current) {
+                await reloadMessages();
+              }
+            }
           }
         }
       } finally {
@@ -1618,7 +1706,7 @@ export function useImChatSession({
     [threadId, space, roleCardId, rolePrompt, companionName, reloadMessages, scheduleInactivityAutoReply]
   );
 
-  const triggerByThreadKeyRef = useRef<Map<string, (userInput: string, imageBase64?: string | null) => Promise<void>>>(new Map());
+  const triggerByThreadKeyRef = useRef<Map<string, (userInput: string, imageBase64?: string | null, isRetryPrompt?: boolean) => Promise<void>>>(new Map());
   triggerByThreadKeyRef.current.set(`${space}:${threadId}`, triggerAiResponse);
 
   // 初始化输入聚合器 (卸载或切换伴侣会话时若存在刚发出尚在 2s 防抖窗内的用户消息，立即精准投递至原会话后台生成！)
@@ -1707,10 +1795,125 @@ export function useImChatSession({
     void insertImMessage(space, userMsg);
   };
 
+  const handleSendVoice = async (voiceData: { audioUri: string; durationMs: number; transcription?: string }) => {
+    if (editingMessageRef.current) {
+      editingMessageRef.current = null;
+      setFillDraftText(null);
+    }
+    await interruptCompanionActivity(false);
+
+    const initialText = voiceData.transcription?.trim() || '';
+
+    // 防御性拦截任何 mock 虚拟音频路径，绝不上屏与入库任何假气泡语音
+    if (!voiceData.audioUri || voiceData.audioUri.includes('mock')) {
+      if (initialText) {
+        void handleSend(initialText);
+      }
+      return;
+    }
+
+    const voiceMsgId = `im_msg_${Date.now()}_u`;
+
+    // 将录制的临时音频安全复制到 Pixory 用户空间永久语音目录，杜绝系统清理 Cache 或转文字清理导致的音频丢失
+    let effectiveAudioUri = voiceData.audioUri;
+    try {
+      const permanentDir = `${FileSystem.documentDirectory || ''}voice_messages/${space}/`;
+      const dirInfo = await FileSystem.getInfoAsync(permanentDir).catch(() => null);
+      if (!dirInfo?.exists) {
+        await FileSystem.makeDirectoryAsync(permanentDir, { intermediates: true }).catch(() => {});
+      }
+      const permanentUri = `${permanentDir}${voiceMsgId}.m4a`;
+      await FileSystem.copyAsync({ from: voiceData.audioUri, to: permanentUri });
+      effectiveAudioUri = permanentUri;
+    } catch {
+      effectiveAudioUri = voiceData.audioUri;
+    }
+
+    const rawVoicePayload = JSON.stringify({
+      type: 'voice',
+      audioUri: effectiveAudioUri,
+      durationMs: voiceData.durationMs,
+      transcription: initialText,
+      isPlayed: true,
+    });
+
+    const userMsg: ImMessage = {
+      id: voiceMsgId,
+      threadId,
+      role: 'user',
+      content: rawVoicePayload,
+      type: 'voice',
+      voice: {
+        audioUri: effectiveAudioUri,
+        durationMs: voiceData.durationMs,
+        transcription: initialText,
+        isPlayed: true,
+      },
+      status: 'sent',
+      visibleAt: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    // 立即乐观上屏并持久化
+    setMessages((prev) => [...prev, userMsg]);
+    void insertImMessage(space, userMsg);
+
+    if (initialText) {
+      aggregatorRef.current?.push(`[语音消息]: ${initialText}`);
+      return;
+    }
+
+    // 后台静默 ASR 转录并送入大模型，确保伴侣听到并回复
+    void (async () => {
+      try {
+        const text = await asrService.transcribeAudio(effectiveAudioUri, { space, keepFile: true });
+        const transcribed = text?.trim() || '';
+        if (transcribed) {
+          const updatedVoicePayload = JSON.stringify({
+            type: 'voice',
+            audioUri: effectiveAudioUri,
+            durationMs: voiceData.durationMs,
+            transcription: transcribed,
+            isPlayed: true,
+          });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === voiceMsgId
+                ? {
+                    ...m,
+                    content: updatedVoicePayload,
+                    voice: { ...m.voice!, transcription: transcribed },
+                  }
+                : m
+            )
+          );
+          await updateImMessageVoice(space, voiceMsgId, {
+            audioUri: effectiveAudioUri,
+            durationMs: voiceData.durationMs,
+            transcription: transcribed,
+            isPlayed: true,
+          }).catch(() => {});
+          aggregatorRef.current?.push(`[语音消息]: ${transcribed}`);
+        } else {
+          aggregatorRef.current?.push('[发送了一条语音消息]');
+        }
+      } catch {
+        aggregatorRef.current?.push('[发送了一条语音消息]');
+      }
+    })();
+  };
+
   const handleCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('提示', '请允许访问相机');
+      setSessionDialog({
+        visible: true,
+        title: '提示',
+        message: '请允许访问相机',
+        primaryLabel: '我知道了',
+        secondaryLabel: null,
+        onPrimary: closeSessionDialog,
+      });
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
@@ -1918,7 +2121,150 @@ export function useImChatSession({
     setActionMenuVisible(false);
   };
 
+  const handleToggleVoiceTranscript = useCallback(async (msg: ImMessage) => {
+    const isCurrentlyExpanded = Boolean(msg.metadata?.isTranscriptExpanded);
+    const nextExpanded = !isCurrentlyExpanded;
+
+    if (!nextExpanded) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                metadata: { ...(m.metadata || {}), isTranscriptExpanded: false },
+              }
+            : m
+        )
+      );
+      return;
+    }
+
+    const existingText =
+      msg.voice?.transcription ||
+      msg.content.replace(/^\[VOICE:\s*([^\]]+)\]/i, '$1').trim();
+
+    if (existingText) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                metadata: { ...(m.metadata || {}), isTranscriptExpanded: true },
+              }
+            : m
+        )
+      );
+      return;
+    }
+
+    // 缺失转写文本且存在音频文件：标记转写中并异步调取 ASR
+    if (msg.voice?.audioUri) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                metadata: {
+                  ...(m.metadata || {}),
+                  isTranscriptExpanded: true,
+                  isTranscribing: true,
+                },
+              }
+            : m
+        )
+      );
+
+      try {
+        const transcribedText = await asrService.transcribeAudio(msg.voice.audioUri, { space });
+        const updatedVoice = {
+          ...msg.voice,
+          transcription: transcribedText || '未能识别到清晰语音',
+        };
+        await updateImMessageVoice(space, msg.id, updatedVoice);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msg.id
+              ? {
+                  ...m,
+                  voice: updatedVoice,
+                  metadata: {
+                    ...(m.metadata || {}),
+                    isTranscriptExpanded: true,
+                    isTranscribing: false,
+                  },
+                }
+              : m
+          )
+        );
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msg.id
+              ? {
+                  ...m,
+                  metadata: {
+                    ...(m.metadata || {}),
+                    isTranscriptExpanded: true,
+                    isTranscribing: false,
+                  },
+                }
+              : m
+          )
+        );
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('转文字失败，请检查网络或配置', ToastAndroid.SHORT);
+        }
+      }
+    } else {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                metadata: { ...(m.metadata || {}), isTranscriptExpanded: true },
+              }
+            : m
+        )
+      );
+    }
+  }, [space]);
+
+  const handleSpeakMessage = useCallback(async (msg: ImMessage) => {
+    if (!msg.content) return;
+    const cleanText = msg.content
+      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING|DOCUMENT|DOC):[^\]]+\]/gi, '')
+      .replace(/\[BR\]/g, '\n')
+      .trim();
+    if (!cleanText) return;
+
+    if (voiceService.isPlaying(msg.id)) {
+      await voiceService.stop();
+      return;
+    }
+
+    try {
+      await runWithDatabaseSpace(space, async (db) => {
+        await voiceService.speak(
+          cleanText,
+          {
+            db,
+            space,
+            scopeType: 'thread_im',
+            threadId,
+          },
+          msg.id
+        );
+      });
+    } catch (err: any) {
+      if (Platform.OS === 'android') {
+        const errorText = err instanceof Error ? err.message : '朗读失败';
+        ToastAndroid.show(errorText, ToastAndroid.SHORT);
+      }
+    }
+  }, [space, threadId]);
+
   const handleRetryMessage = useCallback(async (msg: ImMessage) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     await imMessageRollback.deleteMessage(msg.id, space);
     setMessages((prev) => prev.filter((m) => m.id !== msg.id));
@@ -1935,6 +2281,8 @@ export function useImChatSession({
         void handleSend(msg.content);
       }
     } else if (msg.type === 'system_notice') {
+      // 避免流控制器并发竞态：微任务延时让出，确保旧流完全终止解除注册后再发起重试
+      await new Promise((resolve) => setTimeout(resolve, 60));
       const lastUser = [...messagesRef.current].reverse().find((m) => m.role === 'user' && m.content);
       if (lastUser?.content) {
         let base64: string | null = null;
@@ -1945,9 +2293,9 @@ export function useImChatSession({
             });
           } catch {}
         }
-        void triggerAiResponse(lastUser.content, base64);
+        void triggerAiResponse(lastUser.content, base64, true);
       } else {
-        void triggerAiResponse('继续');
+        void triggerAiResponse('[系统事件: 重试生成上一轮未完成的回复]', null, true);
       }
     } else {
       void triggerAiResponse('继续');
@@ -1973,30 +2321,27 @@ export function useImChatSession({
       setMessages([]);
     };
 
-    Alert.alert(
-      '清空会话记录',
-      '请选择清空范围：\n• 清空全部：删除聊天记录，并重置顶栏状态、清空手账日记与专属记忆\n• 仅清空消息：仅删除聊天消息并重置状态，保留日记与记忆',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '仅清空消息',
-          style: 'default',
-          onPress: async () => {
-            await clearImThreadHistory(space, threadId);
-            await resetActiveSessionState();
-          },
-        },
-        {
-          text: '清空全部（含日记与记忆）',
-          style: 'destructive',
-          onPress: async () => {
-            await clearImThreadFullState(space, threadId, roleCardId);
-            await resetActiveSessionState();
-          },
-        },
-      ]
-    );
-  }, [space, threadId, roleCardId]);
+    setSessionDialog({
+      visible: true,
+      title: '清空会话记录',
+      message: '请选择清空范围：\n• 清空全部：删除聊天记录，并重置顶栏状态、清空手账日记与专属记忆\n• 仅清空消息：仅删除聊天消息并重置状态，保留日记与记忆',
+      actionLayout: 'stack',
+      danger: true,
+      primaryLabel: '清空全部（含日记与记忆）',
+      onPrimary: async () => {
+        closeSessionDialog();
+        await clearImThreadFullState(space, threadId, roleCardId);
+        await resetActiveSessionState();
+      },
+      secondaryLabel: '取消',
+      tertiaryLabel: '仅清空消息',
+      onTertiary: async () => {
+        closeSessionDialog();
+        await clearImThreadHistory(space, threadId);
+        await resetActiveSessionState();
+      },
+    });
+  }, [space, threadId, roleCardId, closeSessionDialog]);
 
   const handleNudge = useCallback(async () => {
     if (inactivityTimerRef.current) {
@@ -2100,14 +2445,21 @@ export function useImChatSession({
       const jsonStr = await exportImThreadMessages(space, threadId, companionName);
       const parsed = JSON.parse(jsonStr) as { messages?: unknown[] };
       if (!parsed.messages || parsed.messages.length === 0) {
-        Alert.alert('提示', '当前还没有可导出的聊天记录');
+        setSessionDialog({
+          visible: true,
+          title: '提示',
+          message: '当前还没有可导出的聊天记录',
+          primaryLabel: '我知道了',
+          secondaryLabel: null,
+          onPrimary: closeSessionDialog,
+        });
         return;
       }
       await Share.share({ title: `${companionName} 聊天记录备份`, message: jsonStr });
     } catch {
       // 容错静默
     }
-  }, [space, threadId, companionName]);
+  }, [space, threadId, companionName, closeSessionDialog]);
 
   const handleImportHistory = useCallback(async () => {
     try {
@@ -2116,12 +2468,26 @@ export function useImChatSession({
         const text = await FileSystem.readAsStringAsync(doc.assets[0].uri);
         const count = await importImThreadMessages(space, threadId, text);
         await reloadMessages();
-        Alert.alert('导入成功', `成功导入 ${count} 条聊天记录`);
+        setSessionDialog({
+          visible: true,
+          title: '导入成功',
+          message: `成功导入 ${count} 条聊天记录`,
+          primaryLabel: '好的',
+          secondaryLabel: null,
+          onPrimary: closeSessionDialog,
+        });
       }
     } catch (e: any) {
-      Alert.alert('导入失败', e.message || '文件格式不正确');
+      setSessionDialog({
+        visible: true,
+        title: '导入失败',
+        message: e?.message || '文件格式不正确',
+        primaryLabel: '我知道了',
+        secondaryLabel: null,
+        onPrimary: closeSessionDialog,
+      });
     }
-  }, [space, threadId, reloadMessages]);
+  }, [space, threadId, reloadMessages, closeSessionDialog]);
 
   const handleDraftChange = useCallback((text: string) => {
     inputDraftRef.current = text;
@@ -2173,8 +2539,11 @@ export function useImChatSession({
     handleActionMenuClose: () => setActionMenuVisible(false),
     handleDeleteMessage,
     handleEditResend,
+    handleToggleVoiceTranscript,
+    handleSpeakMessage,
     handleRetryMessage,
     handleSend,
+    handleSendVoice,
     handleSendSticker,
     handleCamera,
     handlePhoto,
@@ -2197,5 +2566,7 @@ export function useImChatSession({
     handleStartDiaryResonance,
     fillDraftText,
     reloadMessages,
+    sessionDialog,
+    closeSessionDialog,
   };
 }

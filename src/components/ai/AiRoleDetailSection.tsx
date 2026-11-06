@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
+import { AiMessageContent } from './AiMessageContent';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -13,6 +14,8 @@ interface AiRoleDetailSectionProps {
   iconName?: IoniconName;
   variant?: 'body' | 'quote' | 'list';
   footer?: ReactNode;
+  rightAction?: ReactNode;
+  markdown?: boolean;
   children: ReactNode;
 }
 
@@ -22,6 +25,8 @@ export function AiRoleDetailSection({
   iconName = 'document-text-outline',
   variant = 'body',
   footer,
+  rightAction,
+  markdown = false,
   children,
 }: AiRoleDetailSectionProps) {
   const [expanded, setExpanded] = useState(false);
@@ -35,8 +40,8 @@ export function AiRoleDetailSection({
   return (
     <View style={styles.section}>
       <Pressable
-        accessibilityState={{ expanded }}
         accessibilityRole="button"
+        accessibilityState={{ expanded }}
         onPress={() => setExpanded((current) => !current)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
@@ -46,13 +51,27 @@ export function AiRoleDetailSection({
           </View>
           <Text style={styles.title}>{title}</Text>
         </View>
-        <Ionicons color={aiLightColors.muted} name={expanded ? 'chevron-up' : 'chevron-down'} size={20} />
+        <View style={styles.headerRight}>
+          {rightAction}
+          <Ionicons color={aiLightColors.muted} name={expanded ? 'chevron-up' : 'chevron-down'} size={20} />
+        </View>
       </Pressable>
-      <View style={styles.previewCard}>
+      <View
+        style={[
+          styles.previewCard,
+          variant === 'quote' && styles.quoteContainer,
+        ]}
+      >
         {typeof children === 'string' ? (
-          <Text numberOfLines={expanded ? undefined : previewLines} style={bodyStyle}>
-            {children}
-          </Text>
+          markdown ? (
+            <View style={!expanded && previewLines ? { maxHeight: previewLines * 26, overflow: 'hidden' } : undefined}>
+              <AiMessageContent content={children} disableFolding defaultExpanded />
+            </View>
+          ) : (
+            <Text numberOfLines={expanded ? undefined : previewLines} style={bodyStyle}>
+              {children}
+            </Text>
+          )
         ) : (
           children
         )}
@@ -95,13 +114,18 @@ const styles = StyleSheet.create({
     gap: rhythm.inlineGap,
     minWidth: 0,
   },
+  headerRight: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+  },
   iconBubble: {
     alignItems: 'center',
     backgroundColor: aiLightColors.primarySoft,
     borderRadius: radius.pill,
-    height: 40,
+    height: 38,
     justifyContent: 'center',
-    width: 40,
+    width: 38,
   },
   title: {
     ...typography.textStyles.sectionTitle,
@@ -109,24 +133,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   previewCard: {
-    backgroundColor: aiLightColors.cardWash,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     gap: rhythm.microGap,
-    padding: spacing[3],
+    paddingHorizontal: spacing[1],
+    paddingVertical: spacing[1],
+  },
+  previewCardWash: {
+    backgroundColor: aiLightColors.cardWash,
+  },
+  quoteContainer: {
+    borderLeftColor: aiLightColors.primaryActive,
+    borderLeftWidth: 3,
+    paddingLeft: spacing[3],
+    paddingVertical: spacing[2],
   },
   body: {
     ...typography.textStyles.body,
     color: aiLightColors.ink,
-    lineHeight: typography.textStyles.body.lineHeight,
+    fontSize: 14,
+    lineHeight: 24,
   },
   quoteBody: {
     color: aiLightColors.dark,
+    fontSize: 15,
     fontStyle: 'italic',
+    lineHeight: 25,
   },
   listBody: {
     color: aiLightColors.ink,
+    lineHeight: 24,
   },
   footer: {
     borderTopColor: aiLightColors.hairline,

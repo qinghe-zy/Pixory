@@ -1,10 +1,11 @@
 import { AppState, type AppStateStatus } from 'react-native';
-import { type PixorySpace } from '../../database';
+import { runWithDatabaseSpace, type PixorySpace } from '../../database';
 import {
   getNextPendingVisibleAt,
   getNextPendingVisibleRow,
   insertImMessage,
   revealPendingMessages,
+  updateImMessageVoice,
 } from '../repository/imThreadRepository';
 import type { ImMessage } from '../types';
 import { calculateBubbleTypingDelay, DEFAULT_PACING_CONFIG, type ImPacingConfig } from '../config/pacingProfile';
@@ -13,7 +14,8 @@ import { sanitizeCompanionBubble } from './humanizeOutputGate';
 import { resolveSticker, resolveCompensationEmoji } from '../../components/emoji/StickerSemanticResolver';
 import { CasBlobStore } from '../../services/agent/vfs/casBlobStore';
 import { applyBatchSafely } from '../../services/sandbox/diff/fuzzyPatcher';
-import type { ParsedDocumentPatchTag } from './imTagParser';
+import { parseVoiceTag, type ParsedDocumentPatchTag } from './imTagParser';
+import { voiceService } from '../../voice/voiceService';
 
 export function getStickerCooldownThreshold(style?: string | null): number {
   if (!style) return 3;
@@ -155,6 +157,7 @@ export class BurstMessageDispatcher {
   private threadId: string;
   private space: PixorySpace;
   private config: ImPacingConfig;
+  public voiceReplyEnabled: boolean = true;
   private currentBurstGroupId: string | null = null;
   private accumulatedDelay: number = 0;
   private dispatchedCountInBurst: number = 0;
@@ -186,8 +189,18 @@ export class BurstMessageDispatcher {
   async dispatchSentence(
     text: string,
     ticker?: VisibilityTicker,
-    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
+    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean; voiceReplyEnabled?: boolean }
   ): Promise<ImMessage | null> {
+    const voiceTag = parseVoiceTag(text);
+    if (voiceTag) {
+      const allowed = options?.voiceReplyEnabled ?? this.voiceReplyEnabled;
+      if (!allowed) {
+        // 会话关闭语音回复时，平滑退化为普通文字对白气泡发射
+        return this.dispatchSentence(voiceTag.text, ticker, options);
+      }
+      return this.dispatchVoice(voiceTag.text, ticker, options);
+    }
+
     const cleaned = sanitizeCompanionBubble(text);
     const effectiveText = cleaned.trim();
     if (!effectiveText) {
@@ -225,6 +238,77 @@ export class BurstMessageDispatcher {
 
     await insertImMessage(this.space, message);
     ticker?.scheduleNextTick().catch(() => {});
+    return message;
+  }
+
+  async dispatchVoice(
+    voiceText: string,
+    ticker?: VisibilityTicker,
+    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
+  ): Promise<ImMessage | null> {
+    const effectiveText = voiceText.trim();
+    if (!effectiveText) return null;
+
+    if (!this.currentBurstGroupId) {
+      this.beginBurst();
+    }
+
+    const isFirst = this.dispatchedCountInBurst === 0;
+    const delay = options?.useHumanTimeline
+      ? calculateHumanTypingDelay(effectiveText, this.config, isFirst, {
+          isOccupied: options.isOccupied,
+          userTextLength: options.userTextLength,
+          burstIndex: this.dispatchedCountInBurst,
+        })
+      : calculateBubbleTypingDelay(effectiveText, this.config, isFirst, options);
+    this.accumulatedDelay += delay;
+    this.dispatchedCountInBurst += 1;
+    const visibleAt = Date.now() + this.accumulatedDelay;
+
+    const estDurationMs = Math.max(1000, Math.min(60000, Math.round(effectiveText.length * 240)));
+
+    const message: ImMessage = {
+      id: `msg_ai_voice_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      threadId: this.threadId,
+      burstGroupId: this.currentBurstGroupId || undefined,
+      role: 'assistant',
+      content: effectiveText,
+      type: 'voice',
+      voice: {
+        audioUri: '',
+        durationMs: estDurationMs,
+        transcription: effectiveText,
+        isPlayed: false,
+      },
+      status: 'sent',
+      deliveryStatus: 'revealing',
+      visibleAt,
+      createdAt: new Date(visibleAt).toISOString(),
+    };
+
+    await insertImMessage(this.space, message);
+    ticker?.scheduleNextTick().catch(() => {});
+
+    // 后台异步预合成音频缓存，实现秒开播放
+    void runWithDatabaseSpace(this.space, async (db) => {
+      try {
+        const prep = await voiceService.prepareAudio(effectiveText, {
+          db,
+          space: this.space,
+          scopeType: 'thread_im',
+          threadId: this.threadId,
+        });
+        await updateImMessageVoice(this.space, message.id, {
+          audioUri: prep.audioUri,
+          durationMs: prep.durationMs || estDurationMs,
+          transcription: effectiveText,
+          isPlayed: false,
+        });
+      } catch {
+        // 预合成静默失败不阻断气泡，待用户点击时走 fallbackChain 兜底
+      }
+    });
+
     return message;
   }
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { StyleSheet, Keyboard } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { StyleSheet, Keyboard, View } from 'react-native';
 import type { PixorySpace } from '../../database';
 import { useAiSidebarSpatialPresetPreference, useChatTypographyPreferences, useChatAppearancePreferences } from '../../services/aiChatPreferences';
 import { ImThemeProvider } from '../theme/ImThemeProvider';
@@ -22,6 +21,7 @@ import { MessageTextSelectionModal } from '../../components/common/MessageTextSe
 import { ImDocumentMinimalViewer } from '../../components/document/ImDocumentMinimalViewer';
 import { exportDocumentToShare } from '../utils/documentExport';
 import { useImChatSession } from '../hooks/useImChatSession';
+import { AppDialog } from '../../components/AppDialog';
 import type { ImMessage } from '../types';
 
 export interface ImChatScreenProps {
@@ -29,9 +29,7 @@ export interface ImChatScreenProps {
   threadId: string;
   roleCardId: string;
   roleName: string;
-  roleAvatarUri?: string | null;
-  initialLeftOpen?: boolean;
-  initialRightOpen?: boolean;
+  roleAvatarUri?: string | null; initialLeftOpen?: boolean; initialRightOpen?: boolean;
   onBack: () => void;
   onOpenRoleDetail?: (roleCardId: string) => void;
   onNewRole?: () => void;
@@ -75,12 +73,12 @@ export function ImChatScreen({
   const {
     messages, isInitialLoading, initialUnreadCount, subText, livingState, userAvatarUri, companionName, companionAvatarUri,
     threadSettings, actionMenuVisible, activeMessageForMenu, menuAnchor, handleActionMenuClose,
-    handleDeleteMessage, handleEditResend, handleRetryMessage, handleSend, handleSendSticker, handleCamera, handlePhoto,
+    handleDeleteMessage, handleEditResend, handleToggleVoiceTranscript, handleSpeakMessage, handleRetryMessage, handleSend, handleSendVoice, handleSendSticker, handleCamera, handlePhoto,
     handleFile, handleIpSend, handleLongPress, handleClear, handleNudge, handleNudgeSelf,
     handleUpdateSettings, handleSetAvatarUri, handleSetBackgroundUri,
-    handlePickAvatarFromAlbum, handleClearAvatar, handlePickBackgroundFromAlbum,
-    handleClearBackground, handleExportHistory, handleImportHistory, handleDraftChange,
-    handleStartDiaryResonance, fillDraftText, reloadMessages,
+    handlePickAvatarFromAlbum, handleClearAvatar, handlePickBackgroundFromAlbum, handleClearBackground,
+    handleExportHistory, handleImportHistory, handleDraftChange, handleStartDiaryResonance,
+    fillDraftText, reloadMessages, sessionDialog, closeSessionDialog,
   } = useImChatSession({ space, threadId, roleCardId, initialRoleName: roleName, initialRoleAvatarUri: roleAvatarUri });
 
   const activeTheme = buildImThemeFromPreferences(
@@ -122,21 +120,22 @@ export function ImChatScreen({
         leftDrawer={<ImContactDrawer activeRoleCardId={roleCardId} onImportRole={() => { setLeftOpen(false); onImportRole?.(); }} onNewRole={() => { setLeftOpen(false); onNewRole?.(); }} onSelectCompanion={(id, name, avatar) => onSwitchCompanion?.(id, name, avatar)} refreshTrigger={leftOpen ? 1 : 0} space={space} />}
         rightDrawer={<ImChatSettingsDrawer companionAvatarUri={companionAvatarUri} companionName={companionName} onClearAvatar={handleClearAvatar} onClearBackground={handleClearBackground} onClearHistory={handleClear} onExportHistory={handleExportHistory} onImportHistory={handleImportHistory} onNudge={handleNudge} onOpenDiary={() => setDiaryOpen(true)} onOpenModelPicker={() => setModelOpen(true)} onOpenRoleDetail={(id) => onOpenRoleDetail?.(id)} onOpenSearch={() => setSearchOpen(true)} onPickAvatarFromAlbum={handlePickAvatarFromAlbum} onPickAvatarFromIp={() => setIpTarget('avatar')} onPickBackgroundFromAlbum={handlePickBackgroundFromAlbum} onPickBackgroundFromIp={() => setIpTarget('background')} onUpdateSettings={handleUpdateSettings} roleCardId={roleCardId} settings={threadSettings} space={space} threadId={threadId} />}
       >
-        <KeyboardAvoidingView behavior="padding" enabled={!leftOpen && !rightOpen} style={styles.screen}>
+        <View style={styles.screen}>
           <ImChatHeader onBack={onBack} onOpenDetails={() => setRightOpen(true)} subText={subText || (livingState?.statusText ? `• ${livingState.statusText}` : null)} title={companionName} />
           <ImChatList backgroundImageUri={threadSettings.backgroundImageUri} bubbleSkinPreset={threadSettings.personalization?.bubbleSkinPreset || undefined} companionAvatarUri={companionAvatarUri} companionName={companionName} highlightedMessageId={highlightedMessageId} isGenerating={Boolean(subText)} isInitialLoading={isInitialLoading} messages={messages} showThoughtBubble={threadSettings.showThoughtBubble !== false} onLongPressMessage={(m, px, py) => handleLongPress(m, px, py)} onNudge={handleNudge} onNudgeSelf={handleNudgeSelf} onOpenDiary={() => setDiaryOpen(true)} onOpenDocument={(doc) => setActiveDocument(doc)} onOpenSandbox={(s) => setActiveSandbox(s)} onPressBackground={handleDismissPanels} onPressMessage={(m) => { if (m.type === 'image' && m.imageUri) setViewerImageUri(m.imageUri); }} onQuickIcebreak={(prompt) => { chatListRef.current?.scrollToBottom(true); void handleSend(prompt); }} onRetryMessage={handleRetryMessage} ref={chatListRef} space={space} unreadCount={initialUnreadCount} userAvatarUri={userAvatarUri} />
-          <ImInputBar fillDraftText={fillDraftText} onCameraPress={() => void handleCamera()} onSelectFile={() => void handleFile()} onSelectImage={() => void handlePhoto()} onSelectIp={() => setIpTarget('chat')} onSend={(text) => { chatListRef.current?.scrollToBottom(true); void handleSend(text); }} onSendSticker={(sticker) => void handleSendSticker(sticker)} onTextChange={handleDraftChange} ref={inputBarRef} space={space} />
-        </KeyboardAvoidingView>
+          <ImInputBar fillDraftText={fillDraftText} onCameraPress={() => void handleCamera()} onSelectFile={() => void handleFile()} onSelectImage={() => void handlePhoto()} onSelectIp={() => setIpTarget('chat')} onSend={(text) => { chatListRef.current?.scrollToBottom(true); void handleSend(text); }} onSendVoice={(voice) => { chatListRef.current?.scrollToBottom(true); void handleSendVoice(voice); }} onSendSticker={(sticker) => void handleSendSticker(sticker)} onTextChange={handleDraftChange} ref={inputBarRef} space={space} />
+        </View>
       </ImPushScaleDrawerStage>
       <ImImageViewerModal imageUri={viewerImageUri} onClose={() => setViewerImageUri(null)} space={space} visible={Boolean(viewerImageUri)} />
       <ImDiaryBookModal companionAvatarUri={companionAvatarUri} companionName={companionName} onChatWithDiary={handleStartDiaryResonance} onClose={() => { setDiaryOpen(false); void reloadMessages(); }} onDiaryGenerated={reloadMessages} roleCardId={roleCardId} space={space} threadId={threadId} visible={diaryOpen} />
       <ImIpAssetPickerModal onClose={() => setIpTarget(null)} onConfirmSend={(asset) => { if (ipTarget === 'chat') void handleIpSend(asset); else if (ipTarget === 'avatar') void handleSetAvatarUri(asset.images[0]?.uri || null); else if (ipTarget === 'background') void handleSetBackgroundUri(asset.images[0]?.uri || null); setIpTarget(null); }} space={space} visible={Boolean(ipTarget)} />
       <ImModelPickerModal currentModelId={threadSettings.modelId} currentProviderId={threadSettings.providerId} onClose={() => setModelOpen(false)} onSelect={(pId, mId) => { void handleUpdateSettings({ providerId: pId, modelId: mId }); setModelOpen(false); }} space={space} visible={modelOpen} />
       <ImMessageSearchModal companionAvatarUri={companionAvatarUri} companionName={companionName} onClose={() => setSearchOpen(false)} onSelectMessage={(id) => setHighlightedMessageId(id)} space={space} threadId={threadId} userAvatarUri={userAvatarUri} visible={searchOpen} />
-      <ImMessageActionMenu anchorX={menuAnchor.x} anchorY={menuAnchor.y} message={activeMessageForMenu} onClose={handleActionMenuClose} onDelete={(m) => void handleDeleteMessage(m)} onEditResend={(m) => void handleEditResend(m)} onSelectText={(m) => setSelectedTextMessage(m)} visible={actionMenuVisible} />
+      <ImMessageActionMenu anchorX={menuAnchor.x} anchorY={menuAnchor.y} message={activeMessageForMenu} onClose={handleActionMenuClose} onDelete={(m) => void handleDeleteMessage(m)} onEditResend={(m) => void handleEditResend(m)} onSelectText={(m) => setSelectedTextMessage(m)} onSpeakMessage={(m) => void handleSpeakMessage(m)} onToggleVoiceTranscript={(m) => void handleToggleVoiceTranscript(m)} visible={actionMenuVisible} />
       <MessageTextSelectionModal content={cleanSelectedContent} onClose={() => setSelectedTextMessage(null)} onOpenSandbox={(s) => setActiveSandbox(s)} visible={Boolean(selectedTextMessage)} />
       <AiSandboxViewerModal code={activeSandbox?.code || ''} language={activeSandbox?.language} onClose={() => setActiveSandbox(null)} title={activeSandbox?.title} visible={Boolean(activeSandbox)} />
       <ImDocumentMinimalViewer content={activeDocument?.content} documentTitle={activeDocument?.title} documentUri={activeDocument?.uri} initialMode={activeDocument?.mode || 'clean'} onClose={() => setActiveDocument(null)} onExport={activeDocument ? () => void exportDocumentToShare(activeDocument) : undefined} visible={Boolean(activeDocument)} />
+      <AppDialog appearance="opaqueMonochrome" visible={Boolean(sessionDialog?.visible)} title={sessionDialog?.title || ''} message={sessionDialog?.message} danger={sessionDialog?.danger} primaryLabel={sessionDialog?.primaryLabel || '确定'} onPrimary={() => sessionDialog?.onPrimary?.()} secondaryLabel={sessionDialog?.secondaryLabel} tertiaryLabel={sessionDialog?.tertiaryLabel} onTertiary={sessionDialog?.onTertiary} actionLayout={sessionDialog?.actionLayout || 'horizontal'} onClose={closeSessionDialog} />
     </ImThemeProvider>
   );
 }

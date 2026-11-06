@@ -537,7 +537,7 @@ let cachedChatAppearance: ChatAppearanceValues = {
   avatarRadius: 6,
   bubbleRadius: 16,
   userBubbleColor: '#95EC69',
-  assistantBubbleColor: 'transparent',
+  assistantBubbleColor: '#FFFFFF',
 };
 const chatAppearanceListeners = new Set<(values: ChatAppearanceValues) => void>();
 
@@ -611,11 +611,23 @@ export function useChatAppearancePreferences(space: PixorySpace = 'normal') {
     [space]
   );
 
+  const setChatAssistantBubbleColor = useCallback(
+    (color: string) => {
+      const nextVals = { ...cachedChatAppearance, assistantBubbleColor: color };
+      cachedChatAppearance = nextVals;
+      setAppearanceState(nextVals);
+      chatAppearanceListeners.forEach((fn) => fn(nextVals));
+      void runWithDatabaseSpace(space, (db) => settingsRepository.setChatAssistantBubbleColor(db, color)).catch(() => undefined);
+    },
+    [space]
+  );
+
   return {
     ...appearanceState,
     setChatAvatarRadius,
     setChatBubbleRadius,
     setChatUserBubbleColor,
+    setChatAssistantBubbleColor,
   };
 }
 

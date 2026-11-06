@@ -17,6 +17,8 @@ import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiAvatarPicker } from '../components/ai/AiAvatarPicker';
+import { VoicePresetPicker } from '../voice/ui/VoicePresetPicker';
+import { voiceRepository } from '../database/repositories/voiceRepository';
 import { AiSwitch } from '../components/ai/AiSwitch';
 import { AiContextSlider } from '../components/ai/AiContextSlider';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
@@ -254,6 +256,8 @@ export function AiSessionConfigScreen({
   const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
+  const [voicePresetTitle, setVoicePresetTitle] = useState('跟随全局默认');
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
   const [exportingRolePackage, setExportingRolePackage] = useState(false);
@@ -405,6 +409,27 @@ export function AiSessionConfigScreen({
     }
     return undefined;
   }, [reloadConfig, visible]);
+
+  const refreshVoiceSummary = useCallback(async () => {
+    if (!threadId) return;
+    try {
+      await runWithDatabaseSpace(space, async (db) => {
+        const binding = await voiceRepository.getBinding(db, 'thread_long', threadId);
+        if (binding?.presetId) {
+          const p = await voiceRepository.getPresetById(db, binding.presetId);
+          setVoicePresetTitle(p?.name || '会话独立声音');
+        } else {
+          setVoicePresetTitle('跟随全局默认');
+        }
+      });
+    } catch {
+      setVoicePresetTitle('跟随全局默认');
+    }
+  }, [space, threadId]);
+
+  useEffect(() => {
+    void refreshVoiceSummary();
+  }, [refreshVoiceSummary, visible]);
 
   useEffect(() => {
     setSelectedSessionModelKeys([]);
@@ -1209,6 +1234,23 @@ export function AiSessionConfigScreen({
               </View>
             </View>
 
+            {/* Voice & Reading (单行紧凑展示，点击唤起二级弹窗微调) */}
+            {threadId ? (
+              <View style={styles.drawerGroup}>
+                <Text style={styles.drawerGroupTitle}>声音与朗读 Voice & Reading</Text>
+                <View style={styles.drawerCardGroup}>
+                  <DrawerListRow
+                    icon="volume-medium-outline"
+                    title="声音预设"
+                    value={voicePresetTitle}
+                    hasChevron
+                    onPress={() => setVoiceModalVisible(true)}
+                    isLast
+                  />
+                </View>
+              </View>
+            ) : null}
+
             {/* Role */}
             <View style={styles.drawerGroup}>
               <Text style={styles.drawerGroupTitle}>角色与展现 Role & Presentation</Text>
@@ -1370,6 +1412,28 @@ export function AiSessionConfigScreen({
       >
         <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
       </AppDialog>
+
+      {/* 会话专属声音预设二级弹窗 (统一极简黑白灰小圆角风格) */}
+      {threadId ? (
+        <AppDialog
+          appearance="opaqueMonochrome"
+          onClose={() => setVoiceModalVisible(false)}
+          onPrimary={() => setVoiceModalVisible(false)}
+          primaryLabel="完成"
+          secondaryLabel={null}
+          scrollable={true}
+          title="会话声音与朗读预设"
+          visible={voiceModalVisible}
+        >
+          <VoicePresetPicker
+            onBindingChanged={() => void refreshVoiceSummary()}
+            parentPresetName="全局默认声音"
+            scopeId={threadId}
+            scopeType="thread_long"
+            space={space}
+          />
+        </AppDialog>
+      ) : null}
 
       <FullscreenPromptEditorModal visible={promptEditorVisible} content={systemPrompt} onClose={(text) => { setPromptEditorVisible(false); if (text !== undefined) setSystemPrompt(text); }} />
 

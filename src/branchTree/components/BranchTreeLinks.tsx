@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -59,7 +60,7 @@ function localizeEdgePath(edge: BranchTreeLayoutEdge): LocalizedEdgePath | null 
   };
 }
 
-export function BranchTreeLinks({ edges }: BranchTreeLinksProps) {
+export const BranchTreeLinks = memo(function BranchTreeLinks({ edges }: BranchTreeLinksProps) {
   const localizedEdges = edges
     .map(localizeEdgePath)
     .filter((edge): edge is LocalizedEdgePath => edge !== null);
@@ -93,7 +94,7 @@ export function BranchTreeLinks({ edges }: BranchTreeLinksProps) {
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   edgeHost: {

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
 
@@ -13,22 +13,29 @@ interface SearchBarProps {
   onChangeText: (value: string) => void;
   onFocus?: () => void;
   onPress?: () => void;
+  onSubmitEditing?: () => void;
   placeholder: string;
   withMagnet?: boolean;
 }
 
-export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder, withMagnet = false }: SearchBarProps) {
+export function SearchBar({ value, onChangeText, onFocus, onPress, onSubmitEditing, placeholder, withMagnet = false }: SearchBarProps) {
   const content = (
     <>
       <Ionicons color={colors.overlay.iconMuted} name="search-outline" size={componentTokens.searchBar.iconSize} />
       <TextInput
         accessibilityLabel={placeholder}
+        autoCapitalize="none"
         editable={!onPress}
         pointerEvents={onPress ? 'none' : 'auto'}
         onChangeText={onChangeText}
         onFocus={onFocus}
+        onSubmitEditing={() => {
+          Keyboard.dismiss();
+          onSubmitEditing?.();
+        }}
         placeholder={placeholder}
         placeholderTextColor={colors.text.placeholder}
+        returnKeyType="search"
         selectionColor={colors.primary.default}
         style={styles.input}
         value={value}

@@ -137,9 +137,14 @@ export async function executeWakeupGeneration(
   }
 
   let personalization: ImCompanionPersonalization | null = null;
+  let voiceReplyEnabled = true;
   if (thread?.im_settings_json) {
     try {
-      personalization = JSON.parse(thread.im_settings_json);
+      const parsed = JSON.parse(thread.im_settings_json);
+      personalization = parsed;
+      if (typeof parsed?.voiceReplyEnabled === 'boolean') {
+        voiceReplyEnabled = parsed.voiceReplyEnabled;
+      }
     } catch {}
   }
 
@@ -273,6 +278,7 @@ export async function executeWakeupGeneration(
       milestones: personalization?.milestones,
       windowN,
       anchorMessageId,
+      voiceReplyEnabled,
       personaAnchor,
     },
     ''

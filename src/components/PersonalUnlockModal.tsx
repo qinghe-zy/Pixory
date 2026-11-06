@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View, ToastAndroid, Platform, ActivityIndicator } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View, ToastAndroid, Platform, ActivityIndicator } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -279,9 +279,10 @@ export function PersonalUnlockModal({
 
   return (
     <>
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <View style={styles.backdrop}>
-        <View style={styles.panel}>
+    <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <View style={styles.backdrop}>
+          <View style={styles.panel}>
           <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
           <View style={styles.header}>
             <View style={styles.iconWrap}>
@@ -463,8 +464,10 @@ export function PersonalUnlockModal({
           ) : null}
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
-    <Modal animationType="fade" onRequestClose={closeChangePasswordDialog} transparent visible={changePasswordVisible}>
+    <Modal animationType="fade" onRequestClose={closeChangePasswordDialog} statusBarTranslucent transparent visible={changePasswordVisible}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
           <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
@@ -655,8 +658,10 @@ export function PersonalUnlockModal({
           )}
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
-    <Modal animationType="fade" onRequestClose={closeRecoveryModal} transparent visible={recoveryModalVisible}>
+    <Modal animationType="fade" onRequestClose={closeRecoveryModal} statusBarTranslucent transparent visible={recoveryModalVisible}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
           <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
@@ -792,6 +797,7 @@ export function PersonalUnlockModal({
           )}
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
     <AppDialog
       danger

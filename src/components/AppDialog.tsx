@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
@@ -55,71 +55,85 @@ export function AppDialog({
   const computedActionLayout = actionLayout !== 'stack' ? actionLayout : ((secondaryLabel && !tertiaryLabel) ? 'horizontal' : 'stack');
 
   return (
-    <Modal animationType="fade" onRequestClose={dismissible ? onClose : undefined} transparent visible={visible}>
-      <View style={styles.overlay}>
-        {dismissible ? <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} /> : null}
-        <View style={[styles.panel, accent === 'ai' ? styles.aiPanel : null, isOpaqueMonochrome ? styles.opaqueMonochromePanel : null]}>
-          <View style={styles.header}>
-            <Text style={[styles.title, accent === 'ai' ? styles.aiTitle : danger ? styles.dangerTitle : null]}>{title}</Text>
-          </View>
-          {scrollable ? (
-            <ScrollView
-              bounces={false}
-              contentContainerStyle={styles.scrollContentContainer}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled={true}
-              showsVerticalScrollIndicator={true}
-              style={styles.scrollArea}
-            >
-              {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
-              {children ? <View style={styles.body}>{children}</View> : null}
-            </ScrollView>
-          ) : (
-            <>
-              {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
-              {children ? <View style={styles.body}>{children}</View> : null}
-            </>
-          )}
-          <View style={[styles.actions, compactActions ? styles.compactActions : null, computedActionLayout === 'horizontal' ? styles.secondaryActionRow : null]}>
-            {computedActionLayout === 'horizontal' ? (
-              <>
-                {secondaryLabel ? (
-                  <View style={styles.secondaryActionItem}>
-                    <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" />
-                  </View>
-                ) : null}
-                <View style={styles.secondaryActionItem}>
-                    <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : primaryTone} />
-                </View>
-              </>
+    <Modal
+      animationType="fade"
+      onRequestClose={dismissible ? onClose : undefined}
+      statusBarTranslucent
+      transparent
+      visible={visible}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardAvoiding}
+      >
+        <View style={styles.overlay}>
+          {dismissible ? <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} /> : null}
+          <View style={[styles.panel, accent === 'ai' ? styles.aiPanel : null, isOpaqueMonochrome ? styles.opaqueMonochromePanel : null]}>
+            <View style={styles.header}>
+              <Text style={[styles.title, accent === 'ai' ? styles.aiTitle : danger ? styles.dangerTitle : null]}>{title}</Text>
+            </View>
+            {scrollable ? (
+              <ScrollView
+                bounces={false}
+                contentContainerStyle={styles.scrollContentContainer}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+                style={styles.scrollArea}
+              >
+                {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
+                {children ? <View style={styles.body}>{children}</View> : null}
+              </ScrollView>
             ) : (
               <>
-                <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : primaryTone} />
-                {splitSecondaryActions ? (
-                  <View style={styles.secondaryActionRow}>
-                    <View style={styles.secondaryActionItem}>
-                      <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" />
-                    </View>
-                    <View style={styles.secondaryActionItem}>
-                      {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
-                    </View>
-                  </View>
-                ) : (
-                  <>
-                    {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
-                    {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
-                  </>
-                )}
+                {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
+                {children ? <View style={styles.body}>{children}</View> : null}
               </>
             )}
+            <View style={[styles.actions, compactActions ? styles.compactActions : null, computedActionLayout === 'horizontal' ? styles.secondaryActionRow : null]}>
+              {computedActionLayout === 'horizontal' ? (
+                <>
+                  {secondaryLabel ? (
+                    <View style={styles.secondaryActionItem}>
+                      <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" />
+                    </View>
+                  ) : null}
+                  <View style={styles.secondaryActionItem}>
+                      <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : primaryTone} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : primaryTone} />
+                  {splitSecondaryActions ? (
+                    <View style={styles.secondaryActionRow}>
+                      <View style={styles.secondaryActionItem}>
+                        <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" />
+                      </View>
+                      <View style={styles.secondaryActionItem}>
+                        {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
+                      {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} shape={isOpaqueMonochrome ? 'rectangular' : 'default'} tone={isOpaqueMonochrome ? 'dark' : secondaryTone} variant="outline" /> : null}
+                    </>
+                  )}
+                </>
+              )}
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoiding: {
+    flex: 1,
+  },
   overlay: {
     alignItems: 'center',
     backgroundColor: 'rgba(22, 30, 40, 0.36)',

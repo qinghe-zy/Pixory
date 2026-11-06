@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
   Modal,
-  View,
+  Platform,
+  Pressable,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PixorySpace } from '../../../database';
@@ -281,7 +284,7 @@ export function ImCompanionMemoryModal({
   );
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
+    <Modal animationType="slide" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
@@ -369,38 +372,60 @@ export function ImCompanionMemoryModal({
           )}
 
           {/* Edit / Add Modal */}
-          <Modal animationType="fade" transparent visible={editModalVisible}>
-            <View style={styles.editOverlay}>
-              <View style={styles.editCard}>
-                <Text style={styles.editTitle}>
-                  {editingMemory ? '编辑专属记忆' : '添加专属记忆'}
-                </Text>
-                <TextInput
-                  autoFocus
-                  multiline
-                  numberOfLines={4}
-                  onChangeText={setInputContent}
-                  placeholder="例如：忌口不吃香菜、常喝温开水、下周三下午有重要面试..."
-                  placeholderTextColor={colors.text.placeholder}
-                  style={styles.editInput}
-                  value={inputContent}
+          <Modal
+            animationType="fade"
+            onRequestClose={() => {
+              setEditModalVisible(false);
+              setEditingMemory(null);
+            }}
+            statusBarTranslucent
+            transparent
+            visible={editModalVisible}
+          >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={{ flex: 1 }}
+            >
+              <View style={styles.editOverlay}>
+                <Pressable
+                  accessibilityLabel="关闭弹窗"
+                  onPress={() => {
+                    setEditModalVisible(false);
+                    setEditingMemory(null);
+                  }}
+                  style={StyleSheet.absoluteFillObject}
                 />
-                <View style={styles.editActionRow}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setEditModalVisible(false);
-                      setEditingMemory(null);
-                    }}
-                    style={styles.editCancelBtn}
-                  >
-                    <Text style={styles.editCancelText}>取消</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => void handleSaveEdit()} style={styles.editConfirmBtn}>
-                    <Text style={styles.editConfirmText}>保存落盘</Text>
-                  </TouchableOpacity>
+                <View style={styles.editCard}>
+                  <Text style={styles.editTitle}>
+                    {editingMemory ? '编辑专属记忆' : '添加专属记忆'}
+                  </Text>
+                  <TextInput
+                    autoFocus
+                    multiline
+                    numberOfLines={4}
+                    onChangeText={setInputContent}
+                    placeholder="例如：忌口不吃香菜、常喝温开水、下周三下午有重要面试..."
+                    placeholderTextColor={colors.text.placeholder}
+                    style={styles.editInput}
+                    value={inputContent}
+                  />
+                  <View style={styles.editActionRow}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditModalVisible(false);
+                        setEditingMemory(null);
+                      }}
+                      style={styles.editCancelBtn}
+                    >
+                      <Text style={styles.editCancelText}>取消</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => void handleSaveEdit()} style={styles.editConfirmBtn}>
+                      <Text style={styles.editConfirmText}>保存落盘</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </Modal>
         </View>
       </View>
