@@ -55,6 +55,47 @@ export function sanitizeAndExtractFtsTerms(text: string): string[] {
   return [...new Set(interleaved)].slice(0, 18);
 }
 
+/**
+ * 计算动态时间衰减系数与记忆清晰度
+ * 1. 严格优先取 memory.createdAt（避免每次被召回刷新 lastAccessedAt 造成“时间归零+半衰期拉长”双重叠加破坏衰减）；
+ * 2. 移除 720h 上限与普通记忆的 0.40 铁底，仅对 L0 钢印层保留 0.85 铁底；
+ * 3. 动态半衰期拉伸：retentionBoost = Math.min(2.5, 1 + 0.2 * hitCount)，effectiveHours = deltaHours / retentionBoost；
+ * 4. 指数衰减：L2_FACT 0.999，L2_EPISODE 0.996。
+ */
+export function computeTimeDecayFactor(
+  memory: CompanionMemoryRecord,
+  nowMs: number = Date.now()
+): number {
+  const baseTimestamp =
+    (typeof memory.createdAt === 'number' && memory.createdAt > 0)
+      ? memory.createdAt
+      : (memory.lastAccessedAt || nowMs);
+  const deltaHours = Math.max(0, (nowMs - baseTimestamp) / (1000 * 3600));
+
+  const normCat = (memory.category || '').toLowerCase();
+  const isL0Category =
+    normCat.includes('identity') ||
+    normCat.includes('taboo') ||
+    normCat.includes('allergy') ||
+    normCat.includes('relationship') ||
+    normCat.includes('禁忌') ||
+    normCat.includes('过敏') ||
+    normCat.includes('身份') ||
+    normCat.includes('关系');
+  const isL0Immortal =
+    Boolean(memory.isPinned) ||
+    (memory.importance >= 8 && isL0Category);
+
+  const hitCount = Math.max(0, memory.hitCount || 0);
+  const retentionBoost = Math.min(2.5, 1 + 0.2 * hitCount);
+  const effectiveHours = deltaHours / retentionBoost;
+
+  const baseRate = memory.tier === 'L2_FACT' ? 0.999 : 0.996;
+  const rawDecay = Math.pow(baseRate, effectiveHours);
+
+  return isL0Immortal ? Math.max(0.85, rawDecay) : rawDecay;
+}
+
 export function scoreCompanionMemory(
   memory: CompanionMemoryRecord,
   userInput: string,
@@ -117,18 +158,8 @@ export function scoreCompanionMemory(
     return null;
   }
 
-  // 差异化时间衰减因子 (L2_FACT 长期事实慢衰减 0.999，L2_EPISODE 情节衰减 0.996)
-  const isFact = memory.tier === 'L2_FACT';
-  const decayRate = isFact ? 0.999 : 0.996;
-  const deltaHours = Math.max(0, (now - memory.lastAccessedAt) / 3600000);
-  let timeDecay = Math.pow(decayRate, Math.min(deltaHours, 720)); // 最多衰减 30 天
-
-  // 艾宾浩斯稳定性遗忘保护：核心重要度 (>=8) 衰减底线不低于 0.60；一般重要度 (>=6) 不低于 0.40
-  if (memory.importance >= 8) {
-    timeDecay = Math.max(0.6, timeDecay);
-  } else if (memory.importance >= 6) {
-    timeDecay = Math.max(0.4, timeDecay);
-  }
+  // 动态半衰期衰减系数
+  const timeDecay = computeTimeDecayFactor(memory, now);
 
   // 重要性放大因子: 0.5 + 0.5 * (importance / 10)
   const importanceFactor = 0.5 + 0.5 * (Math.max(1, Math.min(10, memory.importance)) / 10);
@@ -164,5 +195,10 @@ export function scoreCompanionMemory(
     category: memory.category,
     score: Number(finalScore.toFixed(4)),
     matchedChannel,
+    decayFactor: Number(timeDecay.toFixed(4)),
+    baseRelevance: Number(baseChannelScore.toFixed(4)),
+    clarity: timeDecay >= 0.65 ? 'clear' : 'fuzzy',
+    entities: memory.entities,
+    triggerKeywords: memory.triggerKeywords,
   };
 }

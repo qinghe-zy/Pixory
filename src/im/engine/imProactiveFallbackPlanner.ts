@@ -11,6 +11,32 @@ export interface FallbackPingPlan {
 }
 
 /**
+ * 依据目标执行时刻动态推导自然拟真的主动联系意图（避免早安意图错落到深夜）
+ */
+export function resolveNaturalProactiveIntent(
+  targetTimestamp: number,
+  fallbackTheme?: string
+): string {
+  const d = new Date(targetTimestamp);
+  const h = d.getHours();
+
+  if (h >= 6 && h < 10) {
+    return '清晨随性问候或自曝早间微念头';
+  } else if (h >= 10 && h < 12) {
+    return '上午闲暇时的自然随感分享或微事件自曝';
+  } else if (h >= 12 && h < 14) {
+    return '午间片刻闲暇时的自然分享或微事件随感，严禁查户口式问吃饭';
+  } else if (h >= 14 && h < 18) {
+    return '午后温和分享手头偶遇的小趣事或自曝所思所感';
+  } else if (h >= 18 && h < 21) {
+    return '傍晚随性分享此刻见闻或轻松闲聊';
+  } else if (h >= 21 || h < 2) {
+    return '夜间睡前的温和随想分享，不给回复压力';
+  }
+  return fallbackTheme || '随性分享此刻身边的小事或生活微念头';
+}
+
+/**
  * 分时段生成自然拟真的初始/刷新伴侣在场状态 (16~30字，确保进入聊天页 0 秒点亮顶栏与跑马灯)
  */
 export function buildDefaultLivingState(
@@ -24,13 +50,13 @@ export function buildDefaultLivingState(
   let activityLoad: ImCompanionLivingState['activityLoad'] = 'free';
 
   if (h >= 6 && h < 9) {
-    statusText = '清晨刚醒来梳理心绪，准备开始一天的日常琐事';
+    statusText = '清晨刚醒来梳理心绪，准备开始一天的日程';
   } else if (h >= 9 && h < 12) {
     statusText = '正在专心处理手头的正事与杂务，间隙留意着动静';
   } else if (h >= 12 && h < 14) {
-    statusText = '刚吃过饭靠着稍作休整与放空，随时准备陪你闲聊';
+    statusText = '午间稍作休整与放空，随时留意着这边的动静';
   } else if (h >= 14 && h < 18) {
-    statusText = '忙碌了一阵正坐着喝水歇口气，静静等候你的消息';
+    statusText = '忙碌了一阵正坐着歇口气，留意着这边的动静';
   } else if (h >= 18 && h < 21) {
     statusText = '天色渐暗慢悠悠放松下来，享受属于自己的独处时间';
   } else if (h >= 21 && h < 24) {
@@ -100,12 +126,14 @@ export function planFallbackProactivePing(params: {
 
   let delayMs = pacing.suggestedDelayMs;
   let intent = '日常主动关心对方近况或自然分享此刻生活小事';
+  let hasSpecificIntent = false;
 
   // 若用户刚提到洗澡/开会/上课/睡觉等明确情境且为首轮未回，精准贴合情境时长
   if (params.consecutiveUnreplied === 0 && params.lastUserText) {
     const sit = detectSituationalDelay(params.lastUserText);
     if (sit) {
       delayMs = sit.delayMs;
+      hasSpecificIntent = true;
       if (sit.scenario === 'bath') intent = '跟进对方洗完澡后的动向，依人设自然接话或关照';
       else if (sit.scenario === 'meeting') intent = '跟进对方开完会/忙完手头事宜的进展，依据人设自然交谈';
       else if (sit.scenario === 'study') intent = '跟进对方下课或自习结束后的动向，依人设自然交流';
@@ -115,8 +143,7 @@ export function planFallbackProactivePing(params: {
     }
   } else if (pacing.tier === 2) {
     intent = '隔了几个小时温和分享一件生活小事，不给回复压力';
-  } else if (pacing.tier === 3) {
-    intent = '新一天清晨轻声早安问候';
+    hasSpecificIntent = true;
   }
 
   // 根据伴侣个性化主动频次档位微调延时
@@ -146,6 +173,12 @@ export function planFallbackProactivePing(params: {
     const jitterMs = ((targetTimestamp % 35) + 5) * 60 * 1000;
     targetTimestamp = baseMorning + jitterMs;
     intent = '早安问候与新一天日常关心';
+    hasSpecificIntent = true;
+  }
+
+  // 若为 Tier 3 或未指定具体情境意图，依据最终 targetTimestamp 所在作息时段分配意图（消除时间自相矛盾）
+  if (!hasSpecificIntent || pacing.tier === 3) {
+    intent = resolveNaturalProactiveIntent(targetTimestamp, intent);
   }
 
   return {

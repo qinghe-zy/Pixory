@@ -14,7 +14,7 @@ import { sanitizeCompanionBubble } from './humanizeOutputGate';
 import { resolveSticker, resolveCompensationEmoji } from '../../components/emoji/StickerSemanticResolver';
 import { CasBlobStore } from '../../services/agent/vfs/casBlobStore';
 import { applyBatchSafely } from '../../services/sandbox/diff/fuzzyPatcher';
-import { parseVoiceTag, type ParsedDocumentPatchTag } from './imTagParser';
+import { parseVoiceTag, type ParsedVoiceTag, type ParsedDocumentPatchTag } from './imTagParser';
 import { voiceService } from '../../voice/voiceService';
 
 export function getStickerCooldownThreshold(style?: string | null): number {
@@ -28,6 +28,8 @@ export function getStickerCooldownThreshold(style?: string | null): number {
   }
   return 3;
 }
+
+const INLINE_STAGE_ACTION_REGEX = /[（\(]([^）\)]+)[）\)]/;
 
 export interface DispatchStickerOptions {
   personaStyle?: string | null;
@@ -162,6 +164,7 @@ export class BurstMessageDispatcher {
   private accumulatedDelay: number = 0;
   private dispatchedCountInBurst: number = 0;
   private turnsSinceLastSticker: number = 999;
+  private lastPrecedingAction: string | null = null;
 
   constructor(
     threadId: string,
@@ -177,6 +180,7 @@ export class BurstMessageDispatcher {
     this.currentBurstGroupId = `burst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     this.accumulatedDelay = 0;
     this.dispatchedCountInBurst = 0;
+    this.lastPrecedingAction = null;
     return this.currentBurstGroupId;
   }
 
@@ -184,6 +188,7 @@ export class BurstMessageDispatcher {
     this.currentBurstGroupId = null;
     this.accumulatedDelay = 0;
     this.dispatchedCountInBurst = 0;
+    this.lastPrecedingAction = null;
   }
 
   async dispatchSentence(
@@ -198,13 +203,18 @@ export class BurstMessageDispatcher {
         // 会话关闭语音回复时，平滑退化为普通文字对白气泡发射
         return this.dispatchSentence(voiceTag.text, ticker, options);
       }
-      return this.dispatchVoice(voiceTag.text, ticker, options);
+      return this.dispatchVoice(voiceTag, ticker, options);
     }
 
-    const cleaned = sanitizeCompanionBubble(text);
+    const cleaned = sanitizeCompanionBubble(text, { preserveInlineStageActions: true });
     const effectiveText = cleaned.trim();
     if (!effectiveText) {
       return null;
+    }
+
+    const stageMatch = effectiveText.match(INLINE_STAGE_ACTION_REGEX);
+    if (stageMatch) {
+      this.lastPrecedingAction = stageMatch[1].trim();
     }
 
     if (!this.currentBurstGroupId) {
@@ -242,16 +252,29 @@ export class BurstMessageDispatcher {
   }
 
   async dispatchVoice(
-    voiceText: string,
+    voiceInput: string | ParsedVoiceTag,
     ticker?: VisibilityTicker,
     options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
   ): Promise<ImMessage | null> {
-    const effectiveText = voiceText.trim();
+    const voiceTag: ParsedVoiceTag = typeof voiceInput === 'string'
+      ? (parseVoiceTag(voiceInput) || {
+          text: sanitizeCompanionBubble(voiceInput, { preserveInlineStageActions: true }),
+          rawTag: voiceInput,
+          uiTranscript: sanitizeCompanionBubble(voiceInput, { preserveInlineStageActions: true }),
+          ttsScript: sanitizeCompanionBubble(voiceInput, { preserveInlineStageActions: false }),
+          styleDirective: undefined,
+        })
+      : voiceInput;
+
+    const effectiveText = (voiceTag.uiTranscript || voiceTag.text || '').trim();
     if (!effectiveText) return null;
 
     if (!this.currentBurstGroupId) {
       this.beginBurst();
     }
+
+    const inheritedStyle = voiceTag.styleDirective || this.lastPrecedingAction || undefined;
+    const ttsScript = voiceTag.ttsScript || effectiveText;
 
     const isFirst = this.dispatchedCountInBurst === 0;
     const delay = options?.useHumanTimeline
@@ -279,6 +302,7 @@ export class BurstMessageDispatcher {
         durationMs: estDurationMs,
         transcription: effectiveText,
         isPlayed: false,
+        style: inheritedStyle,
       },
       status: 'sent',
       deliveryStatus: 'revealing',
@@ -289,7 +313,7 @@ export class BurstMessageDispatcher {
     await insertImMessage(this.space, message);
     ticker?.scheduleNextTick().catch(() => {});
 
-    // 后台异步预合成音频缓存，实现秒开播放
+    // 后台异步预合成音频缓存，实现秒开播放，注入动态语气覆盖与发音脚本
     void runWithDatabaseSpace(this.space, async (db) => {
       try {
         const prep = await voiceService.prepareAudio(effectiveText, {
@@ -297,12 +321,14 @@ export class BurstMessageDispatcher {
           space: this.space,
           scopeType: 'thread_im',
           threadId: this.threadId,
+          ttsScript,
+          styleOverride: inheritedStyle,
         });
         await updateImMessageVoice(this.space, message.id, {
           audioUri: prep.audioUri,
           durationMs: prep.durationMs || estDurationMs,
           transcription: effectiveText,
-          isPlayed: false,
+          style: inheritedStyle,
         });
       } catch {
         // 预合成静默失败不阻断气泡，待用户点击时走 fallbackChain 兜底
@@ -537,7 +563,7 @@ export class BurstMessageDispatcher {
       if (!parentRow && cleanBaseMsgId.length >= 2) {
         parentRow = await db.getFirstAsync<{ content: string }>(
           `SELECT content FROM ai_messages
-           WHERE threadId = ? AND content LIKE '{"document":%' AND content LIKE ?
+           WHERE threadId = ? AND (content LIKE '{"type":"document"%' OR content LIKE '{"document":%') AND content LIKE ?
            ORDER BY createdAt DESC LIMIT 1;`,
           [this.threadId, `%"title":"%${cleanBaseMsgId}%"%`]
         );
@@ -592,10 +618,21 @@ export class BurstMessageDispatcher {
       derivedContent = patch.patchContent;
     }
 
+    let contentToStore: string | Uint8Array = derivedContent;
+    const isDocxTarget = patch.title.toLowerCase().endsWith('.docx');
+    if (isDocxTarget && typeof derivedContent === 'string' && !derivedContent.startsWith('PK')) {
+      try {
+        const { compileMarkdownToDocx } = await import('../../services/sandbox/docx/docxCompiler');
+        contentToStore = await compileMarkdownToDocx(derivedContent, patch.title);
+      } catch {
+        // 容错保持原正文
+      }
+    }
+
     let casHash: string | undefined;
     let casUri: string = patch.title;
     try {
-      const putRes = await casStore.putBlob(derivedContent, this.space);
+      const putRes = await casStore.putBlob(contentToStore, this.space);
       casHash = putRes.blobHash;
       casUri = casStore.getBlobPath(putRes.blobHash, this.space);
     } catch {}
@@ -613,7 +650,9 @@ export class BurstMessageDispatcher {
           uri: casUri,
           casUri,
           casHash,
-          size: derivedContent.length,
+          size: typeof contentToStore === 'string' ? contentToStore.length : contentToStore.byteLength,
+          sizeBytes: typeof contentToStore === 'string' ? contentToStore.length : contentToStore.byteLength,
+          charCount: typeof derivedContent === 'string' ? derivedContent.length : undefined,
           hasRevisions: true,
           derivedFromMsgId: patch.baseMsgId,
           content: derivedContent,

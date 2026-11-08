@@ -33,6 +33,8 @@ export interface CompanionMemoryRecord {
   confidence?: number;
 }
 
+export type CompanionMemoryItem = CompanionMemoryRecord;
+
 export type TurnMemoryIntent =
   | 'PHATIC_SHORT_ACK'
   | 'EMOTIONAL_CONFIDE'
@@ -40,6 +42,7 @@ export type TurnMemoryIntent =
   | 'EPISODIC_RECALL'
   | 'FACT_OR_COMMITMENT_MUTATION'
   | 'DIARY_INQUIRY'
+  | 'FORGET_REQUEST'
   | 'GENERAL_CHAT';
 
 export interface TurnMemoryIntentProfile {
@@ -90,4 +93,17 @@ export interface MemoryRecallCandidate {
   category: string;
   score: number;
   matchedChannel: 'trigger' | 'fts' | 'entity' | 'temporal';
+  decayFactor?: number;
+  baseRelevance?: number;
+  clarity?: 'clear' | 'fuzzy';
+  entities?: string[];
+  triggerKeywords?: string[];
+}
+
+export interface ScoredMemoryResult {
+  memory: CompanionMemoryRecord;
+  finalScore: number;
+  baseRelevance: number;
+  decayFactor: number;
+  clarity?: 'clear' | 'fuzzy';
 }

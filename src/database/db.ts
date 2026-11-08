@@ -77,6 +77,7 @@ import {
   MIGRATION_STATEMENTS_V67,
   MIGRATION_STATEMENTS_V68,
   MIGRATION_STATEMENTS_V69,
+  MIGRATION_STATEMENTS_V69_COMPANION_MEM_REBUILD,
   MIGRATION_STATEMENTS_V70,
   MIGRATION_STATEMENTS_V71,
   MIGRATION_STATEMENTS_V72,
@@ -338,14 +339,17 @@ async function ensureMemoryAggregateSchema(db: SQLiteDatabase): Promise<void> {
 }
 
 async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> {
+  // Step A: 新装库保底建表（包含最新 5 种 Tier）
   if (!(await hasTable(db, 'ai_companion_memories'))) {
     await db.execAsync(MIGRATION_STATEMENTS_V68);
   }
+  // Step B: 存量旧表增量列安全补全（确保 18 个字段齐全后再查 SELECT）
   const memoryCols = [
     { name: 'expires_at', type: 'INTEGER DEFAULT NULL' },
     { name: 'superseded_by', type: 'TEXT DEFAULT NULL' },
     { name: 'deleted_at', type: 'INTEGER DEFAULT NULL' },
     { name: 'confidence', type: 'REAL NOT NULL DEFAULT 0.85' },
+    { name: 'source_mode', type: "TEXT DEFAULT 'im'" },
   ];
   for (const col of memoryCols) {
     try {
@@ -356,6 +360,18 @@ async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> 
     await db.execAsync('CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_expires ON ai_companion_memories(expires_at);');
     await db.execAsync('CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_deleted ON ai_companion_memories(deleted_at);');
   } catch {}
+
+  // Step C: 检查 CHECK 约束，若旧约束未包含 L2_FACT 则执行无损重建迁移
+  try {
+    const row = await db.getFirstAsync<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ai_companion_memories';"
+    );
+    if (row?.sql && !row.sql.includes('L2_FACT')) {
+      await db.execAsync(MIGRATION_STATEMENTS_V69_COMPANION_MEM_REBUILD);
+    }
+  } catch (err) {
+    console.warn('[DB] ensureAiCompanionMemorySchema rebuild failed:', err);
+  }
 }
 
 async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
@@ -377,6 +393,8 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
     { name: 'dnd_override_enabled', type: 'INTEGER DEFAULT NULL' },
     { name: 'dnd_start_time', type: 'TEXT DEFAULT NULL' },
     { name: 'dnd_end_time', type: 'TEXT DEFAULT NULL' },
+    { name: 'im_is_folded', type: 'INTEGER DEFAULT 0' },
+    { name: 'im_hidden_from_list', type: 'INTEGER DEFAULT 0' },
   ];
   for (const col of columns) {
     try {
@@ -395,6 +413,11 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
   } catch {
     // 容错：静默跳过
   }
+  try {
+    await db.execAsync("CREATE INDEX IF NOT EXISTS idx_ai_threads_im_folded ON ai_threads(space, im_is_folded, im_hidden_from_list);");
+  } catch {
+    // 容错：静默跳过
+  }
 }
 
 export async function ensureAgentVfsSchema(db: SQLiteDatabase): Promise<void> {
@@ -403,6 +426,61 @@ export async function ensureAgentVfsSchema(db: SQLiteDatabase): Promise<void> {
 
 export async function ensureVoiceSchema(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(MIGRATION_STATEMENTS_V73);
+}
+
+export async function ensureAiDocumentSchema(db: SQLiteDatabase): Promise<void> {
+  if (!(await hasTable(db, 'ai_documents'))) {
+    return;
+  }
+
+  const tableInfo = await db.getFirstAsync<{ sql: string }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ai_documents'"
+  );
+
+  if (!tableInfo?.sql || tableInfo.sql.includes("'pptx'")) {
+    return;
+  }
+
+  // ai_documents exists but CHECK constraint does not allow 'pptx'
+  // SQLite requires disabling foreign keys OUTSIDE of an active transaction to allow table drops.
+  await db.execAsync('PRAGMA foreign_keys = OFF;');
+  try {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS ai_documents_v2 (
+          id TEXT PRIMARY KEY NOT NULL,
+          space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+          ownerType TEXT NOT NULL CHECK (ownerType IN ('knowledge_base', 'ip', 'thread')),
+          ownerId TEXT NOT NULL,
+          sourceType TEXT NOT NULL CHECK (sourceType IN ('manual_text', 'txt', 'markdown', 'pdf', 'docx', 'pptx', 'ip_generated')),
+          title TEXT NOT NULL,
+          originalFilename TEXT,
+          localUri TEXT,
+          mimeType TEXT,
+          fileSize INTEGER,
+          parserStatus TEXT NOT NULL CHECK (parserStatus IN ('pending', 'parsing', 'parsed', 'chunked', 'searchable', 'embedding_pending', 'embedding_ready', 'failed')),
+          parserError TEXT,
+          metadataJson TEXT NOT NULL DEFAULT '{}',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        INSERT INTO ai_documents_v2 (
+          id, space, ownerType, ownerId, sourceType, title, originalFilename, localUri, mimeType, fileSize, parserStatus, parserError, metadataJson, createdAt, updatedAt
+        )
+        SELECT
+          id, space, ownerType, ownerId, sourceType, title, originalFilename, localUri, mimeType, fileSize, parserStatus, parserError, metadataJson, createdAt, updatedAt
+        FROM ai_documents;
+        DROP TABLE ai_documents;
+        ALTER TABLE ai_documents_v2 RENAME TO ai_documents;
+        CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status
+          ON ai_documents(space, ownerType, ownerId, parserStatus);
+        CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_updated_id
+          ON ai_documents(space, ownerType, ownerId, updatedAt DESC, id DESC);
+      `);
+    });
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON;');
+  }
 }
 
 async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
@@ -759,6 +837,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     await ensureAgentVfsSchema(database);
     await ensureVoiceSchema(database);
 
+
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
@@ -771,6 +850,7 @@ export async function initDatabase(space: PixorySpace = 'normal'): Promise<SQLit
       const db = await openPixoryDatabase(space);
       await configureDatabase(db);
       await runMigrations(db, space);
+      await ensureAiDocumentSchema(db);
       await cleanupInterruptedAiGenerations(db, space);
       return db;
     })().catch((error) => {

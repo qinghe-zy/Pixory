@@ -166,7 +166,7 @@ test('SettingsScreen user-facing rows and App.tsx routes stay aligned with SEARC
   const appCode = fs.readFileSync(path.resolve(__dirname, '../App.tsx'), 'utf8');
   const settingsCode = fs.readFileSync(path.resolve(__dirname, '../src/screens/SettingsScreen.tsx'), 'utf8');
 
-  const specialNonAppRoutes = new Set(['lock-personal-space', 'system-assistant-toggle']);
+  const specialNonAppRoutes = new Set(['lock-personal-space', 'system-assistant-toggle', 'file-transfer-assistant-toggle']);
   for (const entry of SEARCHABLE_FEATURE_CATALOG) {
     if (specialNonAppRoutes.has(entry.route)) continue;
     assert.match(

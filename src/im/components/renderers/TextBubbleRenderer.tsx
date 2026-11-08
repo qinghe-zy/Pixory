@@ -10,6 +10,7 @@ import { parseStreamingArtifactSegments } from '../../../services/sandbox/stream
 import { AiSandboxArtifactViewfinder } from '../../../components/ai/AiSandboxArtifactViewfinder';
 import { AiSandboxArtifactCard } from '../../../components/ai/AiSandboxArtifactCard';
 import { stripMetaTags } from '../../engine/tagAwareStreamParser';
+import { sanitizeCompanionBubble } from '../../engine/humanizeOutputGate';
 
 // 辅助纯函数：识别正文与括号心理/动作描写，分层赋予淡雅灰字阶
 function parseThoughtSegments(raw: string) {
@@ -72,7 +73,10 @@ export const TextBubbleRenderer = React.memo(function TextBubbleRenderer({
   const normalizedContent = (message.content || '')
     .replace(/\[BR\]/g, '\n')
     .replace(/\[br\s*\/?\]|<\/?br\s*\/?>/gi, '\n');
-  const formattedContent = (!isUser ? stripMetaTags(normalizedContent) : normalizedContent).trim();
+  const formattedContent = (!isUser
+    ? sanitizeCompanionBubble(stripMetaTags(normalizedContent), { preserveInlineStageActions: true })
+    : normalizedContent
+  ).trim();
 
   // 1. 尝试探测是否包含独立可运行的 HTML / SVG 制品
   const artifactSegments = React.useMemo(() => {

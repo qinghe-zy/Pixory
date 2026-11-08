@@ -98,7 +98,23 @@ export class PdfDriver implements IDocumentDriver {
           // 降级使用 raw content
         }
       }
+      if (contentOrUri.startsWith('%PDF-')) {
+        // 原始未解析的二进制 PDF 文本流不应直接当作 UTF-8 段落文本处理，防止卡死崩溃
+        return '';
+      }
       return contentOrUri;
+    }
+
+    // 二进制流检测：如果是原始二进制 PDF (%PDF- / 0x25 0x50 0x44 0x46)
+    if (
+      contentOrUri.length >= 4 &&
+      contentOrUri[0] === 0x25 &&
+      contentOrUri[1] === 0x50 &&
+      contentOrUri[2] === 0x44 &&
+      contentOrUri[3] === 0x46
+    ) {
+      // 原始 PDF 二进制字节流不应直接当纯文本解码
+      return '';
     }
 
     // 二进制流解码

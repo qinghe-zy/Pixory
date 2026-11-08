@@ -827,7 +827,7 @@ export function AiSessionConfigScreen({
     try {
       const pickerResult = await DocumentPicker.getDocumentAsync({
         multiple: false,
-        type: ['text/plain', 'text/markdown', '*/*'],
+        type: '*/*',
       });
       if (pickerResult.canceled || !pickerResult.assets?.[0]) {
         return;

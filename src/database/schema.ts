@@ -459,7 +459,7 @@ CREATE TABLE IF NOT EXISTS ai_documents (
   space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
   ownerType TEXT NOT NULL CHECK (ownerType IN ('knowledge_base', 'ip', 'thread')),
   ownerId TEXT NOT NULL,
-  sourceType TEXT NOT NULL CHECK (sourceType IN ('manual_text', 'txt', 'markdown', 'pdf', 'docx', 'ip_generated')),
+  sourceType TEXT NOT NULL CHECK (sourceType IN ('manual_text', 'txt', 'markdown', 'pdf', 'docx', 'pptx', 'ip_generated')),
   title TEXT NOT NULL,
   originalFilename TEXT,
   localUri TEXT,
@@ -2379,7 +2379,7 @@ CREATE TABLE IF NOT EXISTS ai_companion_memories (
   id TEXT PRIMARY KEY NOT NULL,
   role_card_id TEXT NOT NULL,
   space TEXT NOT NULL DEFAULT 'normal',
-  tier TEXT NOT NULL CHECK (tier IN ('L1_SLOT', 'L1_SUMMARY', 'L2_EPISODIC')),
+  tier TEXT NOT NULL CHECK (tier IN ('L1_SLOT', 'L1_SUMMARY', 'L2_FACT', 'L2_EPISODE', 'L2_EPISODIC')),
   category TEXT NOT NULL,
   content TEXT NOT NULL,
   trigger_keywords TEXT,
@@ -2399,6 +2399,57 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ai_companion_memories_fts USING fts5(
   content,
   trigger_keywords
 );
+`;
+
+export const MIGRATION_STATEMENTS_V69_COMPANION_MEM_REBUILD = `
+CREATE TABLE IF NOT EXISTS ai_companion_memories_v69_new (
+  id TEXT PRIMARY KEY NOT NULL,
+  role_card_id TEXT NOT NULL,
+  space TEXT NOT NULL DEFAULT 'normal',
+  tier TEXT NOT NULL CHECK (tier IN ('L1_SLOT', 'L1_SUMMARY', 'L2_FACT', 'L2_EPISODE', 'L2_EPISODIC')),
+  category TEXT NOT NULL,
+  content TEXT NOT NULL,
+  trigger_keywords TEXT,
+  entities TEXT,
+  importance INTEGER NOT NULL DEFAULT 5,
+  hit_count INTEGER NOT NULL DEFAULT 0,
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  last_accessed_at INTEGER NOT NULL,
+  source_mode TEXT DEFAULT 'im',
+  expires_at INTEGER DEFAULT NULL,
+  superseded_by TEXT DEFAULT NULL,
+  deleted_at INTEGER DEFAULT NULL,
+  confidence REAL NOT NULL DEFAULT 0.85
+);
+
+INSERT OR IGNORE INTO ai_companion_memories_v69_new (
+  id, role_card_id, space, tier, category, content, trigger_keywords, entities,
+  importance, hit_count, is_pinned, created_at, last_accessed_at, source_mode,
+  expires_at, superseded_by, deleted_at, confidence
+)
+SELECT
+  id, role_card_id, space, tier, category, content, trigger_keywords, entities,
+  importance, hit_count, is_pinned, created_at, last_accessed_at, source_mode,
+  expires_at, superseded_by, deleted_at, COALESCE(confidence, 0.85)
+FROM ai_companion_memories;
+
+DROP TABLE ai_companion_memories;
+ALTER TABLE ai_companion_memories_v69_new RENAME TO ai_companion_memories;
+
+CREATE INDEX IF NOT EXISTS idx_companion_mem_role_tier ON ai_companion_memories(role_card_id, space, tier);
+CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_expires ON ai_companion_memories(expires_at);
+CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_deleted ON ai_companion_memories(deleted_at);
+
+DROP TABLE IF EXISTS ai_companion_memories_fts;
+CREATE VIRTUAL TABLE IF NOT EXISTS ai_companion_memories_fts USING fts5(
+  memory_id UNINDEXED,
+  content,
+  trigger_keywords
+);
+
+INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords)
+SELECT id, content, COALESCE(trigger_keywords, '') FROM ai_companion_memories WHERE deleted_at IS NULL;
 `;
 
 export const MIGRATION_STATEMENTS_V69 = `

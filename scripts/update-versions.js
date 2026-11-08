@@ -22,7 +22,9 @@ function planVersions(root, target, date) {
   target ||= pkg.version;
   if (!new RegExp(`^${VERSION}$`).test(target)) throw new Error(`Invalid version: ${target}`);
   if (compare(target, pkg.version) < 0 || compare(target, app.expo.version) < 0) throw new Error('Refusing a version downgrade');
-  if (!date && target === update.version) date = update.releaseDate || read('README.md').match(/当前版本：[^\r\n]*?(\d{4}-\d{2}-\d{2})/)?.[1];
+  const isDev = target.endsWith('.0') && target.replace(/\.0$/, '') === update.version;
+  const publicTarget = isDev ? target.replace(/\.0$/, '') : target;
+  if (!date && (target === update.version || publicTarget === update.version)) date = update.releaseDate || read('README.md').match(/当前版本：[^\r\n]*?(\d{4}-\d{2}-\d{2})/)?.[1];
   date ||= new Date().toLocaleDateString('en-CA');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error('Invalid release date');
   const previousCode = Math.max(app.expo.android.versionCode, update.versionCode || 0, update.latestVersionCode || 0);
@@ -39,13 +41,14 @@ function planVersions(root, target, date) {
     }
     plan.set(file, text);
   };
+  const publicCode = isDev ? (update.versionCode || previousCode) : code;
   pkg.version = target;
   app.expo.version = app.expo.runtimeVersion = target;
   app.expo.android.versionCode = code;
-  update.version = update.latestVersion = target;
-  update.versionCode = update.latestVersionCode = code;
+  update.version = update.latestVersion = publicTarget;
+  update.versionCode = update.latestVersionCode = publicCode;
   update.releaseDate = date;
-  update.message = update.message.replace(new RegExp(`Pixory v?${VERSION}`, 'g'), `Pixory ${target}`);
+  update.message = update.message.replace(new RegExp(`Pixory v?${VERSION}`, 'g'), `Pixory ${publicTarget}`);
   json('package.json', pkg);
   json('app.json', app);
   json('docs/update-version.json', update);
@@ -83,8 +86,8 @@ function planVersions(root, target, date) {
   edit('docs/pixory-product-bid-handbook.md', [[/适用版本：Pixory [\d.]+/, `适用版本：Pixory ${target}`]]);
   const handbookPath = 'docs/pixory-product-bid-handbook.md';
   const publicHandbook = plan.get(handbookPath);
-  const row = `| ${target} | ${date} | ${update.releaseNotes.replace(/[\r\n|]+/g, ' ')} |`;
-  const currentRow = new RegExp(`^\\| ${target.replaceAll('.', '\\.')} \\|[^\\r\\n]*`, 'm');
+  const row = `| ${publicTarget} | ${date} | ${update.releaseNotes.replace(/[\r\n|]+/g, ' ')} |`;
+  const currentRow = new RegExp(`^\\| ${publicTarget.replaceAll('.', '\\.')} \\|[^\\r\\n]*`, 'm');
   if (currentRow.test(publicHandbook)) plan.set(handbookPath, publicHandbook.replace(currentRow, row));
   else {
     if (!/^\| [\d.]+ \|/m.test(publicHandbook)) throw new Error(`${handbookPath}: missing release history table`);
@@ -108,9 +111,10 @@ function planVersions(root, target, date) {
   const announcement = JSON.parse(read('docs/announcement.json'));
   if (/^Pixory v?[\d.]+ 正式发布$/.test(announcement.title)) {
     Object.assign(announcement, {
-      id: `pixory-${target}-release-${date.replaceAll('-', '')}`,
-      version: target, title: `Pixory v${target} 正式发布`,
-      message: update.releaseNotes, content: update.message, detailLines: update.detailLines
+      id: announcement.id || `pixory-${publicTarget}-release-${date.replaceAll('-', '')}`,
+      version: publicTarget, title: `Pixory v${publicTarget} 正式发布`,
+      message: "本次更新带来以下主要功能与体验优化：",
+      detailLines: update.detailLines
     });
     json('docs/announcement.json', announcement);
   }

@@ -10,7 +10,7 @@ import * as Updates from 'expo-updates';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { useToast } from '../components/AppToast';
-import { checkForAppUpdate } from '../services/updateCheckService';
+import { checkAllAppUpdates, checkForAppUpdate, getAppVersion } from '../services/updateCheckService';
 import { getAppMilestones, type AppMilestones } from '../services/milestoneService';
 import {
   getPreloadedProductDocumentationMarkdown,
@@ -68,7 +68,7 @@ function formatBytes(bytes: number): string {
 
 export function AboutScreen({ onBack, onPushRoute, space = 'normal', isFocused = true }: AboutScreenProps) {
   const { showToast } = useToast();
-  const version = Constants.expoConfig?.version ?? '2.9.2';
+  const version = Constants.expoConfig?.version ?? '2.9.3';
   const isReturningRef = useRef(aboutJournalUiStateBySpace.has(space));
   const isReturning = isReturningRef.current;
   const initialJournalUiState = getAboutJournalUiState(space);
@@ -213,45 +213,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal', isFocused =
   };
 
   const handleCheckAllUpdates = async () => {
-    try {
-      showToast({ message: '正在检查更新...', durationMs: 999999 });
-      const [versionInfo, otaUpdate] = await Promise.all([
-        checkForAppUpdate().catch(() => null),
-        __DEV__ 
-          ? Promise.resolve(null)
-          : Promise.race([
-              Updates.checkForUpdateAsync(),
-              new Promise<any>((_, reject) => setTimeout(() => reject(new Error('OTA_TIMEOUT')), 10000))
-            ])
-      ]);
-
-      if (versionInfo) {
-        showToast({ message: '发现新版本', durationMs: 3000, tone: 'success' });
-        Alert.alert('发现新版本', `新版本 v${versionInfo.version} 已发布，是否前往下载？`, [
-          { text: '稍后', style: 'cancel' },
-          { text: '前往', onPress: () => openUrl(versionInfo.downloadUrl) }
-        ]);
-        return;
-      }
-
-      if (otaUpdate?.isAvailable) {
-        showToast({ message: '发现新热更新，正在下载...', durationMs: 999999 });
-        await Updates.fetchUpdateAsync();
-        showToast({ message: '热更新下载完成', durationMs: 3000, tone: 'success' });
-        Alert.alert('热更新完成', '是否立即重启应用以应用更新？', [
-          { text: '稍后', style: 'cancel' },
-          { text: '重启', onPress: () => Updates.reloadAsync() }
-        ]);
-      } else {
-        showToast('当前已是最新版本');
-      }
-    } catch (error: any) {
-      if (error?.message === 'OTA_TIMEOUT' || error?.message?.includes('timeout') || error?.message?.includes('network')) {
-        showToast({ message: '网络问题，检查超时', tone: 'error' });
-      } else {
-        showToast({ message: '更新检查失败', tone: 'error' });
-      }
-    }
+    await checkAllAppUpdates({ showToast, openUrl });
   };
 
   const toggleNode = (nodeKey: string) => {

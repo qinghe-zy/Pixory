@@ -1,4 +1,5 @@
 import { initDatabase, type PixorySpace } from '../../database';
+import { voiceRepository } from '../../database/repositories/voiceRepository';
 import type { ImMessage } from '../types';
 
 export type ImRelationshipPreset =
@@ -216,6 +217,27 @@ export async function updateImThreadSettings(
     values.push(threadId);
     await db.runAsync(`UPDATE ai_threads SET ${fields.join(', ')} WHERE id = ?;`, values);
   }
+
+  // 同步更新 voice_bindings 表，彻底消除专属相处定制与侧栏设置的开关状态脱节
+  if (settings.voiceReplyEnabled !== undefined) {
+    try {
+      const existingBinding = await voiceRepository.getBinding(db, 'thread_im', threadId);
+      if (existingBinding?.voiceBubbleEnabled !== settings.voiceReplyEnabled) {
+        await voiceRepository.setBinding(db, {
+          scopeType: 'thread_im',
+          scopeId: threadId,
+          presetId: existingBinding?.presetId ?? null,
+          rateOverride: existingBinding?.rateOverride ?? null,
+          pitchOverride: existingBinding?.pitchOverride ?? null,
+          voiceBubbleEnabled: settings.voiceReplyEnabled,
+          autoReadEnabled: existingBinding?.autoReadEnabled ?? null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // 容错降级
+    }
+  }
 }
 
 /**
@@ -245,6 +267,17 @@ export async function setVoiceReplyEnabledForAll(
         [JSON.stringify(parsedSettings), row.id]
       );
       updatedCount++;
+    }
+    // 同步批量更新 voice_bindings 中的所有伴聊会话开关，确保状态绝对统一
+    try {
+      await db.runAsync(
+        `UPDATE voice_bindings
+         SET voice_bubble_enabled = ?, updated_at = ?
+         WHERE scope_type = 'thread_im';`,
+        [enabled ? 1 : 0, new Date().toISOString()]
+      );
+    } catch {
+      // 容错降级
     }
   });
   return updatedCount;

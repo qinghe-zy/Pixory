@@ -852,7 +852,7 @@ export function VoiceSettingsScreen({ space, onBack }: VoiceSettingsScreenProps)
         <View style={styles.toggleRow}>
           <View style={styles.toggleTextWrap}>
             <Text style={styles.toggleTitle}>伴聊拟真语音条</Text>
-            <Text style={styles.toggleDesc}>伴侣在关键情境可发送微信同款长短语音条</Text>
+            <Text style={styles.toggleDesc}>在关键情境可发送微信同款长短语音条</Text>
           </View>
           <Switch
             value={voiceBubbleEnabled}

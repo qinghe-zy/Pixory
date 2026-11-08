@@ -366,7 +366,7 @@ export async function pickPackageForImport(): Promise<PickPackageForImportResult
   const result = await DocumentPicker.getDocumentAsync({
     copyToCacheDirectory: true,
     multiple: false,
-    type: ['application/zip', 'application/octet-stream', '*/*'],
+    type: '*/*',
   });
 
   if (result.canceled) {

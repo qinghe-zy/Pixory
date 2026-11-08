@@ -1,26 +1,32 @@
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { rhythm } from '../../design/tokens';
+import type { AiDocumentReaderLocator, AiReadableDocument } from '../../ai/readers/readerTypes';
+import { UniversalDocumentViewer } from '../reader/UniversalDocumentViewer';
 import { aiLightColors } from './aiLightTheme';
-import { AiTextReader } from './AiTextReader';
 
 interface AiDocxReaderProps {
   readable: AiReadableDocument;
   locator?: AiDocumentReaderLocator;
 }
 
+/**
+ * Backwards-compatible DOCX reader component.
+ * Directly backed by the unified UniversalDocumentViewer.
+ */
 export function AiDocxReader({ readable, locator }: AiDocxReaderProps) {
   return (
-    <View style={styles.wrap}>
-      <AiTextReader locator={locator} readable={readable} />
+    <View style={[styles.wrap, { backgroundColor: aiLightColors.canvas }]}>
+      <UniversalDocumentViewer
+        locator={locator}
+        source={{ type: 'record', readable }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: aiLightColors.canvas,
-    gap: rhythm.listCardGap,
+    flex: 1,
   },
 });

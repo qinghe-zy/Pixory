@@ -29,10 +29,17 @@ export interface MemoryAdmissionResult {
     | 'temporary_logistics'
     | 'empty_content'
     | 'prompt_injection'
-    | 'unconfirmed_ai_hallucination';
+    | 'unconfirmed_ai_hallucination'
+    | 'vent_or_hyperbole';
   sanitizedContent?: string;
   expiresAt?: number | null;
 }
+
+/**
+ * 情绪宣泄口嗨与夸张反事实黑名单（仅拦截沉淀为长期事实或承诺待办）
+ */
+const MODALITY_VENT_OR_JOKE_REGEX =
+  /(?:气死|烦死|累死|崩溃|受够|去他[妈的]*|掀桌|不干了|不想活了).*(?:辞职|离职|退学|不读了|卖烤肠|卖红薯|贴膜|要饭|摆摊|流浪|断绝|再也不|绝交)|(?:辞职|退学|卖烤肠|卖红薯|去天桥贴膜|去要饭).*(?:气死|烦死|开玩笑|瞎说|说说而已)/;
 
 /**
  * 瞬态生理动作与即刻报备黑名单
@@ -72,6 +79,22 @@ export function normalizeRelativeDateInContent(
   text: string,
   baseTimestamp: number = Date.now()
 ): { normalizedText: string; expiresAt?: number | null } {
+  // 幂等保护：若已包含标准日期前缀，跳过重复添加前缀，解析对应 expiresAt
+  const existingDateMatch = text.match(/^\[(\d{4})-(\d{2})-(\d{2})\]/);
+  if (existingDateMatch) {
+    const existingDate = new Date(
+      parseInt(existingDateMatch[1], 10),
+      parseInt(existingDateMatch[2], 10) - 1,
+      parseInt(existingDateMatch[3], 10)
+    );
+    existingDate.setDate(existingDate.getDate() + 2);
+    existingDate.setHours(23, 59, 59, 999);
+    return {
+      normalizedText: text,
+      expiresAt: existingDate.getTime(),
+    };
+  }
+
   const d = new Date(baseTimestamp);
   let targetDate = new Date(baseTimestamp);
   let matched = false;
@@ -90,6 +113,8 @@ export function normalizeRelativeDateInContent(
     const diff = (8 - day) % 7 || 7;
     targetDate.setDate(d.getDate() + diff);
     matched = true;
+  } else if (text.includes('今晚') || text.includes('今天下午') || text.includes('今天晚上')) {
+    matched = true;
   }
 
   if (!matched) {
@@ -101,9 +126,9 @@ export function normalizeRelativeDateInContent(
   const dd = targetDate.getDate().toString().padStart(2, '0');
   const dateStr = `[${yyyy}-${mm}-${dd}]`;
 
-  // 设置过期时间为该事件发生日后 7 天（供事后关心，7 天后自动归档不在活跃召回中出现）
+  // 设置过期时间为该事件发生日后 2 天（48小时后进入瞬态硬擦除）
   const expiresDate = new Date(targetDate);
-  expiresDate.setDate(expiresDate.getDate() + 7);
+  expiresDate.setDate(expiresDate.getDate() + 2);
   expiresDate.setHours(23, 59, 59, 999);
 
   let normalized = text;
@@ -141,6 +166,23 @@ export function shouldAdmitToLongTermMemory(
   // 1.1 拦截伴侣出戏与AI自我幻觉身份声明
   if (AI_SELF_DISCLAIMER_REGEX.test(rawText)) {
     return { admit: false, rejectReason: 'unconfirmed_ai_hallucination' };
+  }
+
+  // 1.2 语态真实性拦截：情绪宣泄赌气与夸张反事实口嗨（仅拦截作为长期事实与承诺待办，放行普通情绪经历）
+  if (MODALITY_VENT_OR_JOKE_REGEX.test(rawText)) {
+    const isFactOrCommitment =
+      candidate.tier === 'L2_FACT' ||
+      !candidate.tier ||
+      Boolean(
+        candidate.category?.includes('fact') ||
+        candidate.category?.includes('commitment') ||
+        candidate.category?.includes('preference') ||
+        candidate.category?.includes('identity') ||
+        candidate.category?.includes('career')
+      );
+    if (isFactOrCommitment) {
+      return { admit: false, rejectReason: 'vent_or_hyperbole' };
+    }
   }
 
   // 2. 拦截闲聊垫话与语气词（即便只有 2 个字如“好的”）

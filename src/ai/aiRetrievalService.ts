@@ -1,6 +1,7 @@
 import { ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiCitationSourceType, AiDocumentOwnerType } from './types';
 import { generateQueryEmbedding, tryEmbeddingRetrieval } from './aiEmbeddingService';
+import { retrieveForThreadWithRag } from './rag/pixoryRagBridge';
 
 export const DEFAULT_RETRIEVAL_LIMIT = 6;
 const OWNER_EMBEDDING_AVAILABILITY_CACHE_MAX = 160;
@@ -488,6 +489,22 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
   snippets: RetrievedSnippet[];
   timedOut: boolean;
 }> {
+  // 1. 优先尝试高精度独立 RAG 插件混合检索（BM25 + 向量 RRF）
+  try {
+    const ragResult = await retrieveForThreadWithRag(input);
+    if (ragResult && ragResult.snippets.length > 0) {
+      if (input.ownerType === 'ip') {
+        const extraIpSnippets = await collectIpContextSnippets({ ...input, limit: 2 });
+        const combined = [...extraIpSnippets, ...ragResult.snippets].slice(0, input.limit ?? DEFAULT_RETRIEVAL_LIMIT);
+        return { ...ragResult, snippets: combined };
+      }
+      return ragResult;
+    }
+  } catch {
+    // 遇到任何意外时安全静默降级，继续执行后续兜底逻辑
+  }
+
+  // 2. 原始兜底流程
   const limit = input.limit ?? DEFAULT_RETRIEVAL_LIMIT;
   const includeDocumentChunks = input.includeDocumentChunks !== false;
   const [keyword, ipContext] = await Promise.all([

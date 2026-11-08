@@ -20,6 +20,7 @@ import type {
 } from '../../ai/aiContinuityImportTypes';
 import type { PixorySpace } from '../db';
 import { booleanToSqlite, buildUpdateStatement, createTimestamp, normalizeOptionalText, sqliteToBoolean } from '../utils';
+import { formatMessagePreview } from '../../utils/formatMessagePreview';
 
 export interface AiMessageRecord {
   id: string;
@@ -2415,7 +2416,7 @@ export const aiThreadRepository = {
 
   async deleteThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
     let deletedCount = 0;
-    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant');
+    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant' && id !== 'pixory-file-transfer');
     for (const threadId of safeThreadIds) {
       await db.runAsync('DELETE FROM ai_message_fts WHERE threadId = ?', threadId);
       await db.runAsync('DELETE FROM ai_message_version_fts WHERE threadId = ?', threadId);
@@ -2446,7 +2447,7 @@ export const aiThreadRepository = {
   async softDeleteThreads(db: SQLiteDatabase, space: PixorySpace, threadIds: string[]): Promise<number> {
     const now = createTimestamp();
     let deletedCount = 0;
-    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant');
+    const safeThreadIds = threadIds.filter(id => id !== 'pixory-system-assistant' && id !== 'pixory-file-transfer');
     for (const threadId of safeThreadIds) {
       const result = await db.runAsync(
         `UPDATE ai_threads
@@ -2659,7 +2660,7 @@ export const aiThreadRepository = {
         ...mapThreadRow(row),
         knowledgeCategory: row.knowledgeCategory ?? null,
         lastMessageAt: row.lastMessageAt ?? null,
-        lastMessagePreview: row.projectedLastMessagePreview?.trim() || row.lastMessagePreview,
+        lastMessagePreview: formatMessagePreview(row.projectedLastMessagePreview?.trim() || row.lastMessagePreview, null),
       }));
     const last = items[items.length - 1];
     return {
@@ -3547,9 +3548,6 @@ export const aiThreadRepository = {
     const message = await aiThreadRepository.findMessageById(db, input.messageId);
     if (!message || message.threadId !== input.threadId) {
       throw new Error('AI message was not found.');
-    }
-    if (message.role !== 'assistant') {
-      throw new Error('Only assistant messages can be favorited.');
     }
     const now = createTimestamp();
     const primaryScope = getPrimaryFavoriteBranchScope(input.branchScopes);
@@ -4967,7 +4965,7 @@ export const aiThreadRepository = {
   },
 
   async getThreadMemorySettings(db: SQLiteDatabase, threadId: string): Promise<AiThreadMemorySettingsRecord> {
-    if (threadId === 'pixory-system-assistant') {
+    if (threadId === 'pixory-system-assistant' || threadId === 'pixory-file-transfer') {
       return { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
     }
     const row = await db.getFirstAsync<AiThreadMemorySettingsRow>('SELECT * FROM ai_thread_memory_settings WHERE threadId = ?', threadId);
@@ -4975,7 +4973,7 @@ export const aiThreadRepository = {
   },
 
   async updateThreadMemorySettings(db: SQLiteDatabase, threadId: string, deepMemoryEnabled: boolean): Promise<AiThreadMemorySettingsRecord> {
-    if (threadId === 'pixory-system-assistant') {
+    if (threadId === 'pixory-system-assistant' || threadId === 'pixory-file-transfer') {
       return { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
     }
     const now = createTimestamp();

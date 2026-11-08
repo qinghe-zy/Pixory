@@ -14,6 +14,7 @@ export interface StrictPagerProps {
   activeIndex: number;
   onChange: (index: number) => void;
   scrollOffset?: SharedValue<number>;
+  enabled?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -26,7 +27,13 @@ const springConfig = {
   restSpeedThreshold: 0.5,
 };
 
-export function StrictPager({ children, activeIndex, onChange, scrollOffset: externalScrollOffset }: StrictPagerProps) {
+export function StrictPager({
+  children,
+  activeIndex,
+  onChange,
+  scrollOffset: externalScrollOffset,
+  enabled = true,
+}: StrictPagerProps) {
   const localScrollOffset = useSharedValue(-activeIndex * SCREEN_WIDTH);
   const translateX = externalScrollOffset ?? localScrollOffset;
   const context = useSharedValue({ startX: 0 });
@@ -44,6 +51,7 @@ export function StrictPager({ children, activeIndex, onChange, scrollOffset: ext
   };
 
   const panGesture = Gesture.Pan()
+    .enabled(enabled)
     // STRICT DIRECTIONAL LOCK: 
     // Must move 25px horizontally to activate.
     // If it moves 10px vertically before reaching 25px horizontally, the gesture fails, handing control back to scroll view.

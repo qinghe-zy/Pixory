@@ -9,6 +9,7 @@ export interface ActiveProviderConfig {
   protocol: 'openai_compatible' | 'gemini' | 'anthropic';
   apiKey: string | null;
   promptCacheEnabled: boolean;
+  supportsThinking?: boolean;
 }
 
 export interface MemoryModelConfig extends ActiveProviderConfig {
@@ -148,15 +149,22 @@ export async function getActiveProviderConfig(
 
   // 5. 模型解析：优先使用传入的 preferredModelId，其次 defaultChatModelId，再其次查询该 Provider 支持 chat 的模型
   let rawModelId = preferredModelId || chosenRow.defaultChatModelId;
+  let modelRow: { modelId: string; supportsThinking?: number } | null = null;
   if (!rawModelId) {
-    const modelRow = await db.getFirstAsync<{ modelId: string }>(
-      'SELECT modelId FROM ai_provider_models WHERE providerId = ? AND supportsChat = 1 LIMIT 1',
+    modelRow = await db.getFirstAsync<{ modelId: string; supportsThinking?: number }>(
+      'SELECT modelId, supportsThinking FROM ai_provider_models WHERE providerId = ? AND supportsChat = 1 LIMIT 1',
       chosenRow.id
     );
     rawModelId = modelRow?.modelId || 'deepseek-v4-flash';
+  } else {
+    modelRow = await db.getFirstAsync<{ modelId: string; supportsThinking?: number }>(
+      'SELECT modelId, supportsThinking FROM ai_provider_models WHERE providerId = ? AND modelId = ? LIMIT 1',
+      [chosenRow.id, rawModelId]
+    );
   }
 
   const modelId = normalizeProviderModelId(rawModelId, chosenRow.baseUrl);
+  const supportsThinking = Boolean(modelRow?.supportsThinking);
 
   // 6. 确定最终 apiKey
   const apiKey = chosenApiKey || (await readProviderApiKey(space, chosenRow.id));
@@ -178,6 +186,7 @@ export async function getActiveProviderConfig(
     protocol,
     apiKey,
     promptCacheEnabled,
+    supportsThinking,
   };
 }
 

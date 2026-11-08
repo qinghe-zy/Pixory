@@ -165,6 +165,38 @@ export const voiceRepository = {
         now,
       ]
     );
+
+    // 双向同步：当更新伴聊会话级音色绑定的语音条开关时，同步写入 ai_threads.im_settings_json.voiceReplyEnabled
+    if (
+      binding.scopeType === 'thread_im' &&
+      binding.voiceBubbleEnabled !== null &&
+      binding.voiceBubbleEnabled !== undefined
+    ) {
+      try {
+        const threadRow = await db.getFirstAsync<{ im_settings_json: string | null }>(
+          'SELECT im_settings_json FROM ai_threads WHERE id = ? LIMIT 1;',
+          [binding.scopeId]
+        );
+        if (threadRow) {
+          let parsed: Record<string, any> = {};
+          if (threadRow.im_settings_json) {
+            try {
+              parsed = JSON.parse(threadRow.im_settings_json) || {};
+            } catch {}
+          }
+          const targetBool = Boolean(binding.voiceBubbleEnabled);
+          if (parsed.voiceReplyEnabled !== targetBool) {
+            parsed.voiceReplyEnabled = targetBool;
+            await db.runAsync(
+              'UPDATE ai_threads SET im_settings_json = ? WHERE id = ?;',
+              [JSON.stringify(parsed), binding.scopeId]
+            );
+          }
+        }
+      } catch {
+        // 容错降级
+      }
+    }
   },
 
   async clearBinding(db: SQLiteDatabase, scopeType: VoiceScopeType, scopeId: string): Promise<void> {

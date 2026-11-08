@@ -175,6 +175,9 @@ export class ExpoVfsStorageDriver implements IVfsStorageDriver {
     const base64 = await FileSystem.readAsStringAsync(filePath, {
       encoding: FileSystem.EncodingType.Base64,
     });
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(base64, 'base64'));
+    }
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
@@ -186,11 +189,18 @@ export class ExpoVfsStorageDriver implements IVfsStorageDriver {
   public async writeBytes(filePath: string, data: Uint8Array): Promise<void> {
     const FileSystem = require('expo-file-system/legacy');
     await this.ensureParentDir(filePath);
-    let binary = '';
-    for (let i = 0; i < data.length; i++) {
-      binary += String.fromCharCode(data[i]);
+    let base64: string;
+    if (typeof Buffer !== 'undefined') {
+      base64 = Buffer.from(data).toString('base64');
+    } else {
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.subarray(i, Math.min(i + chunkSize, data.length));
+        binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+      }
+      base64 = btoa(binary);
     }
-    const base64 = btoa(binary);
     await FileSystem.writeAsStringAsync(filePath, base64, {
       encoding: FileSystem.EncodingType.Base64,
     });
@@ -299,6 +309,15 @@ export class ExpoVfsStorageDriver implements IVfsStorageDriver {
   public async copyFile(src: string, dest: string): Promise<void> {
     const FileSystem = require('expo-file-system/legacy');
     await this.ensureParentDir(dest);
+    try {
+      const { copyUriToFileWithProgress } = require('../../../native/pixoryMediaModule');
+      const res = await copyUriToFileWithProgress(src, dest);
+      if (res && typeof res.size === 'number' && res.size > 0) {
+        return;
+      }
+    } catch {
+      // Fall through to FileSystem.copyAsync
+    }
     await FileSystem.copyAsync({ from: src, to: dest });
   }
 

@@ -31,6 +31,46 @@ const RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`;
 
+function buildRunsXml(text: string, defaultSz = '24', defaultColor = '1E293B', isHeading = false): string {
+  const tokens: string[] = [];
+  const tagRegex = /(<del>[\s\S]*?<\/del>|<ins>[\s\S]*?<\/ins>)/gi;
+  const parts = text.split(tagRegex);
+
+  for (const part of parts) {
+    if (!part) continue;
+    if (/^<del>([\s\S]*)<\/del>$/i.test(part)) {
+      const match = part.match(/^<del>([\s\S]*)<\/del>$/i);
+      const inner = escapeXml(match ? match[1] : part);
+      tokens.push(
+        `<w:del w:id="${Math.floor(Math.random() * 100000)}" w:author="Pixory"><w:r><w:rPr><w:strike/><w:color w:val="DC2626"/></w:rPr><w:delText xml:space="preserve">${inner}</w:delText></w:r></w:del>`
+      );
+    } else if (/^<ins>([\s\S]*)<\/ins>$/i.test(part)) {
+      const match = part.match(/^<ins>([\s\S]*)<\/ins>$/i);
+      const inner = escapeXml(match ? match[1] : part);
+      tokens.push(
+        `<w:ins w:id="${Math.floor(Math.random() * 100000)}" w:author="Pixory"><w:r><w:rPr><w:color w:val="16A34A"/><w:highlight w:val="lightGreen"/></w:rPr><w:t xml:space="preserve">${inner}</w:t></w:r></w:ins>`
+      );
+    } else {
+      const boldParts = part.split(/(\*\*[\s\S]*?\*\*)/g);
+      for (const bp of boldParts) {
+        if (!bp) continue;
+        if (bp.startsWith('**') && bp.endsWith('**') && bp.length >= 4) {
+          const innerBold = escapeXml(bp.slice(2, -2));
+          tokens.push(
+            `<w:r><w:rPr><w:b/><w:sz w:val="${defaultSz}"/><w:szCs w:val="${defaultSz}"/><w:color w:val="${defaultColor}"/></w:rPr><w:t xml:space="preserve">${innerBold}</w:t></w:r>`
+          );
+        } else {
+          tokens.push(
+            `<w:r><w:rPr>${isHeading ? '<w:b/>' : ''}<w:sz w:val="${defaultSz}"/><w:szCs w:val="${defaultSz}"/><w:color w:val="${defaultColor}"/></w:rPr><w:t xml:space="preserve">${escapeXml(bp)}</w:t></w:r>`
+          );
+        }
+      }
+    }
+  }
+
+  return tokens.join('');
+}
+
 /**
  * 将 Markdown / 纯文本字符串编译为合法的 .docx 二进制数据
  */
@@ -51,25 +91,28 @@ export async function compileMarkdownToDocx(
     }
 
     if (trimmed.startsWith('# ')) {
-      const heading = escapeXml(trimmed.replace(/^#\s+/, ''));
+      const heading = trimmed.replace(/^#\s+/, '');
+      const runs = buildRunsXml(heading, '36', '0F172A', true);
       paragraphsXml.push(
-        `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="240" w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/><w:color w:val="0F172A"/></w:rPr><w:t xml:space="preserve">${heading}</w:t></w:r></w:p>`
+        `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="240" w:after="120"/></w:pPr>${runs}</w:p>`
       );
     } else if (trimmed.startsWith('## ')) {
-      const heading = escapeXml(trimmed.replace(/^##\s+/, ''));
+      const heading = trimmed.replace(/^##\s+/, '');
+      const runs = buildRunsXml(heading, '30', '1E293B', true);
       paragraphsXml.push(
-        `<w:p><w:pPr><w:pStyle w:val="Heading2"/><w:spacing w:before="180" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="30"/><w:szCs w:val="30"/><w:color w:val="1E293B"/></w:rPr><w:t xml:space="preserve">${heading}</w:t></w:r></w:p>`
+        `<w:p><w:pPr><w:pStyle w:val="Heading2"/><w:spacing w:before="180" w:after="80"/></w:pPr>${runs}</w:p>`
       );
     } else if (trimmed.startsWith('### ')) {
-      const heading = escapeXml(trimmed.replace(/^###\s+/, ''));
+      const heading = trimmed.replace(/^###\s+/, '');
+      const runs = buildRunsXml(heading, '26', '334155', true);
       paragraphsXml.push(
-        `<w:p><w:pPr><w:pStyle w:val="Heading3"/><w:spacing w:before="120" w:after="60"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/><w:color w:val="334155"/></w:rPr><w:t xml:space="preserve">${heading}</w:t></w:r></w:p>`
+        `<w:p><w:pPr><w:pStyle w:val="Heading3"/><w:spacing w:before="120" w:after="60"/></w:pPr>${runs}</w:p>`
       );
     } else {
       // 常规段落
-      const text = escapeXml(trimmed);
+      const runs = buildRunsXml(trimmed, '24', '1E293B', false);
       paragraphsXml.push(
-        `<w:p><w:pPr><w:spacing w:line="360" w:lineRule="auto" w:after="100"/></w:pPr><w:r><w:rPr><w:sz w:val="24"/><w:szCs w:val="24"/><w:color w:val="1E293B"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`
+        `<w:p><w:pPr><w:spacing w:line="360" w:lineRule="auto" w:after="100"/></w:pPr>${runs}</w:p>`
       );
     }
   }

@@ -49,6 +49,19 @@ export class MemoryExtractionBatcher {
     return this.queues.get(key)?.length || 0;
   }
 
+  /**
+   * 清空指定会话的待提炼队列与定时器（用于主动命令遗忘或紧急回滚）
+   */
+  public clearKey(key: string): void {
+    const timer = this.timers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.timers.delete(key);
+    }
+    this.queues.delete(key);
+    this.latestParams.delete(key);
+  }
+
   public enqueue(params: EnqueueBatchParams): void {
     const key = `${params.space}:${params.roleCardId}`;
     let queue = this.queues.get(key);

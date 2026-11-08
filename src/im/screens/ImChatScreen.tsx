@@ -106,7 +106,7 @@ export function ImChatScreen({
   const cleanSelectedContent = useMemo(() => {
     if (!selectedTextMessage?.content) return '';
     return selectedTextMessage.content
-      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING|DOCUMENT|DOC):[^\]]+\]/gi, '')
+      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING|DOCUMENT|DOC)(?:[:：][^\]]+|\][:：]?[^\]\n]*)?\]?/gi, '')
       .replace(/\[BR\]/g, '\n')
       .trim();
   }, [selectedTextMessage]);

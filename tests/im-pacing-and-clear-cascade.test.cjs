@@ -64,8 +64,8 @@ test('IM Pacing and Clear Cascade: 核心契约与功能完整性验证', async 
 
     const s2 = buildProactivePromptDirective(2, '小依');
     assert.ok(s2.includes('Stage 2'));
-    assert.ok(s2.includes('二选一趣味轻决断'));
-    assert.ok(s2.includes('让对方一直有事干'));
+    assert.ok(s2.includes('自然在场'));
+    assert.ok(s2.includes('用自我暴露留出接话口'));
 
     const s3 = buildProactivePromptDirective(3, '小依');
     assert.ok(s3.includes('Stage 3'));

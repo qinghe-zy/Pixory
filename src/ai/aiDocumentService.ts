@@ -43,7 +43,9 @@ import { parseDocxText } from './documentParsers/docxParser';
 import { parseMarkdownText } from './documentParsers/markdownParser';
 import { parsePdfText } from './documentParsers/pdfParser';
 import { parsePlainText, type ParsedDocumentText } from './documentParsers/textParser';
+import { parsePptx } from './documentParsers/pptxParser';
 import { generateMissingEmbeddingsForDocument, getEmbeddingProviderForSpace } from './aiEmbeddingService';
+import { syncDocumentToRag, deleteDocumentFromRag } from './rag/pixoryRagBridge';
 
 export const MAX_CHUNK_CHARS = 1200;
 export const CHUNK_OVERLAP_CHARS = 160;
@@ -204,8 +206,11 @@ function resolveSourceType(fileName: string, mimeType?: string | null): AiDocume
   if (lowerName.endsWith('.pdf') || lowerMime.includes('pdf')) {
     return 'pdf';
   }
-  if (lowerName.endsWith('.docx') || lowerMime.includes('wordprocessingml.document')) {
+  if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc') || lowerMime.includes('wordprocessingml.document') || lowerMime.includes('msword')) {
     return 'docx';
+  }
+  if (lowerName.endsWith('.pptx') || lowerName.endsWith('.ppt') || lowerMime.includes('presentationml.presentation') || lowerMime.includes('powerpoint')) {
+    return 'pptx';
   }
   return 'txt';
 }
@@ -320,6 +325,10 @@ async function parseDocumentText(document: AiDocumentRecord, space: PixorySpace)
 
   if (document.sourceType === 'docx') {
     return parseDocxText({ fileUri: document.localUri, space });
+  }
+
+  if (document.sourceType === 'pptx') {
+    return parsePptx({ fileUri: document.localUri, space });
   }
 
   const content = await FileSystem.readAsStringAsync(document.localUri, {
@@ -587,6 +596,19 @@ export async function parseAndChunkDocument(input: ParseAndChunkDocumentInput): 
       );
       await aiKnowledgeRepository.updateDocumentStatus(db, input.documentId, chunks.length > 0 ? 'searchable' : 'failed', chunks.length > 0 ? null : '文档没有可检索的文本内容。');
     });
+
+    // 异步同步至独立 RAG 插件索引 (非阻塞，安全捕获)
+    if (chunks.length > 0) {
+      syncDocumentToRag(input.space, {
+        id: input.documentId,
+        title: document.title,
+        content: parsed.text,
+        ownerType: document.ownerType,
+        ownerId: document.ownerId,
+        version: document.updatedAt,
+      }).catch(() => {});
+    }
+
     const embeddingConfig = await getEmbeddingProviderForSpace(input.space);
     if (embeddingConfig && chunks.length > 0) {
       await runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.updateDocumentStatus(db, input.documentId, 'embedding_pending', null));
@@ -890,6 +912,7 @@ export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise
       }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+    deleteDocumentFromRag(input.space, input.documentId).catch(() => {});
     return count;
   });
 }
@@ -915,6 +938,9 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
       }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+    for (const id of uniqueIds) {
+      deleteDocumentFromRag(input.space, id).catch(() => {});
+    }
     return count;
   });
 }
@@ -925,6 +951,7 @@ export async function removeMaterialsByOwner(input: RemoveMaterialsByOwnerInput)
     return 0;
   }
   const deletedFileUris = input.deletedFileUris ?? [];
+  const deletedDocIds: string[] = [];
   const removeWithDb = async (db: SQLiteDatabase) => {
     let count = 0;
     for (const ownerId of ownerIds) {
@@ -934,6 +961,7 @@ export async function removeMaterialsByOwner(input: RemoveMaterialsByOwnerInput)
         space: input.space,
       });
       for (const document of documents) {
+        deletedDocIds.push(document.id);
         const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
         count += result.deleted;
         if (result.fileUri) {
@@ -943,11 +971,17 @@ export async function removeMaterialsByOwner(input: RemoveMaterialsByOwnerInput)
     }
     return count;
   };
+  const cleanupRag = () => {
+    for (const docId of deletedDocIds) {
+      deleteDocumentFromRag(input.space, docId).catch(() => {});
+    }
+  };
   if (input.db) {
     const count = await removeWithDb(input.db);
     if (!input.deletedFileUris) {
       await cleanupDeletedMaterialFiles(deletedFileUris);
     }
+    cleanupRag();
     return count;
   }
   return runWithDatabaseSpace(input.space, async (db) => {
@@ -956,6 +990,7 @@ export async function removeMaterialsByOwner(input: RemoveMaterialsByOwnerInput)
       count = await removeWithDb(db);
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+    cleanupRag();
     return count;
   });
 }

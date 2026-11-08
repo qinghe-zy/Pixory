@@ -64,7 +64,10 @@ test('Requirement 1: [文档可直接阅读] 阅读器状态完备度与移动�
     path.resolve(process.cwd(), 'src/im/components/renderers/DocumentBubbleRenderer.tsx'),
     'utf8'
   );
-  assert.ok(bubbleCode.includes('atob(rawContent)'), '必须从 base64 中解算二进制 Uint8Array 供阅读器即开即读');
+  assert.ok(
+    bubbleCode.includes('toByteArray(rawContent)') || bubbleCode.includes('atob(rawContent)'),
+    '必须从 base64 中解算二进制 Uint8Array 供阅读器即开即读'
+  );
 });
 
 test('Requirement 2: [文档可下载与分享] 导出工具函数与主聊天屏联动审计', () => {

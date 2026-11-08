@@ -25,19 +25,19 @@ export interface BurstShapePlanResult {
 }
 
 const DEFAULT_WEIGHTS: Record<BurstShape, number> = {
-  one_liner: 30,
-  two: 30,
+  one_liner: 35,
+  two: 35,
   rapid_3_5: 20,
   long_para: 10,
-  send_then_afterthought: 10,
+  send_then_afterthought: 0,
 };
 
 const SHAPE_HINTS: Record<BurstShape, string> = {
-  one_liner: '【气泡形态倾向】本轮请只发 1 个精炼极简短气泡（可以是一个拟声词、一两句短吐槽或直接反问，随性利落，严禁注水展开）。',
-  two: '【气泡形态倾向】本轮适合发 2 个自然短气泡（用 [BR] 切分，第1句接情绪，第2句顺带聊具体内容）。',
-  rapid_3_5: '【气泡形态倾向】本轮情绪较活泼或有连续想法，可发 3~4 个短促气泡（每句 5~15 字，像真人微信连发一样断断续续发出来）。',
+  one_liner: '【气泡形态倾向】本轮适合发 1 个精炼利落的短气泡（可以是一个拟声词、一句短吐槽或顺口回应，随性自然）。',
+  two: '【气泡形态倾向】本轮适合发 2 个自然短气泡（用 [BR] 切分，保持自然利落的聊天节奏）。',
+  rapid_3_5: '【气泡形态倾向】本轮情绪较活泼或有连续想法，可发 3~4 个短促气泡（每句 5~15 字，像真人聊天一样断断续续发出来）。',
   long_para: '【气泡形态倾向】本轮适合发 1 个完整且连贯的长气泡或段落（认真回应对方的心事或展开讲述，不再用 [BR] 细碎打散）。',
-  send_then_afterthought: '【气泡形态倾向】本轮先发 1~2 句收住，话题意犹未尽时可附带 [HEARTBEAT: 秒数 | 补充的话] 稍后追聊一句。',
+  send_then_afterthought: '【气泡形态倾向】本轮适合发 1~2 个自然短气泡收住。',
 };
 
 /**

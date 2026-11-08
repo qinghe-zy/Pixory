@@ -177,7 +177,7 @@ import {
   type AiGenerationJobRecord,
 } from './generation/aiGenerationRepository';
 import { mergeContinuationDelta } from './generation/aiGenerationRecovery';
-import { isSystemAssistantThread, SYSTEM_ASSISTANT_THREAD_ID } from './systemAssistant/capabilityProfile';
+import { FILE_TRANSFER_THREAD_ID, isFileTransferThread, isSystemAssistantThread, SYSTEM_ASSISTANT_THREAD_ID } from './systemAssistant/capabilityProfile';
 import { SystemAssistantProtocol, sanitizeSystemAssistantContent } from './systemAssistant/systemAssistantProtocol';
 import { ingestSystemAssistantAction } from './systemAssistant/systemAssistantTaskIngestion';
 import { beginSystemTask, clearSystemTasksInDatabase, loadSystemTask, restartSystemTask, saveSystemTask, saveSystemTaskInDatabase, settleSystemTaskGeneration } from './systemAssistant/systemAssistantPersistence';
@@ -3151,32 +3151,54 @@ export async function listAiHomeThreads(input: {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
     
-    const systemAssistantEnabled = await settingsRepository.getSystemAssistantEnabled(db);
+    const [systemAssistantEnabled, fileTransferEnabled] = await Promise.all([
+      settingsRepository.getSystemAssistantEnabled(db),
+      settingsRepository.getFileTransferEnabled(db),
+    ]);
     
     if (systemAssistantEnabled) {
-      if (!threads.some(t => t.id === 'pixory-system-assistant')) {
-        const systemThread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+      if (!threads.some(t => t.id === SYSTEM_ASSISTANT_THREAD_ID)) {
+        const systemThread = await aiThreadRepository.findThreadById(db, SYSTEM_ASSISTANT_THREAD_ID);
         if (systemThread) {
           threads.push({
             ...systemThread,
             knowledgeCategory: null,
             lastMessageAt: systemThread.updatedAt,
           });
-          threads.sort((a, b) => {
-            if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-            const ta = a.lastMessageAt ?? a.updatedAt;
-            const tb = b.lastMessageAt ?? b.updatedAt;
-            if (ta !== tb) return ta < tb ? 1 : -1;
-            return a.id < b.id ? 1 : -1;
-          });
         }
       }
     } else {
-      const systemIndex = threads.findIndex(t => t.id === 'pixory-system-assistant');
+      const systemIndex = threads.findIndex(t => t.id === SYSTEM_ASSISTANT_THREAD_ID);
       if (systemIndex !== -1) {
         threads.splice(systemIndex, 1);
       }
     }
+
+    if (fileTransferEnabled) {
+      if (!threads.some(t => t.id === FILE_TRANSFER_THREAD_ID)) {
+        const transferThread = await aiThreadRepository.findThreadById(db, FILE_TRANSFER_THREAD_ID);
+        if (transferThread) {
+          threads.push({
+            ...transferThread,
+            knowledgeCategory: null,
+            lastMessageAt: transferThread.updatedAt,
+          });
+        }
+      }
+    } else {
+      const transferIndex = threads.findIndex(t => t.id === FILE_TRANSFER_THREAD_ID);
+      if (transferIndex !== -1) {
+        threads.splice(transferIndex, 1);
+      }
+    }
+
+    threads.sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+      const ta = a.lastMessageAt ?? a.updatedAt;
+      const tb = b.lastMessageAt ?? b.updatedAt;
+      if (ta !== tb) return ta < tb ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    });
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
     const ipIds = threads
@@ -3220,10 +3242,10 @@ export async function listAiHomeThreads(input: {
 
 export async function ensureSystemAssistantThread(space: PixorySpace): Promise<void> {
   return runWithDatabaseSpace(space, async (db) => {
-    const thread = await aiThreadRepository.findThreadById(db, 'pixory-system-assistant');
+    const thread = await aiThreadRepository.findThreadById(db, SYSTEM_ASSISTANT_THREAD_ID);
     if (!thread) {
       await aiThreadRepository.createThread(db, {
-        id: 'pixory-system-assistant',
+        id: SYSTEM_ASSISTANT_THREAD_ID,
         space,
         contextType: 'normal',
         title: 'Pixory',
@@ -3234,7 +3256,28 @@ export async function ensureSystemAssistantThread(space: PixorySpace): Promise<v
         isPinned: false
       });
     } else if (thread.titleStatus !== 'custom' || thread.title !== 'Pixory') {
-      await aiThreadRepository.updateThread(db, 'pixory-system-assistant', { titleStatus: 'custom', title: 'Pixory' });
+      await aiThreadRepository.updateThread(db, SYSTEM_ASSISTANT_THREAD_ID, { titleStatus: 'custom', title: 'Pixory' });
+    }
+  });
+}
+
+export async function ensureFileTransferThread(space: PixorySpace): Promise<void> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, FILE_TRANSFER_THREAD_ID);
+    if (!thread) {
+      await aiThreadRepository.createThread(db, {
+        id: FILE_TRANSFER_THREAD_ID,
+        space,
+        contextType: 'normal',
+        title: '文件传输助手',
+        titleStatus: 'custom',
+        systemPrompt: '',
+        roleInstructionWeight: 'default',
+        replyPreference: 'auto',
+        isPinned: false
+      });
+    } else if (thread.titleStatus !== 'custom' || thread.title !== '文件传输助手') {
+      await aiThreadRepository.updateThread(db, FILE_TRANSFER_THREAD_ID, { titleStatus: 'custom', title: '文件传输助手' });
     }
   });
 }
@@ -3247,6 +3290,10 @@ export async function searchGlobalThreads(input: {
   return runWithDatabaseSpace(input.space, async (db) => {
     // Fetch a larger pool of recent threads without text filtering (so we don't match message contents)
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', 1000, '');
+    const [systemAssistantEnabled, fileTransferEnabled] = await Promise.all([
+      settingsRepository.getSystemAssistantEnabled(db),
+      settingsRepository.getFileTransferEnabled(db),
+    ]);
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
     const ipIds = threads
@@ -3257,6 +3304,8 @@ export async function searchGlobalThreads(input: {
     
     const results: AiHomeThreadItem[] = [];
     for (const thread of threads) {
+      if (thread.id === SYSTEM_ASSISTANT_THREAD_ID && !systemAssistantEnabled) continue;
+      if (thread.id === FILE_TRANSFER_THREAD_ID && !fileTransferEnabled) continue;
       const roleCard = thread.roleCardId ? roleCardsById.get(thread.roleCardId) : null;
       const roleCardName = roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson);
       

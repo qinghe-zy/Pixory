@@ -253,27 +253,30 @@ test('Test 4: documentAnchorResolver dual-linked list resolution', () => {
   assert.equal(resolvedRoot.primaryTarget.metadata.document.title, '商业计划书_初稿.docx');
 });
 
-test('Test 5: Document card middle-truncation & 0-4px micro-radius specification', () => {
+test('Test 5: Document card middle-truncation & WeChat 1:1 replica specification', () => {
   const cardCode = fs.readFileSync(
     path.resolve(process.cwd(), 'src/components/document/DocumentBubbleCard.tsx'),
+    'utf8'
+  );
+  const resolverCode = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/document/fileTypeResolver.ts'),
     'utf8'
   );
 
   // 1. 中间截断算法审计：严禁末尾 ... 截断导致扩展名丢失
   assert.ok(cardCode.includes('truncateMiddle'), '必须包含 truncateMiddle 智能中间截断函数');
-  assert.ok(cardCode.includes('maxHead'), '必须保留头部字符');
-  assert.ok(cardCode.includes('maxTail'), '必须保留尾部字符与扩展名');
+  assert.ok(resolverCode.includes('maxHead'), '必须保留头部字符');
+  assert.ok(resolverCode.includes('maxTail'), '必须保留尾部字符与扩展名');
 
-  // 2. 0~4px 紧凑圆角设计准则
-  assert.ok(cardCode.includes('borderRadius: 4'), '卡片外壳圆角必须严格满足 0~4px 微倒角规范');
+  // 2. 微信原型圆角与尺寸规范
+  assert.ok(cardCode.includes('borderRadius: 5'), '卡片外壳圆角必须满足微信 5px 微倒角规范');
   assert.ok(!cardCode.includes('borderRadius: 14'), '严禁使用 14px 大圆角');
   assert.ok(!cardCode.includes('borderRadius: 16'), '严禁使用 16px 大圆角');
 
-  // 3. 拒绝整卡片单一底色，分层 Elevated Capsule 架构
-  assert.ok(cardCode.includes('container:'), '必须有分层胶囊容器');
+  // 3. 微信原型白底卡片与折角图标架构
+  assert.ok(cardCode.includes('cardContainer:'), '必须有卡片容器');
   assert.ok(cardCode.includes("backgroundColor: '#FFFFFF'"), '主体必须采用中性纯净白底');
-  assert.ok(cardCode.includes("badgeGradientStart: '#2B579A'"), '顶部徽标 DOCX 渐变');
-  assert.ok(cardCode.includes("badgeGradientStart: '#D9381E'"), '顶部徽标 PDF 渐变');
+  assert.ok(cardCode.includes('WeChatFileIcon'), '必须使用微信折角文件图标');
 
   // 4. 三态生命周期支持：streaming, compiling, ready
   assert.ok(cardCode.includes("status === 'streaming'"), '必须支持流式骨架脉冲态');

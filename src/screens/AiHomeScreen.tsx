@@ -6,7 +6,8 @@ import { Image as ExpoImage } from 'expo-image';
 
 import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import { ensureSystemAssistantThread, listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
+import { ensureFileTransferThread, ensureSystemAssistantThread, listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
+import { FILE_TRANSFER_THREAD_ID, SYSTEM_ASSISTANT_THREAD_ID } from '../ai/systemAssistant/capabilityProfile';
 import { AppDialog } from '../components/AppDialog';
 import { AnchoredContextMenu } from '../components/AnchoredContextMenu';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
@@ -23,6 +24,7 @@ import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiFullMinute } from '../utils/aiTimeFormatters';
+import { formatMessagePreview } from '../utils/formatMessagePreview';
 import { recordDiagnosticEvent } from '../diagnostics/diagnosticLogger';
 import { globalScrollState } from '../utils/scrollState';
 import { FloatingFooterContext } from '../components/AppScreen';
@@ -30,6 +32,7 @@ import { PersonalCredentialPrompt } from '../components/PersonalCredentialPrompt
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
+const FILE_TRANSFER_AVATAR = require('../../assets/file_transfer_avatar.png');
 
 const HOME_THREAD_LIMIT = 30;
 const RECENT_CHAT_ROW_HEIGHT = 72;
@@ -54,6 +57,7 @@ export async function preloadAiHomeData(space: PixorySpace): Promise<void> {
     homeRoleCardCache[space] = roleCards;
     setCachedRoleCards(space, roleCards);
     void ensureSystemAssistantThread(space).catch(() => undefined);
+    void ensureFileTransferThread(space).catch(() => undefined);
   } catch {
     // 忽略静默预热异常
   }
@@ -214,6 +218,7 @@ export function AiHomeScreen({
         }
       });
     void ensureSystemAssistantThread(space).catch(() => undefined);
+    void ensureFileTransferThread(space).catch(() => undefined);
     return () => {
       isMounted = false;
     };
@@ -359,9 +364,13 @@ export function AiHomeScreen({
                       <View style={styles.threadTitleRow}>
                         <View style={styles.threadTitleWrap}>
                           <Text numberOfLines={1} style={styles.threadTitle}>
-                            {thread.id === 'pixory-system-assistant' ? 'Pixory 系统管家' : thread.title}
+                            {thread.id === SYSTEM_ASSISTANT_THREAD_ID
+                              ? 'Pixory 系统管家'
+                              : thread.id === FILE_TRANSFER_THREAD_ID
+                              ? '文件传输助手'
+                              : thread.title}
                           </Text>
-                          {thread.id === 'pixory-system-assistant' ? (
+                          {thread.id === SYSTEM_ASSISTANT_THREAD_ID || thread.id === FILE_TRANSFER_THREAD_ID ? (
                             <View style={[styles.ipBadge, { backgroundColor: 'rgba(0, 0, 0, 0.08)' }]}>
                               <Text style={[styles.ipBadgeText, { color: '#4A5568' }]}>系统</Text>
                             </View>
@@ -377,7 +386,7 @@ export function AiHomeScreen({
                       </View>
                       <View style={styles.threadMetaRow}>
                         <Text numberOfLines={1} style={styles.threadDescription}>
-                          {thread.lastMessagePreview || labelForContext(thread)}
+                          {formatMessagePreview(thread.lastMessagePreview, labelForContext(thread))}
                         </Text>
                       </View>
                     </View>
@@ -484,7 +493,7 @@ export function AiHomeScreen({
         </AppDialog>
 
         <AnchoredContextMenu
-          actions={actionMenuState ? (actionMenuState.thread.id === 'pixory-system-assistant' ? [{ key: 'pin', label: actionMenuState.thread.isPinned ? '取消置顶' : '置顶', icon: 'pin-outline', onPress: () => { void (async () => { if (busy) return; setBusy(true); try { await toggleAiThreadPin(space, actionMenuState.thread.id, !actionMenuState.thread.isPinned); await reloadThreads(); } catch (e) { console.error('Failed to pin thread:', e); } finally { setBusy(false); } })(); } }] as any : [
+          actions={actionMenuState ? (actionMenuState.thread.id === SYSTEM_ASSISTANT_THREAD_ID || actionMenuState.thread.id === FILE_TRANSFER_THREAD_ID ? [{ key: 'pin', label: actionMenuState.thread.isPinned ? '取消置顶' : '置顶', icon: 'pin-outline', onPress: () => { void (async () => { if (busy) return; setBusy(true); try { await toggleAiThreadPin(space, actionMenuState.thread.id, !actionMenuState.thread.isPinned); await reloadThreads(); } catch (e) { console.error('Failed to pin thread:', e); } finally { setBusy(false); } })(); } }] as any : [
             {
               key: 'rename',
               label: '重命名',
@@ -609,6 +618,12 @@ function formatAiHomeFullMinute(value: string | null | undefined): string {
 }
 
 function labelForContext(thread: AiHomeThreadItem): string {
+  if (thread.id === FILE_TRANSFER_THREAD_ID) {
+    return '文件传输';
+  }
+  if (thread.id === SYSTEM_ASSISTANT_THREAD_ID) {
+    return '系统管家';
+  }
   if (thread.contextType === 'ip') {
     return 'IP 对话';
   }
@@ -619,10 +634,20 @@ function labelForContext(thread: AiHomeThreadItem): string {
 }
 
 function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: PixorySpace }) {
-  if (thread.id === 'pixory-system-assistant') {
+  if (thread.id === SYSTEM_ASSISTANT_THREAD_ID) {
     return (
       <ExpoImage
         source={AI_SYSTEM_AVATAR}
+        style={styles.threadAvatarImage}
+      />
+    );
+  }
+  if (thread.id === FILE_TRANSFER_THREAD_ID) {
+    return (
+      <ExpoImage
+        accessibilityLabel="文件传输助手"
+        contentFit="cover"
+        source={FILE_TRANSFER_AVATAR}
         style={styles.threadAvatarImage}
       />
     );

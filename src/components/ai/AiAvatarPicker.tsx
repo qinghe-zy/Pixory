@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpListItem, type PixorySpace } from '../../database';
+import { metrics, rhythm } from '../../design/tokens';
 import { copyAiRoleAvatarToAppStorage } from '../../services/fileStorageService';
 import { AiImageCropModal } from './AiImageCropModal';
 import { SecureImage } from '../SecureImage';
@@ -37,13 +38,26 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
   }, [loadIps]);
 
   useEffect(() => {
+    let isMounted = true;
     if (avatarIpId == null) {
       setAvatarCandidates([]);
       return;
     }
     void runWithDatabaseSpace(space, (db: any) => imageRepository.findByIpId(db, avatarIpId, { mediaType: 'image' }))
-      .then((images: any) => { setAvatarCandidates(images); })
-      .catch((e: any) => { onError?.(e instanceof Error ? e : String(e)); });
+      .then((images: any) => {
+        if (isMounted) {
+          setAvatarCandidates(images);
+        }
+      })
+      .catch((e: any) => {
+        if (isMounted) {
+          onError?.(e instanceof Error ? e : String(e));
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [avatarIpId, space, onError]);
 
   async function pickAvatarFromAlbum() {
@@ -80,6 +94,9 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
     setCropSourceUri(null);
   }
 
+  const selectedIp = useMemo(() => ips.find((ip) => ip.id === avatarIpId), [ips, avatarIpId]);
+  const displayIpName = selectedIp?.name ?? ips[0]?.name ?? '选择';
+
   return (
     <View style={styles.container}>
       <AiImageCropModal
@@ -97,9 +114,17 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
         {ips.length > 0 && (
           <View style={styles.ipActionRow}>
             <Text style={styles.ipActionLabel}>从 IP 选择</Text>
-            <Pressable onPress={() => setShowIps(!showIps)} style={({ pressed }) => [styles.ipPickerButton, pressed && styles.pressed]}>
-              <Text style={styles.ipPickerButtonText}>{ips[0]?.name || '选择'}</Text>
-              <Ionicons name="options-outline" size={14} color="#1a1c1c" />
+            <Pressable
+              accessibilityLabel={`从 IP 选择，当前：${displayIpName}`}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showIps }}
+              onPress={() => setShowIps(!showIps)}
+              style={({ pressed }) => [styles.ipPickerButton, pressed && styles.pressed]}
+            >
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.ipPickerButtonText}>
+                {displayIpName}
+              </Text>
+              <Ionicons color="#1a1c1c" name="options-outline" size={14} />
             </Pressable>
           </View>
         )}
@@ -107,18 +132,35 @@ export function AiAvatarPicker({ avatarUri, onAvatarChange, space, onError }: Ai
 
       {showIps && ips.length > 0 && (
         <View style={styles.ipAvatarPicker}>
-          <View style={styles.ipChipRow}>
-            {ips.slice(0, 8).map((ip) => (
-              <Pressable
-                accessibilityRole="button"
-                key={ip.id}
-                onPress={() => setAvatarIpId(ip.id)}
-                style={({ pressed }) => [styles.ipChip, avatarIpId === ip.id && styles.ipChipActive, pressed && styles.pressed]}
-              >
-                <Text numberOfLines={1} style={[styles.ipChipText, avatarIpId === ip.id && styles.ipChipTextActive]}>{ip.name}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <ScrollView
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={ips.length > 6}
+            style={ips.length > 6 ? styles.ipGridScroll : undefined}
+          >
+            <View style={styles.ipGrid}>
+              {ips.map((ip) => {
+                const active = avatarIpId === ip.id;
+                return (
+                  <Pressable
+                    accessibilityLabel={`选择 IP：${ip.name}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    key={ip.id}
+                    onPress={() => setAvatarIpId(ip.id)}
+                    style={({ pressed }) => [
+                      styles.ipCard,
+                      active && styles.ipCardActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={[styles.ipCardText, active && styles.ipCardTextActive]}>
+                      {ip.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
           {avatarIpId == null ? null : avatarCandidates.length ? (
             <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.avatarGridScroll}>
               <View style={styles.avatarGrid}>
@@ -156,6 +198,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 4,
+    gap: 8,
   },
   albumBtn: {
     height: 32,
@@ -163,6 +206,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 0,
   },
   albumBtnText: {
     fontSize: 15,
@@ -172,58 +216,73 @@ const styles = StyleSheet.create({
   ipActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    flexShrink: 1,
+    justifyContent: 'flex-end',
   },
   ipActionLabel: {
     fontSize: 12,
     fontWeight: '500',
     color: '#444748',
+    flexShrink: 0,
   },
   ipPickerButton: {
     height: 28,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 14,
     backgroundColor: '#e2e2e2',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    maxWidth: 150,
+    flexShrink: 1,
   },
   ipPickerButtonText: {
     fontSize: 11,
     fontWeight: '600',
     color: '#1a1c1c',
-    letterSpacing: 0.66,
+    letterSpacing: 0.5,
+    flexShrink: 1,
   },
   caption: {
     fontSize: 11,
     color: '#747878',
   },
   ipAvatarPicker: {
-    gap: 12,
-    marginTop: 8,
+    gap: rhythm.inlineGap,
+    marginTop: rhythm.compactGridGap,
   },
-  ipChipRow: {
+  ipGridScroll: {
+    maxHeight: 168,
+  },
+  ipGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: rhythm.compactGridGap,
   },
-  ipChip: {
+  ipCard: {
+    width: '48.5%',
+    minHeight: 38,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     backgroundColor: '#f9f9f9',
     borderColor: '#e2e2e2',
     borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  ipChipActive: {
+  ipCardActive: {
     backgroundColor: '#e8e8e8',
     borderColor: '#000000',
   },
-  ipChipText: {
-    fontSize: 11,
+  ipCardText: {
+    fontSize: 12,
+    lineHeight: 16,
     color: '#1a1c1c',
+    textAlign: 'center',
   },
-  ipChipTextActive: {
+  ipCardTextActive: {
     color: '#000000',
     fontWeight: '700',
   },
@@ -233,15 +292,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   avatarGridScroll: {
-    maxHeight: 44 * 4 + 8 * 3,
+    maxHeight: metrics.minTouchSize * 4 + rhythm.compactGridGap * 3,
   },
   avatarChoice: {
     borderColor: '#e5e5e5',
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    width: 44,
-    height: 44,
+    width: metrics.minTouchSize,
+    height: metrics.minTouchSize,
   },
   avatarChoiceActive: {
     borderColor: '#000000',

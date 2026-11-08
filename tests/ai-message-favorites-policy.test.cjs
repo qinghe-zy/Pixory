@@ -23,7 +23,7 @@ test('AI message favorites schema uses a dedicated local table with stable key',
   assert.match(db, /currentVersion < 37/);
 });
 
-test('AI message favorite repository only accepts assistant messages and normalizes identity', () => {
+test('AI message favorite repository accepts messages and normalizes identity', () => {
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
   assert.match(repository, /export interface AiMessageFavoriteRecord/);
@@ -38,8 +38,6 @@ test('AI message favorite repository only accepts assistant messages and normali
   assert.match(repository, /findFavoriteAssistantMessageState/);
   assert.match(repository, /listFavoriteAssistantMessageKeys/);
   assert.match(repository, /favoriteKey IN \(\$\{makeInClause\(chunk\)\}\)/);
-  assert.match(repository, /message\.role !== 'assistant'/);
-  assert.match(repository, /Only assistant messages can be favorited/);
 });
 
 test('AI chat service exposes local favorite wrappers without remote calls', () => {

@@ -89,13 +89,43 @@ export class CasBlobStore {
 
   /**
    * 将本地文件直接吸纳进 CAS 存储 (Ingest Native File URI)
-   * 彻底避免大文件（如 20MB PDF）在 JS 端转 Base64 导致的内存暴增与 OOM
+   * 优先原生流式哈希与文件系统拷贝，彻底避免大文件（如 20MB PDF）在 JS 端转 Base64 导致的内存暴增与 OOM
    */
   public async ingestFileUri(
     fileUri: string,
     space: PixorySpace,
     _originalFilename?: string,
   ): Promise<{ blobHash: string; casUri: string; sizeBytes: number; isDeduplicated: boolean }> {
+    // 1. 优先尝试原生流式计算 SHA-256 并直接文件系统拷贝入库 (真机 Android 零拷贝直通)
+    try {
+      const { computeFileSha256 } = await import('../../../native/pixoryMediaModule');
+      const blobHash = await computeFileSha256(fileUri);
+      if (blobHash && /^[0-9a-f]{64}$/i.test(blobHash)) {
+        const normalizedHash = blobHash.toLowerCase();
+        const targetPath = this.getBlobPath(normalizedHash, space);
+        const alreadyExists = await this.driver.exists(targetPath);
+        if (!alreadyExists) {
+          await this.driver.copyFile(fileUri, targetPath);
+        }
+        const sizeBytes = await this.driver.getFileSize(targetPath);
+        if (sizeBytes <= 0) {
+          try {
+            await this.driver.deleteFile(targetPath);
+          } catch {}
+          throw new Error('入库文件体积异常 (0 字节)');
+        }
+        CasBlobStore.pinHash(normalizedHash);
+        return {
+          blobHash: normalizedHash,
+          casUri: targetPath,
+          sizeBytes,
+          isDeduplicated: alreadyExists,
+        };
+      }
+    } catch {
+      // 降级使用通用驱动链路 (如 Node.js 测试环境或无原生扩展时)
+    }
+
     const bytes = await this.driver.readBytes(fileUri);
     const putRes = await this.putBlob(bytes, space);
     CasBlobStore.pinHash(putRes.blobHash);

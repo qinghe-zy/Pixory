@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.9.2",
+    "version": "2.9.3",
     "orientation": "portrait",
     "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 29002,
+      "versionCode": 29005,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -33,7 +33,7 @@
     "web": {
       "favicon": "./assets/pixory-favicon.png"
     },
-    "runtimeVersion": "2.9.2",
+    "runtimeVersion": "2.9.3",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
@@ -74,8 +74,7 @@
       "expo-document-picker",
       "expo-secure-store",
       "expo-video",
-      "./plugins/withPixoryAndroidIntents",
-      "expo-audio"
+      "./plugins/withPixoryAndroidIntents"
     ],
     "extra": {
       "updateCheck": {

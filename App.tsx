@@ -11,7 +11,7 @@ import { Alert, AppState, BackHandler, InteractionManager, Linking, Platform, St
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, type SharedValue } from 'react-native-reanimated';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppDialog } from './src/components/AppDialog';
@@ -98,6 +98,7 @@ import { MeScreen } from './src/screens/MeScreen';
 import { DiagnosticsSettingsScreen } from './src/screens/DiagnosticsSettingsScreen';
 import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { SystemSessionsSettingsScreen } from './src/screens/SystemSessionsSettingsScreen';
 import { AdvancedSettingsScreen } from './src/screens/AdvancedSettingsScreen';
 import { AppearanceSettingsScreen } from './src/screens/AppearanceSettingsScreen';
 import { ChatAppearanceSettingsScreen } from './src/screens/ChatAppearanceSettingsScreen';
@@ -288,6 +289,7 @@ type AppRoute =
   | { name: 'profile-info-settings'; space: PixorySpace }
   | { name: 'developer-mode-settings'; space: PixorySpace }
   | { name: 'diagnostics-settings'; space: PixorySpace }
+  | { name: 'system-sessions-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string; autoImport?: boolean; origin?: 'im' | 'ai' }
@@ -296,7 +298,7 @@ type AppRoute =
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string; initialSource?: 'ip' | 'file' | 'manual_text' }
   | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string; ownerType?: AiDocumentOwnerType; ownerId?: string; ownerTitle?: string }
   | { name: 'ai-thread-material-list'; space: PixorySpace; threadId: string; title?: string }
-  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
+  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator; fileUri?: string; fileName?: string; mimeType?: string | null }
   | { name: 'ai-history'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
@@ -334,7 +336,13 @@ function isPersonalRoute(route: AppRoute): boolean {
 }
 
 function isExternalEntryRoute(route: AppRoute): boolean {
-  return route.name === 'external-video-player' || route.name === 'archive-reader' || route.name === 'external-package-placeholder' || route.name === 'share-collect';
+  return (
+    route.name === 'external-video-player' ||
+    route.name === 'archive-reader' ||
+    route.name === 'external-package-placeholder' ||
+    route.name === 'share-collect' ||
+    (route.name === 'ai-document-reader' && Boolean(route.fileUri))
+  );
 }
 
 function scheduleAiChatMemoryMaintenanceForRoute(route: AppRoute | undefined, reason: 'leave_chat' | 'app_background'): void {
@@ -509,6 +517,25 @@ function resolveExternalEntryRoute(externalOpen: NativeExternalOpen | null | und
     };
   }
 
+  if (
+    externalOpen.action === 'android.intent.action.VIEW' &&
+    (mimeType === 'application/pdf' ||
+      mimeType?.includes('wordprocessingml') ||
+      mimeType?.includes('presentationml') ||
+      mimeType?.startsWith('text/') ||
+      /\.(pdf|docx|pptx|ppt|md|markdown|txt|html)(\?|$)/.test(candidateName))
+  ) {
+    const defaultDocName = resolveExternalEntryFileName(externalOpen, 'document');
+    return {
+      name: 'ai-document-reader',
+      space: 'normal',
+      fileUri: externalOpen.uri,
+      fileName: defaultDocName,
+      mimeType,
+      title: defaultDocName,
+    };
+  }
+
   if (externalOpen.action === 'android.intent.action.VIEW' && /\.(pixorypack)(\?|$)/.test(candidateName)) {
     return {
       name: 'external-package-placeholder',
@@ -552,6 +579,7 @@ export default function App() {
   const [personalAuthBusy, setPersonalAuthBusy] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
   const [availableAnnouncement, setAvailableAnnouncement] = useState<RemoteAnnouncementInfo | null>(null);
+  const [isImSecondFloorActive, setIsImSecondFloorActive] = useState(false);
   const personalGenerationRef = useRef(0);
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
   const personalSessionStateRef = useRef(personalSessionState);
@@ -920,7 +948,7 @@ export default function App() {
               space: thread.space || 'normal',
               threadId: thread.id,
               roleCardId: thread.roleCardId || '',
-              roleName: roleCard?.name || thread.title || '伴侣',
+              roleName: roleCard?.name || thread.title || '角色',
               roleAvatarUri: roleCard?.avatarUri || null,
             });
           }
@@ -1416,7 +1444,7 @@ export default function App() {
       }
       if (cards.length === 1) {
         const card = cards[0];
-        Alert.alert('导出角色卡', `确定要导出伴侣角色【${card.name}】吗？`, [
+        Alert.alert('导出角色卡', `确定要导出角色【${card.name}】吗？`, [
           { text: '取消', style: 'cancel' },
           {
             text: '导出',
@@ -1438,7 +1466,7 @@ export default function App() {
       }
       Alert.alert(
         '导出角色卡',
-        '请选择要导出的伴侣角色：',
+        '请选择要导出的角色：',
         [
           ...cards.slice(0, 6).map((c) => ({
             text: c.name,
@@ -1510,6 +1538,7 @@ export default function App() {
     <FloatingFooterProvider>
       <StrictPager
         activeIndex={baseRootRoute.tab ? ROOT_TABS.indexOf(baseRootRoute.tab) : 0}
+        enabled={!isImSecondFloorActive}
         onChange={(index) => {
           const tab = ROOT_TABS[index];
           if (tab && baseRootRoute.tab !== tab) {
@@ -1584,6 +1613,7 @@ export default function App() {
               }}
               onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
               onOpenRoleCardDetail={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: activeSpace })}
+              onSecondFloorStateChange={setIsImSecondFloorActive}
               refreshToken={aiHomeRefreshToken}
               space={activeSpace}
             />
@@ -2414,8 +2444,11 @@ export default function App() {
         onOpenImCompanionSettings={() => pushRoute({ name: 'im-companion-settings', space: currentRoute.space })}
         onOpenVoiceSettings={() => pushRoute({ name: 'voice-settings', space: currentRoute.space })}
         onOpenNotificationSettings={() => pushRoute({ name: 'notification-settings', space: currentRoute.space })}
+        onOpenSystemSessions={() => pushRoute({ name: 'system-sessions-settings', space: currentRoute.space })}
       />
     );
+  } else if (currentRoute.name === 'system-sessions-settings') {
+    content = <SystemSessionsSettingsScreen space={currentRoute.space} onBack={popRoute} />;
   } else if (currentRoute.name === 'im-companion-settings') {
     content = <ImCompanionSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'notification-settings') {
@@ -2627,7 +2660,18 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'ai-document-reader') {
-    content = <AiDocumentReaderScreen documentId={currentRoute.documentId} locator={currentRoute.locator} onBack={popRoute} space={currentRoute.space} title={currentRoute.title} />;
+    content = (
+      <AiDocumentReaderScreen
+        documentId={currentRoute.documentId}
+        fileName={currentRoute.fileName}
+        fileUri={currentRoute.fileUri}
+        locator={currentRoute.locator}
+        mimeType={currentRoute.mimeType}
+        onBack={popRoute}
+        space={currentRoute.space}
+        title={currentRoute.title}
+      />
+    );
   } else if (currentRoute.name === 'ai-history') {
     content = (
       <AiHistoryScreen
@@ -2698,7 +2742,13 @@ export default function App() {
           })}
           {/* Tab bar: only show when no overlay is covering the base layer */}
           {currentRoute.name === 'root' && baseRootRoute ? (
-            <FloatingRootFooter activeTab={baseRootRoute.tab} onSelectTab={switchRootTab} scrollOffset={globalScrollOffset} space={activeSpace} />
+            <FloatingRootFooter
+              activeTab={baseRootRoute.tab}
+              hidden={isImSecondFloorActive && baseRootRoute.tab === 'im'}
+              onSelectTab={switchRootTab}
+              scrollOffset={globalScrollOffset}
+              space={activeSpace}
+            />
           ) : null}
         </View>
         <PersonalUnlockModal
@@ -2776,13 +2826,25 @@ function FloatingRootFooter({
   onSelectTab,
   scrollOffset,
   space,
+  hidden = false,
 }: {
   activeTab: RootTabKey;
   onSelectTab: (tab: RootTabKey) => void;
   scrollOffset?: SharedValue<number>;
   space: PixorySpace;
+  hidden?: boolean;
 }) {
   const [imUnread, setImUnread] = useState(0);
+  const footerTranslateY = useSharedValue(0);
+
+  useEffect(() => {
+    footerTranslateY.value = withTiming(hidden ? 120 : 0, { duration: 250 });
+  }, [hidden, footerTranslateY]);
+
+  const animatedFooterStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: footerTranslateY.value }],
+    opacity: withTiming(hidden ? 0 : 1, { duration: 200 }),
+  }));
 
   useEffect(() => {
     let mounted = true;
@@ -2804,17 +2866,20 @@ function FloatingRootFooter({
   }, [space]);
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-      }}
+    <Animated.View
+      pointerEvents={hidden ? 'none' : 'box-none'}
+      style={[
+        {
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+        },
+        animatedFooterStyle,
+      ]}
     >
       <BottomTabBar activeTab={activeTab} imUnreadCount={imUnread} onSelectTab={onSelectTab} />
-    </View>
+    </Animated.View>
   );
 }
 

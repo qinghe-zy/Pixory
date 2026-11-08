@@ -23,8 +23,9 @@ import {
   revealPendingMessages,
 } from '../repository/imThreadRepository';
 import { buildChatPayload } from '../engine/imContextBuilder';
-import { parseStatusTag, parsePingTag } from '../engine/imTagParser';
+import { parseStatusTag, parsePingTag, parseVoiceTag } from '../engine/imTagParser';
 import { stripMetaTags } from '../engine/tagAwareStreamParser';
+import { sanitizeCompanionBubble } from '../engine/humanizeOutputGate';
 import { advanceLivingState } from '../engine/imAgencyEngine';
 import { planFallbackProactivePing } from '../engine/imProactiveFallbackPlanner';
 import { resolveCompanionRolePrompt, type CompanionRoleCardSnapshot } from '../engine/imRolePromptResolver';
@@ -392,26 +393,54 @@ export async function recoverInterruptedUserReply(
     void updateThreadLivingState(space, threadId, updatedLiving);
   }
 
-  const cleanSentences = stripMetaTags(fullRawResponse)
-    .split(BR_SPLIT_REGEX)
-    .map((s) => stripMetaTags(s))
-    .filter((s) => s.length > 0 && s !== '[PASS]');
+  const rawSentences = fullRawResponse.split(BR_SPLIT_REGEX);
+  const cleanItems: Array<{ text: string; isVoice: boolean; style?: string }> = [];
+  for (const s of rawSentences) {
+    const trimmed = s.trim();
+    if (!trimmed || trimmed === '[PASS]') continue;
+    const voiceTag = parseVoiceTag(trimmed);
+    if (voiceTag) {
+      if (voiceReplyEnabled) {
+        cleanItems.push({ text: voiceTag.text, isVoice: true, style: voiceTag.styleDirective });
+      } else {
+        cleanItems.push({ text: voiceTag.text, isVoice: false });
+      }
+    } else {
+      const sanitized = sanitizeCompanionBubble(stripMetaTags(trimmed), { preserveInlineStageActions: true });
+      if (sanitized) {
+        cleanItems.push({ text: sanitized, isVoice: false });
+      }
+    }
+  }
 
-  if (cleanSentences.length === 0) return false;
+  if (cleanItems.length === 0) return false;
 
   const baseMsgTime = Math.max(now, tailTimeMs + 1000);
   const burstGroupId = `burst_recover_${baseMsgTime}`;
-  for (let i = 0; i < cleanSentences.length; i++) {
+  for (let i = 0; i < cleanItems.length; i++) {
+    const item = cleanItems[i];
+    const msgTime = baseMsgTime + i * 400;
+    const estDurationMs = Math.max(1000, Math.min(60000, Math.round(item.text.length * 240)));
     const msg: ImMessage = {
       id: `im_msg_${baseMsgTime}_${i}_rec`,
       threadId,
       burstGroupId,
       role: 'assistant',
-      content: cleanSentences[i],
+      content: item.text,
+      type: item.isVoice ? 'voice' : 'text',
+      voice: item.isVoice
+        ? {
+            audioUri: '',
+            durationMs: estDurationMs,
+            transcription: item.text,
+            isPlayed: false,
+            style: item.style,
+          }
+        : undefined,
       status: 'sent',
       deliveryStatus: 'delivered',
       visibleAt: null,
-      createdAt: new Date(baseMsgTime + i * 400).toISOString(),
+      createdAt: new Date(msgTime).toISOString(),
     };
     await insertImMessage(space, msg);
   }
@@ -419,7 +448,7 @@ export async function recoverInterruptedUserReply(
   const stillOpen =
     typeof GlobalHeartbeatEngine.shared.isThreadActivelyOpen === 'function' &&
     GlobalHeartbeatEngine.shared.isThreadActivelyOpen(space, threadId);
-  const unreadDelta = stillOpen ? 0 : cleanSentences.length;
+  const unreadDelta = stillOpen ? 0 : cleanItems.length;
   if (unreadDelta > 0) {
     await db.runAsync(
       `UPDATE ai_threads

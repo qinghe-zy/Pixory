@@ -37,6 +37,8 @@ import {
   getNextPendingVisibleAt,
   getNextPendingVisibleRow,
   getThreadPacingState,
+  peekThreadPendingDiaryHook,
+  ackThreadPendingDiaryHook,
   consumeThreadPendingDiaryHook,
   setThreadPendingDiaryHook,
   savePendingPing,
@@ -63,7 +65,7 @@ import { CustomStickerService } from '../../components/emoji/customStickerServic
 import { VisibilityTicker, BurstMessageDispatcher } from '../engine/burstDispatcher';
 import { GlobalHeartbeatEngine } from '../heartbeat/globalHeartbeatEngine';
 import { InputAggregator } from '../engine/inputAggregator';
-import { TagAwareStreamParser } from '../engine/tagAwareStreamParser';
+import { TagAwareStreamParser, sanitizeThoughtForUi } from '../engine/tagAwareStreamParser';
 import { advanceLivingState } from '../engine/imAgencyEngine';
 import {
   buildDefaultLivingState,
@@ -98,6 +100,7 @@ import { memoryRepository, extractImmediateFactsFromUserText } from '../../core/
 import { classifyTurnMemoryIntent } from '../../core/memory/memoryIntentClassifier';
 import { extractMemoryMutationsWithMemoryModel } from '../../core/memory/memoryModelExtractor';
 import { MemoryExtractionBatcher } from '../../core/memory/memoryExtractionBatcher';
+import { runDailyMemoryMetabolism } from '../../core/memory/memoryMetabolismService';
 import { resolveEffectiveDnd } from '../heartbeat/imDndGuard';
 import { imUsageTelemetry } from '../services/imUsageTelemetry';
 import { imMessageRollback } from '../engine/imMessageRollback';
@@ -126,6 +129,8 @@ import {
 import { cancelInFlightWakeup } from '../services/imWakeupGenerationService';
 
 const EMOJI_DETECTION_REGEX = /\p{Extended_Pictographic}/u;
+const VOICE_PREFIX_STRIP_REGEX =
+  /^[\[【]\s*(?:VOICE|语音)\s*(?:[:：]|\]\s*[:：]?)\s*([^\]】\n]+?)(?:[\]】]|$)/i;
 
 export interface UseImChatSessionOptions {
   space: PixorySpace;
@@ -134,6 +139,9 @@ export interface UseImChatSessionOptions {
   initialRoleName?: string;
   initialRoleAvatarUri?: string | null;
 }
+
+// 记录今日已执行记忆代谢的角色卡与空间，避免组件频繁重挂载触发重复 SQL 运算
+const metabolismRunCache = new Set<string>();
 
 export function useImChatSession({
   space,
@@ -198,6 +206,7 @@ export function useImChatSession({
   const hasAutoRepliedInRoundRef = useRef<boolean>(false);
   const recentBurstShapesRef = useRef<BurstShape[]>([]);
   const recentlyRecalledMemoriesRef = useRef<Set<string>>(new Set());
+  const inFlightThoughtMsgRef = useRef<ImMessage | null>(null);
 
   const loadThreadSettings = useCallback(async () => {
     try {
@@ -231,7 +240,16 @@ export function useImChatSession({
   useEffect(() => {
     void loadThreadSettings();
     void CustomStickerService.hydrateCustomStickers(space);
-  }, [loadThreadSettings, space]);
+    if (roleCardId) {
+      const todayKey = `${space}:${roleCardId}:${new Date().toDateString()}`;
+      if (!metabolismRunCache.has(todayKey)) {
+        metabolismRunCache.add(todayKey);
+        void initDatabase(space).then((db) => {
+          void runDailyMemoryMetabolism(db, roleCardId, space, Date.now()).catch(() => {});
+        });
+      }
+    }
+  }, [loadThreadSettings, space, roleCardId]);
 
   const handleUpdateSettings = useCallback(
     async (patch: Partial<ImThreadSettings>) => {
@@ -277,7 +295,13 @@ export function useImChatSession({
       const items = await getVisibleImMessages(space, threadId, 120);
       const reversed = items.reverse();
       if (isMountedRef.current) {
-        setMessages(reversed);
+        // 在途思考气泡防冲刷：若前台正在进行深度思考，SQLite 列表覆盖前将内存在途气泡安全追加至末尾
+        const inFlight = inFlightThoughtMsgRef.current;
+        if (inFlight && !reversed.some((m) => m.id === inFlight.id)) {
+          setMessages([...reversed, inFlight]);
+        } else {
+          setMessages(reversed);
+        }
         setIsInitialLoading(false);
       }
     } catch {
@@ -408,19 +432,22 @@ export function useImChatSession({
 
     const onThoughtProgress = (chunk: string, fullThought: string) => {
       const showThought = threadSettingsRef.current.showThoughtBubble !== false;
+      const cleanThought = sanitizeThoughtForUi(fullThought, { isFinal: false });
+      if (!cleanThought) return;
+
       if (!activeThought) {
         const thoughtId = `msg_thought_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         activeThought = {
           id: thoughtId,
           startTime: Date.now(),
-          content: fullThought,
+          content: cleanThought,
           lastSyncTime: Date.now(),
         };
         const initialThoughtMsg: ImMessage = {
           id: thoughtId,
           threadId,
           role: 'assistant',
-          content: fullThought,
+          content: cleanThought,
           type: 'thought',
           status: 'sent',
           deliveryStatus: 'delivered',
@@ -432,18 +459,22 @@ export function useImChatSession({
           },
           createdAt: new Date().toISOString(),
         };
+        inFlightThoughtMsgRef.current = initialThoughtMsg;
         if (showThought && isMountedRef.current) {
           setMessages((prev) => [...prev, initialThoughtMsg]);
         }
       } else {
-        activeThought.content = fullThought;
+        activeThought.content = cleanThought;
         const now = Date.now();
         if (now - activeThought.lastSyncTime >= 50) {
           activeThought.lastSyncTime = now;
           const currentId = activeThought.id;
+          if (inFlightThoughtMsgRef.current && inFlightThoughtMsgRef.current.id === currentId) {
+            inFlightThoughtMsgRef.current = { ...inFlightThoughtMsgRef.current, content: cleanThought };
+          }
           if (showThought && isMountedRef.current) {
             setMessages((prev) =>
-              prev.map((m) => (m.id === currentId ? { ...m, content: fullThought } : m))
+              prev.map((m) => (m.id === currentId ? { ...m, content: cleanThought } : m))
             );
           }
         }
@@ -452,17 +483,19 @@ export function useImChatSession({
 
     const onThoughtCompleted = async (fullThought: string) => {
       const showThought = threadSettingsRef.current.showThoughtBubble !== false;
+      const cleanThought = sanitizeThoughtForUi(fullThought, { isFinal: true });
       if (!activeThought) {
-        if (fullThought.trim().length === 0) return;
+        if (!cleanThought || cleanThought.trim().length === 0) return;
         activeThought = {
           id: `msg_thought_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           startTime: Date.now(),
-          content: fullThought,
+          content: cleanThought,
           lastSyncTime: Date.now(),
         };
       }
-      if (fullThought.trim().length === 0) {
-        const targetId = activeThought.id;
+      const targetId = activeThought.id;
+      if (!cleanThought || cleanThought.trim().length === 0) {
+        inFlightThoughtMsgRef.current = null;
         if (isMountedRef.current) {
           setMessages((prev) => prev.filter((m) => m.id !== targetId));
         }
@@ -472,10 +505,10 @@ export function useImChatSession({
       const durationMs = Date.now() - activeThought.startTime;
       const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
       const finalThoughtMsg: ImMessage = {
-        id: activeThought.id,
+        id: targetId,
         threadId,
         role: 'assistant',
-        content: fullThought,
+        content: cleanThought,
         type: 'thought',
         status: 'sent',
         deliveryStatus: 'delivered',
@@ -488,8 +521,8 @@ export function useImChatSession({
         createdAt: new Date().toISOString(),
       };
       await insertImMessage(space, finalThoughtMsg);
-      persistedThoughtId = activeThought.id;
-      const targetId = activeThought.id;
+      persistedThoughtId = targetId;
+      inFlightThoughtMsgRef.current = null;
       if (showThought && isMountedRef.current) {
         setMessages((prev) =>
           prev.map((m) => (m.id === targetId ? finalThoughtMsg : m))
@@ -500,33 +533,40 @@ export function useImChatSession({
 
     const rollbackThought = async () => {
       // 关键防丢失铁律：如果思考已经完成并落库 (persistedThoughtId 存在)，严禁在流异常或中断时回滚删除！
-      // 思考成果是模型真实计算的时间结晶，删除已完成的思考气泡会破坏聊天记录真实性并造成气泡闪烁消失。
       if (persistedThoughtId) {
+        return;
+      }
+      // 防抹杀铁律：若在途思考已产出实质内容，绝不当作空白废弃，自动转由 finalizeThoughtOnError 安全落库沉淀
+      if (activeThought && activeThought.content.trim().length > 0) {
+        await finalizeThoughtOnError(false);
         return;
       }
       const targetId = activeThought?.id;
       if (!targetId) return;
       activeThought = null;
+      inFlightThoughtMsgRef.current = null;
       if (isMountedRef.current) {
         setMessages((prev) => prev.filter((m) => m.id !== targetId));
       }
     };
 
     const finalizeThoughtOnError = async (isAborted: boolean = false) => {
+      if (persistedThoughtId) return;
       if (!activeThought) return;
-      // 若流被外部中止打断（例如用户新发消息抢占），或者思考内容为空，直接清理丢弃，绝不写入数据库造成重复幽灵气泡
-      if (isAborted || activeThought.content.trim().length === 0) {
-        const targetId = activeThought.id;
+      const targetId = activeThought.id;
+      // 只有思考内容完全为空时，才安全清理过滤；只要产生了有效文字，即使遇到异常或中断也必须落库保留
+      if (activeThought.content.trim().length === 0) {
+        activeThought = null;
+        inFlightThoughtMsgRef.current = null;
         if (isMountedRef.current) {
           setMessages((prev) => prev.filter((m) => m.id !== targetId));
         }
-        activeThought = null;
         return;
       }
       const durationMs = Date.now() - activeThought.startTime;
       const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
       const finalThoughtMsg: ImMessage = {
-        id: activeThought.id,
+        id: targetId,
         threadId,
         role: 'assistant',
         content: activeThought.content,
@@ -542,8 +582,8 @@ export function useImChatSession({
         createdAt: new Date().toISOString(),
       };
       await insertImMessage(space, finalThoughtMsg);
-      persistedThoughtId = activeThought.id;
-      const targetId = activeThought.id;
+      persistedThoughtId = targetId;
+      inFlightThoughtMsgRef.current = null;
       if (threadSettingsRef.current.showThoughtBubble !== false && isMountedRef.current) {
         setMessages((prev) =>
           prev.map((m) => (m.id === targetId ? finalThoughtMsg : m))
@@ -552,11 +592,38 @@ export function useImChatSession({
       activeThought = null;
     };
 
+    const discardIncompleteCurrentAttempt = async () => {
+      // 若当前尝试已将思考落库到了 SQLite，但在正文对白吐出前发生流中断，
+      // 在透明重试下一轮前，安全从 SQLite 和界面中撤销此未结题思考，确保全新生成无重影
+      if (persistedThoughtId) {
+        const pId = persistedThoughtId;
+        persistedThoughtId = null;
+        activeThought = null;
+        inFlightThoughtMsgRef.current = null;
+        try {
+          await imMessageRollback.deleteMessage(pId, space);
+        } catch {}
+        if (isMountedRef.current) {
+          setMessages((prev) => prev.filter((m) => m.id !== pId));
+        }
+        return;
+      }
+      if (activeThought || inFlightThoughtMsgRef.current) {
+        const targetId = activeThought?.id || inFlightThoughtMsgRef.current?.id;
+        activeThought = null;
+        inFlightThoughtMsgRef.current = null;
+        if (targetId && isMountedRef.current) {
+          setMessages((prev) => prev.filter((m) => m.id !== targetId));
+        }
+      }
+    };
+
     return {
       onThoughtProgress,
       onThoughtCompleted,
       rollbackThought,
       finalizeThoughtOnError,
+      discardIncompleteCurrentAttempt,
       hasPersistedThought: () => Boolean(persistedThoughtId),
     };
   }, [space, threadId]);
@@ -684,6 +751,8 @@ export function useImChatSession({
         modelId: effectiveModelId,
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
+        protocol: provider.protocol,
+        supportsThinking: provider.supportsThinking,
         abortSignal: abortCtrl.signal,
       });
 
@@ -1028,10 +1097,33 @@ export function useImChatSession({
       let followupDelayToSchedule: number | null | undefined = null;
       let finalizeThoughtOnError: ((isAborted?: boolean) => Promise<void>) | null = null;
       let rollbackThoughtOnError: (() => Promise<void>) | null = null;
+      let discardIncompleteCurrentAttemptOnError: (() => Promise<void>) | null = null;
       let hasPersistedThoughtFn: (() => boolean) | null = null;
       let parserInstance: TagAwareStreamParser | null = null;
       let lastDispatchedMsg: ImMessage | null = null;
       let caughtAbort = false;
+
+      const emitStreamErrorNotice = async (hasThought: boolean) => {
+        if (caughtAbort || abortCtrl.signal.aborted) return;
+        const noticeContent = hasThought
+          ? '连接中断，未收到回复'
+          : '连接暂时不稳定，未收到回复';
+        const errorNotice: ImMessage = {
+          id: `notice_${Date.now()}_net_err`,
+          threadId,
+          role: 'system',
+          content: noticeContent,
+          type: 'system_notice',
+          status: 'sent',
+          deliveryStatus: 'delivered',
+          visibleAt: Date.now(),
+          createdAt: new Date().toISOString(),
+        };
+        await insertImMessage(space, errorNotice);
+        if (isMountedRef.current) {
+          await reloadMessages();
+        }
+      };
 
       try {
         const provider = await getActiveProviderConfig(
@@ -1057,35 +1149,18 @@ export function useImChatSession({
 
         // 2. 双路意图识别与复合召回查询强化构建
         const intentProfile = classifyTurnMemoryIntent(userInput);
+
+        // 主动命令遗忘处理：清空防抖提炼队列并软删除最近 10 分钟非钢印瞬态记忆
+        if (intentProfile.intent === 'FORGET_REQUEST' && roleCardId) {
+          MemoryExtractionBatcher.shared.clearKey(`${space}:${roleCardId || threadId}`);
+          await memoryRepository.softDeleteRecentTransientMemories(roleCardId, space).catch(() => {});
+        }
+
         const recallQuery = buildEffectiveRecallQuery({
           currentUserInput: userInput,
           recentMessages: messagesRef.current,
           recentlyRecalledIds: recentlyRecalledMemoriesRef.current,
         });
-
-        // 异步提取待办/约定事项 (0延迟静默落库)
-        const commitment = extractCommitmentFromUserText(userInput);
-        if (commitment && roleCardId) {
-          void memoryRepository.saveMemory(
-            {
-              id: `mem_commit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              roleCardId,
-              space,
-              tier: 'L2_FACT',
-              category: 'commitment',
-              content: `约定/待办: ${commitment.title} (${commitment.rawTimeExpr})`,
-              triggerKeywords: [commitment.title, commitment.rawTimeExpr, '约定', '待办'],
-              entities: [commitment.title],
-              importance: 8,
-              hitCount: 0,
-              isPinned: false,
-              createdAt: Date.now(),
-              lastAccessedAt: Date.now(),
-              sourceMode: 'im',
-            },
-            space
-          ).catch(() => {});
-        }
 
         // 3. 异步并行召回 Top 4 情境记忆、L1 槽位/摘要、常驻核心设定、世代锚点与昨日手账钩子 (async-parallel)
         const [rawRecalled, slots, summaries, coreFacts, epochState, pendingDiaryHook] = await Promise.all([
@@ -1094,7 +1169,7 @@ export function useImChatSession({
           roleCardId ? memoryRepository.listMemories(roleCardId, space, 'L1_SUMMARY') : Promise.resolve([]),
           roleCardId ? memoryRepository.listCoreProfileFacts(roleCardId, space, 8) : Promise.resolve([]),
           imEpochRepository.getOrCreateState(space, threadId, roleCardId || 'default'),
-          consumeThreadPendingDiaryHook(space, threadId).catch(() => null),
+          peekThreadPendingDiaryHook(space, threadId).catch(() => null),
         ]);
         const recalled = filterCooldownRecalledMemories(rawRecalled, recentlyRecalledMemoriesRef.current, 3);
         for (const r of recalled) {
@@ -1166,7 +1241,8 @@ export function useImChatSession({
               if (!parsed) return null;
 
               if (roleCardId) {
-                await memoryRepository.applyCompaction(roleCardId, space, parsed);
+                // 阶段 1 预提炼隔离：仅提炼 L2，禁止覆写持久层 L1 破坏活跃世代前缀缓存
+                await memoryRepository.applyCompaction(roleCardId, space, parsed, { skipL1: true });
               }
 
               let mergedSlotJson = prevSlot;
@@ -1194,9 +1270,63 @@ export function useImChatSession({
             } catch {
               return null;
             }
-          }
+          },
+          coreFacts
         );
         anchorMessageIdRef.current = lockstep.activeAnchorMessageId || undefined;
+
+        // 阶段 2 跃迁同步：当世代原子翻转时，将 committed 的活跃槽位与摘要安全同步到持久层 L1 表中
+        if (lockstep.didStepEpoch && roleCardId) {
+          imEpochRepository.getOrCreateState(space, threadId, roleCardId).then(async (committed) => {
+            if (committed.active_slot_json && committed.active_slot_json !== '{}') {
+              try {
+                const sObj = JSON.parse(committed.active_slot_json);
+                for (const [k, v] of Object.entries(sObj)) {
+                  if (typeof v === 'string') {
+                    await memoryRepository.saveMemory({
+                      id: `slot_${roleCardId}_${space}_${k}`,
+                      roleCardId,
+                      space,
+                      tier: 'L1_SLOT',
+                      category: k,
+                      content: v,
+                      triggerKeywords: [k],
+                      entities: [],
+                      importance: 10,
+                      confidence: 1.0,
+                      hitCount: 0,
+                      isPinned: true,
+                      createdAt: Date.now(),
+                      lastAccessedAt: Date.now(),
+                      sourceMode: 'im',
+                    }, space, { alreadySieved: true });
+                  }
+                }
+              } catch {}
+            }
+            if (committed.active_summary_json && committed.active_summary_json !== '{}') {
+              try {
+                await memoryRepository.saveMemory({
+                  id: `summary_${roleCardId}_${space}`,
+                  roleCardId,
+                  space,
+                  tier: 'L1_SUMMARY',
+                  category: 'continuity_summary',
+                  content: committed.active_summary_json,
+                  triggerKeywords: [],
+                  entities: [],
+                  importance: 10,
+                  confidence: 1.0,
+                  hitCount: 0,
+                  isPinned: true,
+                  createdAt: Date.now(),
+                  lastAccessedAt: Date.now(),
+                  sourceMode: 'im',
+                }, space, { alreadySieved: true });
+              } catch {}
+            }
+          }).catch(() => {});
+        }
 
         // 计算跨世代增量事实 (< 90 tokens)
         const midEpochDeltaFacts = computeMidEpochDeltaFacts(coreFacts, lockstep.activeCoreFactsJson);
@@ -1275,14 +1405,14 @@ export function useImChatSession({
         lastInterruptedDraftRef.current = null;
 
         // 7. 边收边切分发流 (脱钩保护：即使退出页面或退至后台也继续写完落库)
-        const thoughtHandlers = createThoughtHandlers();
+        let thoughtHandlers = createThoughtHandlers();
         finalizeThoughtOnError = thoughtHandlers.finalizeThoughtOnError;
         rollbackThoughtOnError = thoughtHandlers.rollbackThought;
+        discardIncompleteCurrentAttemptOnError = thoughtHandlers.discardIncompleteCurrentAttempt;
         hasPersistedThoughtFn = thoughtHandlers.hasPersistedThought;
-        const { onThoughtProgress, onThoughtCompleted } = thoughtHandlers;
-        const parser = new TagAwareStreamParser({
-          onThoughtProgress,
-          onThoughtCompleted,
+        let parser = new TagAwareStreamParser({
+          onThoughtProgress: thoughtHandlers.onThoughtProgress,
+          onThoughtCompleted: thoughtHandlers.onThoughtCompleted,
           onDocumentStreamProgress: (evt) => {
             if (isMountedRef.current) {
               if (evt.status === 'streaming') {
@@ -1298,61 +1428,119 @@ export function useImChatSession({
         let fullRawResponse = '';
         lastDispatchedMsg = null;
         let recordedUsage = false;
-        const textStream = streamClient.streamText(payload, {
-          providerId: effectiveProviderId,
-          modelId: effectiveModelId,
-          baseUrl: provider.baseUrl,
-          apiKey: provider.apiKey,
-          protocol: provider.protocol,
-          abortSignal: abortCtrl.signal,
-          onUsage: (usage) => {
-            recordedUsage = true;
-            imUsageTelemetry.recordTurnUsage(space, threadId, usage, effectiveModelId, lockstep.epochVersion);
-          },
-        });
 
-        for await (const chunk of textStream) {
-          fullRawResponse += chunk;
-          const sentences = parser.feed(chunk);
-          if (isMountedRef.current) {
-            if (parser.isThinking()) {
-              setSubText(threadSettingsRef.current.showThoughtBubble !== false ? '对方正在思考...' : '对方正在输入...');
-            } else {
-              setSubText('对方正在输入...');
+        let streamAttempts = 0;
+        const maxStreamAttempts = 2;
+        while (streamAttempts < maxStreamAttempts) {
+          streamAttempts++;
+          try {
+            fullRawResponse = '';
+            const textStream = streamClient.streamText(payload, {
+              providerId: effectiveProviderId,
+              modelId: effectiveModelId,
+              baseUrl: provider.baseUrl,
+              apiKey: provider.apiKey,
+              protocol: provider.protocol,
+              supportsThinking: provider.supportsThinking,
+              abortSignal: abortCtrl.signal,
+              onUsage: (usage) => {
+                recordedUsage = true;
+                imUsageTelemetry.recordTurnUsage(space, threadId, usage, effectiveModelId, lockstep.epochVersion);
+              },
+            });
+
+            for await (const chunk of textStream) {
+              fullRawResponse += chunk;
+              const sentences = parser.feed(chunk);
+              if (isMountedRef.current) {
+                if (parser.isThinking()) {
+                  setSubText(threadSettingsRef.current.showThoughtBubble !== false ? '对方正在思考...' : '对方正在输入...');
+                } else {
+                  setSubText('对方正在输入...');
+                }
+              }
+              let dispatchedAny = false;
+              for (const s of sentences) {
+                const m = await dispatcher.dispatchSentence(
+                  s,
+                  isMountedRef.current ? (ticker || undefined) : undefined,
+                  { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
+                );
+                if (m) {
+                  lastDispatchedMsg = m;
+                  dispatchedAny = true;
+                }
+              }
+              if (dispatchedAny && isMountedRef.current) {
+                await reloadMessages();
+              }
             }
-          }
-          let dispatchedAny = false;
-          for (const s of sentences) {
-            const m = await dispatcher.dispatchSentence(
-              s,
-              isMountedRef.current ? (ticker || undefined) : undefined,
-              { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
+
+            const trailing = parser.flush();
+            let dispatchedTrailing = false;
+            for (const s of trailing) {
+              const m = await dispatcher.dispatchSentence(
+                s,
+                isMountedRef.current ? (ticker || undefined) : undefined,
+                { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
+              );
+              if (m) {
+                lastDispatchedMsg = m;
+                dispatchedTrailing = true;
+              }
+            }
+            if (dispatchedTrailing && isMountedRef.current) {
+              await reloadMessages();
+            }
+            break;
+          } catch (streamErr: any) {
+            const isAborted = Boolean(
+              abortCtrl.signal.aborted ||
+              streamErr?.name === 'AbortError' ||
+              /abort|cancel/i.test(streamErr?.message || '')
             );
-            if (m) {
-              lastDispatchedMsg = m;
-              dispatchedAny = true;
+            // 零台词透明自愈：只要尚未接收到任何正式对白台词 (!lastDispatchedMsg) 且非用户主动打断 (!isAborted)，
+            // 即使中途产生过部分在途思考或握手发生抖动，也在 600ms 后静默重试 1 次（清理 Attempt 1 的半截思考并无感重新拉流）
+            if (streamAttempts < maxStreamAttempts && !lastDispatchedMsg && !isAborted) {
+              console.warn(`[ImChatSession] Stream error before dialogue on attempt ${streamAttempts}, attempting 1-shot transparent recovery:`, streamErr);
+              await new Promise((resolve) => setTimeout(resolve, 600));
+              if (!abortCtrl.signal.aborted) {
+                // 安全撤销清理 attempt 1 的在途思考残片，避免重连时界面重影或重复存储
+                if (discardIncompleteCurrentAttemptOnError) {
+                  try {
+                    await discardIncompleteCurrentAttemptOnError();
+                  } catch {}
+                }
+                inFlightThoughtMsgRef.current = null;
+                fullRawResponse = '';
+                if (isMountedRef.current) {
+                  setSubText('对方正在输入...');
+                }
+                thoughtHandlers = createThoughtHandlers();
+                finalizeThoughtOnError = thoughtHandlers.finalizeThoughtOnError;
+                rollbackThoughtOnError = thoughtHandlers.rollbackThought;
+                discardIncompleteCurrentAttemptOnError = thoughtHandlers.discardIncompleteCurrentAttempt;
+                hasPersistedThoughtFn = thoughtHandlers.hasPersistedThought;
+                parser = new TagAwareStreamParser({
+                  onThoughtProgress: thoughtHandlers.onThoughtProgress,
+                  onThoughtCompleted: thoughtHandlers.onThoughtCompleted,
+                  onDocumentStreamProgress: (evt) => {
+                    if (isMountedRef.current) {
+                      if (evt.status === 'streaming') {
+                        const headingInfo = evt.latestHeading ? ` · ${evt.latestHeading}` : '';
+                        setSubText(`正在起草文档: ${evt.title}${headingInfo}`);
+                      } else if (evt.status === 'compiling') {
+                        setSubText(`正在排版导出: ${evt.title}...`);
+                      }
+                    }
+                  },
+                });
+                parserInstance = parser;
+                continue;
+              }
             }
+            throw streamErr;
           }
-          if (dispatchedAny && isMountedRef.current) {
-            await reloadMessages();
-          }
-        }
-
-        const trailing = parser.flush();
-        let dispatchedTrailing = false;
-        for (const s of trailing) {
-          const m = await dispatcher.dispatchSentence(
-            s,
-            isMountedRef.current ? (ticker || undefined) : undefined,
-            { isOccupied, userTextLength: userInput.length, useHumanTimeline: true }
-          );
-          if (m) {
-            lastDispatchedMsg = m;
-            dispatchedTrailing = true;
-          }
-        }
-        if (dispatchedTrailing && isMountedRef.current) {
-          await reloadMessages();
         }
 
         // 7.4. 文档卡片分发 (新建流与补丁流双轨支持)
@@ -1414,20 +1602,14 @@ export function useImChatSession({
         }
 
         // 7.6. 零正文防哑火哨兵 (Zero-Dialogue Guard)
-        // 若流正常结束，模型输出了思考但没有任何对白气泡落地 (lastDispatchedMsg === null)，进行自然口语兜底
+        // 若流正常结束，模型输出了思考但没有任何对白气泡落地 (lastDispatchedMsg === null)：
+        // 绝不伪造任何口语敷衍假消息，诚实完成思考落库并呈送系统重试胶囊
         if (!lastDispatchedMsg) {
-          const fallbackSpeech = '刚才有点走神了，你刚刚说的我还在琢磨呢~';
-          const fallbackMsg = await dispatcher.dispatchSentence(
-            fallbackSpeech,
-            isMountedRef.current ? (ticker || undefined) : undefined,
-            { isOccupied, userTextLength: userInput.length, useHumanTimeline: false }
-          );
-          if (fallbackMsg) {
-            lastDispatchedMsg = fallbackMsg;
-            if (isMountedRef.current) {
-              await reloadMessages();
-            }
+          if (finalizeThoughtOnError) {
+            await finalizeThoughtOnError(false);
           }
+          const hasThought = hasPersistedThoughtFn ? hasPersistedThoughtFn() : false;
+          await emitStreamErrorNotice(hasThought);
         }
 
         // 若大模型接口未返回 include_usage，启用高精度字元 Token 兜底估算，杜绝抽屉显示“待首次生成”
@@ -1456,155 +1638,174 @@ export function useImChatSession({
           scheduleDetachedReveal(space, threadId, lastDispatchedMsg.visibleAt, () => livingStateRef.current);
         }
 
-        // 8. 解析伴侣生活状态机推进 [STATUS: ...]（若模型未输出但状态已过期，自动按时段刷新）
-        const nowAfterReply = Date.now();
-        const statusUpdate = parseStatusTag(fullRawResponse);
-        let updatedLiving: ImCompanionLivingState | undefined;
-        if (statusUpdate) {
-          updatedLiving = advanceLivingState(livingStateRef.current || undefined, statusUpdate, nowAfterReply);
-          livingStateRef.current = updatedLiving;
-          if (isMountedRef.current) {
-            setLivingState(updatedLiving);
-          }
-          void updateThreadLivingState(space, threadId, updatedLiving);
-        } else if (shouldSeedOrRefreshLivingState(livingStateRef.current, nowAfterReply)) {
-          updatedLiving = buildDefaultLivingState(nowAfterReply, livingStateRef.current);
-          livingStateRef.current = updatedLiving;
-          if (isMountedRef.current) {
-            setLivingState(updatedLiving);
-          }
-          void updateThreadLivingState(space, threadId, updatedLiving);
+        // 成功落地 AI 气泡后确认消费次日手账钩子
+        if (lastDispatchedMsg && pendingDiaryHook) {
+          ackThreadPendingDiaryHook(space, threadId).catch(() => {});
         }
 
-        // 9. 解析 AI 主动拍一拍 [NUDGE: ...]
-        const aiNudge = parseNudgeTag(fullRawResponse);
-        if (aiNudge) {
-          if (isMountedRef.current) {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          const cleanSuffix = aiNudge.action.startsWith('的') ? aiNudge.action.slice(1).trim() : aiNudge.action;
-          const noticeMsg: ImMessage = {
-            id: `notice_${Date.now()}_ai_nudge`,
-            threadId,
-            role: 'system',
-            content: `${companionName} 拍了拍你的${cleanSuffix}`,
-            type: 'system_notice',
-            status: 'sent',
-            deliveryStatus: 'delivered',
-            visibleAt: Date.now(),
-            createdAt: new Date().toISOString(),
-          };
-          await insertImMessage(space, noticeMsg);
-          if (isMountedRef.current) {
-            await reloadMessages();
-          }
+        // 召回记忆回响验证：若伴侣在对白中自然回响了召回记忆，记录有效命中并加权
+        if (roleCardId && recalled && recalled.length > 0 && lastDispatchedMsg) {
+          memoryRepository.verifyAndRecordEchoHits(roleCardId, space, recalled, fullRawResponse).catch(() => {});
         }
 
-        // 10. 解析预埋心跳气泡 [HEARTBEAT: ...] 并同步挂载 Android 系统后台闹钟
-        const heartbeat = parseHeartbeatTag(fullRawResponse);
-        if (heartbeat) {
-          const currentOrNewState = updatedLiving || livingStateRef.current;
-          const consistentHb = currentOrNewState
-            ? validateHeartbeatConsistency(heartbeat, currentOrNewState)
-            : heartbeat;
-          if (
-            consistentHb &&
-            threadSettingsRef.current.heartbeatEnabled !== false &&
-            globalSettingsRef.current.globalHeartbeatEnabled !== false
-          ) {
-            const pacingState = await getThreadPacingState(space, threadId).catch(() => ({ consecutiveUnreplied: 0, lastUserInteractionAt: null }));
-            const pacingDecision = evaluateProactivePacing(
-              pacingState.consecutiveUnreplied,
-              pacingState.lastUserInteractionAt,
-              nowAfterReply
-            );
-            if (pacingDecision.allowHeartbeat) {
-              // 拟人短周期心跳气泡 (5s~3min)，杜绝被后台长周期退避 (30min~2h) 错误夹断
-              const safeDelayMs = Math.max(5000, Math.min(180000, consistentHb.delayMs));
-              const hbMsg = await dispatcher.dispatchStagedHeartbeat(
-                consistentHb.message,
-                safeDelayMs,
-                isMountedRef.current ? (ticker || undefined) : undefined
+        // 8~14 仅在正式生成对白成功落地时触发生活状态机、心跳、记忆提取与追问；流失败/零对白时严禁副作用外溢
+        if (lastDispatchedMsg) {
+          // 8. 解析伴侣生活状态机推进 [STATUS: ...]（若模型未输出但状态已过期，自动按时段刷新）
+          const nowAfterReply = Date.now();
+          const statusUpdate = parseStatusTag(fullRawResponse);
+          let updatedLiving: ImCompanionLivingState | undefined;
+          if (statusUpdate) {
+            updatedLiving = advanceLivingState(livingStateRef.current || undefined, statusUpdate, nowAfterReply);
+            livingStateRef.current = updatedLiving;
+            if (isMountedRef.current) {
+              setLivingState(updatedLiving);
+            }
+            void updateThreadLivingState(space, threadId, updatedLiving);
+          } else if (shouldSeedOrRefreshLivingState(livingStateRef.current, nowAfterReply)) {
+            updatedLiving = buildDefaultLivingState(nowAfterReply, livingStateRef.current);
+            livingStateRef.current = updatedLiving;
+            if (isMountedRef.current) {
+              setLivingState(updatedLiving);
+            }
+            void updateThreadLivingState(space, threadId, updatedLiving);
+          }
+
+          // 9. 解析 AI 主动拍一拍 [NUDGE: ...]
+          const aiNudge = parseNudgeTag(fullRawResponse);
+          if (aiNudge) {
+            if (isMountedRef.current) {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            const cleanSuffix = aiNudge.action.startsWith('的') ? aiNudge.action.slice(1).trim() : aiNudge.action;
+            const noticeMsg: ImMessage = {
+              id: `notice_${Date.now()}_ai_nudge`,
+              threadId,
+              role: 'system',
+              content: `${companionName} 拍了拍你的${cleanSuffix}`,
+              type: 'system_notice',
+              status: 'sent',
+              deliveryStatus: 'delivered',
+              visibleAt: Date.now(),
+              createdAt: new Date().toISOString(),
+            };
+            await insertImMessage(space, noticeMsg);
+            if (isMountedRef.current) {
+              await reloadMessages();
+            }
+          }
+
+          // 10. 解析预埋心跳气泡 [HEARTBEAT: ...] 并同步挂载 Android 系统后台闹钟
+          const heartbeat = parseHeartbeatTag(fullRawResponse);
+          const wasRescuedAsMainDialogue = Boolean(
+            heartbeat && lastDispatchedMsg.content.trim() === heartbeat.message.trim()
+          );
+          if (heartbeat && !wasRescuedAsMainDialogue) {
+            const currentOrNewState = updatedLiving || livingStateRef.current;
+            const consistentHb = currentOrNewState
+              ? validateHeartbeatConsistency(heartbeat, currentOrNewState)
+              : heartbeat;
+            if (
+              consistentHb &&
+              threadSettingsRef.current.heartbeatEnabled !== false &&
+              globalSettingsRef.current.globalHeartbeatEnabled !== false
+            ) {
+              const pacingState = await getThreadPacingState(space, threadId).catch(() => ({ consecutiveUnreplied: 0, lastUserInteractionAt: null }));
+              const pacingDecision = evaluateProactivePacing(
+                pacingState.consecutiveUnreplied,
+                pacingState.lastUserInteractionAt,
+                nowAfterReply
               );
-              if (hbMsg.visibleAt) {
-                void scheduleStagedMessageAlarm(threadId, hbMsg.visibleAt, space);
+              if (pacingDecision.allowHeartbeat) {
+                // 拟人短周期心跳气泡 (5s~3min)，杜绝被后台长周期退避 (30min~2h) 错误夹断
+                const safeDelayMs = Math.max(5000, Math.min(180000, consistentHb.delayMs));
+                const hbMsg = await dispatcher.dispatchStagedHeartbeat(
+                  consistentHb.message,
+                  safeDelayMs,
+                  isMountedRef.current ? (ticker || undefined) : undefined
+                );
+                if (hbMsg.visibleAt) {
+                  void scheduleStagedMessageAlarm(threadId, hbMsg.visibleAt, space);
+                }
               }
             }
           }
-        }
 
-        // 11. 解析预约主动闹钟 [PING: ...]；若模型未显式输出标签，启用三阶退避+情境感知确定性兜底闹钟！
-        if (
-          threadSettingsRef.current.proactiveEnabled !== false &&
-          globalSettingsRef.current.globalHeartbeatEnabled !== false
-        ) {
-          const effectiveDnd = resolveEffectiveDnd(
-            threadSettingsRef.current,
-            {
-              enabled: globalSettingsRef.current?.globalDndEnabled,
-              startTime: globalSettingsRef.current?.globalDndStartTime,
-              endTime: globalSettingsRef.current?.globalDndEndTime,
+          // 11. 解析预约主动闹钟 [PING: ...]；若模型未显式输出标签，启用三阶退避+情境感知确定性兜底闹钟！
+          if (
+            threadSettingsRef.current.proactiveEnabled !== false &&
+            globalSettingsRef.current.globalHeartbeatEnabled !== false
+          ) {
+            const effectiveDnd = resolveEffectiveDnd(
+              threadSettingsRef.current,
+              {
+                enabled: globalSettingsRef.current?.globalDndEnabled,
+                startTime: globalSettingsRef.current?.globalDndStartTime,
+                endTime: globalSettingsRef.current?.globalDndEndTime,
+              }
+            );
+            const explicitPing = parsePingTag(
+              fullRawResponse,
+              nowAfterReply,
+              updatedLiving || livingStateRef.current || undefined,
+              effectiveDnd
+            );
+            const effectivePing =
+              explicitPing ||
+              planFallbackProactivePing({
+                consecutiveUnreplied: 0,
+                lastUserInteractionAt: nowAfterReply,
+                lastUserText: userInput,
+                livingState: updatedLiving || livingStateRef.current,
+                now: nowAfterReply,
+                dndConfig: effectiveDnd,
+                proactiveFrequencyGear: threadSettingsRef.current.personalization?.proactiveFrequencyGear,
+              });
+            if (effectivePing) {
+              await savePendingPing(space, threadId, effectivePing.targetTimestamp, effectivePing.intent);
+              void scheduleProactivePingAlarm(threadId, effectivePing.targetTimestamp, space);
             }
-          );
-          const explicitPing = parsePingTag(
-            fullRawResponse,
-            nowAfterReply,
-            updatedLiving || livingStateRef.current || undefined,
-            effectiveDnd
-          );
-          const effectivePing =
-            explicitPing ||
-            planFallbackProactivePing({
-              consecutiveUnreplied: 0,
-              lastUserInteractionAt: nowAfterReply,
-              lastUserText: userInput,
-              livingState: updatedLiving || livingStateRef.current,
-              now: nowAfterReply,
-              dndConfig: effectiveDnd,
-              proactiveFrequencyGear: threadSettingsRef.current.personalization?.proactiveFrequencyGear,
+          }
+
+          // 12. 真实对话轮次推进：如果本轮触发了世代跃迁，刷新活跃锚点
+          if (lockstep.didStepEpoch) {
+            anchorMessageIdRef.current = lockstep.activeAnchorMessageId || undefined;
+          }
+
+          // 13. 高显著性异步记忆模型提炼 (采用全局防抖批处理器 MemoryExtractionBatcher)
+          if (roleCardId && intentProfile.invokeMemoryModel) {
+            MemoryExtractionBatcher.shared.enqueue({
+              space,
+              roleCardId,
+              chatProviderId: effectiveProviderId,
+              chatModelId: effectiveModelId,
+              userMessage: userInput,
+              assistantMessage: fullRawResponse,
+              existingFacts: coreFacts,
+              isTyping: () => Boolean(inputDraftRef.current && inputDraftRef.current.trim().length > 0),
             });
-          if (effectivePing) {
-            await savePendingPing(space, threadId, effectivePing.targetTimestamp, effectivePing.intent);
-            void scheduleProactivePingAlarm(threadId, effectivePing.targetTimestamp, space);
           }
-        }
 
-        // 12. 真实对话轮次推进：如果本轮触发了世代跃迁，刷新活跃锚点
-        if (lockstep.didStepEpoch) {
-          anchorMessageIdRef.current = lockstep.activeAnchorMessageId || undefined;
-        }
-
-        // 13. 高显著性异步记忆模型提炼 (采用全局防抖批处理器 MemoryExtractionBatcher)
-        if (roleCardId && intentProfile.invokeMemoryModel) {
-          MemoryExtractionBatcher.shared.enqueue({
-            space,
-            roleCardId,
-            chatProviderId: effectiveProviderId,
-            chatModelId: effectiveModelId,
-            userMessage: userInput,
-            assistantMessage: fullRawResponse,
-            existingFacts: coreFacts,
-            isTyping: () => Boolean(inputDraftRef.current && inputDraftRef.current.trim().length > 0),
-          });
-        }
-
-        // 14. 伴侣自主决断追问时钟与情境静默判定 (Ask AI when to followup)
-        const situation = detectSituationalDelay(userInput);
-        if (situation) {
-          // 用户处于开会、洗澡、睡觉等明确离开场景，阻断前台急促追聊
-          followupDelayToSchedule = null;
-        } else {
-          const proactiveDecision = parseProactiveDecision(fullRawResponse);
-          if (proactiveDecision.action === 'pass' || proactiveDecision.nextFollowupMs === 0) {
-            // AI 决断当前话题自然收束或保持体贴静默
+          // 14. 伴侣自主决断追问时钟与情境静默判定 (Ask AI when to followup)
+          const situation = detectSituationalDelay(userInput);
+          if (situation) {
+            // 用户处于开会、洗澡、睡觉等明确离开场景，阻断前台急促追聊
             followupDelayToSchedule = null;
-          } else if (proactiveDecision.nextFollowupMs && proactiveDecision.nextFollowupMs > 0) {
-            // AI 自主指定了下次追问时间 (如 45s, 1m)
-            followupDelayToSchedule = proactiveDecision.nextFollowupMs;
           } else {
-            // 常规成功完成，按系统人性化延时进入第一阶段追问观察
-            followupDelayToSchedule = undefined;
+            const proactiveDecision = parseProactiveDecision(fullRawResponse);
+            if (proactiveDecision.action === 'pass' || proactiveDecision.nextFollowupMs === 0) {
+              // AI 决断当前话题自然收束或保持体贴静默
+              followupDelayToSchedule = null;
+            } else if (proactiveDecision.nextFollowupMs && proactiveDecision.nextFollowupMs > 0) {
+              // AI 自主指定了下次追问时间 (如 45s, 1m)
+              followupDelayToSchedule = proactiveDecision.nextFollowupMs;
+            } else {
+              // 常规成功完成，按系统人性化延时进入第一阶段追问观察
+              followupDelayToSchedule = undefined;
+            }
           }
+        } else {
+          // 未发出正式台词时，阻断后续追问计划
+          followupDelayToSchedule = null;
         }
       } catch (err: any) {
         caughtAbort = Boolean(
@@ -1639,51 +1840,15 @@ export function useImChatSession({
             }
           }
 
-          // 2. 若依然没有成功发出任何正文台词：
+          // 2. 闭合并安全落库在途思考（杜绝抹杀半截思考成果）
+          if (finalizeThoughtOnError) {
+            await finalizeThoughtOnError(false);
+          }
+
+          // 3. 若依然没有成功发出任何正文台词：
           if (!lastDispatchedMsg) {
             const hasThought = hasPersistedThoughtFn ? hasPersistedThoughtFn() : false;
-            if (hasThought) {
-              // 思考已完整产生并落库，仅因 Token 截断或网关关闭导致正文缺失：
-              // 绝不直接向聊天流插入「已完成思考，但回复生成中断」报错胶囊！平滑输出温情口语承接，情感不断连
-              try {
-                const warmReplies = [
-                  '刚才琢磨了一下你说的，我们接着聊呀~',
-                  '嗯……我刚想了想，接着刚才的话题说吧~',
-                  '刚才稍微走神想了会儿，你继续说，我听着呢~',
-                ];
-                const fallbackText = warmReplies[Math.floor(Math.random() * warmReplies.length)];
-                const warmMsg = await dispatcher.dispatchSentence(
-                  fallbackText,
-                  isMountedRef.current ? (ticker || undefined) : undefined,
-                  { isOccupied, userTextLength: userInput.length, useHumanTimeline: false }
-                );
-                if (warmMsg) {
-                  lastDispatchedMsg = warmMsg;
-                  if (isMountedRef.current) {
-                    await reloadMessages();
-                  }
-                }
-              } catch {}
-            } else if (!caughtAbort && !abortCtrl.signal.aborted) {
-              if (rollbackThoughtOnError) {
-                await rollbackThoughtOnError();
-              }
-              const errorNotice: ImMessage = {
-                id: `notice_${Date.now()}_net_err`,
-                threadId,
-                role: 'system',
-                content: '连接暂时不稳定，未收到回复',
-                type: 'system_notice',
-                status: 'sent',
-                deliveryStatus: 'delivered',
-                visibleAt: Date.now(),
-                createdAt: new Date().toISOString(),
-              };
-              await insertImMessage(space, errorNotice);
-              if (isMountedRef.current) {
-                await reloadMessages();
-              }
-            }
+            await emitStreamErrorNotice(hasThought);
           }
         }
       } finally {
@@ -1999,8 +2164,7 @@ export function useImChatSession({
     const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (!res.canceled && res.assets[0]) {
       const asset = res.assets[0];
-      const isDoc = /\.(docx|md|markdown|txt|pdf)$/i.test(asset.name);
-      if (isDoc) {
+      if (asset && asset.name) {
         await interruptCompanionActivity(true);
 
         const { CasBlobStore } = await import('../../services/agent/vfs/casBlobStore');
@@ -2011,33 +2175,122 @@ export function useImChatSession({
 
         try {
           const ingestRes = await casStore.ingestFileUri(asset.uri, space, asset.name);
-          casHash = ingestRes.blobHash;
-          casUri = ingestRes.casUri;
-          sizeBytes = ingestRes.sizeBytes;
+          if (ingestRes.sizeBytes > 0) {
+            casHash = ingestRes.blobHash;
+            casUri = ingestRes.casUri;
+            sizeBytes = ingestRes.sizeBytes;
+          }
         } catch {
           // 容错保持本地缓存 URI
+          casUri = asset.uri;
         }
 
-        // 提取骨架概览 (tocSkeleton，仅约 300 字节)，用于微透出 Chips 与精准补丁
+        // 提取骨架概览与统计信息 (tocSkeleton, charCount, pageCount, extractedText)
         let tocSkeleton: Array<{ blockId: string; previewText: string }> | undefined;
-        try {
-          const { DocumentDriverRegistry } = await import('../../services/sandbox/drivers/driverRegistry');
-          const { MarkdownDriver } = await import('../../services/sandbox/drivers/markdownDriver');
-          const { DocxDriver } = await import('../../services/sandbox/drivers/docxDriver');
-          const { PdfDriver } = await import('../../services/sandbox/drivers/pdfDriver');
-          const registry = new DocumentDriverRegistry([new MarkdownDriver(), new DocxDriver(), new PdfDriver()]);
-          const driver = registry.getDriver(asset.name);
-          if (casHash) {
-            const rawBytes = await casStore.getBlob(casHash, space);
-            if (rawBytes) {
-              const skeletons = await driver.inspectSkeleton(rawBytes);
-              tocSkeleton = skeletons.slice(0, 4).map((s) => ({
-                blockId: s.blockId,
-                previewText: s.previewText.slice(0, 24),
+        let charCount: number | undefined;
+        let pageCount: number | undefined;
+        let extractedText: string | undefined;
+
+        const isPdf = /\.pdf$/i.test(asset.name);
+        const isDocx = /\.docx$/i.test(asset.name);
+        const isPptx = /\.(?:pptx|ppt)$/i.test(asset.name);
+        const targetUri = casUri || asset.uri;
+
+        if (isPdf) {
+          try {
+            const { extractPdfText, getPdfPageCount } = await import('../../native/pixoryMediaModule');
+            try {
+              pageCount = await getPdfPageCount(targetUri);
+            } catch {}
+            try {
+              const res = await extractPdfText(targetUri);
+              if (res?.pageCount && !pageCount) pageCount = res.pageCount;
+              if (res?.text) {
+                extractedText = res.text;
+                charCount = res.text.replace(/[\s\r\n]+/g, '').length;
+                const lines = res.text
+                  .split(/\r?\n/)
+                  .map((l) => l.trim())
+                  .filter((l) => l.length > 0 && !/^\d+$/.test(l));
+                tocSkeleton = lines.slice(0, 4).map((l, idx) => ({
+                  blockId: `[[BLK_PDF_${idx}]]`,
+                  previewText: l.slice(0, 24),
+                }));
+              }
+            } catch {}
+          } catch {}
+        } else if (isDocx) {
+          try {
+            const { parseDocxText } = await import('../../ai/documentParsers/docxParser');
+            const docxRes = await parseDocxText({ fileUri: targetUri, space });
+            if (docxRes.text) {
+              extractedText = docxRes.text;
+              charCount = docxRes.text.replace(/[\s\r\n]+/g, '').length;
+              const paragraphs = docxRes.text
+                .split(/\n\n+/)
+                .map((p) => p.trim())
+                .filter(Boolean);
+              tocSkeleton = paragraphs.slice(0, 4).map((p, idx) => ({
+                blockId: `[[BLK_DOCX_${idx}]]`,
+                previewText: p.slice(0, 24),
               }));
             }
-          }
-        } catch {}
+          } catch {}
+        } else if (isPptx) {
+          try {
+            const { parsePptx } = await import('../../ai/documentParsers/pptxParser');
+            const pptxRes = await parsePptx({ fileUri: targetUri, space });
+            if (pptxRes.text) {
+              extractedText = pptxRes.text;
+              charCount = pptxRes.text.replace(/[\s\r\n]+/g, '').length;
+              pageCount = pptxRes.slideCount;
+              tocSkeleton = pptxRes.slides.slice(0, 4).map((s) => ({
+                blockId: `[[BLK_PPTX_${s.index}]]`,
+                previewText: `第${s.index}页: ${s.title.slice(0, 20)}`,
+              }));
+            }
+          } catch {}
+        } else {
+          try {
+            const { DocumentDriverRegistry } = await import('../../services/sandbox/drivers/driverRegistry');
+            const { MarkdownDriver } = await import('../../services/sandbox/drivers/markdownDriver');
+            const { DocxDriver } = await import('../../services/sandbox/drivers/docxDriver');
+            const registry = new DocumentDriverRegistry([new MarkdownDriver(), new DocxDriver()]);
+            if (registry.hasDriver(asset.name)) {
+              const driver = registry.getDriver(asset.name);
+              if (casHash) {
+                const rawBytes = await casStore.getBlob(casHash, space);
+                if (rawBytes) {
+                  const skeletons = await driver.inspectSkeleton(rawBytes);
+                  tocSkeleton = skeletons.slice(0, 4).map((s) => ({
+                    blockId: s.blockId,
+                    previewText: s.previewText.slice(0, 24),
+                  }));
+                  const totalPreview = skeletons.map((s) => s.previewText).join('');
+                  if (totalPreview.length > 0) {
+                    charCount = totalPreview.length;
+                  }
+                }
+              }
+            }
+            if (!extractedText) {
+              const text = await FileSystem.readAsStringAsync(targetUri, {
+                encoding: FileSystem.EncodingType.UTF8,
+              });
+              if (text && text.trim().length > 0) {
+                extractedText = text;
+                charCount = text.replace(/[\s\r\n]+/g, '').length;
+                if (!tocSkeleton) {
+                  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+                  tocSkeleton = lines.slice(0, 4).map((l, idx) => ({
+                    blockId: `[[BLK_TXT_${idx}]]`,
+                    previewText: l.slice(0, 24),
+                  }));
+                }
+              }
+            }
+          } catch {}
+        }
 
         const msg: ImMessage = {
           id: `im_msg_${Date.now()}_u`,
@@ -2047,12 +2300,16 @@ export function useImChatSession({
           content: asset.name,
           metadata: {
             document: {
-              uri: casUri,
+              uri: asset.uri,
               casUri,
               casHash,
               name: asset.name,
               title: asset.name,
               size: sizeBytes,
+              sizeBytes,
+              charCount,
+              pageCount,
+              extractedText,
               tocSkeleton,
             },
           },
@@ -2141,7 +2398,7 @@ export function useImChatSession({
 
     const existingText =
       msg.voice?.transcription ||
-      msg.content.replace(/^\[VOICE:\s*([^\]]+)\]/i, '$1').trim();
+      msg.content.replace(VOICE_PREFIX_STRIP_REGEX, '$1').trim();
 
     if (existingText) {
       setMessages((prev) =>
@@ -2232,7 +2489,7 @@ export function useImChatSession({
   const handleSpeakMessage = useCallback(async (msg: ImMessage) => {
     if (!msg.content) return;
     const cleanText = msg.content
-      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING|DOCUMENT|DOC):[^\]]+\]/gi, '')
+      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE|NUDGE|PING|DOCUMENT|DOC)(?:[:：][^\]]+|\][:：]?[^\]\n]*)?\]?/gi, '')
       .replace(/\[BR\]/g, '\n')
       .trim();
     if (!cleanText) return;
@@ -2283,7 +2540,27 @@ export function useImChatSession({
     } else if (msg.type === 'system_notice') {
       // 避免流控制器并发竞态：微任务延时让出，确保旧流完全终止解除注册后再发起重试
       await new Promise((resolve) => setTimeout(resolve, 60));
-      const lastUser = [...messagesRef.current].reverse().find((m) => m.role === 'user' && m.content);
+
+      let lastUserIdx = -1;
+      for (let i = messagesRef.current.length - 1; i >= 0; i--) {
+        if (messagesRef.current[i].role === 'user' && messagesRef.current[i].content) {
+          lastUserIdx = i;
+          break;
+        }
+      }
+      const lastUser = lastUserIdx !== -1 ? messagesRef.current[lastUserIdx] : null;
+
+      // 原地重试防御：仅当 lastUser 之后存在孤立或中断的 thought 气泡时，才原地清理，严禁误删前序回合的思考记录
+      if (lastUserIdx !== -1) {
+        const trailingThoughts = messagesRef.current.slice(lastUserIdx + 1).filter((m) => m.type === 'thought');
+        for (const t of trailingThoughts) {
+          await imMessageRollback.deleteMessage(t.id, space);
+        }
+        if (trailingThoughts.length > 0) {
+          const trailingIds = new Set(trailingThoughts.map((t) => t.id));
+          setMessages((prev) => prev.filter((m) => !trailingIds.has(m.id)));
+        }
+      }
       if (lastUser?.content) {
         let base64: string | null = null;
         if (lastUser.type === 'image' && lastUser.imageUri) {
@@ -2314,6 +2591,7 @@ export function useImChatSession({
       void cancelStagedMessageAlarm(threadId);
       void clearPendingPing(space, threadId);
       void cancelProactivePingAlarm(threadId);
+      inFlightThoughtMsgRef.current = null;
       anchorMessageIdRef.current = undefined;
       livingStateRef.current = null;
       setLivingState(null);

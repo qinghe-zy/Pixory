@@ -1,6 +1,7 @@
 import React from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useImTheme } from '../../theme/ImThemeProvider';
 import type { BubbleRendererProps } from '../../registry/bubbleRegistry';
 import { ImBubbleBeak } from '../common/ImBubbleBeak';
@@ -61,9 +62,27 @@ const MemoizedDocumentBubbleRenderer = React.memo(function DocumentBubbleRendere
   // 解析文档元数据
   const docMeta = message.metadata?.document || message.metadata || {};
   const docUri = docMeta.casUri || docMeta.uri || docMeta.documentUri || '';
-  const docTitle = docMeta.title || (typeof message.content === 'string' && message.content.includes('.') ? message.content : '未命名文档');
-  const isDocx = docTitle.toLowerCase().endsWith('.docx') || docUri.toLowerCase().endsWith('.docx');
-  const isPdf = docTitle.toLowerCase().endsWith('.pdf') || docUri.toLowerCase().endsWith('.pdf');
+  let fallbackTitle = '未命名文档';
+  if (typeof message.content === 'string' && message.content.trim()) {
+    const trimmed = message.content.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed?.title) fallbackTitle = parsed.title;
+        else if (parsed?.document?.title) fallbackTitle = parsed.document.title;
+      } catch {
+        // 忽略非标准 JSON
+      }
+    } else {
+      fallbackTitle = trimmed;
+    }
+  }
+  const docTitle = docMeta.title || fallbackTitle;
+  const lowerDocTitle = docTitle.toLowerCase();
+  const lowerDocUri = docUri.toLowerCase();
+  const isDocx = lowerDocTitle.endsWith('.docx') || lowerDocTitle.endsWith('.doc') || lowerDocUri.endsWith('.docx') || lowerDocUri.endsWith('.doc');
+  const isPptx = lowerDocTitle.endsWith('.pptx') || lowerDocTitle.endsWith('.ppt') || lowerDocUri.endsWith('.pptx') || lowerDocUri.endsWith('.ppt');
+  const isPdf = lowerDocTitle.endsWith('.pdf') || lowerDocUri.endsWith('.pdf');
   const rawContent: string | Uint8Array | undefined =
     typeof docMeta.content === 'string' || docMeta.content instanceof Uint8Array
       ? docMeta.content
@@ -76,22 +95,25 @@ const MemoizedDocumentBubbleRenderer = React.memo(function DocumentBubbleRendere
     : undefined;
 
   const resolveContentForView = (): string | Uint8Array | undefined => {
+    // 若已有本地物理文件 URI (如 docx / pptx / pdf)，且无特殊修订文本，无需在 JS 主线程执行全量 base64 解码
+    if (docUri && (isDocx || isPdf || isPptx) && !hasRevisions) {
+      return undefined;
+    }
     if (typeof rawContent === 'string' && rawContent.length > 0) {
-      const isBinaryFormat = isDocx || isPdf;
+      const isBinaryFormat = isDocx || isPdf || isPptx;
       if (isBinaryFormat) {
         try {
-          const binaryStr = atob(rawContent);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-          return bytes;
+          const { toByteArray } = require('base64-js');
+          return toByteArray(rawContent);
         } catch {
           return rawContent;
         }
       } else {
         try {
-          return decodeURIComponent(escape(atob(rawContent)));
+          const { toByteArray } = require('base64-js');
+          const bytes = toByteArray(rawContent);
+          const decoder = new TextDecoder('utf-8');
+          return decoder.decode(bytes);
         } catch {
           return rawContent;
         }
@@ -100,28 +122,61 @@ const MemoizedDocumentBubbleRenderer = React.memo(function DocumentBubbleRendere
     return rawContent as Uint8Array | undefined;
   };
 
+  const resolveUsableUriAsync = async (): Promise<string> => {
+    const primary = docMeta.casUri;
+    const secondary = docMeta.uri || docMeta.documentUri;
+
+    if (primary) {
+      try {
+        const info = await FileSystem.getInfoAsync(primary);
+        if (info.exists && typeof info.size === 'number' && info.size > 0) {
+          return primary;
+        }
+      } catch {}
+    }
+
+    if (secondary) {
+      try {
+        const info = await FileSystem.getInfoAsync(secondary);
+        if (info.exists && typeof info.size === 'number' && info.size > 0) {
+          return secondary;
+        }
+      } catch {}
+      return secondary;
+    }
+
+    return primary || '';
+  };
+
   const handleCardPress = () => {
-    const resolvedContent = resolveContentForView();
-    onOpenDocument?.({
-      uri: docUri,
-      title: docTitle,
-      content: resolvedContent,
-      mode: hasRevisions ? 'diff' : 'clean',
-    });
+    void (async () => {
+      const bestUri = await resolveUsableUriAsync();
+      const resolvedContent = resolveContentForView();
+      onOpenDocument?.({
+        uri: bestUri || docUri,
+        title: docTitle,
+        content: resolvedContent,
+        mode: hasRevisions ? 'diff' : 'clean',
+      });
+    })();
   };
 
   const handleShare = () => {
-    const resolvedContent = resolveContentForView();
-    void exportDocumentToShare({
-      uri: docUri,
-      title: docTitle,
-      content: resolvedContent,
-    });
+    void (async () => {
+      const bestUri = await resolveUsableUriAsync();
+      const resolvedContent = resolveContentForView();
+      void exportDocumentToShare({
+        uri: bestUri || docUri,
+        title: docTitle,
+        content: resolvedContent,
+      });
+    })();
   };
 
-  const handleLongPress = (event: any) => {
+  const handleLongPress = (event?: any) => {
     if (onLongPressMessage) {
-      const { pageX, pageY } = event.nativeEvent;
+      const pageX = event?.nativeEvent?.pageX ?? 0;
+      const pageY = event?.nativeEvent?.pageY ?? 0;
       onLongPressMessage(message, pageX, pageY);
     }
   };
@@ -176,12 +231,13 @@ const MemoizedDocumentBubbleRenderer = React.memo(function DocumentBubbleRendere
           },
         ]}
       >
-        <ImBubbleBeak direction={isUser ? 'right' : 'left'} />
+        <ImBubbleBeak customColor="#FFFFFF" direction={isUser ? 'right' : 'left'} offsetTop={14} />
         <DocumentBubbleCard
           accessibilityHint="轻触打开文档预览，点击即开即读"
           title={docTitle}
           sizeBytes={docMeta.sizeBytes ?? docMeta.size}
-          charCount={docMeta.charCount ?? (typeof rawContent === 'string' ? rawContent.length : undefined)}
+          charCount={docMeta.charCount ?? (!isDocx && !isPdf && typeof rawContent === 'string' ? rawContent.length : undefined)}
+          pageCount={docMeta.pageCount}
           hasRevisions={hasRevisions}
           isDerived={isDerived}
           outlineChips={outlineChips}

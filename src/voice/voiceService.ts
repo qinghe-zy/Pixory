@@ -14,12 +14,15 @@ import { getVoicePresetApiKey } from './voiceSecureStore';
 import { resolveDeveloperMimoKey } from './developerVoiceSecurity';
 import { executeFallbackChain } from './fallbackChain';
 import { voicePlayer, type VoicePlaybackState } from './voicePlayer';
+import { modulateVoiceProsody } from './prosodyModulator';
 
 export interface VoiceServiceContext extends Partial<ResolveVoiceProfileContext> {
   db?: SQLiteDatabase | null;
   space: PixorySpace;
   directPreset?: VoicePresetRecord;
   directApiKey?: string;
+  ttsScript?: string;
+  styleOverride?: string;
 }
 
 export interface PreparedAudioResult {
@@ -28,6 +31,8 @@ export interface PreparedAudioResult {
   engineUsed: VoiceEngineKind;
   isCached: boolean;
 }
+
+const PUNCTUATION_TRUNCATION_REGEX = /.*[。！？\n；]/;
 
 export const voiceService = {
   /**
@@ -58,13 +63,25 @@ export const voiceService = {
         }
       : await resolveVoiceProfile(db!, space, context as ResolveVoiceProfileContext);
 
-    // 2. 计算 CAS 缓存指纹键
-    const cacheKey = buildVoiceCacheKey(
-      cleanText,
-      profile.preset,
+    // 2. 语气与读音脚本解析：优先采用上下文传入的动态语气覆盖与净化后的发音脚本
+    const effectiveStyle = context.styleOverride?.trim() || profile.effectiveStyle;
+    const baseScript = context.ttsScript?.trim() ? sanitizeTextForTts(context.ttsScript) : cleanText;
+    let textToSynthesize = baseScript || cleanText;
+
+    // 动态音律计算：根据显式语气指令或神态描写自适应微调语速 (rate) 与音高 (pitch)
+    const modulated = modulateVoiceProsody(
       profile.effectiveRate,
       profile.effectivePitch,
-      profile.effectiveStyle
+      effectiveStyle
+    );
+
+    // 计算 CAS 缓存指纹键（语气、调节后语速与音高、发音脚本变更时独立生成缓存）
+    const cacheKey = buildVoiceCacheKey(
+      textToSynthesize,
+      profile.preset,
+      modulated.rate,
+      modulated.pitch,
+      effectiveStyle
     );
 
     // 3. 优先命中本地物理缓存 (0ms 秒开)
@@ -101,9 +118,8 @@ export const voiceService = {
     }
 
     // 超长文本保护：移动端语音合成最适合自然的段落朗读。若超出 360 字，在句末标点自然断句，避免云端模型因超长 token 挂起或报 400 错误
-    let textToSynthesize = cleanText;
     if (textToSynthesize.length > 360) {
-      const match = textToSynthesize.slice(0, 360).match(/.*[。！？\n；]/);
+      const match = textToSynthesize.slice(0, 360).match(PUNCTUATION_TRUNCATION_REGEX);
       if (match && match[0].length >= 100) {
         textToSynthesize = match[0];
       } else {
@@ -120,14 +136,16 @@ export const voiceService = {
         text: textToSynthesize,
         outputPath,
         voiceId: profile.preset.voiceId,
-        rate: profile.effectiveRate,
-        pitch: profile.effectivePitch,
-        style: profile.effectiveStyle,
+        rate: modulated.rate,
+        pitch: modulated.pitch,
+        style: effectiveStyle,
         timeoutMs: dynamicTimeoutMs,
         apiKey,
         baseUrl: profile.preset.baseUrl ?? undefined,
         model: profile.preset.model ?? undefined,
         space,
+        ttsScript: context.ttsScript,
+        styleOverride: context.styleOverride,
       },
       profile.preset
     );

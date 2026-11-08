@@ -246,39 +246,81 @@ export const aiKnowledgeRepository = {
 
   async createDocument(db: SQLiteDatabase, input: CreateDocumentInput): Promise<AiDocumentRecord> {
     const now = createTimestamp();
-    await db.runAsync(
-      `INSERT INTO ai_documents (
-        id,
-        space,
-        ownerType,
-        ownerId,
-        sourceType,
-        title,
-        originalFilename,
-        localUri,
-        mimeType,
-        fileSize,
-        parserStatus,
-        parserError,
-        metadataJson,
-        createdAt,
-        updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
-      input.id,
-      input.space,
-      input.ownerType,
-      input.ownerId,
-      input.sourceType,
-      input.title,
-      input.originalFilename ?? null,
-      input.localUri ?? null,
-      input.mimeType ?? null,
-      input.fileSize ?? null,
-      input.parserStatus ?? 'pending',
-      input.metadataJson ?? '{}',
-      now,
-      now
-    );
+    try {
+      await db.runAsync(
+        `INSERT INTO ai_documents (
+          id,
+          space,
+          ownerType,
+          ownerId,
+          sourceType,
+          title,
+          originalFilename,
+          localUri,
+          mimeType,
+          fileSize,
+          parserStatus,
+          parserError,
+          metadataJson,
+          createdAt,
+          updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        input.id,
+        input.space,
+        input.ownerType,
+        input.ownerId,
+        input.sourceType,
+        input.title,
+        input.originalFilename ?? null,
+        input.localUri ?? null,
+        input.mimeType ?? null,
+        input.fileSize ?? null,
+        input.parserStatus ?? 'pending',
+        input.metadataJson ?? '{}',
+        now,
+        now
+      );
+    } catch (insertErr: any) {
+      if (input.sourceType === 'pptx' && insertErr?.message?.includes('CHECK constraint failed')) {
+        const metadata = JSON.parse(input.metadataJson ?? '{}');
+        metadata.actualSourceType = 'pptx';
+        await db.runAsync(
+          `INSERT INTO ai_documents (
+            id,
+            space,
+            ownerType,
+            ownerId,
+            sourceType,
+            title,
+            originalFilename,
+            localUri,
+            mimeType,
+            fileSize,
+            parserStatus,
+            parserError,
+            metadataJson,
+            createdAt,
+            updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+          input.id,
+          input.space,
+          input.ownerType,
+          input.ownerId,
+          'docx',
+          input.title,
+          input.originalFilename ?? null,
+          input.localUri ?? null,
+          input.mimeType ?? null,
+          input.fileSize ?? null,
+          input.parserStatus ?? 'pending',
+          JSON.stringify(metadata),
+          now,
+          now
+        );
+      } else {
+        throw insertErr;
+      }
+    }
     const row = await db.getFirstAsync<AiDocumentRecord>('SELECT * FROM ai_documents WHERE id = ?', input.id);
     if (!row) {
       throw new Error(`AI document ${input.id} was created but could not be reloaded.`);

@@ -386,7 +386,7 @@ export function ImCompanionPersonaModal({
               <View style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
                   <Ionicons color="#10B981" name="mic-outline" size={18} />
-                  <Text style={styles.sectionTitle}>伴侣专属音色与语音条</Text>
+                  <Text style={styles.sectionTitle}>专属音色与语音条</Text>
                 </View>
                 <Text style={styles.sectionTip}>
                   独立为伴聊会话配置专属音色，支持微信语音条朗读与自动合成。
@@ -396,6 +396,10 @@ export function ImCompanionPersonaModal({
                   scopeType="thread_im"
                   scopeId={threadId}
                   showVoiceBubbleSwitch
+                  voiceBubbleEnabled={settings.voiceReplyEnabled !== false}
+                  onToggleVoiceBubble={async (val) => {
+                    await onUpdateSettings({ voiceReplyEnabled: val });
+                  }}
                 />
               </View>
             ) : null}

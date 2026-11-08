@@ -17,6 +17,7 @@ import { SecureImage } from '../../../components/SecureImage';
 import { voiceService } from '../../../voice/voiceService';
 import { runWithDatabaseSpace } from '../../../database';
 import { radius } from '../../../design/tokens';
+import { markImMessageVoicePlayed } from '../../repository/imThreadRepository';
 
 /**
  * 微信经典 3 弧阶梯声波图标
@@ -121,6 +122,9 @@ function WeChatSoundWave({
   );
 }
 
+const VOICE_PREFIX_STRIP_REGEX =
+  /^[\[【]\s*(?:VOICE|语音)\s*(?:[:：]|\]\s*[:：]?)\s*([^\]】\n]+?)(?:[\]】]|$)/i;
+
 /**
  * 微信原生拟真语音条渲染器 (Authentic WeChat Voice Bubble)
  *
@@ -158,18 +162,37 @@ export const VoiceBubbleRenderer = React.memo(function VoiceBubbleRenderer({
   );
 
   useEffect(() => {
+    if (message.voice?.isPlayed) {
+      setHasBeenPlayed(true);
+    }
+  }, [message.voice?.isPlayed]);
+
+  useEffect(() => {
     if (message.metadata?.isTranscriptExpanded !== undefined) {
       setShowTranscript(Boolean(message.metadata.isTranscriptExpanded));
     }
   }, [message.metadata?.isTranscriptExpanded]);
 
-  // 监听全局音频播放状态，联动当前气泡动画
+  // 标记语音为已播放（消除红点并永久持久化到 SQLite，退出重进不再复现红点）
+  const markAsPlayed = useCallback(() => {
+    setHasBeenPlayed(true);
+    if (message.voice) {
+      message.voice.isPlayed = true;
+    }
+    void markImMessageVoicePlayed(space, message.id).catch(() => {});
+  }, [message, space]);
+
+  // 监听全局音频播放状态，联动当前气泡动画与未读红点消除
   useEffect(() => {
     const unsub = voiceService.subscribe((state) => {
-      setIsPlaying(state.isPlaying && state.activeId === message.id);
+      const activeForThis = state.activeId === message.id;
+      setIsPlaying(state.isPlaying && activeForThis);
+      if (activeForThis && (state.isPlaying || state.currentTimeSec > 0)) {
+        markAsPlayed();
+      }
     });
     return unsub;
-  }, [message.id]);
+  }, [message.id, markAsPlayed]);
 
   const triggerShake = () => {
     Animated.sequence([
@@ -218,7 +241,7 @@ export const VoiceBubbleRenderer = React.memo(function VoiceBubbleRenderer({
 
   const textToRead =
     message.voice?.transcription ||
-    message.content.replace(/^\[VOICE:\s*([^\]]+)\]/i, '$1').trim();
+    message.content.replace(VOICE_PREFIX_STRIP_REGEX, '$1').trim();
 
   // 点击语音气泡：播放 / 暂停切换
   const handleBubblePress = useCallback(async () => {
@@ -227,7 +250,7 @@ export const VoiceBubbleRenderer = React.memo(function VoiceBubbleRenderer({
       return;
     }
 
-    setHasBeenPlayed(true);
+    markAsPlayed();
     setIsLoading(true);
 
     try {
@@ -239,7 +262,7 @@ export const VoiceBubbleRenderer = React.memo(function VoiceBubbleRenderer({
         return;
       }
 
-      // 否则针对伴侣文字或无物理音频的消息进行 TTS 语音合成朗读
+      // 否则针对伴侣文字或无物理音频的消息进行 TTS 语音合成朗读（注入当前消息记录的语气风格）
       if (textToRead) {
         await runWithDatabaseSpace(space, async (db) => {
           await voiceService.speak(
@@ -249,6 +272,7 @@ export const VoiceBubbleRenderer = React.memo(function VoiceBubbleRenderer({
               space,
               scopeType: 'thread_im',
               threadId: message.threadId,
+              styleOverride: message.voice?.style,
             },
             message.id
           );
@@ -262,7 +286,7 @@ export const VoiceBubbleRenderer = React.memo(function VoiceBubbleRenderer({
     } finally {
       setIsLoading(false);
     }
-  }, [isPlaying, space, textToRead, message.threadId, message.id]);
+  }, [isPlaying, space, textToRead, message.threadId, message.id, message.voice?.style, markAsPlayed]);
 
   const handleLongPress = (event: any) => {
     if (onLongPressMessage) {

@@ -14,19 +14,33 @@ const ROBOTIC_CLICHE_REGEX = /(?:[，,、\s]*)?(?:有什么可以帮[您你]|希
 // 中英文圆括号舞台动作与内心独白描述正则（例如：（轻笑）、（眨了眨眼）、(叹气)、(长段内心独白)）
 const STAGE_ACTION_REGEX = /[（\(][^）\(\n]+[）\)]/g;
 
+// 协议控制标签残留剥离（防技术指令与协议标签泄露兜底，无视位置与换行全面拦截）
+const DANGLING_PROTOCOL_TAG_REGEX = /[\[【]\s*(?:VOICE|语音|STICKER|表情|STATUS|MOOD|HEARTBEAT|NUDGE|PING|DOCUMENT|DOC)\s*(?:[:：]|[\]】]\s*[:：]?)\s*/gi;
+const UNRESOLVED_VOICE_TAG_REGEX = /[\[【]\s*(?:VOICE|语音)\s*(?:[:：]\s*(?:[^|\]】]+?\|)?\s*([^\]】]+?)\s*[\]】]|[\]】]\s*[:：]?\s*(?:[^|\[\]【】\n]+?\|)?\s*([^\[\]【】\n]+))/gi;
+
 /**
  * 本地质检与拟人净化：剥离舞台动作与客服腔
+ * 当 preserveInlineStageActions = true 时，保留简短神态动作描写（如“（靠在窗边打了个哈欠）”），增强文学质感与陪伴画面感
  */
-export function sanitizeCompanionBubble(rawText: string): string {
+export function sanitizeCompanionBubble(
+  rawText: string,
+  options?: { preserveInlineStageActions?: boolean }
+): string {
   let cleaned = rawText;
 
-  // 1. 剔除舞台括号动作
-  cleaned = cleaned.replace(STAGE_ACTION_REGEX, '');
+  // 1. 舞台动作处理：若未显式开启保留，则剥离括号动作
+  if (!options?.preserveInlineStageActions) {
+    cleaned = cleaned.replace(STAGE_ACTION_REGEX, '');
+  }
 
   // 2. 剔除客服腔与 AI 机械语录
   cleaned = cleaned.replace(ROBOTIC_CLICHE_REGEX, '');
 
-  // 3. 整理连续多余空格
+  // 3. 防御性解构或剔除残存的协议标签（无论在首位或中间，无论是否跨行，均脱壳提取纯净台词）
+  cleaned = cleaned.replace(UNRESOLVED_VOICE_TAG_REGEX, (_m, p1, p2) => (p1 || p2 || '').trim());
+  cleaned = cleaned.replace(DANGLING_PROTOCOL_TAG_REGEX, '');
+
+  // 4. 整理连续多余空格
   cleaned = cleaned.replace(/[ \t]{2,}/g, ' ').trim();
 
   return cleaned;
@@ -62,24 +76,36 @@ export function detectRepetitiveStarters(recentFirstBubbles: string[]): string |
   return null;
 }
 
+const QUESTION_ENDING_REGEX = /(?:[?？]$|(?:吗|呢|好不好|对吧|是不是|去哪了|吃了吗)[~～！!。]*$)/;
+
+export function isQuestionEnding(text: string): boolean {
+  return QUESTION_ENDING_REGEX.test(text.trim());
+}
+
 /**
  * 问句率上限检测：
- * 若最近 10 轮中超过 40% 以问号收尾，返回注入 Layer 4 的控温提示
+ * 1. 连续 2 轮问句即刻熔断（消除冷启动盲区，严防开局查户口）
+ * 2. 窗口内问句占比超过 40% 触发控温提示
  */
 export function detectExcessiveQuestions(recentAssistantLastBubbles: string[]): string | null {
-  const windowSlice = recentAssistantLastBubbles.slice(-10);
-  if (windowSlice.length < 5) return null;
+  if (!recentAssistantLastBubbles || recentAssistantLastBubbles.length === 0) return null;
 
+  // 1. 连续 2 轮问号即刻熔断（零冷启动盲区，杜绝连环追问）
+  const lastTwo = recentAssistantLastBubbles.slice(-2);
+  if (lastTwo.length >= 2 && isQuestionEnding(lastTwo[0]) && isQuestionEnding(lastTwo[1])) {
+    return `【互动节律提示】你已连续多句以提问收尾。本轮回复请以陈述、倾听共情、微吐槽或顺势分享收尾，禁止再以疑问句结尾盘问对方。`;
+  }
+
+  const windowSlice = recentAssistantLastBubbles.slice(-10);
   let questionCount = 0;
   for (const text of windowSlice) {
-    const trimmed = text.trim();
-    if (/[?？]$/.test(trimmed) || /(吗|呢|好不好|对吧)[~～！!。]*$/.test(trimmed)) {
+    if (isQuestionEnding(text)) {
       questionCount += 1;
     }
   }
 
   const ratio = questionCount / windowSlice.length;
-  if (ratio >= 0.4) {
+  if (windowSlice.length >= 3 && ratio >= 0.4) {
     return `【互动节律提示】近期你向对方抛出问句的频率偏高。本轮回复请以陈述、倾听共情、微吐槽或顺势分享收尾，禁止再以疑问句结尾盘问对方。`;
   }
 

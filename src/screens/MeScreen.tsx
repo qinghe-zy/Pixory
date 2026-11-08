@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -50,6 +50,7 @@ import {
   useProfileInfoPreferences,
   useProfilePageStylePreference,
 } from "../services/aiChatPreferences";
+import { checkAllAppUpdates, getAppVersion } from "../services/updateCheckService";
 
 interface MeScreenProps {
   refreshToken: number;
@@ -69,6 +70,7 @@ interface MeScreenProps {
   onLockPersonalSpace: () => void;
   onOpenProfileInfo?: () => void;
   onOpenChatAppearance?: () => void;
+  onCheckUpdates?: () => void;
 }
 
 type PersonalSessionState = "locked" | "unlocking" | "unlocked" | "locking";
@@ -232,8 +234,10 @@ export function MeScreen({
   onLockPersonalSpace,
   onOpenProfileInfo,
   onOpenChatAppearance,
+  onCheckUpdates,
 }: MeScreenProps) {
   const { showToast } = useToast();
+  const version = getAppVersion();
   const [profileStyleMode] = useProfilePageStylePreference(space);
   const { avatarRadius: profileAvatarRadius, avatarFrameEnabled: profileAvatarFrameEnabled } =
     useProfileInfoPreferences(space);
@@ -291,6 +295,14 @@ export function MeScreen({
     },
   );
 
+  const handleCheckAllUpdates = useCallback(async () => {
+    if (onCheckUpdates) {
+      onCheckUpdates();
+      return;
+    }
+    await checkAllAppUpdates(showToast);
+  }, [onCheckUpdates, showToast]);
+
   function handleEntryPress(
     key:
       | "favorites"
@@ -300,7 +312,8 @@ export function MeScreen({
       | "duplicate-review"
       | "storage-usage"
       | "about"
-      | "settings",
+      | "settings"
+      | "check-updates",
   ) {
     if (key === "favorites") {
       onOpenFavorites();
@@ -336,7 +349,14 @@ export function MeScreen({
       onOpenAbout();
       return;
     }
-    if (key === "settings") onOpenSettings();
+    if (key === "settings") {
+      onOpenSettings();
+      return;
+    }
+    if (key === "check-updates") {
+      void handleCheckAllUpdates();
+      return;
+    }
   }
 
   function handlePersonalToggle() {
@@ -586,8 +606,15 @@ export function MeScreen({
             <MinimalistRow
               icon="information-circle-outline"
               onPress={() => handleEntryPress("about")}
-              showBorder={false}
+              showBorder
               title="关于"
+            />
+            <MinimalistRow
+              icon="cloud-download-outline"
+              onPress={() => handleEntryPress("check-updates")}
+              showBorder={false}
+              title="检查更新"
+              valueText={`v${version}`}
             />
           </View>
         </View>
@@ -1005,6 +1032,8 @@ export function MeScreen({
         >
           <ContentCard style={styles.systemGroup}>
             <Pressable
+              accessibilityLabel="关于"
+              accessibilityRole="button"
               onPress={() => handleEntryPress("about")}
               style={({ pressed }) => [
                 styles.systemListItem,
@@ -1027,6 +1056,8 @@ export function MeScreen({
             </Pressable>
             <View style={styles.systemListDivider} />
             <Pressable
+              accessibilityLabel="设置"
+              accessibilityRole="button"
               onPress={() => handleEntryPress("settings")}
               style={({ pressed }) => [
                 styles.systemListItem,
@@ -1046,6 +1077,33 @@ export function MeScreen({
                 name="chevron-forward"
                 size={18}
               />
+            </Pressable>
+            <View style={styles.systemListDivider} />
+            <Pressable
+              accessibilityLabel={`检查更新，当前版本 v${version}`}
+              accessibilityRole="button"
+              onPress={() => handleEntryPress("check-updates")}
+              style={({ pressed }) => [
+                styles.systemListItem,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.systemListIcon}>
+                <Ionicons
+                  color={colors.primary.active}
+                  name="cloud-download-outline"
+                  size={20}
+                />
+              </View>
+              <Text style={styles.systemListTitle}>检查更新</Text>
+              <View style={styles.systemListRight}>
+                <Text style={styles.systemListValue}>v{version}</Text>
+                <Ionicons
+                  color={colors.text.secondary}
+                  name="chevron-forward"
+                  size={18}
+                />
+              </View>
             </Pressable>
           </ContentCard>
         </MagneticLiquidContainer>
@@ -1586,6 +1644,16 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     flex: 1,
   },
+  systemListRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  systemListValue: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontSize: 13,
+  },
 
   storageGlyph: {
     alignItems: "center",
@@ -1828,6 +1896,8 @@ function MinimalistRow({
 }) {
   return (
     <Pressable
+      accessibilityLabel={valueText ? `${title}，${valueText}` : title}
+      accessibilityRole="button"
       style={({ pressed }) => [
         styles.minimalistRow,
         pressed && styles.minimalistRowPressed,

@@ -130,6 +130,14 @@ export async function retrieveRelevantMemories(
       }
     }
 
+    // 检索激活断头台（Forgetting Floor）：解耦判定时间衰减与相关性，杜绝模糊记忆被误杀
+    const decayFactor = scored.decayFactor !== undefined ? scored.decayFactor : 1.0;
+    const baseRelevance = scored.baseRelevance !== undefined ? scored.baseRelevance : 1.0;
+    const isForgotten = decayFactor < 0.30 || baseRelevance < 0.35 || adjustedScore < 0.12;
+    if (isForgotten) {
+      continue;
+    }
+
     if (adjustedScore >= scoreThreshold) {
       candidates.push({
         ...scored,
@@ -142,9 +150,12 @@ export async function retrieveRelevantMemories(
   candidates.sort((a, b) => b.score - a.score);
   const topResults = selectDiverseMemoriesMMR(candidates, effectiveLimit);
 
-  // 5. 异步回写访问计数 (零等待)
-  if (topResults.length > 0) {
-    memoryRepository.recordHits(topResults.map((r) => r.id), space).catch(() => {});
+  // 5. 最终选定集闭环回写：仅对真正通过漏斗进入 Top-K 且相关度充沛 (baseRelevance >= 0.45) 的记忆累加命中
+  const hitsToRecord = topResults
+    .filter((r) => (r.baseRelevance !== undefined ? r.baseRelevance >= 0.45 : r.score >= 0.25))
+    .map((r) => r.id);
+  if (hitsToRecord.length > 0) {
+    memoryRepository.recordHits(hitsToRecord, space).catch(() => {});
   }
 
   return topResults;

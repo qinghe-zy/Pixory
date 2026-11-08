@@ -29,6 +29,7 @@ import {
   isOfficialDeepSeekProvider,
   migrateDeprecatedDeepSeekModel,
 } from './deepseekModelPolicy';
+import { invalidateRagEngineCache } from './rag/pixoryRagBridge';
 
 function createTimestamp(): string {
   return new Date().toISOString();
@@ -240,6 +241,7 @@ export async function saveProviderEmbeddingBaseUrl(space: PixorySpace, providerI
   await runWithDatabaseSpace(space, (db) =>
     aiProviderRepository.updateProviderEmbeddingBaseUrl(db, providerId, embeddingBaseUrl?.trim() || null)
   );
+  invalidateRagEngineCache(space);
 }
 
 export async function saveProviderDefaultModels(
@@ -248,6 +250,9 @@ export async function saveProviderDefaultModels(
   defaults: { defaultChatModelId?: string | null; defaultEmbeddingModelId?: string | null }
 ): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderDefaults(db, providerId, defaults));
+  if (defaults.defaultEmbeddingModelId !== undefined) {
+    invalidateRagEngineCache(space);
+  }
 }
 
 export function buildProviderVerifyFingerprint(input: {
@@ -357,6 +362,7 @@ export async function saveManualEmbeddingModel(space: PixorySpace, providerId: s
     }
     await aiProviderRepository.updateProviderDefaults(db, provider.id, { defaultEmbeddingModelId: trimmedModelId });
   });
+  invalidateRagEngineCache(space);
 }
 
 export async function deleteProviderModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {

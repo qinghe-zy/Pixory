@@ -16,28 +16,22 @@ export interface DocumentExportTarget {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let output = '';
-  let index = 0;
-
-  while (index < bytes.length) {
-    const first = bytes[index++] ?? 0;
-    const second = index < bytes.length ? bytes[index++] : NaN;
-    const third = index < bytes.length ? bytes[index++] : NaN;
-    const triple = (first << 16) | ((Number.isNaN(second) ? 0 : second) << 8) | (Number.isNaN(third) ? 0 : third);
-
-    output += alphabet[(triple >> 18) & 63];
-    output += alphabet[(triple >> 12) & 63];
-    output += Number.isNaN(second) ? '=' : alphabet[(triple >> 6) & 63];
-    output += Number.isNaN(third) ? '=' : alphabet[triple & 63];
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('base64');
   }
-
-  return output;
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
 }
 
 /**
  * 导出文档到系统分享面板。
- * 写入缓存目录后调用 Share.share；调用方 catch 错误静默。
+ * 零拷贝优先：若存在本地物理文件 (doc.uri)，优先原生直接复制流转，保持 100% 原版样式且零内存开销；
+ * 规范命名：保留纯净原始文件名（如 第十四章.docx），杜绝携带随机哈希后缀。
  */
 export async function exportDocumentToShare(doc: DocumentExportTarget): Promise<void> {
   const title = doc.title || '文档';
@@ -46,19 +40,40 @@ export async function exportDocumentToShare(doc: DocumentExportTarget): Promise<
   try {
     const cleanBaseTitle = title.replace(/\.[a-zA-Z0-9]+$/, '');
     const safeName = cleanBaseTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_') || 'document';
-    const cacheFingerprint = Date.now().toString(36);
-    const tempPath = `${FileSystem.cacheDirectory}${safeName}_${cacheFingerprint}.${ext}`;
+    const shareFolder = `${FileSystem.cacheDirectory}pixory_share/${Date.now()}/`;
+    await FileSystem.makeDirectoryAsync(shareFolder, { intermediates: true }).catch(() => {});
+    const tempPath = `${shareFolder}${safeName}.${ext}`;
 
+    let fileWritten = false;
+
+    // 1. 优先原件零拷贝直通 (Zero-Copy): 若存在已落盘的本地文件且真实存在，直接原生拷贝，保持 100% 格式且不吃 JS 内存
+    if (doc.uri) {
+      try {
+        const info = await FileSystem.getInfoAsync(doc.uri);
+        if (info.exists && !info.isDirectory) {
+          await FileSystem.copyAsync({ from: doc.uri, to: tempPath });
+          fileWritten = true;
+        }
+      } catch {}
+    }
+
+    // 2. 内存二进制 Uint8Array 导出
+    if (!fileWritten && doc.content instanceof Uint8Array) {
+      const base64 = bytesToBase64(doc.content);
+      await FileSystem.writeAsStringAsync(tempPath, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      fileWritten = true;
+    }
+
+    // 3. 内存字符串导出 (若为 docx Markdown，实时编译为标准 ECMA-376 OOXML)
     const isRealContent =
       typeof doc.content === 'string' &&
       doc.content.trim().length > 0 &&
       doc.content.trim() !== title.trim() &&
       doc.content.trim() !== (doc.uri || '').trim();
 
-    let fileWritten = false;
-
-    if (isRealContent && typeof doc.content === 'string') {
-      // 若导出目标是 .docx 且当前仍是 Markdown 文本，实时编译为标准合法的 ECMA-376 OOXML Zip 二进制
+    if (!fileWritten && isRealContent && typeof doc.content === 'string') {
       if (ext === 'docx' && !doc.content.startsWith('PK')) {
         try {
           const { compileMarkdownToDocx } = await import('../../services/sandbox/docx/docxCompiler');
@@ -80,20 +95,6 @@ export async function exportDocumentToShare(doc: DocumentExportTarget): Promise<
         });
         fileWritten = true;
       }
-    } else if (doc.content instanceof Uint8Array) {
-      const base64 = bytesToBase64(doc.content);
-      await FileSystem.writeAsStringAsync(tempPath, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      fileWritten = true;
-    } else if (doc.uri) {
-      try {
-        const info = await FileSystem.getInfoAsync(doc.uri);
-        if (info.exists) {
-          await FileSystem.copyAsync({ from: doc.uri, to: tempPath });
-          fileWritten = true;
-        }
-      } catch {}
     }
 
     if (!fileWritten) {

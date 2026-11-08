@@ -24,6 +24,8 @@ interface VoicePresetPickerProps {
   scopeId: string;
   parentPresetName?: string;
   showVoiceBubbleSwitch?: boolean;
+  voiceBubbleEnabled?: boolean;
+  onToggleVoiceBubble?: (val: boolean) => void | Promise<void>;
   onBindingChanged?: () => void;
 }
 
@@ -34,11 +36,15 @@ export function VoicePresetPicker({
   scopeId,
   parentPresetName = '全局默认音色',
   showVoiceBubbleSwitch = false,
+  voiceBubbleEnabled: controlledVoiceBubbleEnabled,
+  onToggleVoiceBubble: controlledOnToggleVoiceBubble,
   onBindingChanged,
 }: VoicePresetPickerProps) {
   const [presets, setPresets] = useState<VoicePresetRecord[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
-  const [voiceBubbleEnabled, setVoiceBubbleEnabled] = useState<boolean>(true);
+  const [internalVoiceBubbleEnabled, setInternalVoiceBubbleEnabled] = useState<boolean>(true);
+  const isControlled = controlledVoiceBubbleEnabled !== undefined;
+  const voiceBubbleEnabled = isControlled ? controlledVoiceBubbleEnabled : internalVoiceBubbleEnabled;
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingPreset, setEditingPreset] = useState<VoicePresetRecord | null>(null);
   const [playingPresetId, setPlayingPresetId] = useState<string | null>(null);
@@ -93,7 +99,9 @@ export function VoicePresetPicker({
       ]);
       setPresets(allPresets);
       setSelectedPresetId(binding?.presetId ?? null);
-      setVoiceBubbleEnabled(binding?.voiceBubbleEnabled ?? true);
+      if (!isControlled) {
+        setInternalVoiceBubbleEnabled(binding?.voiceBubbleEnabled ?? true);
+      }
     });
   }
 
@@ -116,7 +124,12 @@ export function VoicePresetPicker({
   }
 
   async function handleToggleVoiceBubble(val: boolean) {
-    setVoiceBubbleEnabled(val);
+    if (!isControlled) {
+      setInternalVoiceBubbleEnabled(val);
+    }
+    if (controlledOnToggleVoiceBubble) {
+      await controlledOnToggleVoiceBubble(val);
+    }
     await executeWithDb(async (database) => {
       await voiceRepository.setBinding(database, {
         scopeType,
@@ -252,10 +265,12 @@ export function VoicePresetPicker({
       {showVoiceBubbleSwitch && (
         <View style={styles.switchRow}>
           <View style={styles.switchLabelBox}>
-            <Text style={styles.switchLabel}>允许伴侣发送拟真语音条</Text>
-            <Text style={styles.switchDesc}>开启后伴侣在道晚安、亲昵等关键情境可发微信同款语音条</Text>
+            <Text style={styles.switchLabel}>允许发送拟真语音条</Text>
+            <Text style={styles.switchDesc}>开启后在道晚安、亲昵等关键情境可发送即时语音条</Text>
           </View>
           <Switch
+            accessibilityLabel="允许发送拟真语音条"
+            accessibilityRole="switch"
             value={voiceBubbleEnabled}
             onValueChange={handleToggleVoiceBubble}
             trackColor={{ false: '#CBD5E1', true: colors.primary.default }}
@@ -370,7 +385,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 8,
+    paddingTop: 10,
+    paddingBottom: 4,
+    minHeight: 48,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E2E8F0',
   },

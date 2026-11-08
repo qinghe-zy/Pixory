@@ -18,6 +18,7 @@ export const DIAGNOSTICS_ENABLED_KEY = 'diagnosticsEnabled';
 export const DIAGNOSTICS_RETENTION_DAYS_KEY = 'diagnosticsRetentionDays';
 export const DIAGNOSTICS_MAX_EVENTS_KEY = 'diagnosticsMaxEvents';
 export const SYSTEM_ASSISTANT_ENABLED_KEY = 'systemAssistantEnabled';
+export const FILE_TRANSFER_ENABLED_KEY = 'fileTransferEnabled';
 
 export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
 export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
@@ -511,6 +512,15 @@ export const settingsRepository = {
 
   async setSystemAssistantEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
     await this.setValue(db, SYSTEM_ASSISTANT_ENABLED_KEY, enabled ? 'true' : 'false');
+  },
+
+  async getFileTransferEnabled(db: SQLiteDatabase): Promise<boolean> {
+    const value = await this.getValue(db, FILE_TRANSFER_ENABLED_KEY);
+    return value === 'true';
+  },
+
+  async setFileTransferEnabled(db: SQLiteDatabase, enabled: boolean): Promise<void> {
+    await this.setValue(db, FILE_TRANSFER_ENABLED_KEY, enabled ? 'true' : 'false');
   },
 
   async getAiHistoryLongMessageFoldingEnabled(db: SQLiteDatabase): Promise<boolean> {

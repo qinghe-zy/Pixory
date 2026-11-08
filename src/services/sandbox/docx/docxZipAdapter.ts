@@ -2,6 +2,9 @@
  * IDocxZipAdapter DOCX 容器压缩与解压适配器 (支持纯 Node 测试与 React Native 运行)
  */
 
+// @ts-ignore
+import pako from 'pako';
+
 export interface IDocxZipAdapter {
   /**
    * 解压 docx 文件中的全部或关键文件
@@ -15,8 +18,20 @@ export interface IDocxZipAdapter {
 }
 
 // ---------------------------------------------------------------------------
-// CRC-32 校验码计算器
+// 工业级标准纯 JS Deflate / Inflate 引擎 (pako)
 // ---------------------------------------------------------------------------
+
+export function inflateRaw(input: Uint8Array, _initialCapacity = 65536): Uint8Array {
+  try {
+    return new Uint8Array(pako.inflateRaw(input));
+  } catch (error) {
+    const zlib = tryGetDynamicNodeModule('node:zlib');
+    if (zlib && typeof zlib.inflateRawSync === 'function') {
+      return new Uint8Array(zlib.inflateRawSync(Buffer.from(input)));
+    }
+    throw error;
+  }
+}
 
 function makeCrcTable(): Int32Array {
   const table = new Int32Array(256);
@@ -128,10 +143,11 @@ export class NodeDocxZipAdapter implements IDocxZipAdapter {
           let uncompressedData: Uint8Array;
           if (method === 8) {
             const zlib = tryGetDynamicNodeModule('node:zlib');
-            if (!zlib || typeof zlib.inflateRawSync !== 'function') {
-              throw new Error(`移动端纯 JS 运行时暂不支持 Deflate 算法解压 (文件: ${filename})`);
+            if (zlib && typeof zlib.inflateRawSync === 'function') {
+              uncompressedData = new Uint8Array(zlib.inflateRawSync(compressedData));
+            } else {
+              uncompressedData = inflateRaw(compressedData, uncompressedSize || 65536);
             }
-            uncompressedData = new Uint8Array(zlib.inflateRawSync(compressedData));
           } else if (method === 0) {
             uncompressedData = new Uint8Array(compressedData);
           } else {
@@ -174,19 +190,27 @@ export class NodeDocxZipAdapter implements IDocxZipAdapter {
       let method = 0;
       let compressed = rawData;
 
-      // 若在 Node 宿主环境下具备 zlib 模块，优先尝试 deflate 压缩以缩减体积；
-      // 在 React Native 移动端 (Hermes) 无 native 依赖时，纯 JS 采用标准 Store (method 0) 打包，
-      // 所有 Office 软件 (Word/WPS/LibreOffice) 均原生完整支持 Store 规范，且打包解压速度更快。
-      if (zlib && typeof zlib.deflateRawSync === 'function') {
+      // 优先使用工业级纯 JS pako 进行 deflate 压缩；若不可用则使用 node:zlib，若均失败降级为 store (method 0)
+      if (rawData.length > 0) {
         try {
-          const deflated = new Uint8Array(zlib.deflateRawSync(Buffer.from(rawData)));
+          const deflated = new Uint8Array(pako.deflateRaw(rawData));
           if (deflated.length < rawData.length) {
             method = 8;
             compressed = deflated;
           }
         } catch {
-          method = 0;
-          compressed = rawData;
+          if (zlib && typeof zlib.deflateRawSync === 'function') {
+            try {
+              const deflated = new Uint8Array(zlib.deflateRawSync(Buffer.from(rawData)));
+              if (deflated.length < rawData.length) {
+                method = 8;
+                compressed = deflated;
+              }
+            } catch {
+              method = 0;
+              compressed = rawData;
+            }
+          }
         }
       }
 

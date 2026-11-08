@@ -182,7 +182,9 @@ export class GlobalHeartbeatEngine {
                   [threadId]
                 );
                 if (tRow?.lastMessagePreview) {
-                  void postCompanionNotificationSafely(space, threadId, tRow.title || '新消息', tRow.lastMessagePreview);
+                  const { formatMessagePreview } = await import('../../utils/formatMessagePreview');
+                  const safePreview = formatMessagePreview(tRow.lastMessagePreview, '新消息');
+                  void postCompanionNotificationSafely(space, threadId, tRow.title || '新消息', safePreview);
                 }
               } catch {}
             }

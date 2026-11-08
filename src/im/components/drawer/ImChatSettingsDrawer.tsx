@@ -493,7 +493,13 @@ const SettingSwitchRow = React.memo(function SettingSwitchRow({ title, icon, val
   return (
     <View style={[styles.row, isLast && styles.noBorderRow]}>
       <View style={styles.rowLeft}><Ionicons color="#374151" name={icon} size={18} style={styles.rowIcon} /><Text style={styles.rowTitle}>{title}</Text></View>
-      <Switch onValueChange={onToggle} trackColor={{ true: '#1A1C1C', false: '#D1D5DB' }} value={value} />
+      <Switch
+        accessibilityLabel={title}
+        accessibilityRole="switch"
+        onValueChange={onToggle}
+        trackColor={{ true: '#1A1C1C', false: '#D1D5DB' }}
+        value={value}
+      />
     </View>
   );
 });

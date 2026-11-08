@@ -132,13 +132,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, initi
     const result = await DocumentPicker.getDocumentAsync({
       copyToCacheDirectory: true,
       multiple: true,
-      type: [
-        'text/plain',
-        'text/markdown',
-        'application/pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '*/*',
-      ],
+      type: '*/*',
     });
     if (result.canceled) {
       return { message: '已取消选择。', tone: 'info' };

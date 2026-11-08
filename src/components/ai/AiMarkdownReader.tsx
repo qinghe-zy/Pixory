@@ -1,69 +1,39 @@
-import { useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
-import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { getAiMarkdownReaderHtml } from './aiMarkdownReaderTemplate';
+import type { AiDocumentReaderLocator, AiReadableDocument } from '../../ai/readers/readerTypes';
+import { UniversalDocumentViewer } from '../reader/UniversalDocumentViewer';
 
 interface AiMarkdownReaderProps {
-  readable: Pick<AiReadableDocument, 'text'>;
+  readable: Pick<AiReadableDocument, 'text'> | AiReadableDocument;
   locator?: AiDocumentReaderLocator;
   onLinkPress?: (url: string) => void;
 }
 
 /**
- * Injects a `<mark>` wrapper around the N-th non-empty line in the raw
- * markdown so that the WebView can scroll to and highlight the paragraph
- * referenced by an AI citation (locator).
+ * Backwards-compatible Markdown reader component.
+ * Directly backed by the unified UniversalDocumentViewer.
  */
-function applyLocator(text: string, locator?: AiDocumentReaderLocator): string {
-  if (locator?.paragraph === undefined) {
-    return text;
-  }
-  const lines = text.split('\n');
-  let pIndex = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim()) {
-      pIndex += 1;
-      if (pIndex === locator.paragraph) {
-        lines[i] = `<mark id="locator-target" class="locator-highlight">${lines[i]}</mark>`;
-        break;
-      }
-    }
-  }
-  return lines.join('\n');
-}
-
 export function AiMarkdownReader({ readable, locator, onLinkPress }: AiMarkdownReaderProps) {
-  const rawText = readable.text || '暂无可阅读文本。';
+  const isFullReadable = 'document' in readable && Boolean((readable as AiReadableDocument).document);
 
-  const htmlContent = useMemo(() => {
-    const marked = applyLocator(rawText, locator);
-    return getAiMarkdownReaderHtml(marked);
-  }, [rawText, locator]);
-
-  const handleMessage = (event: WebViewMessageEvent) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'linkPress' && data.url) {
-        onLinkPress?.(data.url);
-      }
-    } catch (e) {
-      // Ignore parse errors
-    }
-  };
+  const source = isFullReadable
+    ? { type: 'record' as const, readable: readable as AiReadableDocument }
+    : {
+        type: 'uri' as const,
+        uri: '',
+        fileName: 'document.md',
+        sourceType: 'markdown' as const,
+        title: '文档',
+        rawText: readable.text,
+      };
 
   return (
     <View style={styles.wrap}>
-      <WebView
-        allowFileAccess={false}
-        allowFileAccessFromFileURLs={false}
-        javaScriptEnabled
-        originWhitelist={['*']}
-        showsVerticalScrollIndicator={false}
-        source={{ html: htmlContent }}
-        style={styles.webview}
-        onMessage={handleMessage}
+      <UniversalDocumentViewer
+        locator={locator}
+        onLinkPress={onLinkPress}
+        source={source}
       />
     </View>
   );
@@ -72,9 +42,5 @@ export function AiMarkdownReader({ readable, locator, onLinkPress }: AiMarkdownR
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: '#faf9f5', // match --canvas so there's no white flash
   },
 });

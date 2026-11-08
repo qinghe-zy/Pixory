@@ -32,6 +32,15 @@ export interface ParsedStickerTag {
 export interface ParsedVoiceTag {
   text: string;
   rawTag: string;
+  styleDirective?: string;
+  ttsScript?: string;
+  uiTranscript?: string;
+}
+
+export interface VoicePayloadTracks {
+  styleDirective?: string;
+  ttsScript: string;
+  uiTranscript: string;
 }
 
 export interface ParsedDocumentTag {
@@ -61,8 +70,11 @@ const NUDGE_TAG_REGEX = /\[NUDGE(?::\s*([^\]]+))?\]/i;
 const STATUS_TAG_REGEX = /\[STATUS:\s*([^\]]+)\]/i;
 const HEARTBEAT_TAG_REGEX = /\[HEARTBEAT:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
 const PING_TAG_REGEX = /\[PING:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
-export const STICKER_TAG_REGEX = /[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*([^\]】\n]{1,10}?)\s*[\]】]/i;
-const VOICE_TAG_REGEX = /[[\[【]\s*(?:VOICE|语音)\s*[:：]\s*([^\]】\n]+?)\s*[\]】]/i;
+export const STICKER_TAG_REGEX = /[\[【]\s*(?:STICKER|表情)\s*[:：]\s*([^\]】]{1,10}?)\s*[\]】]/i;
+export const VOICE_TAG_INLINE_COLON_REGEX = /[\[【]\s*(?:VOICE|语音)\s*[:：]\s*([^\]】]+?)\s*[\]】]/i;
+export const VOICE_TAG_OUTSIDE_COLON_REGEX = /^[\[【]\s*(?:VOICE|语音)\s*[\]】]\s*[:：]?\s*([\s\S]+)$/i;
+export const EMBEDDED_VOICE_OUTSIDE_REGEX = /[\[【]\s*(?:VOICE|语音)\s*[\]】]\s*[:：]?\s*([^\[\]【】]+)/i;
+export const VOICE_TAG_REGEX = /[\[【]\s*(?:VOICE|语音)\s*(?:[:：]\s*([^\]】]+?)\s*[\]】]|[\]】]\s*[:：]?\s*([^\[\]【】]+))/i;
 const DOCUMENT_BLOCK_REGEX = /\[(?:DOCUMENT|DOC):\s*([^\]\n]+)\]([\s\S]*?)\[\/(?:DOCUMENT|DOC)\]/i;
 const DOCUMENT_INLINE_REGEX = /\[(?:DOCUMENT|DOC):\s*([^|\]\n]+)\|\s*([\s\S]+?)\]/i;
 const DOCUMENT_PATCH_BLOCK_REGEX = /\[(?:DOCUMENT_PATCH|DOC_PATCH):\s*([^|\]\n]+?)\s*\|\s*([^\]\n]+?)\]([\s\S]*?)\[\/(?:DOCUMENT_PATCH|DOC_PATCH)\]/i;
@@ -230,15 +242,89 @@ export function parseStickerTag(text: string): ParsedStickerTag | null {
 }
 
 /**
- * 解析大模型返回的 [VOICE: 语音内容] 或 【语音: 语音内容】
+ * 白名单拟声词：支持直接传给支持副语言合成的 TTS 引擎（如小米 MiMo）
+ */
+export const PARALINGUISTIC_SOUND_WHITELIST_REGEX =
+  /^[（\(]\s*(?:叹气|叹了口气|深深叹气|打哈欠|哈欠|轻笑|冷笑|苦笑|傻笑|抽泣|抽噎|哽咽|咳嗽|轻咳|倒吸一口凉气|深吸一口气|深呼吸|清了清嗓子|小声抽泣)\s*[）\)]$/;
+
+/**
+ * 解析语音 Payload 中的语气指令、TTS 读音脚本、UI 转录文本
+ */
+export function parseVoicePayload(rawContent: string): VoicePayloadTracks {
+  if (!rawContent) {
+    return { ttsScript: '', uiTranscript: '' };
+  }
+  let working = rawContent.trim();
+  let styleDirective: string | undefined;
+
+  // 1. 提取显式语气指令（支持尖括号 <style:xxx> 或方括号 [语气:xxx] 或 [style:xxx]）
+  const styleMatch = working.match(/(?:<style[:=]\s*([^>]+)>|\[(?:style|语气)[:=]\s*([^\]]+)\])/i);
+  if (styleMatch) {
+    styleDirective = (styleMatch[1] || styleMatch[2])?.trim();
+    working = working.replace(styleMatch[0], '').trim();
+  }
+
+  // 管道格式支持：[VOICE: 撒娇轻嗔 | 快睡啦，别熬夜]
+  if (!styleDirective && working.includes('|')) {
+    const pipeParts = working.split('|').map((p) => p.trim());
+    if (pipeParts.length >= 2 && pipeParts[0].length <= 15) {
+      styleDirective = pipeParts[0];
+      working = pipeParts.slice(1).join('|').trim();
+    }
+  }
+
+  // 2. 区分拟声词与纯舞台动作
+  // 白名单内的拟声词保留在 ttsScript（如（打哈欠））；非白名单舞台动作（如（揉了揉眼睛，拉上被子））从 ttsScript 剔除，但保留在 uiTranscript 中
+  const actionRegex = /[（\(]([^）\)]+)[）\)]/g;
+  let ttsScript = working.replace(actionRegex, (match, inner) => {
+    if (PARALINGUISTIC_SOUND_WHITELIST_REGEX.test(match.trim())) {
+      return match;
+    }
+    if (!styleDirective && inner.length <= 15 && /(?:笑|哭|困|嗔|撒娇|轻声|低语|冷|叹|软|温柔|急|快|慌|颤|低沉|耳语)/.test(inner)) {
+      styleDirective = inner.trim();
+    }
+    return '';
+  }).replace(/\s{2,}/g, ' ').trim();
+
+  if (!ttsScript) {
+    ttsScript = working.replace(/[（\(][^）\)]+[）\)]/g, '').trim() || working;
+  }
+
+  return {
+    styleDirective,
+    ttsScript,
+    uiTranscript: working,
+  };
+}
+
+/**
+ * 解析大模型返回的语音条协议
+ * 具备极高容错性，全面兼容以下形式：
+ * 1. 标准内联冒号：[VOICE: 语音内容] 或 【语音: 语音内容】
+ * 2. 剧本外置冒号：[VOICE]: 语音内容、[VOICE]：语音内容、[VOICE] 语音内容
+ * 3. 中文标签与空格：【语音】: 语音内容、[语音]: 语音内容
  */
 export function parseVoiceTag(text: string): ParsedVoiceTag | null {
   if (!text) return null;
-  const match = text.match(VOICE_TAG_REGEX);
-  if (!match) return null;
-  const voiceContent = match[1]?.trim();
-  if (!voiceContent) return null;
-  return { text: voiceContent, rawTag: match[0] };
+  const trimmed = text.trim();
+
+  // 综合匹配标准内联冒号 [VOICE: ...]、外置冒号 [VOICE]: ... 及嵌入变体
+  const match =
+    trimmed.match(VOICE_TAG_INLINE_COLON_REGEX) ||
+    trimmed.match(VOICE_TAG_OUTSIDE_COLON_REGEX) ||
+    trimmed.match(EMBEDDED_VOICE_OUTSIDE_REGEX);
+
+  if (!match || !match[1]?.trim()) return null;
+
+  const voiceContent = match[1].trim();
+  const payload = parseVoicePayload(voiceContent);
+  return {
+    text: payload.uiTranscript,
+    rawTag: match[0],
+    styleDirective: payload.styleDirective,
+    ttsScript: payload.ttsScript,
+    uiTranscript: payload.uiTranscript,
+  };
 }
 
 /**

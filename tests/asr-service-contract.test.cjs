@@ -85,7 +85,7 @@ test('AiChatScreen voiceAvailable enabled and ToastAndroid error notification', 
   const filePath = path.resolve(__dirname, '../src/screens/AiChatScreen.tsx');
   const content = fs.readFileSync(filePath, 'utf8');
 
-  assert.ok(content.includes('voiceAvailable={true}'), 'voiceAvailable must be true for Long Chat composer');
+  assert.ok(content.includes('voiceAvailable={!isFileTransfer}') || content.includes('voiceAvailable={true}'), 'voiceAvailable must be enabled for Long Chat composer');
   assert.ok(content.includes('ToastAndroid.show'), 'Must display native ToastAndroid when speech synthesis fails');
   assert.ok(content.includes('asrService.transcribeAudio'), 'Must use asrService to transcribe Long Chat voice');
 });

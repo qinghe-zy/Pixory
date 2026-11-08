@@ -57,6 +57,7 @@ export interface AiRoleCardRailProps {
   shortcuts?: RoleShortcutItem[];
   onSelectRole: (roleCardId: string) => void;
   onOpenRoleLibrary?: () => void;
+  onCreateRole?: () => void;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   emptyHintText?: string;
@@ -142,6 +143,7 @@ export const AiRoleCardRail = memo(function AiRoleCardRail({
   shortcuts,
   onSelectRole,
   onOpenRoleLibrary,
+  onCreateRole,
   style,
   contentContainerStyle,
   emptyHintText = '有头像的角色会显示在这里',
@@ -176,19 +178,41 @@ export const AiRoleCardRail = memo(function AiRoleCardRail({
             />
           ))
         ) : (
-          <Pressable
-            accessibilityLabel={emptyHintText}
-            accessibilityRole="button"
-            disabled={!onOpenRoleLibrary}
-            onPress={onOpenRoleLibrary}
-            style={({ pressed }) => [styles.emptyRoleHint, pressed && styles.pressed]}
-          >
-            <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconSizeMd} />
-            <Text style={styles.emptyRoleText}>{emptyHintText}</Text>
-          </Pressable>
+          <View style={styles.emptyRailRow}>
+            {/* 左侧：黑白质感头像框同形添加按钮 */}
+            <Pressable
+              accessibilityLabel="添加伴侣角色"
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={onCreateRole || onOpenRoleLibrary}
+              style={({ pressed }) => [styles.addShortcutItem, pressed && styles.pressed]}
+            >
+              <View style={styles.addAvatarBox}>
+                <Ionicons color="#111827" name="add" size={20} />
+                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                  <LiquidGlassBezel contentIntensity="none" radius={radius.sm} />
+                </View>
+              </View>
+              <Text style={styles.addShortcutLabel}>添加</Text>
+            </Pressable>
+
+            {/* 右侧：独立白底专业指引卡片 */}
+            <Pressable
+              accessibilityLabel="快捷伴聊栏说明"
+              accessibilityRole="button"
+              onPress={onOpenRoleLibrary}
+              style={({ pressed }) => [styles.guideCard, pressed && styles.pressed]}
+            >
+              <View style={styles.guideTextWrap}>
+                <Text style={styles.guideTitle}>快捷伴聊栏</Text>
+                <Text style={styles.guideSubtitle}>轻触左侧添加伴侣角色，常驻抽屉一键即聊</Text>
+              </View>
+              <Ionicons color="#9CA3AF" name="chevron-forward" size={14} style={{ marginLeft: 6 }} />
+            </Pressable>
+          </View>
         )}
       </ScrollView>
-      {showLibraryButton && onOpenRoleLibrary ? (
+      {showLibraryButton && onOpenRoleLibrary && roleShortcuts.length > 0 ? (
         <Pressable
           accessibilityLabel="打开角色库"
           accessibilityRole="button"
@@ -254,6 +278,80 @@ const styles = StyleSheet.create({
     color: aiLightColors.muted,
     maxWidth: 54,
     textAlign: 'center',
+  },
+  emptyRailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    paddingVertical: 2,
+  },
+  addShortcutItem: {
+    alignItems: 'center',
+    gap: rhythm.microGap,
+    width: 50,
+  },
+  addAvatarBox: {
+    borderRadius: radius.sm,
+    backgroundColor: '#FFFFFF',
+    height: 48,
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1.2,
+    borderColor: 'rgba(0, 0, 0, 0.12)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOpacity: 0.08,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  addShortcutLabel: {
+    ...typography.textStyles.micro,
+    fontSize: 10,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  guideCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: spacing[3],
+    paddingVertical: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOpacity: 0.05,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  guideTextWrap: {
+    justifyContent: 'center',
+  },
+  guideTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  guideSubtitle: {
+    fontSize: 11,
+    color: '#6B7280',
   },
   emptyRoleHint: {
     alignItems: 'center',

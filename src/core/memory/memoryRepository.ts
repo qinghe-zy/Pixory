@@ -3,6 +3,7 @@ import type {
   CompanionMemoryRecord,
   CompanionMemoryTier,
   FourDCompactionResult,
+  MemoryRecallCandidate,
 } from './memoryTypes';
 import {
   shouldAdmitToLongTermMemory,
@@ -165,6 +166,26 @@ export function extractImmediateFactsFromUserText(userText: string): Array<{
   return results;
 }
 
+export function extractSmartTriggerKeywords(text: string): string[] {
+  if (!text) return [];
+  const clean = text.replace(/[^\u4e00-\u9fa5A-Za-z0-9\s]/g, ' ').trim();
+  const words = clean.split(/\s+/).filter((w) => w.length >= 2);
+  const ngrams = new Set<string>(words.slice(0, 5));
+  const cnOnly = text.replace(/[^\u4e00-\u9fa5]/g, '');
+  for (let len = 2; len <= Math.min(4, cnOnly.length); len++) {
+    for (let i = 0; i <= cnOnly.length - len && ngrams.size < 10; i++) {
+      const slice = cnOnly.slice(i, i + len);
+      if (!/^(什么|这个|那个|我们|他们|可以|就是|如果|虽然|因为|所以|用户|喜欢)$/.test(slice)) {
+        ngrams.add(slice);
+      }
+    }
+  }
+  if (ngrams.size === 0 && text.trim().length >= 2) {
+    ngrams.add(text.trim().slice(0, 8));
+  }
+  return Array.from(ngrams);
+}
+
 export const memoryRepository = {
   async listCoreProfileFacts(
     roleCardId: string,
@@ -237,11 +258,39 @@ export const memoryRepository = {
 
   async saveMemory(
     memory: CompanionMemoryRecord,
-    space: PixorySpace
+    space: PixorySpace,
+    options?: { alreadySieved?: boolean }
   ): Promise<void> {
+    const isL2 =
+      memory.tier === 'L2_FACT' ||
+      memory.tier === 'L2_EPISODE' ||
+      memory.tier === 'L2_EPISODIC';
+
+    let recordToSave = memory;
+    if (!options?.alreadySieved && isL2) {
+      const admission = shouldAdmitToLongTermMemory({
+        content: memory.content,
+        tier: memory.tier,
+        category: memory.category,
+        entities: memory.entities,
+        importance: memory.importance,
+      });
+
+      if (!admission.admit) {
+        return; // 门禁拦截无意义或垃圾记忆
+      }
+
+      recordToSave = {
+        ...memory,
+        content: admission.sanitizedContent || memory.content,
+        expiresAt:
+          admission.expiresAt !== undefined ? admission.expiresAt : memory.expiresAt,
+      };
+    }
+
     const db = await initDatabase(space);
-    const triggersJson = JSON.stringify(memory.triggerKeywords || []);
-    const entitiesJson = JSON.stringify(memory.entities || []);
+    const triggersJson = JSON.stringify(recordToSave.triggerKeywords || []);
+    const entitiesJson = JSON.stringify(recordToSave.entities || []);
     await db.runAsync(
       `INSERT INTO ai_companion_memories 
        (id, role_card_id, space, tier, category, content, trigger_keywords, entities, importance, hit_count, is_pinned, created_at, last_accessed_at, source_mode, expires_at, superseded_by, deleted_at, confidence)
@@ -259,33 +308,33 @@ export const memoryRepository = {
          superseded_by = excluded.superseded_by,
          deleted_at = excluded.deleted_at,
          confidence = excluded.confidence;`,
-      memory.id,
-      memory.roleCardId,
+      recordToSave.id,
+      recordToSave.roleCardId,
       space,
-      memory.tier,
-      memory.category,
-      memory.content,
+      recordToSave.tier,
+      recordToSave.category,
+      recordToSave.content,
       triggersJson,
       entitiesJson,
-      memory.importance,
-      memory.hitCount,
-      memory.isPinned ? 1 : 0,
-      memory.createdAt,
-      memory.lastAccessedAt,
-      memory.sourceMode,
-      memory.expiresAt ?? null,
-      memory.supersededBy ?? null,
-      memory.deletedAt ?? null,
-      memory.confidence ?? 0.85
+      recordToSave.importance,
+      recordToSave.hitCount,
+      recordToSave.isPinned ? 1 : 0,
+      recordToSave.createdAt,
+      recordToSave.lastAccessedAt,
+      recordToSave.sourceMode,
+      recordToSave.expiresAt ?? null,
+      recordToSave.supersededBy ?? null,
+      recordToSave.deletedAt ?? null,
+      recordToSave.confidence ?? 0.85
     );
 
     // 同步 FTS 索引
-    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', memory.id);
+    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', recordToSave.id);
     await db.runAsync(
       'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
-      memory.id,
-      memory.content,
-      (memory.triggerKeywords || []).join(' ')
+      recordToSave.id,
+      recordToSave.content,
+      (recordToSave.triggerKeywords || []).join(' ')
     );
   },
 
@@ -311,13 +360,14 @@ export const memoryRepository = {
   async applyCompaction(
     roleCardId: string,
     space: PixorySpace,
-    compaction: FourDCompactionResult
+    compaction: FourDCompactionResult,
+    options?: { skipL1?: boolean }
   ): Promise<void> {
     const db = await initDatabase(space);
     const now = Date.now();
 
-    // 1. 更新 L1 剧情连续性摘要 (仅当传入时更新)
-    if (compaction.episodic_continuity) {
+    // 1. 更新 L1 剧情连续性摘要 (仅当未指定 skipL1 且传入时更新)
+    if (!options?.skipL1 && compaction.episodic_continuity) {
       const summaryId = `summary_${roleCardId}_${space}`;
       const summaryContent = JSON.stringify(compaction.episodic_continuity);
       await this.saveMemory(
@@ -341,31 +391,33 @@ export const memoryRepository = {
       );
     }
 
-    // 2. 变更 L1 画像槽位
-    for (const slot of compaction.l1_slot_mutations || []) {
-      const slotId = `slot_${roleCardId}_${slot.slot}`;
-      if (slot.op === 'DELETE') {
-        await this.deleteMemory(slotId, space);
-      } else {
-        await this.saveMemory(
-          {
-            id: slotId,
-            roleCardId,
-            space,
-            tier: 'L1_SLOT',
-            category: slot.slot,
-            content: slot.value,
-            triggerKeywords: [],
-            entities: [],
-            importance: 8,
-            hitCount: 0,
-            isPinned: true,
-            createdAt: now,
-            lastAccessedAt: now,
-            sourceMode: 'im',
-          },
-          space
-        );
+    // 2. 变更 L1 画像槽位 (仅当未指定 skipL1 时执行)
+    if (!options?.skipL1) {
+      for (const slot of compaction.l1_slot_mutations || []) {
+        const slotId = `slot_${roleCardId}_${slot.slot}`;
+        if (slot.op === 'DELETE') {
+          await this.deleteMemory(slotId, space);
+        } else {
+          await this.saveMemory(
+            {
+              id: slotId,
+              roleCardId,
+              space,
+              tier: 'L1_SLOT',
+              category: slot.slot,
+              content: slot.value,
+              triggerKeywords: [],
+              entities: [],
+              importance: 8,
+              hitCount: 0,
+              isPinned: true,
+              createdAt: now,
+              lastAccessedAt: now,
+              sourceMode: 'im',
+            },
+            space
+          );
+        }
       }
     }
 
@@ -447,7 +499,8 @@ export const memoryRepository = {
                 lastAccessedAt: now,
                 expiresAt: admission.expiresAt !== undefined ? admission.expiresAt : matched.expiresAt,
               },
-              space
+              space,
+              { alreadySieved: true }
             );
           } else {
             const memId = `mem_fact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -470,7 +523,8 @@ export const memoryRepository = {
                 expiresAt: admission.expiresAt ?? null,
                 confidence: l2.confidence ?? 0.85,
               },
-              space
+              space,
+              { alreadySieved: true }
             );
           }
         } else {
@@ -494,7 +548,8 @@ export const memoryRepository = {
                 lastAccessedAt: now,
                 expiresAt: admission.expiresAt !== undefined ? admission.expiresAt : duplicateEpisode.expiresAt,
               },
-              space
+              space,
+              { alreadySieved: true }
             );
           } else {
             const memId = `mem_ep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -517,7 +572,44 @@ export const memoryRepository = {
                 expiresAt: admission.expiresAt ?? null,
                 confidence: l2.confidence ?? 0.85,
               },
-              space
+              space,
+              { alreadySieved: true }
+            );
+          }
+        }
+      } else if (l2.op === 'UPDATE') {
+        // 更新已有记忆：根据 targetId 或相似度 >= 0.65 匹配
+        const target = l2.targetId
+          ? existingL2.find((m) => m.id === l2.targetId)
+          : existingL2.find(
+              (m) =>
+                (m.tier === 'L2_FACT' || m.tier === 'L2_EPISODIC') &&
+                calculateMemorySimilarity(m.content, l2.content) >= 0.65
+            );
+        if (target) {
+          const admission = shouldAdmitToLongTermMemory({
+            content: l2.content,
+            tier: target.tier,
+            category: l2.category || target.category,
+            entities: l2.entities || target.entities,
+            importance: l2.importance ?? target.importance,
+          });
+          if (admission.admit) {
+            await this.saveMemory(
+              {
+                ...target,
+                content: admission.sanitizedContent || l2.content,
+                triggerKeywords: [
+                  ...new Set([...target.triggerKeywords, ...(l2.expanded_triggers || [])]),
+                ],
+                entities: [...new Set([...target.entities, ...(l2.entities || [])])],
+                importance: Math.max(target.importance, l2.importance ?? 5),
+                lastAccessedAt: now,
+                expiresAt:
+                  admission.expiresAt !== undefined ? admission.expiresAt : target.expiresAt,
+              },
+              space,
+              { alreadySieved: true }
             );
           }
         }
@@ -556,7 +648,7 @@ export const memoryRepository = {
         if (l2.targetId) {
           await this.supersedeMemory(space, l2.targetId, newRecord);
         } else {
-          await this.saveMemory(newRecord, space);
+          await this.saveMemory(newRecord, space, { alreadySieved: true });
         }
       }
     }
@@ -607,6 +699,7 @@ export const memoryRepository = {
     const memId = `mem_manual_${now}_${Math.random().toString(36).slice(2, 8)}`;
     const tier = item.tier || 'L2_FACT';
     const category = item.category || 'user_custom';
+    const smartTriggers = extractSmartTriggerKeywords(item.content);
     const record: CompanionMemoryRecord = {
       id: memId,
       roleCardId,
@@ -614,7 +707,7 @@ export const memoryRepository = {
       tier,
       category,
       content: item.content.trim(),
-      triggerKeywords: [item.content.trim().slice(0, 8)],
+      triggerKeywords: smartTriggers,
       entities: [],
       importance: 8,
       hitCount: 0,
@@ -625,7 +718,7 @@ export const memoryRepository = {
       expiresAt: item.expiresAt ?? null,
       confidence: 1.0,
     };
-    await this.saveMemory(record, space);
+    await this.saveMemory(record, space, { alreadySieved: true });
     return record;
   },
 
@@ -636,13 +729,24 @@ export const memoryRepository = {
   ): Promise<void> {
     const db = await initDatabase(space);
     const now = Date.now();
+    const cleanContent = newContent.trim();
+    const smartTriggers = extractSmartTriggerKeywords(cleanContent);
+    const triggersJson = JSON.stringify(smartTriggers);
+
     await db.runAsync(
-      'UPDATE ai_companion_memories SET content = ?, last_accessed_at = ? WHERE id = ?',
-      newContent.trim(),
+      'UPDATE ai_companion_memories SET content = ?, trigger_keywords = ?, last_accessed_at = ? WHERE id = ?',
+      cleanContent,
+      triggersJson,
       now,
       id
     );
-    await db.runAsync('UPDATE ai_companion_memories_fts SET content = ? WHERE memory_id = ?', newContent.trim(), id);
+    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+    await db.runAsync(
+      'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
+      id,
+      cleanContent,
+      smartTriggers.join(' ')
+    );
   },
 
   async togglePinMemory(
@@ -674,6 +778,7 @@ export const memoryRepository = {
       Date.now(),
       id
     );
+    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
   },
 
   async restoreSoftDeletedMemory(
@@ -685,6 +790,20 @@ export const memoryRepository = {
       'UPDATE ai_companion_memories SET deleted_at = NULL WHERE id = ?',
       id
     );
+    const row = await db.getFirstAsync<RawMemoryRow>(
+      'SELECT * FROM ai_companion_memories WHERE id = ?',
+      id
+    );
+    if (row) {
+      const mem = mapRow(row);
+      await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+      await db.runAsync(
+        'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
+        mem.id,
+        mem.content,
+        (mem.triggerKeywords || []).join(' ')
+      );
+    }
   },
 
   async supersedeMemory(
@@ -694,10 +813,141 @@ export const memoryRepository = {
   ): Promise<void> {
     const db = await initDatabase(space);
     await this.saveMemory(newRecord, space);
+    const now = Date.now();
     await db.runAsync(
-      'UPDATE ai_companion_memories SET superseded_by = ? WHERE id = ?',
+      'UPDATE ai_companion_memories SET superseded_by = ?, deleted_at = COALESCE(deleted_at, ?) WHERE id = ?',
       newRecord.id,
+      now,
       oldId
     );
+    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', oldId);
+  },
+
+  /**
+   * 软删除最近窗口内生成的瞬态记忆（用于主动命令遗忘“刚才的话全忘了吧”）
+   */
+  async softDeleteRecentTransientMemories(
+    roleCardId: string,
+    space: PixorySpace,
+    windowMs: number = 10 * 60 * 1000,
+    nowMs: number = Date.now()
+  ): Promise<number> {
+    if (!roleCardId) return 0;
+    const db = await initDatabase(space);
+    const thresholdMs = nowMs - windowMs;
+
+    // 仅撤回非置顶、重要度 < 8 的普通记忆或非钢印类别记忆
+    const rows = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM ai_companion_memories
+       WHERE role_card_id = ? AND space = ?
+         AND deleted_at IS NULL
+         AND is_pinned = 0
+         AND (
+           importance < 8
+           OR category NOT IN ('user_identity', 'identity', 'user_taboo', 'taboo', 'user_relationship', 'relationship')
+         )
+         AND created_at >= ?;`,
+      roleCardId,
+      space,
+      thresholdMs
+    );
+
+    if (!rows || rows.length === 0) return 0;
+    const ids = rows.map((r) => r.id);
+
+    await db.withTransactionAsync(async () => {
+      for (const id of ids) {
+        await db.runAsync('UPDATE ai_companion_memories SET deleted_at = ? WHERE id = ?', nowMs, id);
+        await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+      }
+    });
+
+    return ids.length;
+  },
+
+  /**
+   * 写前存量候选记忆预召回：
+   * 在提炼模型提炼新记忆前，捞出同角色、同空间下的 Top-5 存量 L2_FACT 与未完结 L2_EPISODE
+   * 供模型做跨字面语义覆写（SUPERSEDE）冲突仲裁
+   */
+  async recallCandidateMemoriesForMutation(
+    roleCardId: string,
+    space: PixorySpace,
+    dialogueText: string,
+    limit: number = 5
+  ): Promise<CompanionMemoryRecord[]> {
+    if (!roleCardId) return [];
+    const db = await initDatabase(space);
+    const now = Date.now();
+
+    // 1. 先尝试用 FTS5 查找与对话中实词相关的存量记忆
+    const ftsMatchedIds: string[] = [];
+    const smartTriggers = extractSmartTriggerKeywords(dialogueText);
+    if (smartTriggers.length > 0) {
+      try {
+        const ftsQuery = smartTriggers.map((t) => `"${t.replace(/"/g, '""')}"`).join(' OR ');
+        const rows = await db.getAllAsync<{ memory_id: string }>(
+          `SELECT memory_id FROM ai_companion_memories_fts WHERE ai_companion_memories_fts MATCH ? LIMIT 10`,
+          ftsQuery
+        );
+        for (const r of rows) {
+          ftsMatchedIds.push(r.memory_id);
+        }
+      } catch {}
+    }
+
+    // 2. 查询活跃的 L2 记忆（按 FTS 命中优先、重要度与访问时间排序）
+    const allL2 = await this.listMemories(roleCardId, space, 'L2_EPISODIC');
+    if (allL2.length === 0) return [];
+
+    const ftsIdSet = new Set(ftsMatchedIds);
+    const scoredList = allL2.map((m) => {
+      let priority = 0;
+      if (ftsIdSet.has(m.id)) priority += 10;
+      if (m.tier === 'L2_FACT') priority += 3;
+      if (m.importance >= 7) priority += 2;
+      return { memory: m, priority };
+    });
+
+    scoredList.sort((a, b) => b.priority - a.priority || b.memory.lastAccessedAt - a.memory.lastAccessedAt);
+    return scoredList.slice(0, limit).map((s) => s.memory);
+  },
+
+  /**
+   * 伴侣回复回显确认加分 (Echo-Verified Hit)
+   * 仅当检索召回的记忆在 AI 实际回复文本中被真实验证/引用时才累加 hit_count
+   */
+  async verifyAndRecordEchoHits(
+    roleCardId: string,
+    space: PixorySpace,
+    candidates: MemoryRecallCandidate[],
+    assistantReply: string
+  ): Promise<string[]> {
+    if (!candidates || candidates.length === 0 || !assistantReply) {
+      return [];
+    }
+    const lowerReply = assistantReply.toLowerCase();
+    const verifiedIds: string[] = [];
+
+    for (const cand of candidates) {
+      const entityHit = cand.category?.includes('profile') ||
+        (cand as any).entities?.some((e: string) => e && lowerReply.includes(e.toLowerCase()));
+      // 触发词命中
+      const triggerHit = (cand as any).triggerKeywords?.some(
+        (t: string) => t && t.length >= 2 && lowerReply.includes(t.toLowerCase())
+      );
+      // 或者候选内容的核心片段出现在回复中
+      const contentSnippet = cand.content.replace(/^\[\d{4}-\d{2}-\d{2}\]/, '').trim();
+      const contentHit = contentSnippet.length >= 4 && lowerReply.includes(contentSnippet.slice(0, 6).toLowerCase());
+
+      if (entityHit || triggerHit || contentHit) {
+        verifiedIds.push(cand.id);
+      }
+    }
+
+    if (verifiedIds.length > 0) {
+      await this.recordHits(verifiedIds, space);
+    }
+    return verifiedIds;
   },
 };

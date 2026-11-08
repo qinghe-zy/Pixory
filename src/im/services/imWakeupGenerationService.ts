@@ -28,8 +28,8 @@ import type { ImCompanionPersonalization } from '../repository/imSettingsReposit
 import { resolveEffectiveDnd, DEFAULT_DND_CONFIG, type EffectiveDndConfig } from '../heartbeat/imDndGuard';
 import { HIBERNATION_CUTOFF_MS } from '../heartbeat/proactivePacingGuard';
 import { buildChatPayload } from '../engine/imContextBuilder';
-import { parseStatusTag, parsePingTag } from '../engine/imTagParser';
-import { stripMetaTags } from '../engine/tagAwareStreamParser';
+import { parseStatusTag, parsePingTag, parseVoiceTag } from '../engine/imTagParser';
+import { stripMetaTags, sanitizeThoughtForUi } from '../engine/tagAwareStreamParser';
 import { sanitizeCompanionBubble } from '../engine/humanizeOutputGate';
 import { advanceLivingState } from '../engine/imAgencyEngine';
 import { isTimeInSleepPeriod, getNextMorning730 } from '../engine/naturalTimeParser';
@@ -343,16 +343,31 @@ export async function executeWakeupGeneration(
   let textWithoutThought = fullRawResponse;
   const thinkMatch = fullRawResponse.match(THINK_BLOCK_MATCH_REGEX);
   if (thinkMatch) {
-    thoughtText = thinkMatch[1].trim();
+    thoughtText = sanitizeThoughtForUi(thinkMatch[1].trim(), { isFinal: true });
     textWithoutThought = fullRawResponse.replace(THINK_BLOCK_STRIP_REGEX, '');
   }
 
   const rawSentences = textWithoutThought.split(BR_SPLIT_REGEX);
-  const cleanSentences = rawSentences
-    .map((s) => sanitizeCompanionBubble(stripMetaTags(s)))
-    .filter((s) => s.length > 0 && s !== '[PASS]');
+  const cleanItems: Array<{ text: string; isVoice: boolean; style?: string }> = [];
+  for (const s of rawSentences) {
+    const trimmed = s.trim();
+    if (!trimmed || trimmed === '[PASS]') continue;
+    const vTag = parseVoiceTag(trimmed);
+    if (vTag) {
+      if (voiceReplyEnabled) {
+        cleanItems.push({ text: vTag.text, isVoice: true, style: vTag.styleDirective });
+      } else {
+        cleanItems.push({ text: vTag.text, isVoice: false });
+      }
+    } else {
+      const sanitized = sanitizeCompanionBubble(stripMetaTags(trimmed), { preserveInlineStageActions: true });
+      if (sanitized) {
+        cleanItems.push({ text: sanitized, isVoice: false });
+      }
+    }
+  }
 
-  if (cleanSentences.length === 0 && !thoughtText) {
+  if (cleanItems.length === 0 && !thoughtText) {
     await clearPendingPing(space, threadId);
     return false;
   }
@@ -382,19 +397,30 @@ export async function executeWakeupGeneration(
     await insertImMessage(space, thoughtMsg);
   }
 
-  for (let i = 0; i < cleanSentences.length; i++) {
-    const sentence = cleanSentences[i];
+  for (let i = 0; i < cleanItems.length; i++) {
+    const item = cleanItems[i];
+    const msgTime = baseMsgTime + (i + 1) * 500;
+    const estDurationMs = Math.max(1000, Math.min(60000, Math.round(item.text.length * 240)));
     const msg: ImMessage = {
       id: `im_msg_${baseMsgTime}_${i}_w`,
       threadId,
       burstGroupId,
       role: 'assistant',
-      content: sentence,
-      type: 'text',
+      content: item.text,
+      type: item.isVoice ? 'voice' : 'text',
+      voice: item.isVoice
+        ? {
+            audioUri: '',
+            durationMs: estDurationMs,
+            transcription: item.text,
+            isPlayed: false,
+            style: item.style,
+          }
+        : undefined,
       status: 'sent',
       deliveryStatus: 'delivered',
       visibleAt: null,
-      createdAt: new Date(baseMsgTime + (i + 1) * 500).toISOString(),
+      createdAt: new Date(msgTime).toISOString(),
     };
     await insertImMessage(space, msg);
   }
@@ -404,7 +430,7 @@ export async function executeWakeupGeneration(
   const isThreadActivelyOpen =
     typeof GlobalHeartbeatEngine.shared.isThreadActivelyOpen === 'function' &&
     GlobalHeartbeatEngine.shared.isThreadActivelyOpen(space, threadId);
-  const unreadDelta = isThreadActivelyOpen ? 0 : cleanSentences.length;
+  const unreadDelta = isThreadActivelyOpen ? 0 : cleanItems.length;
 
   await db.runAsync(
     `UPDATE ai_threads
@@ -442,7 +468,7 @@ export async function executeWakeupGeneration(
   if (unreadDelta > 0 && space === 'normal') {
     try {
       const { postCompanionNotificationSafely } = await import('./imNotificationManager');
-      const previewText = cleanSentences.join(' ').slice(0, 80);
+      const previewText = cleanItems.map((it) => it.text).join(' ').slice(0, 80);
       void postCompanionNotificationSafely(space, threadId, companionName, previewText);
     } catch {}
   }

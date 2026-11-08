@@ -5,6 +5,7 @@ import { useImTheme } from '../../theme/ImThemeProvider';
 export interface ImBubbleBeakProps {
   direction: 'left' | 'right';
   customColor?: string;
+  offsetTop?: number;
 }
 
 /**
@@ -15,7 +16,7 @@ export interface ImBubbleBeakProps {
  * - 右尖角: 指向用户头像，填充微信绿
  * - 尺寸、偏移与颜色完全由 ImThemeTokens 驱动，支持随时开闭与换肤。
  */
-export function ImBubbleBeak({ direction, customColor }: ImBubbleBeakProps) {
+export function ImBubbleBeak({ direction, customColor, offsetTop }: ImBubbleBeakProps) {
   const theme = useImTheme();
 
   if (!theme.flags.showBeak) {
@@ -35,7 +36,7 @@ export function ImBubbleBeak({ direction, customColor }: ImBubbleBeakProps) {
       style={[
         styles.beakBase,
         {
-          top: beakOffsetTop,
+          top: offsetTop ?? beakOffsetTop,
           borderTopWidth: beakHeight / 2,
           borderBottomWidth: beakHeight / 2,
         },

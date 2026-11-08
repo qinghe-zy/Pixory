@@ -13,12 +13,19 @@ const VALID_TAG_PREFIXES = [
   'BR]',
   'STICKER:',
   'STICKER：',
+  'STICKER]',
   '表情:',
   '表情：',
+  '表情]',
   'MOOD:',
   'STATUS:',
   'HEARTBEAT:',
   'VOICE:',
+  'VOICE：',
+  'VOICE]',
+  '语音:',
+  '语音：',
+  '语音]',
   'NUDGE]',
   'NUDGE:',
   'NEXT_FOLLOWUP:',
@@ -34,9 +41,12 @@ const VALID_TAG_PREFIXES = [
   '/DOCUMENT_PATCH]',
   '/DOC_PATCH]',
 ];
-const SPLIT_PATTERN = /(\[br\s*\/?\]|<\/?br\s*\/?>|[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*[^\]】\n]{1,10}?\s*[\]】]|[[\[【]\s*(?:VOICE|语音)\s*[:：]\s*[^\]】\n]+?\s*[\]】])/i;
+const SPLIT_PATTERN =
+  /(\[br\s*\/?\]|<\/?br\s*\/?>|[[\[【]\s*(?:STICKER|表情)\s*(?:[:：]\s*[^\]】]{1,10}?\s*[\]】]|[\]】]\s*[:：]?\s*[^\[\]\n]{1,10}?(?=(?:\[br|<\/?br|$)))|[[\[【]\s*(?:VOICE|语音)\s*(?:[:：]\s*[^\]】]+?\s*[\]】]|[\]】]\s*[:：]?\s*[^\[\]\n]+?(?=(?:\[br|<\/?br|$))))/i;
+const IS_CONTENT_TAG_REGEX = /[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*(?:[:：]|\])/i;
 const THINK_BLOCK_STRIP_REGEX = /<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/gi;
 const THINK_TAG_STRIP_REGEX = /<\/?(?:think|thought)\s*\/?>/gi;
+const CONTROL_TAG_RESCUE_REGEX = /(?:\[HEARTBEAT:\s*[^|\]]+\|\s*([^\]]+)\]|\[NEXT_FOLLOWUP:\s*[^|\]]+\|\s*([^\]]+)\])/i;
 const MAX_TAG_BUFFER_LEN = 80;
 
 export interface DocumentStreamProgressEvent {
@@ -80,8 +90,46 @@ export function stripMetaTags(text: string): string {
     .replace(META_TAG_REGEX, '')
     // 3. 剥离深度思考遗留标签 (防止流切分边界残存裸露 <think> 或 </think>)
     .replace(THINK_TAG_STRIP_REGEX, '')
+    // 4. 残存语音协议脱水净化（即使流中残留语音控制指令，也剥壳还原为自然口语文案）
+    .replace(/[\[【]\s*(?:VOICE|语音)\s*(?:[:：]\s*(?:[^|\]】]+?\|)?\s*([^\]】]+?)\s*[\]】]|[\]】]\s*[:：]?\s*(?:[^|\[\]【】\n]+?\|)?\s*([^\[\]【】\n]+))/gi, (_m, p1, p2) => (p1 || p2 || '').trim())
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+export const META_SENTENCE_BLACKLIST_RE =
+  /(?:现在系统|系统说|系统提示|系统事件|根据系统|按照指令|遵循设定|触发心跳|进入阶段|预定联系时间|主动发消息|主动发送消息|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|STATUS|字数限制|个短句|口语短句|拆气泡|回复形态引导|表达节奏同调|表达纠偏|预定意图|唤醒原因|主动联系唤醒|早安问候|客服套路|气泡长短|提示词|生活情境与起念|the\s+intent\s+was|intent\s*[:：]|(?:\w+['’]s?\s+)?persona\s*[:：]|\w+\s+persona|natural\s+bubbles|keep\s+it\s+(?:short|brief|simple|natural)|\b(?:short|natural)\s+bubbles\b|system\s+prompt|system\s+instruction|the\s+context\s+says|as\s+per\s+instruction|in\s+character|she\s+asked|she\s+should|he\s+should|i\s+should|he\s+didn't|did\s*n['’]?t\s+show|now\s+it's\s+\d{1,2}[:：]\d{2}|hours\s+since\s+last\s+contact|acknowledge\s+that|in\s+this\s+turn|the\s+user|the\s+companion|mild\s+dry\s+complaint|soppy|morning\s+plan)/i;
+
+const TAG_PROTOCOL_STRIP_REGEX =
+  /\[(?:STATUS|HEARTBEAT|NEXT_FOLLOWUP|STAGE_FOLLOWUP|PING|NUDGE|STICKER|VOICE|BR)[^\]]*\]/gi;
+const CLAUSE_SPLIT_REGEX = /(?<=[。！？!?\n；;]|\.\s+|\.\n)/;
+const CONSECUTIVE_NEWLINES_REGEX = /\n{3,}/g;
+
+/**
+ * 分句级思考净化过滤器：
+ * 彻底整句剥离技术指令与格式要求，将思考过程收敛为如竞品般纯净自然的第一人称角色心声
+ */
+export function sanitizeThoughtForUi(
+  rawThought: string,
+  options?: { isFinal?: boolean }
+): string {
+  if (!rawThought) return '';
+  // 1. 先剥离显式方括号协议标签
+  const withoutTags = rawThought.replace(TAG_PROTOCOL_STRIP_REGEX, '');
+  // 2. 按中英文句末标点或换行切分为独立分句，命中系统元语义的分句整句剔除
+  const clauses = withoutTags.split(CLAUSE_SPLIT_REGEX);
+  const cleanClauses = clauses.filter(
+    (clause) => !META_SENTENCE_BLACKLIST_RE.test(clause)
+  );
+  let cleaned = cleanClauses.join('').replace(CONSECUTIVE_NEWLINES_REGEX, '\n\n').trim();
+
+  // 3. 若过滤后只残留孤立的标点符号、引号或纯空白，视为空
+  if (cleaned && /^[\s.,;:!?'"“”‘’（）()—\-]+$/.test(cleaned)) {
+    cleaned = '';
+  }
+
+  if (cleaned) return cleaned;
+  // 仅在流结束（isFinal = true）且被全部滤空时才给角色潜台词兜底，防止流式初期闪烁
+  return options?.isFinal ? '（看着屏幕，心里悄悄盘算着要怎么跟你说……）' : '';
 }
 
 /**
@@ -229,7 +277,7 @@ export class TagAwareStreamParser {
         }
 
         // 如果切分界标本身是内容标签（如 [VOICE: ...] 或 [STICKER: ...]），则将其自身作为一个独立气泡发射
-        if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(matchedDelimiter)) {
+        if (IS_CONTENT_TAG_REGEX.test(matchedDelimiter)) {
           readySentences.push(matchedDelimiter.trim());
           this.emittedCount += 1;
         }
@@ -265,7 +313,7 @@ export class TagAwareStreamParser {
       }
 
       // 如果切分界标本身是内容标签（如 [VOICE: ...] 或 [STICKER: ...]），则将其自身作为一个独立气泡发射
-      if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(matchedDelimiter)) {
+      if (IS_CONTENT_TAG_REGEX.test(matchedDelimiter)) {
         readySentences.push(matchedDelimiter.trim());
         this.emittedCount += 1;
       }
@@ -554,6 +602,41 @@ export class TagAwareStreamParser {
         return [];
       }
 
+      // 未闭合思考块吞噬正文抢救：检查双换行后的角色台词
+      const doubleNewlineIdx = combined.lastIndexOf('\n\n');
+      if (doubleNewlineIdx !== -1) {
+        const thoughtCandidate = combined.slice(0, doubleNewlineIdx).replace(THINK_TAG_STRIP_REGEX, '').trim();
+        const dialogueCandidate = combined.slice(doubleNewlineIdx + 2).replace(THINK_TAG_STRIP_REGEX, '').trim();
+        if (dialogueCandidate.length > 0) {
+          if (thoughtCandidate.length > 0) {
+            this.options?.onThoughtCompleted?.(thoughtCandidate);
+          }
+          this.fullThoughtBuffer = '';
+          this.buffer = '';
+          this.inThinking = false;
+          const remaining = stripMetaTags(this.preThinkContent + dialogueCandidate);
+          this.preThinkContent = '';
+          if (remaining.length > 0) {
+            return this.splitRemainingFallback(remaining);
+          }
+        }
+      }
+
+      // 检查 combined 中是否包含预埋控制标签台词
+      const inThinkTagMatch = combined.match(CONTROL_TAG_RESCUE_REGEX);
+      if (inThinkTagMatch && this.emittedCount === 0) {
+        const rescuedMsg = (inThinkTagMatch[1] || inThinkTagMatch[2] || '').trim();
+        if (rescuedMsg.length > 0) {
+          const cleanRescued = stripMetaTags(rescuedMsg);
+          if (cleanRescued.length > 0) {
+            this.fullThoughtBuffer = '';
+            this.buffer = '';
+            this.inThinking = false;
+            return this.splitRemainingFallback(cleanRescued);
+          }
+        }
+      }
+
       if (this.buffer.length > 0) {
         this.fullThoughtBuffer += this.buffer;
         if (this.fullThoughtBuffer.length > this.emittedThoughtLen) {
@@ -582,6 +665,21 @@ export class TagAwareStreamParser {
     if (remaining.length > 0) {
       return this.splitRemainingFallback(remaining);
     }
+
+    // 控制标签降级转正文抢救：若本轮未产出主正文，将 [HEARTBEAT] 或 [NEXT_FOLLOWUP] 台词提取为主回复气泡
+    if (this.emittedCount === 0) {
+      const tagMatch = full.match(CONTROL_TAG_RESCUE_REGEX);
+      if (tagMatch) {
+        const rescuedMsg = (tagMatch[1] || tagMatch[2] || '').trim();
+        if (rescuedMsg.length > 0) {
+          const cleanRescued = stripMetaTags(rescuedMsg);
+          if (cleanRescued.length > 0) {
+            return this.splitRemainingFallback(cleanRescued);
+          }
+        }
+      }
+    }
+
     return [];
   }
 
@@ -598,14 +696,14 @@ export class TagAwareStreamParser {
     let processedText = text;
 
     // 0. 优先解构语音条 [VOICE: ...] 或表情包 [STICKER: ...]，保证气泡类型纯净
-    if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(processedText)) {
+    if (IS_CONTENT_TAG_REGEX.test(processedText)) {
       const parts: string[] = [];
       let rem = processedText;
       let m: RegExpMatchArray | null;
       while ((m = rem.match(SPLIT_PATTERN)) && m.index !== undefined) {
         const before = rem.slice(0, m.index).trim();
         if (before) parts.push(before);
-        if (/[[\[【]\s*(?:VOICE|语音|STICKER|表情)\s*[:：]/i.test(m[0])) {
+        if (IS_CONTENT_TAG_REGEX.test(m[0])) {
           parts.push(m[0].trim());
         }
         rem = rem.slice(m.index + m[0].length);

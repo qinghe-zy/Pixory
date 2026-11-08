@@ -1,8 +1,10 @@
 import Constants from 'expo-constants';
+import { Alert, Linking } from 'react-native';
+import * as Updates from 'expo-updates';
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const FALLBACK_CURRENT_VERSION = '2.9.2';
-const FALLBACK_CURRENT_VERSION_CODE = 29002;
+const FALLBACK_CURRENT_VERSION = '2.9.3';
+const FALLBACK_CURRENT_VERSION_CODE = 29005;
 
 export interface AppUpdateInfo {
   version: string;
@@ -93,12 +95,16 @@ function getUpdateCheckConfig(): UpdateCheckConfig {
   return { enabled, fallbackDownloadUrl, githubLatestUrl, timeoutMs, url };
 }
 
-function getCurrentAppVersion(): CurrentAppVersion {
+export function getCurrentAppVersion(): CurrentAppVersion {
   const expoConfig = Constants.expoConfig;
   return {
     version: expoConfig?.version ?? FALLBACK_CURRENT_VERSION,
     versionCode: asPositiveInteger(expoConfig?.android?.versionCode) ?? FALLBACK_CURRENT_VERSION_CODE,
   };
+}
+
+export function getAppVersion(): string {
+  return Constants.expoConfig?.version ?? FALLBACK_CURRENT_VERSION;
 }
 
 function normalizeRemoteUpdate(payload: unknown): AppUpdateInfo | null {
@@ -239,5 +245,79 @@ export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {
   }
 
   return null;
+}
+
+export type UpdateToastFunction = (
+  options: string | { message: string; durationMs?: number; tone?: 'neutral' | 'success' | 'warning' | 'error' | 'info' },
+) => void;
+
+export interface CheckAllAppUpdatesOptions {
+  showToast: UpdateToastFunction;
+  openUrl?: (url: string) => void;
+}
+
+let isCheckUpdateInProgress = false;
+
+export async function checkAllAppUpdates(
+  options: CheckAllAppUpdatesOptions | UpdateToastFunction,
+): Promise<void> {
+  const showToast = typeof options === 'function' ? options : options.showToast;
+  const openUrl =
+    typeof options === 'function'
+      ? (url: string) => {
+          Linking.openURL(url).catch(() => {});
+        }
+      : (options.openUrl ??
+        ((url: string) => {
+          Linking.openURL(url).catch(() => {});
+        }));
+
+  if (isCheckUpdateInProgress) {
+    showToast({ message: '正在检查更新中，请稍候...', tone: 'info', durationMs: 2000 });
+    return;
+  }
+
+  isCheckUpdateInProgress = true;
+  try {
+    showToast({ message: '正在检查更新...', durationMs: 999999 });
+    const [versionInfo, otaUpdate] = await Promise.all([
+      checkForAppUpdate().catch(() => null),
+      __DEV__ || !Updates.isEnabled
+        ? Promise.resolve(null)
+        : Promise.race([
+            Updates.checkForUpdateAsync().catch(() => null),
+            new Promise<any>((_, reject) => setTimeout(() => reject(new Error('OTA_TIMEOUT')), 10000)),
+          ]).catch(() => null),
+    ]);
+
+    if (versionInfo) {
+      showToast({ message: '发现新版本', durationMs: 3000, tone: 'success' });
+      Alert.alert('发现新版本', `新版本 v${versionInfo.version} 已发布，是否前往下载？`, [
+        { text: '稍后', style: 'cancel' },
+        { text: '前往', onPress: () => openUrl(versionInfo.downloadUrl) },
+      ]);
+      return;
+    }
+
+    if (otaUpdate?.isAvailable) {
+      showToast({ message: '发现新热更新，正在下载...', durationMs: 999999 });
+      await Updates.fetchUpdateAsync();
+      showToast({ message: '热更新下载完成', durationMs: 3000, tone: 'success' });
+      Alert.alert('热更新完成', '是否立即重启应用以应用更新？', [
+        { text: '稍后', style: 'cancel' },
+        { text: '重启', onPress: () => Updates.reloadAsync() },
+      ]);
+    } else {
+      showToast({ message: '当前已是最新版本', durationMs: 2600, tone: 'neutral' });
+    }
+  } catch (error: any) {
+    if (error?.message === 'OTA_TIMEOUT' || error?.message?.includes('timeout') || error?.message?.includes('network')) {
+      showToast({ message: '网络问题，检查超时', tone: 'error' });
+    } else {
+      showToast({ message: '更新检查失败', tone: 'error' });
+    }
+  } finally {
+    isCheckUpdateInProgress = false;
+  }
 }
 

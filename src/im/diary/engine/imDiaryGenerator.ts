@@ -4,6 +4,7 @@ import { getActiveProviderConfig } from '../../../core/llm-transport/secureApiKe
 import type { ImCompanionDiary, DiaryPaperTexture, DiaryThemeKey, DiaryMemoryMetadata } from '../types';
 import { saveCompanionDiary, getCompanionDiaryByDate } from '../repository/imDiaryRepository';
 import { harvestDiaryMemoryToL2 } from './diaryMemoryHarvester';
+import { runDailyMemoryMetabolism } from '../../../core/memory/memoryMetabolismService';
 import { insertImMessage } from '../../repository/imThreadRepository';
 import type { ImMessage } from '../../types';
 import { getLocalDayRange, selectDiaryDialogue, toLocalDateStr } from './diaryDayWindow';
@@ -334,6 +335,11 @@ export async function generateCompanionDailyDiary({
       });
     } catch {}
   }
+
+  // 7.1 伴聊记忆夜间睡眠新陈代谢：静默修剪僵尸记忆与过期待办
+  try {
+    await runDailyMemoryMetabolism(db, roleCardId, space, Date.now());
+  } catch {}
 
   // 8. 聊天流小信封卡片维护（幂等更新，同一天绝不堆积重复卡片）
   try {

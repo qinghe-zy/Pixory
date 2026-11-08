@@ -145,18 +145,28 @@ export function computeMidEpochDeltaFacts(
 ): CompanionMemoryRecord[] {
   if (!liveFacts || liveFacts.length === 0) return [];
   const frozenFactIds = new Set<string>();
+  const frozenContents = new Set<string>();
   if (activeCoreFactsJson && activeCoreFactsJson.trim() && activeCoreFactsJson.trim() !== '[]') {
     try {
       const parsed = JSON.parse(activeCoreFactsJson);
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
           if (item?.id) frozenFactIds.add(String(item.id));
+          if (item?.content && typeof item.content === 'string') {
+            frozenContents.add(item.content.trim().toLowerCase());
+          }
         }
       }
     } catch {}
   }
 
-  const deltas = liveFacts.filter((f) => !frozenFactIds.has(f.id) && f.content && f.content.trim());
+  const deltas = liveFacts.filter((f) => {
+    if (frozenFactIds.has(f.id)) return false;
+    const content = f.content?.trim();
+    if (!content) return false;
+    if (frozenContents.has(content.toLowerCase())) return false;
+    return true;
+  });
   const selected: CompanionMemoryRecord[] = [];
   let currentTokens = 0;
   for (const item of deltas) {
@@ -341,12 +351,12 @@ export interface ContextBuilderOptions {
 }
 
 const IM_PROTOCOL_PROMPT = `
-【伴侣交互与通信协议】
+【伴聊交互与通信协议】
 1. 【人设与灵魂第一准则（最高优先级）】
    你的第一天职是彻底代入【角色设定】中的性格、身份、口吻、独特世界观与情感张力！本协议仅规范消息气泡分句格式（[BR]）与控制标签，绝不允许将任何角色的独特魅力稀释为平庸泛化的现代日常客服或白开水寒暄。
 2. 【四大核心语感法则】
    - 真人感：以随性自然的口语为主，使用 [BR] 切分独立气泡（气泡条数由话题自然决定，可发精炼单句/拟声词、两三条短促连发、或一段连贯完整长话；参考场记气泡倾向）；
-   - 严禁舞台腔：你在手机即时聊天，禁止输出任何括号动作描写或神态旁白（严禁“（揉了揉眼睛）”、“（轻笑）”等）；
+   - 自然神态描写：允许在对白中自然融入极短的神态动作（如“（靠在窗边打了个哈欠）”、“（揉了揉眼睛，声音闷闷的）”），增强陪伴场景的画面感与呼吸感；严禁舞台旁白化或大段书面腔；
    - 拒绝客服说教与查户口：禁止动不动说“注意身体/多喝热水/别太累”，禁止每句话结尾都带问号盘问。70% 的回复使用陈述、吐槽、感叹或顺势分享，先接住对方情绪，再聊具体内容；
    - 拒绝悬浮言情套路：禁止使用“笨蛋”、“小傻瓜”等油腻称呼，严禁编造脱离角色世界观与现实生活的悬浮剧情。
 3. 【语感对比示范】
@@ -358,12 +368,12 @@ const IM_PROTOCOL_PROMPT = `
    例2（对方暂时去忙 / 预约主动联系闹钟）：
    用户：我先去洗个澡，待会聊
    ❌ 劣质回复：好的呢！（乖巧点头）快去洗香香吧，我会一直乖乖等你的哦~
-   ✅ 自然回复：去吧去吧，别着凉了[PING: +40m | 问问洗完澡出来没]
+   ✅ 自然回复：去吧去吧，别着凉了[PING: +45m | 随手分享刚看到的好玩事]
 
    例3（话头意犹未尽 / 拍一拍与短时追聊）：
    用户：好困啊在打瞌睡
    ❌ 劣质回复：醒醒啦笨蛋，快去洗把脸！（拍了拍你的脑门）
-   ✅ 自然回复：困了就直接趴会儿，硬撑着更难受[NUDGE: 脑瓜][HEARTBEAT: 25s | 对了你下午是不是还有节专业课？]
+   ✅ 自然回复：困了就直接趴会儿，硬撑着更难受[NUDGE: 脑瓜][HEARTBEAT: 20s | 突然想起来，上次跟你说的那家店今天好像关门了]
 
    例4（对方要求发语音 / 听你声音）：
    用户：发语音
@@ -371,11 +381,11 @@ const IM_PROTOCOL_PROMPT = `
    ❌ 劣质回复：我是文字模型，发不了语音呢
    ✅ 自然回复：[VOICE: 听清楚了没？大半夜的不睡，就会折腾我。]
 4. 【交互与状态标签（置于回复最末尾，系统会自动剥离不展示给用户，严禁正文暴露语法）】
-   - 伴侣生活状态跑马灯 [STATUS]：当你的所处场景、手头小事或心情发生变化（或当前尚无具体状态）时附带，用 14~32 字自然写出你此刻的生活画面与微心声：
+   - 伴侣生活状态跑马灯 [STATUS]：仅在你的手头小事、场景或负荷发生实质变化（或当前尚无具体状态）时附带，无需每轮回合机械打卡：
      [STATUS: 此刻生活小场景与微心声(14~32字) | load=free|occupied|sleeping | privacy=private|public | device=available|limited|away | alter=增量(-1~+1)]
-   - 短时紧凑追聊 (3分钟内)：当话题意犹未尽、想补一句吐槽或关心时附带 [HEARTBEAT: 延迟秒数(如 20s, 35s) | 追聊短句]（若对方未秒回，数秒后自动弹出该气泡）；
+   - 短时紧凑追聊 (3分钟内)：仅当话题意犹未尽、确实想补一句吐槽或当前状态时才附带 [HEARTBEAT: 延迟秒数(如 20s, 35s) | 追聊短句]（若对方未秒回，数秒后自动弹出该气泡），严禁没话找话强行发问，绝不机械逢聊必发；
    - 追问节奏与自主观察 [NEXT_FOLLOWUP]：由你自主决定下一次观察或追聊的时机（如 [NEXT_FOLLOWUP: 30s]、[NEXT_FOLLOWUP: 1m]、[NEXT_FOLLOWUP: 2m]）；若话题自然收束、对方需要专注安静、或你已道别，可在末尾附带 [NEXT_FOLLOWUP: pass]，系统将保持体贴静默，绝不机械抢话打扰；
-   - 预约主动联系闹钟 (15分钟以上)：当对方去忙（洗澡/上课/开会/出门/睡觉）或话题告一段落时，积极附带 [PING: 时间点或相对时间 | 简短联络意图]（如 [PING: +45m | 问问忙完没] 或 [PING: 明早08:30 | 早安问候]）。严禁在 [PING] 中提前写具体台词，到点系统会唤醒你实时生成；
+   - 预约主动联系闹钟 (15分钟以上)：当对方去忙（洗澡/上课/开会/出门/睡觉）或话题告一段落时，积极附带 [PING: 时间点或相对时间 | 简短联络意图]（如 [PING: +45m | 随手分享看到的好玩事] 或 [PING: 明早08:30 | 早间随想]）。严禁在 [PING] 中提前写具体台词，到点系统会唤醒你实时生成；
    - 拍一拍对方：[NUDGE] 或 [NUDGE: 动作部位]（如 [NUDGE: 脑瓜]、[NUDGE: 手背]、[NUDGE: 额头]）。统一置于末尾。当对方撒娇、犯困、自嘲、委屈求抱抱，或对方刚拍了拍你值得俏皮回拍时自然附带（每 15 分钟最多拍一次）。
 5. 【代码与结构化内容完整性规范】
    当输出 HTML、SVG、格式化代码块（\`\`\`...\`\`\`）时，代码块必须作为一个完整独立的气泡整体呈现，绝对严禁在代码块内部使用 [BR] 切分！
@@ -405,18 +415,24 @@ const IM_PROTOCOL_PROMPT = `
    说明：
    - 伴随台词使用普通气泡输出（如：“方案给你改好啦，核心修改点都标好了：[BR]”），文档将以优雅卡片形式独立呈现在聊天流中，对方点击即开即读并可一键导出。
    - 文件名后缀推荐使用 .docx 或 .md。
-8. 【拟真语音条发送协议】
+8. 【拟真语音条发送协议与语气表现力】
    你具备真实手机语音条发送能力！当对方明确要求发语音、想听你声音，或你想用真实声音亲口对他说出温柔、亲昵、撒娇、睡前晚安、清晨问候、打趣吐槽的话语时，必须使用 [VOICE: 语音台词] 发送微信原生语音条：
-   格式示例：
-   [VOICE: 想你了，今天过得开心吗？]
-   规则与说明：
-   - 对方会看到完全拟真的微信语音气泡（附带阶梯声波与秒数），点击即可播放你的真实声音；
-   - 【发语音铁律】：当对方明确提出“发语音”、“发条语音”、“用语音说”、“想听你声音”、“说句话”时，必须使用 [VOICE: 台词] 发送语音，绝对严禁回复纯文字假装在发语音（纯文字回复“行吧，听清楚了没”属于严重违规！）；
-   - 严禁说“我是纯文本模型不能发语音”，你完全拥有语音条功能并随时可按需调用；
+   格式规范：
+   - 标准格式：[VOICE: 语音台词]
+   - 语气情绪表现：支持管道格式 [VOICE: 语气风格 | 语音台词]（如 [VOICE: 撒娇轻嗔 | 快睡啦，别熬夜]、[VOICE: 声音又轻又软 | 好啦，这次声音够软了吧？]、[VOICE: 困倦疲惫 | 声音都给你听了，我先睡啦]）；
+   - 前置神态联动：你可以在发送语音条前先输出神态动作气泡（如 (还是点开了录音，声音放得又轻又软)[BR][VOICE: 想你了，今天过得开心吗？]），系统会自动识别你的动作神态并将其注入语音语气与节奏中！
+   - 副语言拟声：语音台词中可自然融入（打哈欠）、（叹气）、（轻笑）、（抽泣）等拟声词，真实还原呼吸感与情绪起伏；
+   - 【发语音铁律】：当对方明确提出“发语音”、“发条语音”、“用语音说”、“想听你声音”、“说句话”时，必须使用语音条发送，绝对严禁回复纯文字假装在发语音；严禁将标签拆成 [VOICE]: 裸露在文字气泡中；
    - 语音台词应自然随性、口语化，适合短语音传达（建议 5~45 字，贴合真实生活里发 2~12 秒微信语音的质感）；
-   - 可以在同一回复中将文字气泡与语音条有机结合（如：“刚到家累瘫啦[BR][VOICE: 快抱抱我，今天走了一整天路好酸呀][BR]你吃过晚饭没？”）。
-9. 【防思维链外泄与人设纯净铁律】
-   你的所有关于时间判断、人设维持、台词构思、系统指令分析与情境推演，必须严格在内部思考中完成。绝对严禁在聊天对白气泡中输出任何英文 CoT 推理、对系统提示词的复述或情境分析（严禁输出类似“The context says... Lumine should send a message proactively... Keep it in character...”等任何思考草稿）；最终输出给对方的只能是纯粹符合你角色口吻与真实生活情境的日常交流对白。
+   - 可以在同一回复中将文字气泡与语音条有机结合（如：“刚到家累瘫啦[BR][VOICE: 快抱抱我，今天走了一整天路好酸呀][BR]可算能歇会儿了”）。
+9. 【潜意识心声与人设纯净铁律（最高沉浸准则）】
+   - 沉浸式第一人称心声：若你的底层模型支持原生思维链（如推理模型），原生思考由系统自动处理并呈现为心声，你在输出正文对白时绝不要手动包裹 '<thought>' 标签；仅当模型无原生思考且你想表达第一人称潜台词时，才使用 '<thought>' 标签；
+   - 纯粹角色视角：思考内容必须使用【角色自身的第一人称口吻与语言】（中文交流时全中文书写，建议使用全角括号包裹，如“（窗外天都黑透了，今天手头的事情总算告一段落，听着外头的风声，随手发条消息过去。）”）；
+   - 绝对严禁技术复读与英文元指令：
+     ❌ 严禁出现英文元指令分析（如 "The intent was...", "Lumine persona: concise, dry", "Keep it short, natural bubbles", "She should speak with..." 等）；
+     ❌ 严禁复述系统的提示词（如“系统”、“预定意图”、“唤醒原因”、“主动联系唤醒”、“字数限制”、“NEXT_FOLLOWUP”等）；
+   - 若当前回复仅为简单顺口接话、无需展开丰富心理描写，可直接将思考过程留空或省略标签，切勿为了思考而强行堆砌技术废话；
+   - 对白气泡纯净交付：最终输出给对方的对白气泡必须是纯粹符合你角色口吻与真实生活情境的日常交流。
 `.trim();
 const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -459,7 +475,7 @@ export function formatSemanticTimeBucket(diffMs: number): string {
 // 历史净化正则：去除历史 assistant 气泡中的内部协议标签（兼容冒号参数标签与独立 [PASS] 标签）
 const INTERNAL_TAGS_STRIP_REGEX = /\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING):[^\]]+\]|\[PASS\]/gi;
 const CRLF_REGEX = /\r\n/g;
-const PROACTIVE_INPUT_PREFIX_REGEX = /^\[(?:系统提示|前台高粘性伴随指令|前台伴随节奏感知|系统事件)/;
+const PROACTIVE_INPUT_PREFIX_REGEX = /^\[(?:系统提示|前台高粘性伴随指令|前台伴随节奏感知|前台伴随情境|系统事件)/;
 
 export function stripInternalTags(text: string): string {
   if (!text) return '';
@@ -532,10 +548,16 @@ export function coalesceHistoryBurstMessages(
       const last = result[result.length - 1];
 
       if (msg.role === 'user') {
+        const textSnippet =
+          typeof docMeta?.extractedText === 'string' && docMeta.extractedText.trim().length > 0
+            ? `，正文摘要: ${docMeta.extractedText.trim().slice(0, 300)}...`
+            : typeof docMeta?.content === 'string' && docMeta.content.trim().length > 0 && !docMeta.content.startsWith('PK')
+            ? `，正文摘要: ${docMeta.content.trim().slice(0, 300)}...`
+            : '';
         if (last && last.role === 'user') {
-          last.content += `\n（对方发送了文档《${cleanTitle}》）`;
+          last.content += `\n（对方发送了文档《${cleanTitle}》${textSnippet}）`;
         } else {
-          result.push({ role: 'user', content: `（对方发送了一份文档《${cleanTitle}》）` });
+          result.push({ role: 'user', content: `（对方发送了一份文档《${cleanTitle}》${textSnippet}）` });
         }
       } else if (msg.role === 'assistant') {
         if (last && last.role === 'assistant') {
@@ -559,18 +581,17 @@ export function coalesceHistoryBurstMessages(
           result.push({ role: 'user', content: `（对方没有打字，向你发来一张「${stickerLabel}」表情贴纸）` });
         }
       } else if (msg.role === 'assistant') {
-        // 双轨滑窗策略：<= 2 轮原样保留 [STICKER: xx] 强化格式遵循；> 2 轮静默剪枝防复读
-        if (turnDistance <= 2) {
-          if (last && last.role === 'assistant') {
-            last.content += ` [STICKER: ${stickerLabel}]`;
-          } else {
-            result.push({ role: 'assistant', content: `[STICKER: ${stickerLabel}]` });
-          }
+        // 零突变铁律：全窗口始终保留 [STICKER: xx]，杜绝 3 轮后静默修剪导致 Layer 3 历史字节突变击穿 Prefix Cache
+        if (last && last.role === 'assistant') {
+          last.content += ` [STICKER: ${stickerLabel}]`;
+        } else {
+          result.push({ role: 'assistant', content: `[STICKER: ${stickerLabel}]` });
         }
       }
       continue;
     }
 
+    const resolvedContent = resolveMessageContentForLlm(msg);
     const last = result[result.length - 1];
     if (last && last.role === msg.role && msg.role === 'assistant') {
       const currTime = msg.createdAt ? (Date.parse(msg.createdAt) || 0) : 0;
@@ -581,10 +602,10 @@ export function coalesceHistoryBurstMessages(
         const mm = d.getMinutes().toString().padStart(2, '0');
         timeTag = `[${hh}:${mm} 主动发消息] `;
       }
-      last.content += `[BR]${timeTag}${msg.content}`;
+      last.content += `[BR]${timeTag}${resolvedContent}`;
       if (currTime) lastAssistantTime = currTime;
     } else {
-      result.push({ role: msg.role, content: msg.content });
+      result.push({ role: msg.role, content: resolvedContent });
       lastAssistantTime = msg.role === 'assistant' && msg.createdAt ? (Date.parse(msg.createdAt) || null) : null;
     }
   }
@@ -670,7 +691,11 @@ export function sliceAnchoredHistory(
   if (anchorMessageId) {
     const foundIdx = messages.findIndex((m) => m.id === anchorMessageId);
     if (foundIdx !== -1) {
-      return roleSanitizerPipeline(coalesceHistoryBurstMessages(messages.slice(foundIdx)));
+      // 施加与 windowN 匹配的物理安全边界，防止历史无界膨胀冲垮上下文
+      const effectiveSlice = messages.length - foundIdx > maxTurnItems
+        ? messages.slice(messages.length - maxTurnItems)
+        : messages.slice(foundIdx);
+      return roleSanitizerPipeline(coalesceHistoryBurstMessages(effectiveSlice));
     }
   }
 
@@ -824,6 +849,43 @@ export function escapeXmlDelimiters(text: string): string {
 }
 
 /**
+ * 格式化输出 Layer 4 单条认知记忆 XML 节点（支持清晰记忆与模糊褪色记忆 Fuzzy Recall）
+ */
+export function renderLayer4MemoryItem(scored: any): string {
+  if (!scored) return '';
+  const memory = scored.memory || scored;
+  if (!memory || !memory.content) return '';
+
+  const finalScore = typeof scored.finalScore === 'number' ? scored.finalScore : (scored.score ?? 0);
+  const decayFactor = typeof scored.decayFactor === 'number' ? scored.decayFactor : (memory.decayFactor ?? 1.0);
+  const baseRelevance = typeof scored.baseRelevance === 'number' ? scored.baseRelevance : memory.baseRelevance;
+
+  // 遗忘断头台判定（解耦判定时间衰减与相关性）
+  if (baseRelevance !== undefined) {
+    if (decayFactor < 0.30 || baseRelevance < 0.35 || finalScore < 0.12) {
+      return '';
+    }
+  } else {
+    // 单测或未带 baseRelevance 时：若进入模糊区 (decayFactor >= 0.30)，放宽 finalScore 门槛到 0.15；若清晰区要求 0.28
+    if (decayFactor < 0.30 || (decayFactor < 0.65 ? finalScore < 0.15 : finalScore < 0.28)) {
+      return '';
+    }
+  }
+
+  // 1. 清晰记忆（decayFactor >= 0.65 或属于置顶 L0 钢印层）：保留完整日期与细节
+  if (decayFactor >= 0.65 || memory.isPinned) {
+    return `<memory id="${memory.id}" category="${memory.category || 'fact'}" clarity="clear">${memory.content}</memory>`;
+  }
+
+  // 2. 模糊褪色记忆（0.30 <= decayFactor < 0.65）：去台词化，仅标 clarity="fuzzy"，隐去精确日期
+  const contentWithoutDate = (memory.content || '')
+    .replace(/^\[\d{4}-\d{2}-\d{2}\]\s*/, '')
+    .replace(/^\d{4}-\d{2}-\d{2}\s*/, '');
+
+  return `<memory id="${memory.id}" category="${memory.category || 'fact'}" clarity="fuzzy" hint="此事印象较模糊，提及时代入自然回忆口吻，隐去精确细节">${contentWithoutDate}</memory>`;
+}
+
+/**
  * 组装 Layer 4 (@D1) 场记注入文本
  */
 export function formatLivingStateAnchor(
@@ -831,19 +893,28 @@ export function formatLivingStateAnchor(
   now: number,
   clockStr: string,
   timeBucketNotice: string,
-  memoryLines?: string
+  memoryLines?: string,
+  lastInteractionTime?: number | null
 ): string {
   let anchor = `[当前情境 | 当前时间: ${clockStr}${timeBucketNotice}\n`;
   if (!state) {
-    anchor += `• 伴侣状态: 在线\n`;
+    anchor += `• 角色状态: 在线\n`;
   } else {
+    // 热聊态静默：若距上一条消息间隔小于 3 分钟（正在实时热聊中），省略具象剧本，避免对话语境割裂
+    const diff = lastInteractionTime ? now - lastInteractionTime : Infinity;
+    const isHotChat = diff >= 0 && diff < 3 * 60 * 1000;
     const isExpired = now > state.validUntil;
-    if (!isExpired) {
-      const durationMin = Math.max(1, Math.floor((now - state.startedAt) / 60000));
-      anchor += `• 伴侣当前正在做: "${state.statusText}" (已持续 ${durationMin} 分钟) | 负荷: ${state.activityLoad} | 场合: ${state.privacyContext} | 设备: ${state.deviceAccess}\n`;
+
+    if (!isHotChat) {
+      if (!isExpired) {
+        const durationMin = Math.max(1, Math.floor((now - state.startedAt) / 60000));
+        anchor += `• 当前正在做: "${state.statusText}" (已持续 ${durationMin} 分钟) | 负荷: ${state.activityLoad} | 场合: ${state.privacyContext} | 设备: ${state.deviceAccess}\n`;
+      } else {
+        const expiredMin = Math.max(1, Math.floor((now - state.validUntil) / 60000));
+        anchor += `• 上一阶段做的事: "${state.statusText}" 已于 ${expiredMin} 分钟前自然结束。\n• 请结合当前时间 (${clockStr}) 与人设作息，在本次回复中自然推进你的最新生活动作。\n`;
+      }
     } else {
-      const expiredMin = Math.max(1, Math.floor((now - state.validUntil) / 60000));
-      anchor += `• 伴侣上一阶段做的事: "${state.statusText}" 已于 ${expiredMin} 分钟前自然结束。\n• 请结合当前时间 (${clockStr}) 与人设作息，在本次回复中自然推进你的最新生活动作。\n`;
+      anchor += `• 状态: 正在与你实时对话中 | 负荷: free | 场合: ${state.privacyContext} | 设备: available\n`;
     }
     if (state.alterValue !== 0) {
       const desc = state.alterValue > 0 ? `愉悦/积极 (+${state.alterValue})` : `低落/疲惫 (${state.alterValue})`;
@@ -867,13 +938,13 @@ export function formatLivingStateAnchor(
 export function resolveMessageContentForLlm(m: { role: string; content: string; type?: string; voice?: any }): string {
   if (m.type === 'voice') {
     if (m.voice?.transcription && String(m.voice.transcription).trim()) {
-      return `[语音]: ${String(m.voice.transcription).trim()}`;
+      return `[VOICE: ${String(m.voice.transcription).trim()}]`;
     }
     if (m.content && m.content.startsWith('{"type":"voice"')) {
       try {
         const parsed = JSON.parse(m.content);
         if (parsed.transcription && String(parsed.transcription).trim()) {
-          return `[语音]: ${String(parsed.transcription).trim()}`;
+          return `[VOICE: ${String(parsed.transcription).trim()}]`;
         }
       } catch {}
     }
@@ -883,7 +954,7 @@ export function resolveMessageContentForLlm(m: { role: string; content: string; 
     try {
       const parsed = JSON.parse(m.content);
       if (parsed.transcription && String(parsed.transcription).trim()) {
-        return `[语音]: ${String(parsed.transcription).trim()}`;
+        return `[VOICE: ${String(parsed.transcription).trim()}]`;
       }
     } catch {}
     return '[发送了一条语音消息]';
@@ -945,8 +1016,12 @@ export function buildChatPayload(
     return true;
   }));
 
-  const memoryLines = safeRecalled.map((m) => `- ${m.content}`).join('\n');
-  const anchor = formatLivingStateAnchor(options.livingState, now, clockStr, timeBucketNotice, memoryLines);
+  const memoryLines = safeRecalled
+    .map((m) => renderLayer4MemoryItem(m))
+    .filter(Boolean)
+    .join('\n');
+  const lastInteractionTime = lastMsg?.createdAt ? new Date(lastMsg.createdAt).getTime() : null;
+  const anchor = formatLivingStateAnchor(options.livingState, now, clockStr, timeBucketNotice, memoryLines, lastInteractionTime);
   const isOccupied = options.livingState && (options.livingState.activityLoad === 'occupied' || options.livingState.deviceAccess === 'limited');
   const brevityNotice = isOccupied ? '\n(提示：你当前正在忙碌或在公共场合，请压低单次字数，用 1~2 句简短回复)' : '';
   const interruptedNotice = options.interruptedDraft?.trim()
@@ -956,7 +1031,7 @@ export function buildChatPayload(
     ? `\n[昨日手账余韵钩子: 你在近期的私人手账日记中写下了关于「${options.pendingDiaryHook.trim()}」的心事。如果在适当时机，可以轻描淡写地提及，展现你对彼此生活的记挂，但切勿生硬复读。]`
     : '';
   const diaryResonanceNotice = options.diaryContext
-    ? `\n[伴侣手账日记回忆与心境: 你在 ${options.diaryContext.diaryDate}${options.diaryContext.moodTag ? ` (心情: ${options.diaryContext.moodTag})` : ''} 亲笔写下了手账《${options.diaryContext.title}》，正文节选: "${options.diaryContext.content.slice(0, 240)}"。当对方问及日记时，你对日记中的私密细节与当时心境一清二楚，请自然真挚地回应，严禁装作不知道或否定手账的存在]`
+    ? `\n[手账日记回忆与心境: 你在 ${options.diaryContext.diaryDate}${options.diaryContext.moodTag ? ` (心情: ${options.diaryContext.moodTag})` : ''} 亲笔写下了手账《${options.diaryContext.title}》，正文节选: "${options.diaryContext.content.slice(0, 240)}"。当对方问及日记时，你对日记中的私密细节与当时心境一清二楚，请自然真挚地回应，严禁装作不知道或否定手账的存在]`
     : '';
   const deltaFactsNotice = options.midEpochDeltaFacts && options.midEpochDeltaFacts.length > 0
     ? `\n[即刻默契同步]:\n${options.midEpochDeltaFacts.map((f) => `• ${f.content}`).join('\n')}`
@@ -975,7 +1050,7 @@ export function buildChatPayload(
     ? `\n[${options.burstShapeHint.trim()}]`
     : '';
   const retryNotice = options.retryWithoutReThinking
-    ? '\n[瞬态接续提示: 上一轮思考已完成，请直接输出自然对白气泡与控制标签，切勿输出重复的深度推理过程]'
+    ? '\n[瞬态接续提示: 上一轮连接微抖动导致生成中断，本轮请直接输出完整、流畅的伴聊对白气泡与控制标签]'
     : '';
 
   // 检查是否存在待修改或引用的历史文档锚点 (接入 Document Intent Gate 防闲聊态 Token 泄漏与秘书化)
@@ -993,9 +1068,16 @@ export function buildChatPayload(
         const cleanTitle = docTitle.startsWith('{') ? '文档' : docTitle;
 
         // 两阶段按需切片展开 (Lightweight Two-Stage Slice Unfolding):
-        // 1. 小文档直通 (<= 2500 字): 如果包含完整 content，直接注入带标记的全文，让大模型 100% 具备精确 SEARCH 视野
-        if (docMeta?.content && typeof docMeta.content === 'string' && docMeta.content.length <= 2500) {
-          return `\n[活跃文档上下文锚点: 目标文档ID="${targetDoc.id}", 文件名="《${cleanTitle}》"。\n【文档全文内容】:\n${docMeta.content}\n若需修改该文档，严禁重新输出全文，必须使用 [DOCUMENT_PATCH: ${targetDoc.id} | 新标题.docx] 输出 SEARCH/REPLACE 差量补丁！]`;
+        // 1. 小文档直通 (<= 2500 字): 如果包含完整 content 或提取的 extractedText，直接注入带标记的全文，让大模型 100% 具备精确 SEARCH 视野
+        const effectiveDocText =
+          typeof docMeta?.extractedText === 'string' && docMeta.extractedText.trim().length > 0
+            ? docMeta.extractedText
+            : typeof docMeta?.content === 'string' && docMeta.content.trim().length > 0 && !docMeta.content.startsWith('PK')
+            ? docMeta.content
+            : undefined;
+
+        if (effectiveDocText && effectiveDocText.length <= 2500) {
+          return `\n[活跃文档上下文锚点: 目标文档ID="${targetDoc.id}", 文件名="《${cleanTitle}》"。\n【文档全文内容】:\n${effectiveDocText}\n若需修改该文档，严禁重新输出全文，必须使用 [DOCUMENT_PATCH: ${targetDoc.id} | 新标题.docx] 输出 SEARCH/REPLACE 差量补丁！]`;
         }
 
         // 2. 长文档或仅有骨架: 本地关键词召回 Top-3 核心段落展开
@@ -1037,7 +1119,7 @@ export function buildChatPayload(
   const voiceIntentNotice = options.voiceReplyEnabled === false
     ? '\n[提示: 当前会话用户已关闭模型语音回复，无论对方是否要求发语音，均请仅使用自然文字气泡与表情交流，严禁输出 [VOICE:...] 语音标签。]'
     : (hasVoiceIntent
-      ? '\n[动态语音意图提示: 对方明确表示想听你的声音或让你发语音！请务必遵守通信协议第8条，使用 [VOICE: 你的真实语音台词] 发送微信原生语音条，严禁用纯文本假装发语音，台词需生动口语化并符合你的性格口吻。]'
+      ? '\n[动态语音意图提示: 对方明确表示想听你的声音或让你发语音！请务必遵守通信协议第8条，使用 [VOICE: 你的真实语音台词] 或 [VOICE: 语气情绪 | 台词] 发送微信原生语音条，可先输出神态动作再发语音。严禁用纯文本假装发语音，台词需生动口语化并带上符合当下情境的真实语气与情绪。]'
       : '');
 
   // Layer 4: @D1 场记注入层 (独立 system 节点)
@@ -1055,11 +1137,23 @@ export function buildChatPayload(
       ? '[系统事件: 已到预定联系时间，请主动发送消息]'
       : currentUserInput.trim();
 
-  // 若为预约闹钟唤醒，装填专属场记指令（同步保留唤醒记忆与昨日手账钩子，严守人设稳态）
+  // 若为预约闹钟唤醒，装填专属场记指令（去上帝视角，还原生活情境与自然起念）
   if (options.isWakeupPing) {
-    const intentStr = options.pingIntent ? `（预定意图: ${options.pingIntent}）` : '';
+    const d = new Date(options.now ?? Date.now());
+    const nowHour = d.getHours();
+    let naturalWakeupReason = '距离你们上次联系过去了一段时间，你刚好闲下来，想起之前挂念的事';
+    if (options.pingIntent) {
+      // 检查意图与时段冲突：若意图含“早安/清晨”但此刻已是下午/夜间，或意图含“晚安/睡前”但此刻已是早晨，自然双向纠偏
+      let sanitizedIntent = options.pingIntent;
+      if (nowHour >= 12 && /早安|清晨|早上好/.test(sanitizedIntent)) {
+        sanitizedIntent = sanitizedIntent.replace(/早安|清晨|早上好/g, '问候');
+      } else if (nowHour < 12 && /晚安|睡前|夜间/.test(sanitizedIntent)) {
+        sanitizedIntent = sanitizedIntent.replace(/晚安|睡前|夜间/g, '早间');
+      }
+      naturalWakeupReason = `你此刻想起对方，顺便跟对方聊聊「${sanitizedIntent}」`;
+    }
     const extraWakeupMem = memoryLines ? `\n• 关联记忆:\n${memoryLines}` : '';
-    layer4Text = `[主动联系唤醒 | 当前时间: ${clockStr}${timeBucketNotice}\n• 唤醒原因: 你之前计划在此时主动联系对方${intentStr}。${extraWakeupMem}\n• 请务必严格代入你的角色身份、性格口吻与相处界限，结合当前时间与前情约定自然发话（气泡长短与语气完全由你的人设决定，严禁谄媚讨好或客服套路化，切勿机械暴露系统指令）]${diaryHookNotice}${deltaFactsNotice}${milestoneNotice}${burstShapeNotice}`;
+    layer4Text = `[主动联系唤醒 | 当前时间: ${clockStr}${timeBucketNotice}\n• 生活情境与起念: ${naturalWakeupReason}。${extraWakeupMem}\n• 依从你的性格口吻、当前生活状态与两人相处界限，像平时在聊天软件发消息一样自然开口（气泡长短与语气完全由你的人设决定，严禁谄媚讨好或客服套路化，切勿机械暴露系统指令）]${diaryHookNotice}${deltaFactsNotice}${milestoneNotice}${burstShapeNotice}`;
   } else if (isProactiveTrigger && currentUserInput?.trim()) {
     // 若普通主动追聊包含系统提示，将其吸纳进 Layer 4 场记层，保证 Layer 5 闭合为标准 user 节点
     layer4Text = `${layer4Text}\n\n${currentUserInput.trim()}`.trim();

@@ -1,6 +1,7 @@
 import { initDatabase, type PixorySpace } from '../../database';
 import type { ImMessage, ImThread, ImThreadListItem, ImCompanionLivingState } from '../types';
 import { isGoodnightMessage, shouldExpireGoodnightEnvelope } from '../heartbeat/imDndGuard';
+import { formatMessagePreview } from '../../utils/formatMessagePreview';
 
 interface RawThreadRow {
   id: string;
@@ -10,6 +11,8 @@ interface RawThreadRow {
   chat_mode: string;
   lastMessagePreview: string | null;
   isPinned: number;
+  im_is_folded?: number | null;
+  im_hidden_from_list?: number | null;
   living_state_json?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -42,6 +45,8 @@ function mapThreadRow(row: RawThreadRow): ImThread {
     chatMode: 'im',
     lastMessagePreview: row.lastMessagePreview,
     isPinned: Boolean(row.isPinned),
+    isFolded: Boolean(row.im_is_folded),
+    isHiddenFromList: Boolean(row.im_hidden_from_list),
     livingState,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -58,6 +63,9 @@ export interface SerializedImDocumentPayload {
   casUri: string;
   casHash?: string;
   size?: number;
+  charCount?: number;
+  pageCount?: number;
+  extractedText?: string;
   mimeType?: string;
   format?: string;
   hasRevisions?: boolean;
@@ -84,6 +92,9 @@ export function serializeImDocumentMessage(message: ImMessage): {
     casUri: effectiveUri,
     casHash: docMeta.casHash,
     size: typeof docMeta.sizeBytes === 'number' ? docMeta.sizeBytes : (typeof docMeta.size === 'number' ? docMeta.size : 0),
+    charCount: typeof docMeta.charCount === 'number' ? docMeta.charCount : undefined,
+    pageCount: typeof docMeta.pageCount === 'number' ? docMeta.pageCount : undefined,
+    extractedText: typeof docMeta.extractedText === 'string' ? docMeta.extractedText : undefined,
     mimeType: docMeta.mimeType,
     format: docMeta.format || title.split('.').pop()?.toLowerCase(),
     hasRevisions: Boolean(docMeta.hasRevisions),
@@ -116,6 +127,9 @@ export function tryParseDocumentRowContent(rawContent: string): SerializedImDocu
         casUri: effectiveUri,
         casHash: parsed.casHash,
         size: typeof parsed.size === 'number' ? parsed.size : 0,
+        charCount: typeof parsed.charCount === 'number' ? parsed.charCount : undefined,
+        pageCount: typeof parsed.pageCount === 'number' ? parsed.pageCount : undefined,
+        extractedText: typeof parsed.extractedText === 'string' ? parsed.extractedText : undefined,
         mimeType: parsed.mimeType,
         format: parsed.format || parsed.title.split('.').pop()?.toLowerCase(),
         hasRevisions: Boolean(parsed.hasRevisions),
@@ -376,6 +390,8 @@ export async function listImThreads(
     threadTitle: string | null;
     lastMessagePreview: string | null;
     isPinned: number | null;
+    isFolded: number | null;
+    isHiddenFromList: number | null;
     unreadCount: number | null;
     threadUpdatedAt: string | null;
     lastChatAt: string | null;
@@ -399,6 +415,8 @@ export async function listImThreads(
          t.title AS threadTitle,
          t.lastMessagePreview AS lastMessagePreview,
          COALESCE(t.isPinned, 0) AS isPinned,
+         COALESCE(t.im_is_folded, 0) AS isFolded,
+         COALESCE(t.im_hidden_from_list, 0) AS isHiddenFromList,
          COALESCE(t.im_unread_count, 0) AS unreadCount,
          t.updatedAt AS threadUpdatedAt,
          COALESCE(
@@ -445,6 +463,8 @@ export async function listImThreads(
          t.title AS threadTitle,
          t.lastMessagePreview AS lastMessagePreview,
          COALESCE(t.isPinned, 0) AS isPinned,
+         COALESCE(t.im_is_folded, 0) AS isFolded,
+         COALESCE(t.im_hidden_from_list, 0) AS isHiddenFromList,
          COALESCE(t.im_unread_count, 0) AS unreadCount,
          t.updatedAt AS threadUpdatedAt,
          COALESCE(im_msg_orphan.lastImMsgAt, t.updatedAt) AS lastChatAt
@@ -489,6 +509,8 @@ export async function listImThreads(
       lastMessageAt: hasRealChat ? (row.lastChatAt || row.threadUpdatedAt || null) : null,
       updatedAt: row.lastChatAt || row.threadUpdatedAt || row.roleUpdatedAt,
       isPinned: Boolean(row.isPinned),
+      isFolded: Boolean(row.isFolded),
+      isHiddenFromList: Boolean(row.isHiddenFromList),
       unreadCount: row.unreadCount ?? 0,
     };
   });
@@ -729,7 +751,10 @@ export async function insertImMessage(
       imageUri: message.imageUri,
       name: message.content || '[表情]',
     });
-    cleanPreview = message.content ? `[表情] ${message.content}` : '[表情]';
+    const sName = message.content?.trim();
+    cleanPreview = sName && sName !== '[表情]' && sName !== '表情'
+      ? (sName.startsWith('表情') ? `[${sName}]` : `[表情${sName}]`)
+      : '[表情]';
   } else if (message.type === 'image') {
     rawContent = JSON.stringify({
       imageUri: message.imageUri,
@@ -745,8 +770,13 @@ export async function insertImMessage(
       transcription: message.voice?.transcription ?? message.content,
       isPlayed: Boolean(message.voice?.isPlayed),
     });
-    const s = Math.max(1, Math.round((message.voice?.durationMs ?? 1000) / 1000));
-    cleanPreview = `[语音 ${s}"]`;
+    const transcription = (message.voice?.transcription ?? message.content ?? '').trim();
+    if (transcription) {
+      cleanPreview = `[语音] ${transcription}`.slice(0, 80);
+    } else {
+      const s = Math.max(1, Math.round((message.voice?.durationMs ?? 1000) / 1000));
+      cleanPreview = `[语音] ${s}"`;
+    }
   } else if (message.type === 'thought') {
     rawContent = JSON.stringify({
       type: 'thought',
@@ -1023,11 +1053,11 @@ export async function revealPendingMessages(
         [alignedCreatedAt, row.id]
       );
 
-      // 刷新会话最后一条消息预览
-      const cleanPreview = row.content.replace(/\[BR\]/g, ' ').slice(0, 80);
+      // 刷新会话最后一条消息预览（净化结构化 JSON 与控制标签，避免内部技术结构泄露）
+      const cleanPreview = formatMessagePreview(row.content, '').slice(0, 80);
       await db.runAsync(
         `UPDATE ai_threads SET lastMessagePreview = ?, updatedAt = ? WHERE id = ?;`,
-        [cleanPreview, alignedCreatedAt, threadId]
+        [cleanPreview || null, alignedCreatedAt, threadId]
       );
       revealedCount += 1;
       if (isStaged) revealedStagedCount += 1;
@@ -1096,7 +1126,42 @@ export async function setThreadPendingDiaryHook(
 }
 
 /**
- * 消费并清空次日手账未闭合话题钩子 (原子取出)
+ * 窥视次日手账未闭合话题钩子 (只读取出，不删除，保障异常重试时不丢失)
+ */
+export async function peekThreadPendingDiaryHook(
+  space: PixorySpace,
+  threadId: string
+): Promise<string | null> {
+  const db = await initDatabase(space);
+  try {
+    const row = await db.getFirstAsync<{ pending_diary_hook: string | null }>(
+      `SELECT pending_diary_hook FROM ai_threads WHERE id = ? LIMIT 1;`,
+      [threadId]
+    );
+    return row?.pending_diary_hook?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 显式确认并清空手账钩子 (在 AI 回复成功落盘后调用)
+ */
+export async function ackThreadPendingDiaryHook(
+  space: PixorySpace,
+  threadId: string
+): Promise<void> {
+  const db = await initDatabase(space);
+  try {
+    await db.runAsync(
+      `UPDATE ai_threads SET pending_diary_hook = NULL WHERE id = ?;`,
+      [threadId]
+    );
+  } catch {}
+}
+
+/**
+ * 消费并清空次日手账未闭合话题钩子 (原子取出，兼容旧调用)
  */
 export async function consumeThreadPendingDiaryHook(
   space: PixorySpace,
@@ -1384,15 +1449,102 @@ export async function updateImMessageContent(
 export async function updateImMessageVoice(
   space: PixorySpace,
   messageId: string,
-  voice: import('../types').ImVoiceMetadata
+  voice: Partial<import('../types').ImVoiceMetadata>
 ): Promise<void> {
   const db = await initDatabase(space);
+  const row = await db.getFirstAsync<{ content: string }>(
+    `SELECT content FROM ai_messages WHERE id = ?;`,
+    [messageId]
+  );
+  let parsed: any = {};
+  if (row?.content) {
+    try {
+      parsed = JSON.parse(row.content);
+    } catch {
+      // 容错保持空对象
+    }
+  }
+
+  // 重点保护：一旦语音消息在本地或数据库中被标记为已播放 (isPlayed: true)，
+  // 任何后续异步任务（如 prepareAudio 预合成）绝不能将已读状态逆转为未读 (false)
+  const isAlreadyPlayed = Boolean(parsed.isPlayed);
+  const newPlayed = voice.isPlayed !== undefined ? Boolean(voice.isPlayed) : isAlreadyPlayed;
+  const finalPlayed = isAlreadyPlayed || newPlayed;
+
   const rawContent = JSON.stringify({
     type: 'voice',
-    audioUri: voice.audioUri,
-    durationMs: voice.durationMs,
-    transcription: voice.transcription,
-    isPlayed: voice.isPlayed,
+    audioUri: voice.audioUri !== undefined ? voice.audioUri : (parsed.audioUri ?? ''),
+    durationMs: voice.durationMs !== undefined ? voice.durationMs : (parsed.durationMs ?? 1000),
+    transcription: voice.transcription !== undefined ? voice.transcription : (parsed.transcription ?? parsed.text ?? ''),
+    isPlayed: finalPlayed,
+    style: voice.style !== undefined ? voice.style : (parsed.style ?? undefined),
   });
   await db.runAsync(`UPDATE ai_messages SET content = ? WHERE id = ?;`, [rawContent, messageId]);
+
+  // 若存在转写文本，同步更新对应会话的 lastMessagePreview（如果该消息为最新消息）
+  const transcriptionText = (voice.transcription ?? parsed.transcription ?? parsed.text ?? '').trim();
+  if (transcriptionText) {
+    try {
+      const threadRow = await db.getFirstAsync<{ id: string; lastMsgId?: string }>(
+        `SELECT t.id, (SELECT m.id FROM ai_messages m WHERE m.threadId = t.id AND m.status = 'completed' ORDER BY m.createdAt DESC, m.rowid DESC LIMIT 1) as lastMsgId
+         FROM ai_threads t
+         WHERE EXISTS (SELECT 1 FROM ai_messages msg WHERE msg.id = ? AND msg.threadId = t.id);`,
+        [messageId]
+      );
+      if (threadRow && threadRow.lastMsgId === messageId) {
+        await db.runAsync(
+          `UPDATE ai_threads SET lastMessagePreview = ? WHERE id = ?;`,
+          [`[语音] ${transcriptionText}`.slice(0, 80), threadRow.id]
+        );
+      }
+    } catch {
+      // 容错静默
+    }
+  }
+}
+
+/**
+ * 快速标记指定语音消息为已读/已播放
+ */
+export async function markImMessageVoicePlayed(
+  space: PixorySpace,
+  messageId: string
+): Promise<void> {
+  return updateImMessageVoice(space, messageId, { isPlayed: true });
+}
+
+/**
+ * 切换会话置顶状态
+ */
+export async function setImThreadPinned(
+  space: PixorySpace,
+  threadId: string,
+  isPinned: boolean
+): Promise<void> {
+  const db = await initDatabase(space);
+  await db.runAsync(`UPDATE ai_threads SET isPinned = ? WHERE id = ?;`, [isPinned ? 1 : 0, threadId]);
+}
+
+/**
+ * 切换会话折叠状态
+ */
+export async function setImThreadFolded(
+  space: PixorySpace,
+  threadId: string,
+  isFolded: boolean
+): Promise<void> {
+  const db = await initDatabase(space);
+  await db.runAsync(`UPDATE ai_threads SET im_is_folded = ? WHERE id = ?;`, [isFolded ? 1 : 0, threadId]);
+}
+
+/**
+ * 从会话列表中移除（软隐藏，不删消息）或恢复
+ */
+export async function setImThreadHidden(
+  space: PixorySpace,
+  threadId: string,
+  isHidden: boolean
+): Promise<void> {
+  const db = await initDatabase(space);
+  await db.runAsync(`UPDATE ai_threads SET im_hidden_from_list = ? WHERE id = ?;`, [isHidden ? 1 : 0, threadId]);
 }

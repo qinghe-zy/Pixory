@@ -30,6 +30,7 @@ import {
 import { searchActions, getRandomRecommendedActions, type MatchedAction } from '../services/searchActionService';
 
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
+const FILE_TRANSFER_AVATAR = require('../../assets/file_transfer_avatar.png');
 
 interface GlobalSearchScreenProps {
   space?: PixorySpace;
@@ -1739,13 +1740,18 @@ function GuessYouWantList({
 
 function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[]; onOpenAction: (item: MatchedAction) => void; space: PixorySpace }) {
   const [systemAssistantEnabled, setSystemAssistantEnabled] = useState(true);
+  const [fileTransferEnabled, setFileTransferEnabled] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     void runWithDatabaseSpace(space, async (db) => {
-      const enabled = await settingsRepository.getSystemAssistantEnabled(db);
+      const [sysEnabled, ftEnabled] = await Promise.all([
+        settingsRepository.getSystemAssistantEnabled(db),
+        settingsRepository.getFileTransferEnabled(db),
+      ]);
       if (isMounted) {
-        setSystemAssistantEnabled(enabled);
+        setSystemAssistantEnabled(sysEnabled);
+        setFileTransferEnabled(ftEnabled);
       }
     });
     return () => { isMounted = false; };
@@ -1758,46 +1764,72 @@ function ActionSection({ items, onOpenAction, space }: { items: MatchedAction[];
     });
   };
 
+  const toggleFileTransfer = async (value: boolean) => {
+    setFileTransferEnabled(value);
+    await runWithDatabaseSpace(space, async (db) => {
+      await settingsRepository.setFileTransferEnabled(db, value);
+    });
+  };
+
   return (
     <View style={protoStyles.sectionWrapper}>
       <SectionHeader title="功能与入口" subtitle="ACTIONS · 快捷直达" />
-      {items.map((item) => (
-        <Pressable
-          key={item.id}
-          style={({ pressed }) => [actionStyles.actionRow, pressed && item.id !== 'system-assistant-toggle' && actionStyles.actionRowPressed]}
-          onPress={() => item.id !== 'system-assistant-toggle' && onOpenAction(item)}
-        >
-          <View style={actionStyles.actionIconBox}>
-            {item.id === 'system-assistant-toggle' ? (
-              <ExpoImage
-                source={AI_SYSTEM_AVATAR}
-                style={{ width: '100%', height: '100%', borderRadius: 12 }}
-                contentFit="cover"
+      {items.map((item) => {
+        const isSystemToggle = item.id === 'system-assistant-toggle';
+        const isFileTransferToggle = item.id === 'file-transfer-assistant-toggle';
+        const isToggleAction = isSystemToggle || isFileTransferToggle;
+
+        return (
+          <Pressable
+            key={item.id}
+            style={({ pressed }) => [actionStyles.actionRow, pressed && actionStyles.actionRowPressed]}
+            onPress={() => onOpenAction(item)}
+          >
+            <View style={actionStyles.actionIconBox}>
+              {isSystemToggle ? (
+                <ExpoImage
+                  source={AI_SYSTEM_AVATAR}
+                  style={{ width: '100%', height: '100%', borderRadius: 12 }}
+                  contentFit="cover"
+                />
+              ) : isFileTransferToggle ? (
+                <ExpoImage
+                  source={FILE_TRANSFER_AVATAR}
+                  style={{ width: '100%', height: '100%', borderRadius: 12 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
+              )}
+            </View>
+
+            <View style={actionStyles.actionTextContent}>
+              <Text style={actionStyles.actionTitle}>{item.title}</Text>
+              {item.matchedAlias && (
+                <Text style={actionStyles.actionMatchedSubtitle}>匹配: {item.matchedAlias}</Text>
+              )}
+            </View>
+
+            {isSystemToggle ? (
+              <Switch
+                value={systemAssistantEnabled}
+                onValueChange={toggleSystemAssistant}
+                trackColor={{ false: htmlColors.surfaceVariant, true: htmlColors.primary }}
+                thumbColor={htmlColors.surface}
+              />
+            ) : isFileTransferToggle ? (
+              <Switch
+                value={fileTransferEnabled}
+                onValueChange={toggleFileTransfer}
+                trackColor={{ false: htmlColors.surfaceVariant, true: htmlColors.primary }}
+                thumbColor={htmlColors.surface}
               />
             ) : (
-              <Ionicons name={item.icon as any} size={20} color={htmlColors.primary} />
+              <Ionicons name="chevron-forward" size={16} color={htmlColors.onSurfaceVariant} />
             )}
-          </View>
-          
-          <View style={actionStyles.actionTextContent}>
-            <Text style={actionStyles.actionTitle}>{item.title}</Text>
-            {item.matchedAlias && (
-              <Text style={actionStyles.actionMatchedSubtitle}>匹配: {item.matchedAlias}</Text>
-            )}
-          </View>
-          
-          {item.id === 'system-assistant-toggle' ? (
-            <Switch
-              value={systemAssistantEnabled}
-              onValueChange={toggleSystemAssistant}
-              trackColor={{ false: htmlColors.surfaceVariant, true: htmlColors.primary }}
-              thumbColor={htmlColors.surface}
-            />
-          ) : (
-            <Ionicons name="chevron-forward" size={16} color={htmlColors.onSurfaceVariant} />
-          )}
-        </Pressable>
-      ))}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

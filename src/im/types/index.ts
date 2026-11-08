@@ -44,6 +44,7 @@ export interface ImVoiceMetadata {
   waveform?: number[];
   transcription?: string;
   isPlayed?: boolean;
+  style?: string;
 }
 
 export interface ImMessage {
@@ -134,6 +135,8 @@ export interface ImThread {
   chatMode: 'im';
   lastMessagePreview?: string | null;
   isPinned: boolean;
+  isFolded?: boolean;
+  isHiddenFromList?: boolean;
   livingState?: ImCompanionLivingState | null;
   createdAt: string;
   updatedAt: string;
@@ -152,6 +155,8 @@ export interface ImThreadListItem {
   lastMessageAt: string | null;
   updatedAt: string;
   isPinned: boolean;
+  isFolded?: boolean;
+  isHiddenFromList?: boolean;
   unreadCount?: number;
   /** 伴侣生活状态（灵动心跳） */
   livingStatus?: string | null;

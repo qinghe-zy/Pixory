@@ -25,6 +25,7 @@ interface SettingsScreenProps {
   onOpenImCompanionSettings?: () => void;
   onOpenVoiceSettings?: () => void;
   onOpenNotificationSettings?: () => void;
+  onOpenSystemSessions?: () => void;
 }
 
 export function SettingsScreen({
@@ -41,6 +42,7 @@ export function SettingsScreen({
   onOpenImCompanionSettings,
   onOpenVoiceSettings,
   onOpenNotificationSettings,
+  onOpenSystemSessions,
 }: SettingsScreenProps) {
   const developerMode = useDeveloperMode();
   const [diagnosticsEnabled, setDiagnosticsEnabledState] = useState(false);
@@ -99,7 +101,16 @@ export function SettingsScreen({
             icon="options-outline"
             title="更多设置"
             onPress={onOpenAdvancedSettings}
+            showBorder={Boolean(onOpenSystemSessions)}
           />
+          {onOpenSystemSessions ? (
+            <SettingsRow
+              icon="cube-outline"
+              title="系统会话"
+              valueText="管家与传输助手"
+              onPress={onOpenSystemSessions}
+            />
+          ) : null}
         </View>
 
         <View style={styles.insetGroup}>

@@ -36,7 +36,9 @@ export interface LlmTransportOptions {
   temperature?: number;
   maxTokens?: number;
   abortSignal?: AbortSignal;
+  supportsThinking?: boolean;
   onUsage?: (usage: LlmTokenUsage) => void;
+  onFinishReason?: (finishReason: string) => void;
 }
 
 export interface ILlmStreamClient {

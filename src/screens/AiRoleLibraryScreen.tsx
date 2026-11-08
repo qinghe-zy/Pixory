@@ -414,7 +414,7 @@ export function AiRoleLibraryScreen({
           {
             key: 'im',
             label: '即时短聊 (IM)',
-            meta: '日常即时对话与微伴侣互动',
+            meta: '日常即时对话与角色互动',
             icon: 'chatbubble-ellipses-outline',
             onPress: () => {
               if (chatChoiceCard && onStartImChat) {

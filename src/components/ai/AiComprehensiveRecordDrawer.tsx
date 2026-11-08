@@ -20,6 +20,7 @@ import { AppDialog } from '../AppDialog';
 import type { AiThreadHistoryItem } from '../../database/repositories/aiThreadRepository';
 import { metrics, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import { formatAiHistoryMinute } from '../../utils/aiTimeFormatters';
+import { formatMessagePreview } from '../../utils/formatMessagePreview';
 import { aiLightColors } from './aiLightTheme';
 import { LEFT_DRAWER_WIDTH } from './AiPushScaleDrawerStage';
 
@@ -473,7 +474,7 @@ export function AiComprehensiveRecordDrawer({
                       </View>
                       <View style={styles.recentMetaRow}>
                         <Text numberOfLines={1} style={styles.recentMeta}>
-                          {thread.lastMessagePreview ?? '暂无消息'}
+                          {formatMessagePreview(thread.lastMessagePreview, '暂无消息')}
                         </Text>
                         {isActiveThread ? <Text style={styles.currentThreadBadge}>当前聊天</Text> : null}
                       </View>

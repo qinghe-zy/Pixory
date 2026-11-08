@@ -12,6 +12,7 @@ import type { AiThreadHistoryFilter, AiThreadHistoryItem, AiThreadHistoryPageCur
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
+import { formatMessagePreview } from '../utils/formatMessagePreview';
 import Reanimated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { GalleryNormalHeader, GalleryCompactHeader } from '../components/GalleryHeaders';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -526,7 +527,10 @@ export function AiHistoryScreen({
                             <Text numberOfLines={1} style={styles.meta}>
                               {labelForContext(thread)} · 上次聊天 {formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
                             </Text>
-                            {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
+                            {(() => {
+                              const cleanPreview = formatMessagePreview(thread.lastMessagePreview, '');
+                              return cleanPreview ? <Text numberOfLines={2} style={styles.preview}>{cleanPreview}</Text> : null;
+                            })()}
                           </View>
                         </Pressable>
                         {(!isSelecting && !isTrashMode) ? (

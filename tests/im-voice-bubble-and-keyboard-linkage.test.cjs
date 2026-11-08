@@ -103,3 +103,111 @@ test('ImInputBar: 表情面板与软键盘联动状态机与零弹跳算法契�
     '处于语音输入模式时点击表情按钮必须自动调用 setIsVoiceMode(false) 还原为文字输入框'
   );
 });
+
+test('VoiceBubbleRenderer: 伴聊语音已读红点消除与 SQLite 持久化契约', () => {
+  const bubblePath = path.join(__dirname, '../src/im/components/renderers/VoiceBubbleRenderer.tsx');
+  const repoPath = path.join(__dirname, '../src/im/repository/imThreadRepository.ts');
+  const burstPath = path.join(__dirname, '../src/im/engine/burstDispatcher.ts');
+
+  const bubbleContent = fs.readFileSync(bubblePath, 'utf8');
+  const repoContent = fs.readFileSync(repoPath, 'utf8');
+  const burstContent = fs.readFileSync(burstPath, 'utf8');
+
+  // 1. 验证 VoiceBubbleRenderer 引入并调用持久化标记接口
+  assert.match(bubbleContent, /import\s*\{[^}]*markImMessageVoicePlayed[^}]*\}\s*from/, '必须导入 markImMessageVoicePlayed');
+  assert.match(bubbleContent, /markImMessageVoicePlayed\(\s*space,\s*message\.id\s*\)/, '必须调用 markImMessageVoicePlayed 进行数据库持久化');
+
+  // 2. 验证气泡点击播放时立即触发 markAsPlayed
+  assert.match(bubbleContent, /const\s+handleBubblePress[\s\S]*?markAsPlayed\(\)/, '点击播放时必须立即消除红点并持久化');
+
+  // 3. 验证播放器播放订阅驱动红点消除
+  assert.match(bubbleContent, /voiceService\.subscribe[\s\S]*?markAsPlayed\(\)/, '音频实际播放时必须触发 markAsPlayed');
+
+  // 4. 验证组件状态同步监听 message.voice?.isPlayed
+  assert.match(bubbleContent, /message\.voice\?\.isPlayed[\s\S]*?setHasBeenPlayed\(true\)/, '外部传入已播放属性时同步消除红点');
+
+  // 5. 验证 imThreadRepository 导出 markImMessageVoicePlayed 与防逆转逻辑
+  assert.match(repoContent, /export\s+async\s+function\s+markImMessageVoicePlayed/, '仓储层必须导出 markImMessageVoicePlayed');
+  assert.match(repoContent, /const\s+isAlreadyPlayed\s*=\s*Boolean\(parsed\.isPlayed\)/, '必须读取数据库中现有的 isPlayed 状态');
+  assert.match(repoContent, /finalPlayed\s*=\s*isAlreadyPlayed\s*\|\|\s*newPlayed/, '一旦标记为已读，绝不能逆转为未读');
+
+  // 6. 验证 burstDispatcher 预合成音频时不覆盖 isPlayed: false
+  assert.doesNotMatch(
+    burstContent,
+    /prep\s*=\s*await\s+voiceService\.prepareAudio[\s\S]*?updateImMessageVoice[\s\S]*?isPlayed:\s*false/,
+    '异步预合成音频任务绝不可硬编码 isPlayed: false 覆盖用户的点击已读状态'
+  );
+});
+
+test('SQLite 语音消息已读状态持久化与防逆转仿真测试', () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+
+  db.exec(`
+    CREATE TABLE ai_messages (
+      id TEXT PRIMARY KEY NOT NULL,
+      threadId TEXT NOT NULL,
+      content TEXT NOT NULL
+    );
+  `);
+
+  const messageId = 'msg_ai_voice_test_001';
+  const initialContent = JSON.stringify({
+    type: 'voice',
+    audioUri: '',
+    durationMs: 2500,
+    transcription: '你好呀，今天过得开心吗？',
+    isPlayed: false,
+  });
+
+  db.prepare('INSERT INTO ai_messages (id, threadId, content) VALUES (?, ?, ?)').run(
+    messageId,
+    'thread_test',
+    initialContent
+  );
+
+  // 1. 验证初始状态为未读 (isPlayed = false)
+  const initialRow = db.prepare('SELECT content FROM ai_messages WHERE id = ?').get(messageId);
+  const parsed1 = JSON.parse(initialRow.content);
+  assert.equal(parsed1.isPlayed, false, '新发出的伴聊语音消息必须为未读');
+
+  // 2. 模拟用户点击语音条播放，执行 markImMessageVoicePlayed
+  function simulateUpdateVoice(msgId, voiceUpdate) {
+    const row = db.prepare('SELECT content FROM ai_messages WHERE id = ?').get(msgId);
+    let parsed = {};
+    if (row && row.content) {
+      try { parsed = JSON.parse(row.content); } catch {}
+    }
+    const isAlreadyPlayed = Boolean(parsed.isPlayed);
+    const newPlayed = voiceUpdate.isPlayed !== undefined ? Boolean(voiceUpdate.isPlayed) : isAlreadyPlayed;
+    const finalPlayed = isAlreadyPlayed || newPlayed;
+
+    const rawContent = JSON.stringify({
+      type: 'voice',
+      audioUri: voiceUpdate.audioUri !== undefined ? voiceUpdate.audioUri : (parsed.audioUri ?? ''),
+      durationMs: voiceUpdate.durationMs !== undefined ? voiceUpdate.durationMs : (parsed.durationMs ?? 1000),
+      transcription: voiceUpdate.transcription !== undefined ? voiceUpdate.transcription : (parsed.transcription ?? ''),
+      isPlayed: finalPlayed,
+    });
+    db.prepare('UPDATE ai_messages SET content = ? WHERE id = ?').run(rawContent, msgId);
+  }
+
+  simulateUpdateVoice(messageId, { isPlayed: true });
+
+  const playedRow = db.prepare('SELECT content FROM ai_messages WHERE id = ?').get(messageId);
+  const parsed2 = JSON.parse(playedRow.content);
+  assert.equal(parsed2.isPlayed, true, '点击播放后持久化到数据库必须为 isPlayed = true');
+
+  // 3. 模拟后台异步预合成任务完成，更新 audioUri 与 durationMs
+  simulateUpdateVoice(messageId, {
+    audioUri: 'file:///cache/audio_voice_001.mp3',
+    durationMs: 2600,
+  });
+
+  // 4. 验证异步预合成完成后，isPlayed 依然保持 true，绝不被逆转重置！
+  const finalRow = db.prepare('SELECT content FROM ai_messages WHERE id = ?').get(messageId);
+  const parsed3 = JSON.parse(finalRow.content);
+  assert.equal(parsed3.isPlayed, true, '后续异步预合成更新绝不可逆转 isPlayed');
+  assert.equal(parsed3.audioUri, 'file:///cache/audio_voice_001.mp3');
+  assert.equal(parsed3.durationMs, 2600);
+});

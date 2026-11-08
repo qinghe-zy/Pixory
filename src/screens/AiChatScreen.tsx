@@ -1,6 +1,11 @@
-import { clearAiThreadMessages } from '../ai/aiChatService';
+import { clearAiThreadMessages, ensureFileTransferThread } from '../ai/aiChatService';
+import { FILE_TRANSFER_THREAD_ID, SYSTEM_ASSISTANT_THREAD_ID } from '../ai/systemAssistant/capabilityProfile';
 import { Ionicons } from "@expo/vector-icons";
+import { Image as ExpoImage } from "expo-image";
 import * as Clipboard from "expo-clipboard";
+
+const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
+const FILE_TRANSFER_AVATAR = require('../../assets/file_transfer_avatar.png');
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -17,6 +22,7 @@ import {
   Alert,
   Animated,
   AppState,
+  BackHandler,
   Easing,
   FlatList,
   InteractionManager,
@@ -285,6 +291,7 @@ import type {
   AiThreadHistoryItem,
 } from "../database/repositories/aiThreadRepository";
 import {
+  colors,
   layout,
   metrics,
   radius,
@@ -865,10 +872,159 @@ function findLatestVisibleBranchRootMessageId(
 }
 
 function AiChatStarterHints({
+  isSystemAssistant,
+  isFileTransfer,
   onPickSuggestion,
+  onPickPhotos,
+  onPickDocs,
+  onPasteClipboard,
 }: {
+  isSystemAssistant?: boolean;
+  isFileTransfer?: boolean;
   onPickSuggestion: (value: string) => void;
+  onPickPhotos?: () => void;
+  onPickDocs?: () => void;
+  onPasteClipboard?: () => void;
 }) {
+  if (isFileTransfer) {
+    return (
+      <View style={styles.starterWrap}>
+        <View style={styles.fileTransferStarterCard}>
+          <ExpoImage
+            accessibilityLabel="文件传输助手头像"
+            contentFit="cover"
+            source={FILE_TRANSFER_AVATAR}
+            style={styles.starterAvatarImage}
+          />
+          <View style={styles.starterCardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.starterCardTitle}>文件传输助手</Text>
+              <View style={styles.starterSystemBadge}>
+                <Text style={styles.starterSystemBadgeText}>系统</Text>
+              </View>
+            </View>
+            <Text style={styles.starterCardSubtitle}>
+              随时保存、收集和跨端流转文字、图片与各类文件
+            </Text>
+          </View>
+
+          <View style={styles.starterFeatureList}>
+            <View style={styles.starterFeatureRow}>
+              <Ionicons color={aiLightColors.ink} name="flash-outline" size={16} />
+              <Text style={styles.starterFeatureText}>
+                即发即存：纯本地即时存储，无需等待回复，零模型消耗
+              </Text>
+            </View>
+            <View style={styles.starterFeatureRow}>
+              <Ionicons color={aiLightColors.ink} name="folder-outline" size={16} />
+              <Text style={styles.starterFeatureText}>
+                全格式支持：照片、视频、PDF、文档、安装包与压缩包
+              </Text>
+            </View>
+            <View style={styles.starterFeatureRow}>
+              <Ionicons color={aiLightColors.ink} name="shield-checkmark-outline" size={16} />
+              <Text style={styles.starterFeatureText}>
+                安全隔离：独立本地数据管理，随时批量清理
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.starterActionPills}>
+            <Pressable
+              accessibilityLabel="发送照片与视频"
+              accessibilityRole="button"
+              hitSlop={spacing[2]}
+              onPress={onPickPhotos}
+              style={({ pressed }) => [styles.starterActionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons color={aiLightColors.ink} name="images-outline" size={16} />
+              <Text style={styles.starterActionBtnText}>发送照片与视频</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="发送本地文件"
+              accessibilityRole="button"
+              hitSlop={spacing[2]}
+              onPress={onPickDocs}
+              style={({ pressed }) => [styles.starterActionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons color={aiLightColors.ink} name="document-attach-outline" size={16} />
+              <Text style={styles.starterActionBtnText}>发送本地文件</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="粘贴剪贴板内容"
+              accessibilityRole="button"
+              hitSlop={spacing[2]}
+              onPress={onPasteClipboard}
+              style={({ pressed }) => [styles.starterActionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons color={aiLightColors.ink} name="clipboard-outline" size={16} />
+              <Text style={styles.starterActionBtnText}>粘贴剪贴板内容</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (isSystemAssistant) {
+    return (
+      <View style={styles.starterWrap}>
+        <View style={styles.fileTransferStarterCard}>
+          <ExpoImage
+            accessibilityLabel="Pixory 系统管家头像"
+            contentFit="cover"
+            source={AI_SYSTEM_AVATAR}
+            style={styles.starterAvatarImage}
+          />
+          <View style={styles.starterCardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.starterCardTitle}>Pixory 系统管家</Text>
+              <View style={styles.starterSystemBadge}>
+                <Text style={styles.starterSystemBadgeText}>系统</Text>
+              </View>
+            </View>
+            <Text style={styles.starterCardSubtitle}>
+              系统指令执行、角色卡共创与设置控制
+            </Text>
+          </View>
+
+          <View style={styles.starterFeatureList}>
+            <View style={styles.starterFeatureRow}>
+              <Ionicons color={aiLightColors.ink} name="construct-outline" size={16} />
+              <Text style={styles.starterFeatureText}>
+                支持自然语言下达系统操作指令，零多余寒暄
+              </Text>
+            </View>
+            <View style={styles.starterFeatureRow}>
+              <Ionicons color={aiLightColors.ink} name="person-add-outline" size={16} />
+              <Text style={styles.starterFeatureText}>
+                支持自然对话共创专属 AI 角色卡并存入角色库
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.starterSuggestions}>
+            {['帮我创建一个新角色卡', '切换全局默认模型', '打开角色库', '查看当前系统状态与时间'].map((suggestion) => (
+              <Pressable
+                accessibilityLabel={suggestion}
+                accessibilityRole="button"
+                hitSlop={spacing[2]}
+                key={suggestion}
+                onPress={() => onPickSuggestion(suggestion)}
+                style={({ pressed }) => [
+                  styles.starterChip,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.starterChipText}>{suggestion}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   const starter = getAiChatStarterGroup();
   return (
     <View style={styles.starterWrap}>
@@ -992,12 +1148,36 @@ export function AiChatScreen({
   onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
-  const isSystemAssistant = threadId === 'pixory-system-assistant';
+  const isSystemAssistant = threadId === SYSTEM_ASSISTANT_THREAD_ID;
+  const isFileTransfer = threadId === FILE_TRANSFER_THREAD_ID;
+  const isSpecialSystemThread = isSystemAssistant || isFileTransfer;
   const isSystemAssistantRef = useRef(isSystemAssistant);
   isSystemAssistantRef.current = isSystemAssistant;
+  const isFileTransferRef = useRef(isFileTransfer);
+  isFileTransferRef.current = isFileTransfer;
+
+  useEffect(() => {
+    if (!isFileTransfer) return;
+    void ensureFileTransferThread(space);
+  }, [space, isFileTransfer]);
 
   const initialBottomInsetRef = useRef(insets.bottom);
   const { showToast, showUndoSnackbar } = useToast();
+
+  const handlePasteClipboard = useCallback(async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      if (text && text.trim()) {
+        setComposerText((current) => (current ? `${current}\n${text.trim()}` : text.trim()));
+        showToast('已粘贴剪贴板内容');
+      } else {
+        showToast('剪贴板中没有文字内容');
+      }
+    } catch (err) {
+      console.warn('Failed to read clipboard:', err);
+      showToast('无法读取剪贴板内容');
+    }
+  }, [showToast]);
   const [pinnedDocumentIds, setPinnedDocumentIds] = useState<Set<string>>(() => new Set());
   const [pinningDocumentId, setPinningDocumentId] = useState<string | null>(null);
   const [activeDocAction, setActiveDocAction] = useState<{ documentId: string; title: string } | null>(null);
@@ -1040,13 +1220,14 @@ export function AiChatScreen({
   const spaceRef = useRef(space);
   spaceRef.current = space;
   const isPushScaleSidebarRef = useRef(true);
-
+  const isMultiSelectModeRef = useRef(false);
 
   // Right-swipe opens the left record drawer; left-swipe opens the right config drawer (classic mode; push_scale is handled interactively by AiPushScaleDrawerStage).
   const swipeDrawerPanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gs) =>
         !isPushScaleSidebarRef.current &&
+        !isMultiSelectModeRef.current &&
         Math.abs(gs.dx) > DRAWER_SWIPE_ACTIVATION_DISTANCE &&
         Math.abs(gs.dx) > Math.abs(gs.dy) * DRAWER_SWIPE_HORIZONTAL_RATIO,
       onPanResponderRelease: (_evt, gs) => {
@@ -1771,6 +1952,20 @@ export function AiChatScreen({
       setShowSweep(true);
     }
   }, [isInitialMessageLoading]);
+
+  useEffect(() => {
+    if (!isInitialMessageLoading && !isMessageListReady) {
+      const timer = setTimeout(() => {
+        if (screenMountedRef.current) {
+          if (!pendingSearchScrollMessageIdRef.current) {
+            messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
+          }
+          setIsMessageListReady(true);
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialMessageLoading, isMessageListReady]);
   const [singleBubbleTailReplayEnabled] = useState(
     getAiTailReplaySingleBubbleEnabled,
   );
@@ -2073,6 +2268,31 @@ export function AiChatScreen({
   >({});
   const [messageContextMenuState, setMessageContextMenuState] =
     useState<MessageContextMenuState | null>(null);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  isMultiSelectModeRef.current = isMultiSelectMode;
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isMultiSelectMode) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setIsMultiSelectMode(false);
+      setSelectedMessageIds(new Set());
+      return true;
+    });
+    return () => sub.remove();
+  }, [isMultiSelectMode]);
+
+  const toggleMultiSelectMessage = useCallback((messageId: string) => {
+    setSelectedMessageIds((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  }, []);
   const [artifactContextMenuState, setArtifactContextMenuState] =
     useState<ArtifactContextMenuState | null>(null);
   const [artifactActionPending, setArtifactActionPending] = useState(false);
@@ -2677,7 +2897,7 @@ export function AiChatScreen({
             messageUsesStandaloneAssistantDisplay(message)),
         showUserAvatar:
           message.role === 'user' &&
-          (startsNewDate || previousMessage?.role !== 'user'),
+          (isFileTransfer || startsNewDate || previousMessage?.role !== 'user'),
       });
       const systemTask = isSystemAssistant ? systemAssistant.tasks[message.id] : null;
       const isLatestOrGenerating = message.versionIndex === message.versionTotal || message.versionIndex === 0 || message.status === 'generating';
@@ -3655,6 +3875,9 @@ export function AiChatScreen({
       recordDiagnosticIncident({ id: `blank_${space}_${Date.now()}`, space, incidentType: 'message_list_empty', severity: 'error', fingerprint: `message_list_empty:${activeThreadIdRef.current}`, occurredAtUtc: new Date().toISOString(), traceId: diagnosticTraceIdRef.current, generationId: activeStreamingIdentityRef.current?.generationId, payload: { state: { generating, isMessageListReady }, metrics: { messageCount: 0 }, anomalies: ['message_list_empty'] } });
     }
     if (!isInitialMessageLoading && invertedMessageItems.length > 0) {
+      if (isFileTransfer && bottomLockedRef.current) {
+        messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
+      }
       const layoutKey = `${activeThreadIdRef.current ?? "new"}:${invertedMessageItems.length}`;
       if (chatFirstLayoutKeyRef.current !== layoutKey) {
         chatFirstLayoutKeyRef.current = layoutKey;
@@ -3677,7 +3900,7 @@ export function AiChatScreen({
         setIsMessageListReady(true);
       }
     }
-  }, [invertedMessageItems.length, isInitialMessageLoading, isMessageListReady, space]);
+  }, [invertedMessageItems.length, isFileTransfer, isInitialMessageLoading, isMessageListReady, space]);
 
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -4183,9 +4406,7 @@ export function AiChatScreen({
   const favoriteIdentityByMessageId = useMemo(() => {
     const next = new Map<string, MessageFavoriteIdentity>();
     for (const message of visibleMessages) {
-      if (message.role === "assistant") {
-        next.set(message.id, buildMessageFavoriteIdentity(message));
-      }
+      next.set(message.id, buildMessageFavoriteIdentity(message));
     }
     return next;
   }, [favoriteBranchIdentityState, space, visibleMessages]);
@@ -5156,6 +5377,8 @@ export function AiChatScreen({
     pendingSearchScrollMessageIdRef.current = null;
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
+    setIsMultiSelectMode(false);
+    setSelectedMessageIds(new Set());
     setSelectedVersionByMessageId({});
     setMessageLoadError(null);
     setPendingAttachments([]);
@@ -5766,6 +5989,12 @@ export function AiChatScreen({
     if (!screenMountedRef.current) {
       return null;
     }
+    if (isFileTransfer) {
+      await ensureFileTransferThread(space);
+      activeThreadIdRef.current = FILE_TRANSFER_THREAD_ID;
+      setActiveThreadId(FILE_TRANSFER_THREAD_ID);
+      return FILE_TRANSFER_THREAD_ID;
+    }
     if (activeThreadId || activeThreadIdRef.current) {
       return activeThreadId || activeThreadIdRef.current;
     }
@@ -6004,7 +6233,7 @@ export function AiChatScreen({
       const result = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
         multiple: true,
-        type: CHAT_DOCUMENT_TYPES,
+        type: '*/*',
       });
       if (result.canceled) {
         return;
@@ -6479,7 +6708,7 @@ export function AiChatScreen({
     const typedText = composerText.trim();
     const diaryCommandRequested = isDiaryCreationRequest(typedText);
     const attachments = pendingAttachments;
-    let content = buildChatMessageContent(typedText, attachments);
+    let content = isFileTransfer ? typedText : buildChatMessageContent(typedText, attachments);
     if (activeTweakArtifact) {
       const dynamicSection = buildSandboxDynamicPromptSection({
         activeArtifact: activeTweakArtifact,
@@ -6549,6 +6778,59 @@ export function AiChatScreen({
         return;
       }
       const targetThreadId = nextThreadId;
+      if (isFileTransfer) {
+        await ensureFileTransferThread(space);
+        await runWithDatabaseSpace(space, async (db) => {
+          await aiThreadRepository.createMessage(db, {
+            id: tempUserMessageId,
+            threadId: targetThreadId,
+            branchRootMessageId: null,
+            branchVersionIndex: null,
+            role: 'user',
+            status: 'completed',
+            content,
+            createdAt: sendPressedAt,
+            completedAt: sendPressedAt,
+          });
+          if (attachments.length > 0) {
+            await Promise.all(
+              attachments.map((att) =>
+                aiThreadRepository.createMessageAttachment(db, {
+                  id: att.id,
+                  messageId: tempUserMessageId,
+                  threadId: targetThreadId,
+                  kind: att.kind,
+                  name: att.name,
+                  localUri: att.uri,
+                  mimeType: att.mimeType ?? undefined,
+                  fileSize: att.size ?? undefined,
+                })
+              )
+            );
+          }
+          const firstAtt = attachments[0];
+          const attPreview = firstAtt
+            ? (firstAtt.kind === 'image' ? '[图片]' : (firstAtt.name ? `[文档] ${firstAtt.name}` : '[文档]'))
+            : '';
+          const previewText = content.trim() || attPreview;
+          await aiThreadRepository.updateThread(db, targetThreadId, {
+            lastMessagePreview: previewText,
+          });
+        });
+        setGenerating(false);
+        finishGenerationAction(actionToken);
+        await reloadMessages(targetThreadId, true);
+        void reloadRecentThreads();
+        bottomLockedRef.current = true;
+        [0, 50, 150].forEach((delay) => {
+          setTimeout(() => {
+            if (screenMountedRef.current) {
+              messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
+            }
+          }, delay);
+        });
+        return;
+      }
       let shouldOfferDiaryCreation = false;
       if (diaryCommandRequested) {
         try {
@@ -7167,7 +7449,7 @@ export function AiChatScreen({
 
   async function handleToggleMessageFavorite(message: AiMessageWithCitations) {
     const targetThreadId = activeThreadIdRef.current;
-    if (!targetThreadId || message.role !== "assistant") {
+    if (!targetThreadId) {
       return;
     }
     const identity = buildMessageFavoriteIdentity(message);
@@ -7191,7 +7473,7 @@ export function AiChatScreen({
       }));
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "更新 AI 消息收藏失败",
+        error instanceof Error ? error.message : "更新消息收藏失败",
       );
     } finally {
       setFavoritePendingByKey((current) => {
@@ -7201,6 +7483,81 @@ export function AiChatScreen({
       });
     }
   }
+
+  const handleBatchDeleteSelectedMessages = useCallback(() => {
+    if (selectedMessageIds.size === 0) return;
+    const count = selectedMessageIds.size;
+    Alert.alert('批量删除消息', `确定要删除选中的 ${count} 条消息吗？相关附件也将被移除。`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            const idsToDelete = Array.from(selectedMessageIds);
+            await runWithDatabaseSpace(space, async (db) => {
+              await aiThreadRepository.deleteMessagesByIds(db, idsToDelete);
+              const tid = activeThreadIdRef.current ?? threadId;
+              if (tid && isFileTransferRef.current) {
+                const remainingMessages = await aiThreadRepository.listMessages(db, tid);
+                const lastMsg = remainingMessages[remainingMessages.length - 1];
+                let attPreview = '';
+                if (lastMsg) {
+                  const atts = await aiThreadRepository.listMessageAttachments(db, lastMsg.id);
+                  const firstAtt = atts[0];
+                  if (firstAtt) {
+                    attPreview = firstAtt.kind === 'image' ? '[图片]' : (firstAtt.name ? `[文档] ${firstAtt.name}` : '[文档]');
+                  }
+                }
+                const preview = lastMsg ? (lastMsg.content?.trim() || attPreview || '') : '';
+                await aiThreadRepository.updateThread(db, tid, {
+                  lastMessagePreview: preview,
+                });
+              }
+            });
+            setIsMultiSelectMode(false);
+            setSelectedMessageIds(new Set());
+            await reloadMessages(activeThreadIdRef.current ?? threadId ?? null, false);
+            void reloadRecentThreads();
+          })();
+        },
+      },
+    ]);
+  }, [reloadMessages, reloadRecentThreads, selectedMessageIds, space, threadId]);
+
+  const handleBatchFavoriteSelectedMessages = useCallback(() => {
+    if (selectedMessageIds.size === 0) return;
+    const targetThreadId = activeThreadIdRef.current ?? threadId;
+    if (!targetThreadId) return;
+    const idsToFavorite = Array.from(selectedMessageIds);
+    void (async () => {
+      const messagesToFav = visibleMessages.filter((m) => idsToFavorite.includes(m.id));
+      for (const msg of messagesToFav) {
+        const identity = buildMessageFavoriteIdentity(msg);
+        try {
+          await toggleAssistantMessageFavorite({
+            branchScopes: identity.branchScopes,
+            favorited: true,
+            messageId: msg.id,
+            messageVersionIndex: identity.messageVersionIndex,
+            space,
+            threadId: targetThreadId,
+          });
+          setFavoriteStateByKey((prev) => ({
+            ...prev,
+            [identity.key]: true,
+          }));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setIsMultiSelectMode(false);
+      setSelectedMessageIds(new Set());
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(`已收藏 ${idsToFavorite.length} 条消息`, ToastAndroid.SHORT);
+      }
+    })();
+  }, [buildMessageFavoriteIdentity, space, threadId, visibleMessages, selectedMessageIds]);
 
   const handleArtifactLongPress = useCallback((
     artifactKind: 'diary' | 'dream' | 'dreamJob',
@@ -7354,13 +7711,17 @@ export function AiChatScreen({
       pageY: number,
     ) => {
       if (isUserDraggingRef.current || isMomentumScrollingRef.current) return;
+      if (isMultiSelectModeRef.current) {
+        toggleMultiSelectMessage(message.id);
+        return;
+      }
       setMessageContextMenuState({
         anchorX: pageX,
         anchorY: pageY,
         messageId: message.id,
       });
     },
-    [],
+    [toggleMultiSelectMessage],
   );
 
   const handleToggleVoiceSpeak = useCallback(
@@ -7489,6 +7850,48 @@ export function AiChatScreen({
       });
     }
 
+    const favoriteIdentity =
+      favoriteIdentityByMessageId.get(message.id) ?? null;
+    const favorited = favoriteIdentity
+      ? Boolean(favoriteStateByKey[favoriteIdentity.key])
+      : false;
+    const favoritePending = favoriteIdentity
+      ? Boolean(favoritePendingByKey[favoriteIdentity.key])
+      : false;
+
+    messageContextMenuActions.push(
+      {
+        disabled:
+          !favoriteIdentity ||
+          favoritePending ||
+          actionPending ||
+          (generating && message.id === activeAssistantId),
+        icon: favorited ? "star" : "star-outline",
+        key: "favorite",
+        label: favorited ? "取消收藏" : "收藏",
+        onPress: () => {
+          void handleToggleMessageFavorite(message);
+        },
+        renderIcon: ({ color, size }) => <FavoriteStarIcon color={color} favorited={favorited} size={size} />,
+        selected: favorited,
+      },
+      {
+        disabled: generating || actionPending,
+        icon: "checkbox-outline",
+        key: "multi-select",
+        label: "多选",
+        onPress: () => {
+          Keyboard.dismiss();
+          setIsMultiSelectMode(true);
+          setSelectedMessageIds(new Set([message.id]));
+          setMessageContextMenuState(null);
+        },
+        renderIcon: ({ color, size }) => (
+          <Ionicons color={color} name="checkbox-outline" size={size} />
+        ),
+      },
+    );
+
     if (message.role === "user") {
       messageContextMenuActions.push({
         disabled: generating || actionPending || !targetsLatestVersion,
@@ -7498,15 +7901,52 @@ export function AiChatScreen({
         onPress: () => handleEditUserMessage(message.id),
         renderIcon: ({ color, size }) => <EditIcon color={color} size={size} />,
       });
-    } else {
-      const favoriteIdentity =
-        favoriteIdentityByMessageId.get(message.id) ?? null;
-      const favorited = favoriteIdentity
-        ? Boolean(favoriteStateByKey[favoriteIdentity.key])
-        : false;
-      const favoritePending = favoriteIdentity
-        ? Boolean(favoritePendingByKey[favoriteIdentity.key])
-        : false;
+    }
+
+    messageContextMenuActions.push({
+      disabled: generating || actionPending,
+      icon: "trash-outline",
+      key: "delete",
+      label: "删除",
+      onPress: () => {
+        Alert.alert('删除消息', '确定要删除这条消息吗？相关附件也将被移除。', [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '删除',
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                await runWithDatabaseSpace(space, async (db) => {
+                  await aiThreadRepository.deleteMessagesByIds(db, [message.id]);
+                  const tid = activeThreadIdRef.current ?? threadId;
+                  if (tid && isFileTransferRef.current) {
+                    const remainingMessages = await aiThreadRepository.listMessages(db, tid);
+                    const lastMsg = remainingMessages[remainingMessages.length - 1];
+                    let attPreview = '';
+                    if (lastMsg) {
+                      const atts = await aiThreadRepository.listMessageAttachments(db, lastMsg.id);
+                      const firstAtt = atts[0];
+                      if (firstAtt) {
+                        attPreview = firstAtt.kind === 'image' ? '[图片]' : (firstAtt.name ? `[文档] ${firstAtt.name}` : '[文档]');
+                      }
+                    }
+                    const preview = lastMsg ? (lastMsg.content?.trim() || attPreview || '') : '';
+                    await aiThreadRepository.updateThread(db, tid, {
+                      lastMessagePreview: preview,
+                    });
+                  }
+                });
+                await reloadMessages(activeThreadIdRef.current ?? threadId ?? null, false);
+                void reloadRecentThreads();
+              })();
+            },
+          },
+        ]);
+      },
+      renderIcon: ({ color, size }) => <Ionicons color="#E53E3E" name="trash-outline" size={size} />,
+    });
+
+    if (message.role !== "user") {
       const replyActionMode =
         replyActionModeByMessageId.get(message.id) ?? "continue";
       const canContinueGeneration =
@@ -7529,21 +7969,6 @@ export function AiChatScreen({
           message.status === "stopped");
 
       messageContextMenuActions.push(
-        {
-          disabled:
-            !favoriteIdentity ||
-            favoritePending ||
-            actionPending ||
-            (generating && message.id === activeAssistantId),
-          icon: favorited ? "star" : "star-outline",
-          key: "favorite",
-          label: favorited ? "取消收藏" : "收藏",
-          onPress: () => {
-            void handleToggleMessageFavorite(message);
-          },
-          renderIcon: ({ color, size }) => <FavoriteStarIcon color={color} favorited={favorited} size={size} />,
-          selected: favorited,
-        },
         {
           disabled: !canContinueGeneration,
           icon: "play-forward-outline",
@@ -7753,10 +8178,7 @@ export function AiChatScreen({
       const { message } = item;
       const inlineMemoryCaptures =
         memoryCapturesBySourceMessageId.get(message.id) ?? [];
-      const favoriteIdentity =
-        message.role === "assistant"
-          ? (favoriteIdentityByMessageId.get(message.id) ?? null)
-          : null;
+      const favoriteIdentity = favoriteIdentityByMessageId.get(message.id) ?? null;
       const activeStreamingIdentity = activeStreamingIdentityRef.current;
       // prettier-ignore
       const streamingIdentity = activeStreamingIdentity?.messageId === message.id ? activeStreamingIdentity : null;
@@ -7818,9 +8240,31 @@ export function AiChatScreen({
             style={[
               searchHighlightMessageId === message.id && styles.searchHighlightWrap,
               item.isRoleTransition && styles.roleTransitionSpacing,
+              isMultiSelectMode && styles.multiSelectRow,
             ]}
           >
-            <AiMessageBubble
+            {isMultiSelectMode ? (
+              <Pressable
+                accessibilityLabel={selectedMessageIds.has(message.id) ? "取消选择" : "选择此条消息"}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selectedMessageIds.has(message.id) }}
+                hitSlop={spacing[2]}
+                onPress={() => toggleMultiSelectMessage(message.id)}
+                style={styles.multiSelectCheckCircle}
+              >
+                <Ionicons
+                  color={selectedMessageIds.has(message.id) ? aiLightColors.primaryActive : colors.border.default}
+                  name={selectedMessageIds.has(message.id) ? "checkmark-circle" : "ellipse-outline"}
+                  size={22}
+                />
+              </Pressable>
+            ) : null}
+            <Pressable
+              disabled={!isMultiSelectMode}
+              onPress={() => toggleMultiSelectMessage(message.id)}
+              style={isMultiSelectMode ? { flex: 1 } : undefined}
+            >
+              <AiMessageBubble
               isSystemAssistant={isSystemAssistant}
               systemTask={isSystemAssistant && (message.versionIndex === message.versionTotal || message.versionIndex === 0 || message.status === 'generating') ? systemAssistant.tasks[message.id] : null}
               assistantAvatar={{
@@ -7867,8 +8311,18 @@ export function AiChatScreen({
                 });
               }}
               onAttachmentPress={(attachment) => {
-                if (attachment.kind === "document" && attachment.documentId) {
-                  onOpenSource(attachment.documentId, attachment.name);
+                if (attachment.kind === "document") {
+                  if (attachment.documentId) {
+                    onOpenSource(attachment.documentId, attachment.name);
+                  } else if (attachment.localUri) {
+                    setDocViewerState({
+                      visible: true,
+                      title: attachment.name,
+                      uri: attachment.localUri,
+                      content: "",
+                      mode: "clean",
+                    });
+                  }
                 } else if (attachment.kind === "image" && attachment.localUri) {
                   setPreviewImageUri(attachment.localUri);
                 }
@@ -7930,11 +8384,12 @@ export function AiChatScreen({
                 });
               }}
               userProfile={{
-                avatarEnabled: participantAppearance.userAvatarEnabled,
+                avatarEnabled: isFileTransfer ? true : participantAppearance.userAvatarEnabled,
                 avatarUri: participantAppearance.userAvatarUri,
                 nickname: participantAppearance.userNickname,
               }}
             />
+            </Pressable>
           </View>
           {inlineMemoryCaptures.length > 0 ? (
             <View style={styles.inlineMemoryNotice}>
@@ -8002,6 +8457,10 @@ export function AiChatScreen({
       activeVoicePlaybackId,
       synthesizingVoiceMessageId,
       handleToggleVoiceSpeak,
+      isFileTransfer,
+      isMultiSelectMode,
+      selectedMessageIds,
+      toggleMultiSelectMessage,
     ],
   );
 
@@ -8012,6 +8471,8 @@ export function AiChatScreen({
       latestVisibleMessageId,
       editingUserMessageId,
       favoriteStateByKey,
+      isMultiSelectMode,
+      selectedMessageIds,
     }),
     [
       activeVoicePlaybackId,
@@ -8019,6 +8480,8 @@ export function AiChatScreen({
       latestVisibleMessageId,
       editingUserMessageId,
       favoriteStateByKey,
+      isMultiSelectMode,
+      selectedMessageIds,
     ],
   );
 
@@ -8046,37 +8509,79 @@ export function AiChatScreen({
         {...swipeDrawerPanResponder.panHandlers}
       >
           <View style={styles.header}>
-            {/* Left: drawer + search */}
+            {/* Left: drawer + search OR cancel multi-select */}
             <View style={styles.headerSide}>
-              <Pressable
-                accessibilityLabel="打开综合记录"
-                accessibilityRole="button"
-                onPress={() => setRecordDrawerVisible(true)}
-                style={({ pressed }) => [
-                  styles.iconBtn,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
-              </Pressable>
+              {isMultiSelectMode ? (
+                <Pressable
+                  accessibilityLabel="取消多选"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setIsMultiSelectMode(false);
+                    setSelectedMessageIds(new Set());
+                  }}
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                >
+                  <Text style={{ fontSize: 15, color: aiLightColors.ink, fontWeight: '500' }}>取消</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityLabel="打开综合记录"
+                  accessibilityRole="button"
+                  onPress={() => setRecordDrawerVisible(true)}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
+                </Pressable>
+              )}
             </View>
             {/* Center: title */}
             <View style={styles.titleBlock}>
               <View style={styles.titleLine}>
                 <Text numberOfLines={1} style={styles.title}>
-                  {displayTitle}
+                  {isMultiSelectMode
+                    ? (selectedMessageIds.size > 0 ? `已选择 ${selectedMessageIds.size} 项` : '选择消息')
+                    : isFileTransfer
+                    ? '文件传输助手'
+                    : isSystemAssistant
+                    ? 'Pixory 系统管家'
+                    : displayTitle}
                 </Text>
-                {thinking ? <View style={styles.liveDot} /> : null}
+                {!isMultiSelectMode && isSpecialSystemThread ? (
+                  <View style={styles.headerSystemBadge}>
+                    <Text style={styles.headerSystemBadgeText}>系统</Text>
+                  </View>
+                ) : null}
+                {!isMultiSelectMode && thinking ? <View style={styles.liveDot} /> : null}
               </View>
-              {modelLabel ? (
+              {!isMultiSelectMode && !isSpecialSystemThread && modelLabel ? (
                 <Text numberOfLines={1} style={styles.modelSubtitle}>
                   {modelLabel}
                 </Text>
               ) : null}
             </View>
-            {/* Right: session settings + new chat */}
+            {/* Right: session settings + new chat OR select all */}
             <View style={styles.headerSide}>
-              {!isSystemAssistant ? (
+              {isMultiSelectMode ? (
+                <Pressable
+                  accessibilityLabel={selectedMessageIds.size === visibleMessages.length && visibleMessages.length > 0 ? "取消全选" : "全选"}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    if (selectedMessageIds.size === visibleMessages.length) {
+                      setSelectedMessageIds(new Set());
+                    } else {
+                      setSelectedMessageIds(new Set(visibleMessages.map((m) => m.id)));
+                    }
+                  }}
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                >
+                  <Text style={{ fontSize: 15, color: aiLightColors.primaryActive, fontWeight: '500' }}>
+                    {selectedMessageIds.size === visibleMessages.length && visibleMessages.length > 0 ? '取消全选' : '全选'}
+                  </Text>
+                </Pressable>
+              ) : isFileTransfer ? null : !isSystemAssistant ? (
                 <Pressable
                   accessibilityLabel="会话设置"
                   accessibilityRole="button"
@@ -8147,7 +8652,7 @@ export function AiChatScreen({
                 keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 keyboardShouldPersistTaps="handled"
                 keyExtractor={messageKeyExtractor}
-                maintainVisibleContentPosition={MESSAGE_LIST_ANCHOR_CONFIG}
+                maintainVisibleContentPosition={isFileTransfer ? undefined : MESSAGE_LIST_ANCHOR_CONFIG}
                 maxToRenderPerBatch={tailListMaxToRenderPerBatch}
                 removeClippedSubviews={tailListRemoveClippedSubviews}
                 updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
@@ -8226,7 +8731,14 @@ export function AiChatScreen({
             </View>
             {invertedMessageItems.length === 0 && isMessageListReady && !errorMessage && !messageLoadError ? (
               <View style={styles.starterOverlay}>
-                <AiChatStarterHints onPickSuggestion={setComposerText} />
+                <AiChatStarterHints
+                  isFileTransfer={isFileTransfer}
+                  isSystemAssistant={isSystemAssistant}
+                  onPasteClipboard={handlePasteClipboard}
+                  onPickDocs={() => void pickChatDocuments()}
+                  onPickPhotos={() => void pickChatImages()}
+                  onPickSuggestion={setComposerText}
+                />
               </View>
             ) : null}
           </View>
@@ -8244,7 +8756,61 @@ export function AiChatScreen({
           {/* System Task Ended Banner */}
 
 
-          {inlineEditingActive ? null : (
+          {isMultiSelectMode ? (
+            <View style={styles.multiSelectActionBar}>
+              <Pressable
+                accessibilityLabel="删除所选消息"
+                accessibilityRole="button"
+                disabled={selectedMessageIds.size === 0}
+                onPress={() => void handleBatchDeleteSelectedMessages()}
+                style={({ pressed }) => [
+                  styles.multiSelectActionBtn,
+                  selectedMessageIds.size === 0 && styles.multiSelectActionBtnDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  color={selectedMessageIds.size === 0 ? colors.text.placeholder : colors.semantic.danger}
+                  name="trash-outline"
+                  size={20}
+                />
+                <Text
+                  style={[
+                    styles.multiSelectActionBtnText,
+                    { color: selectedMessageIds.size === 0 ? colors.text.placeholder : colors.semantic.danger },
+                  ]}
+                >
+                  {`删除 (${selectedMessageIds.size})`}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="收藏所选消息"
+                accessibilityRole="button"
+                disabled={selectedMessageIds.size === 0}
+                onPress={() => void handleBatchFavoriteSelectedMessages()}
+                style={({ pressed }) => [
+                  styles.multiSelectActionBtn,
+                  selectedMessageIds.size === 0 && styles.multiSelectActionBtnDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  color={selectedMessageIds.size === 0 ? colors.text.placeholder : aiLightColors.primaryActive}
+                  name="bookmark-outline"
+                  size={20}
+                />
+                <Text
+                  style={[
+                    styles.multiSelectActionBtnText,
+                    { color: selectedMessageIds.size === 0 ? colors.text.placeholder : aiLightColors.primaryActive },
+                  ]}
+                >
+                  {`收藏 (${selectedMessageIds.size})`}
+                </Text>
+              </Pressable>
+            </View>
+          ) : inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
               {dreamNotice && dreamNotice.type === 'manual_confirmation' ? (
                 <View style={styles.diaryHint}>
@@ -8374,8 +8940,10 @@ export function AiChatScreen({
               <AiChatComposer
                 attachments={pendingAttachments}
                 generating={generating}
-                modelIconBrand={modelIconBrand}
-                voiceAvailable={true}
+                modelIconBrand={isSpecialSystemThread ? undefined : modelIconBrand}
+                hideModelIcon={isFileTransfer}
+                hideReplyAssist={isFileTransfer}
+                voiceAvailable={!isFileTransfer}
                 onAddDocumentAttachment={() => void pickChatDocuments()}
                 onAddImageAttachment={() => void pickChatImages()}
                 onChangeText={setComposerText}
@@ -8391,7 +8959,7 @@ export function AiChatScreen({
                     current.filter((attachment) => attachment.id !== id),
                   )
                 }
-                placeholder=""
+                placeholder={isFileTransfer ? "发送文字、链接或备忘..." : ""}
                 replyAssistDisabled={
                   generating || !canOpenReplyAssist(visibleMessages)
                 }
@@ -8442,14 +9010,14 @@ export function AiChatScreen({
           <AiScrollToLatestButton
             bottomOffset={composerShellHeight + spacing[3] + spacing[1.5]}
             generating={generating}
-            visible={isMessageListReady && showScrollToLatest && !inlineEditingActive}
+            visible={isMessageListReady && showScrollToLatest && !inlineEditingActive && !isMultiSelectMode}
             onPress={handleReturnToLatestPress}
           />
         </View>
       </KeyboardAvoidingView>
   );
 
-  const rightConfigDrawerNode = (
+  const rightConfigDrawerNode = isFileTransfer ? null : (
     <AiSessionConfigScreen
       contextTitle={contextTitle}
       contextType={contextType}
@@ -8590,15 +9158,23 @@ export function AiChatScreen({
     >
       {isPushScaleSidebar ? (
         <AiPushScaleDrawerStage
-          canOpenRightDrawer={activeThreadId !== 'pixory-system-assistant'}
+          canOpenRightDrawer={activeThreadId !== SYSTEM_ASSISTANT_THREAD_ID && !isFileTransfer}
           leftDrawer={leftRecordDrawerNode}
           leftDrawerVisible={recordDrawerVisible}
           mainCardContentStyle={{ paddingBottom: mainBottomPadding }}
           onCloseLeftDrawer={() => setRecordDrawerVisible(false)}
-          onCloseRightDrawer={() => setConfigDrawerVisible(false)}
+          onCloseRightDrawer={() => {
+            if (isFileTransfer) {
+              return;
+            }
+            setConfigDrawerVisible(false);
+          }}
           onOpenLeftDrawer={() => setRecordDrawerVisible(true)}
           onOpenRightDrawer={() => {
-            if (activeThreadId !== 'pixory-system-assistant') {
+            if (isFileTransfer) {
+              return;
+            }
+            if (activeThreadId !== SYSTEM_ASSISTANT_THREAD_ID) {
               if (activeThreadId) {
                 prefetchBranchTree({ space, threadId: activeThreadId });
               }
@@ -8606,7 +9182,7 @@ export function AiChatScreen({
             }
           }}
           rightDrawer={rightConfigDrawerNode}
-          rightDrawerVisible={configDrawerVisible}
+          rightDrawerVisible={isFileTransfer ? false : configDrawerVisible}
           spatialPreset={sidebarSpatialPreset}
         >
           {mainChatContentNode}
@@ -8965,6 +9541,18 @@ const styles = StyleSheet.create({
     lineHeight: typography.textStyles.body.lineHeight,
     maxWidth: "90%",
   },
+  headerSystemBadge: {
+    marginLeft: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  headerSystemBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#4A5568',
+  },
   modelSubtitle: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
@@ -9072,6 +9660,89 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[8],
     paddingHorizontal: spacing[2],
   },
+  fileTransferStarterCard: {
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.xl,
+    padding: spacing[5],
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    gap: rhythm.microGap,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: aiLightColors.hairline,
+    ...shadows.sm,
+  },
+  starterAvatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
+  },
+  starterCardHeader: {
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  starterCardTitle: {
+    ...typography.textStyles.sectionTitle,
+    color: aiLightColors.ink,
+  },
+  starterSystemBadge: {
+    paddingHorizontal: spacing[1],
+    paddingVertical: 2,
+    borderRadius: radius.xs,
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  starterSystemBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: aiLightColors.muted,
+  },
+  starterCardSubtitle: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    textAlign: 'center',
+  },
+  starterFeatureList: {
+    width: '100%',
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.md,
+    padding: spacing[3],
+    gap: spacing[2],
+  },
+  starterFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  starterFeatureText: {
+    flex: 1,
+    ...typography.textStyles.micro,
+    color: aiLightColors.ink,
+    lineHeight: 16,
+  },
+  starterActionPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: spacing[1],
+  },
+  starterActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: radius.pill,
+    backgroundColor: aiLightColors.canvas,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: aiLightColors.hairline,
+  },
+  starterActionBtnText: {
+    ...typography.textStyles.caption,
+    fontWeight: '500',
+    color: aiLightColors.ink,
+  },
   starterGreeting: {
     color: aiLightColors.ink,
     fontFamily: aiLightDisplayFont,
@@ -9135,6 +9806,43 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: spacing[1],
+  },
+  multiSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  multiSelectCheckCircle: {
+    paddingRight: spacing[2],
+    paddingLeft: spacing[1],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  multiSelectActionBar: {
+    backgroundColor: aiLightColors.surface,
+    borderTopColor: colors.border.default,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: spacing[3],
+    paddingBottom: Platform.OS === 'android' ? spacing[3] : spacing[5],
+  },
+  multiSelectActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[4],
+    borderRadius: radius.md,
+  },
+  multiSelectActionBtnDisabled: {
+    opacity: 0.4,
+  },
+  multiSelectActionBtnText: {
+    ...typography.textStyles.body,
+    fontWeight: '500',
   },
 });
 

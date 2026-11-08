@@ -30,7 +30,7 @@ test('Pixory system assistant keeps thinking content hidden without changing oth
   const screen = read('src/screens/AiChatScreen.tsx');
 
   assert.match(bubble, /const shouldRenderThinking =\s*[\s\S]*!isUser &&\s*!isSystemAssistant/);
-  assert.match(screen, /const isSystemAssistant = threadId === 'pixory-system-assistant'/);
+  assert.match(screen, /const isSystemAssistant = threadId === (?:'pixory-system-assistant'|SYSTEM_ASSISTANT_THREAD_ID)/);
   assert.match(screen, /!isSystemAssistantRef\.current[\s\S]*activeLanes/);
   assert.match(screen, /!isSystemAssistant &&\s*Boolean\(thinkingExpandedByMessageIdRef/);
   assert.match(bubble, /previous\.isSystemAssistant === next\.isSystemAssistant/);
@@ -141,7 +141,7 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
   assert.match(chat, /const inlineEditingActive = Boolean\(editingUserMessageId\)/);
   assert.match(chat, /keyboardDismissMode=\{inlineEditingActive \? 'none' : Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
   assert.match(chat, /const handleComposerHeightChange = useCallback\(\(\) => \{\s*if \(editingUserMessageIdRef\.current\) \{\s*return;\s*\}/);
-  assert.match(chat, /\{inlineEditingActive \? null : \(\s*<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>/);
+  assert.match(chat, /inlineEditingActive \? null : \(\s*<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>/);
 });
 
 test('AI chat composer focus keeps the input visible without keyboard height hacks', () => {

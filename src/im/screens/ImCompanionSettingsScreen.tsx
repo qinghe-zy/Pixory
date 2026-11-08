@@ -99,7 +99,7 @@ export function ImCompanionSettingsScreen({
       visible: true,
       title: enabled ? '一键开启所有会话语音回复' : '一键关闭所有会话语音回复',
       message: enabled
-        ? '确定将所有伴聊会话的模型语音回复统一开启吗？伴侣将在日常交流中按需发送微信拟真语音条。'
+        ? '确定将所有伴聊会话的模型语音回复统一开启吗？角色将在日常交流中按需发送微信拟真语音条。'
         : '确定将所有伴聊会话的模型语音回复统一关闭吗？关闭后所有角色仅通过纯文字与表情交流。',
       danger: !enabled,
       primaryLabel: enabled ? '确认开启' : '确认关闭',
@@ -180,7 +180,7 @@ export function ImCompanionSettingsScreen({
           <View style={styles.row}>
             <View style={styles.labelCol}>
               <Text style={styles.rowTitle}>所有角色回复语音总开关</Text>
-              <Text style={styles.rowSub}>默认允许伴侣在聊天中发送微信拟真语音条</Text>
+              <Text style={styles.rowSub}>默认允许角色在聊天中发送微信拟真语音条</Text>
             </View>
             <Switch
               accessibilityLabel="所有角色回复语音总开关"

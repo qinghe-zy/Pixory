@@ -334,7 +334,7 @@ export function AiSandboxViewerModal({
                 >
                   <Ionicons
                     color={activeTab === 'preview' ? '#111827' : '#6B7280'}
-                    name="eye-outline"
+                    name="play-outline"
                     size={13}
                   />
                   <Text style={[styles.segmentTabText, activeTab === 'preview' && styles.segmentTabTextActive]}>

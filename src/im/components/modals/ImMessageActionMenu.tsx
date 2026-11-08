@@ -42,7 +42,7 @@ export function ImMessageActionMenu({
       ? message.voice?.transcription || message.content
       : message.content;
     const text = rawContent
-      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE):[^\]]+\]/gi, '')
+      .replace(/\[(STATUS|MOOD|STICKER|HEARTBEAT|VOICE)(?:[:：][^\]]+|\][:：]?[^\]\n]*)?\]?/gi, '')
       .replace(/\[BR\]/g, '\n')
       .trim();
     await Clipboard.setStringAsync(text);

@@ -37,7 +37,7 @@ test('IM entry scheme 1 and role card linkage policy verification', async (t) =>
 
   await t.test('ImThreadList renders WeChat style conversation list and monochrome minimal empty state', () => {
     assert.match(threadListContent, /export function ImThreadList/);
-    assert.match(threadListContent, /listImThreads/);
+    assert.match(threadListContent, /(?:listImThreads|useImThreadFeed)/);
     assert.match(threadListContent, /avatarImage/);
     assert.match(threadListContent, /livingIndicator/);
     assert.match(threadListContent, /formatWeChatTime/);

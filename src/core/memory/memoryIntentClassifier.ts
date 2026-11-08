@@ -10,6 +10,9 @@ const PHATIC_PATTERN_REGEX = /^(哈哈+|嘻嘻+|嘿嘿+|呜呜+|好[的滴呀嘞
 
 const TEMPORAL_CUE_REGEX = /(明天|后天|大后天|下周[一二三四五六日天]?|周[一二三四五六日天]|今晚|明早|过几天|这周末|月底|考试|面试|出差|答辩|开会|生日|纪念日)/;
 
+const FORGET_REQUEST_REGEX =
+  /(?:忘掉|忘了|忘了吧|全忘了|别记|不要记|不用记|抹掉|删掉|撤回).*(?:刚才|刚刚|前面|上面|气话|说的|那句|那些)|(?:刚才|刚刚).*(?:全忘了|忘了吧|忘掉吧|别往心里去|别当真|我瞎说的|开玩笑的|说着玩的|气话)/;
+
 const FACT_MUTATION_REGEX =
   /(我叫|我名字|我今年|我职业|我是做|我大学|我专业|我住在|我老家|我养了|我的小狗|我的猫|我过敏|我不吃|我不喝|我喜欢|我最爱|我习惯|我最近戒|我换了|记住|别忘[了记]|提醒我|我.*(只喝|只吃|爱喝|爱吃|讨厌|喜欢|不爱)|平时(只|喝|吃))/;
 
@@ -46,6 +49,19 @@ export function classifyTurnMemoryIntent(
     return {
       intent: 'PHATIC_SHORT_ACK',
       confidence: 0.95,
+      topK: 0,
+      invokeMemoryModel: false,
+      scoreThreshold: 0.99,
+      boostCategory: 'none',
+      detectedTemporalCue: null,
+    };
+  }
+
+  // 2.1 主动命令遗忘（撤回刚才的气话或误录记忆，必须优先拦截）
+  if (FORGET_REQUEST_REGEX.test(trimmed)) {
+    return {
+      intent: 'FORGET_REQUEST',
+      confidence: 0.98,
       topK: 0,
       invokeMemoryModel: false,
       scoreThreshold: 0.99,
@@ -99,13 +115,13 @@ export function classifyTurnMemoryIntent(
     };
   }
 
-  // 6. 情绪倾诉
+  // 6. 情绪倾诉（开放轻量记忆提炼，捕获关键人际/情绪事件）
   if (EMOTIONAL_CONFIDE_REGEX.test(trimmed)) {
     return {
       intent: 'EMOTIONAL_CONFIDE',
       confidence: 0.86,
       topK: 3,
-      invokeMemoryModel: false,
+      invokeMemoryModel: true,
       scoreThreshold: 0.20,
       boostCategory: 'episode',
       detectedTemporalCue,
@@ -125,12 +141,12 @@ export function classifyTurnMemoryIntent(
     };
   }
 
-  // 8. 通用情境对话（自适应记忆召回，降低门槛至 0.18）
+  // 8. 通用情境对话（自适应记忆召回，长叙事对话开放记忆提取）
   return {
     intent: 'GENERAL_CHAT',
     confidence: 0.7,
     topK: trimmed.length > 8 ? 3 : 2,
-    invokeMemoryModel: false,
+    invokeMemoryModel: trimmed.length >= 18,
     scoreThreshold: 0.18,
     boostCategory: 'none',
     detectedTemporalCue,

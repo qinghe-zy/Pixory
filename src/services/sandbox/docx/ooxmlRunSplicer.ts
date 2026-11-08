@@ -193,8 +193,17 @@ export class OoxmlRunSplicer {
       let previewText = '';
       let tPos = 0;
       while ((tPos = rawParaXml.indexOf('<w:t', tPos)) !== -1) {
+        const nextChar = rawParaXml[tPos + 4];
+        if (nextChar !== ' ' && nextChar !== '>' && nextChar !== '/') {
+          tPos += 4;
+          continue;
+        }
         const tagClose = rawParaXml.indexOf('>', tPos);
         if (tagClose === -1) break;
+        if (rawParaXml[tagClose - 1] === '/') {
+          tPos = tagClose + 1;
+          continue;
+        }
         const tEnd = rawParaXml.indexOf('</w:t>', tagClose);
         if (tEnd === -1) break;
         const textSlice = decodeXmlEntities(rawParaXml.slice(tagClose + 1, tEnd));
@@ -307,9 +316,16 @@ export class OoxmlRunSplicer {
         if (nextTag === -1) break;
 
         // 1. 纯文本节点 <w:t
-        if (runXml.startsWith('<w:t', nextTag)) {
+        const charAfterT = runXml[nextTag + 4];
+        const isTTag = runXml.startsWith('<w:t', nextTag) && (charAfterT === ' ' || charAfterT === '>' || charAfterT === '/');
+        if (isTTag) {
           const tOpenEnd = runXml.indexOf('>', nextTag + 4);
           if (tOpenEnd !== -1) {
+            if (runXml[tOpenEnd - 1] === '/') {
+              // 自闭合 <w:t/>
+              innerCursor = tOpenEnd + 1;
+              continue;
+            }
             const tClose = runXml.indexOf('</w:t>', tOpenEnd);
             if (tClose !== -1) {
               const rawContent = runXml.slice(tOpenEnd + 1, tClose);

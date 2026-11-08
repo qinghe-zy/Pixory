@@ -98,17 +98,17 @@ export function buildStyleEntrainmentPrompt(
 
   // 1. 本轮输入长度对称性自适应
   if (inputLen > 0 && inputLen <= 8) {
-    notes.push('对方本轮仅发了简短字句，请用精炼短气泡利落接话，切勿长篇大论');
+    notes.push('对方发话简练，请用精炼短气泡轻松接话，切勿长篇大论');
   } else if (inputLen >= 50) {
     notes.push('对方正在长段倾诉心事，请认真顺应对方的话题，随内容自然展开回复');
   }
 
   // 2. 长期语言习惯镜像贴近
   if (profile.prefersShortSentences && inputLen <= 15) {
-    notes.push(`对方习惯短句沟通，请保持轻松精炼`);
+    notes.push(`对方习惯短句沟通，保持自然精炼`);
   }
 
   if (notes.length === 0) return null;
 
-  return `【步调对称参考】${notes.join('；')}。自然契合对方当前的表达密度，勿刻意模仿。`;
+  return `【步调对称参考】${notes.join('；')}。自然契合彼此交流默契，勿刻意拘束。`;
 }

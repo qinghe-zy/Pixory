@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Animated, GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useImTheme } from '../../theme/ImThemeProvider';
 import type { BubbleRendererProps } from '../../registry/bubbleRegistry';
 import { SecureImage } from '../../../components/SecureImage';
 import { ImBubbleBeak } from '../common/ImBubbleBeak';
+import { sanitizeThoughtForUi } from '../../engine/tagAwareStreamParser';
 
 /**
  * 角色独立深度思考气泡渲染器 (Role Thought Bubble Renderer)
@@ -52,7 +53,12 @@ export const ThoughtBubbleRenderer = React.memo(function ThoughtBubbleRenderer({
 
   const isThinking = Boolean(message.metadata?.isThinking);
   const durationSeconds = Math.max(1, Math.round(Number(message.metadata?.durationSeconds || 1)));
-  const thoughtContent = (message.content || '').trim();
+  const rawContent = (message.content || '').trim();
+  // 渲染层防御式二次脱水与记忆化优化：确保即使 SQLite 库中存有历史泄漏数据，渲染时亦纯净无感过滤为真实人设心声
+  const thoughtContent = useMemo(
+    () => sanitizeThoughtForUi(rawContent, { isFinal: !isThinking }),
+    [rawContent, isThinking]
+  );
 
   // 若处于正在思考流式中，强制保持展开；若思考结束，由用户手动展开状态控制（默认紧凑闭合）
   const shouldShowBody = isThinking || userExpanded;
@@ -193,7 +199,7 @@ export const ThoughtBubbleRenderer = React.memo(function ThoughtBubbleRenderer({
                   },
                 ]}
               >
-                {thoughtContent || (isThinking ? '正在深度思考...' : '')}
+                {thoughtContent || (isThinking ? '正在深度思考...' : '（心绪平静，正专注地看着对话框……）')}
               </Text>
 
               {/* 用户展开态右下角精致收起小箭头 */}

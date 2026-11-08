@@ -57,6 +57,8 @@ export interface TtsSynthesisRequest {
   rate: number;
   pitch: number;
   style?: string | null;
+  styleOverride?: string;
+  ttsScript?: string;
   timeoutMs: number;
   apiKey?: string;
   baseUrl?: string;

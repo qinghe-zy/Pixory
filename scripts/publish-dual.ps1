@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$Version = '',
   [string]$ApkPath = '',
   [string]$NotesPath = '',
@@ -87,8 +87,52 @@ if ($staged) {
 Assert-NativeSuccess 'Create release tag'
 & git -C $CleanRepository push --atomic origin main "refs/tags/$tag"
 Assert-NativeSuccess 'Push public main and tag'
-& gh release create $tag $ApkPath --repo qinghe-zy/Pixory --verify-tag --title "Pixory $Version" --notes-file $NotesPath
+
+# Prepare pure, concise, user-facing notes for GitHub Release (never leak internal process docs or change records)
+$releaseNotesText = ""
+$updateJsonPath = Join-Path $repoRoot "docs/update-version.json"
+if (Test-Path -LiteralPath $updateJsonPath) {
+  try {
+    $updateJson = Get-Content -Raw -LiteralPath $updateJsonPath | ConvertFrom-Json
+    if ($updateJson.detailLines -and $updateJson.detailLines.Count -gt 0) {
+      $lines = @()
+      $idx = 1
+      foreach ($line in $updateJson.detailLines) {
+        $cleanLine = $line
+        if ($cleanLine -match '^(.*?：)(.*)$') {
+          $cleanLine = "**$($matches[1])**$($matches[2])"
+        }
+        $lines += "$idx. $cleanLine"
+        $idx++
+      }
+      $releaseNotesText = "## Pixory $Version 更新内容`n`n" + ($lines -join "`n")
+    }
+  } catch {}
+}
+if (-not $releaseNotesText) {
+  $rawNotes = Get-Content -Raw -LiteralPath $NotesPath
+  # Strip all blockquotes, headers, and internal tables
+  $cleanedNotes = $rawNotes -replace '(?m)^\s*>.*$', '' -replace '(?ms)## 变更记录.*$', ''
+  if ($cleanedNotes -match '(?ms)## 用户版\s*\r?\n(.*)$') {
+    $releaseNotesText = "## Pixory $Version 更新内容`n`n" + $matches[1].Trim()
+  } elseif ($cleanedNotes -match '(?ms)## 当前有效内容\s*\r?\n(.*)$') {
+    $releaseNotesText = "## Pixory $Version 更新内容`n`n" + $matches[1].Trim()
+  } else {
+    $releaseNotesText = $cleanedNotes.Trim()
+  }
+}
+
+# 🚨 MECHANICAL AIR-GAP ASSERTION: Strict check against internal process leak
+$leakBlacklistRegex = '(?i)(定位[：:]|用用户能?理解的语言|本文件属于当前迭代|PIXORY_CHANGE_RECORD|变更记录|PRD|TDD|OTA热更新|Commit|来源提交|干系人|\|\s*\d{4}-\d{2}-\d{2}\s*\|)'
+if ($releaseNotesText -match $leakBlacklistRegex) {
+  throw "SECURITY AIR-GAP VIOLATION: Release notes contain internal development keywords or directives matching '$($matches[0])'. Aborting release immediately."
+}
+$tempNotesFile = Join-Path $env:TEMP "pixory-github-release-notes-$Version.md"
+[System.IO.File]::WriteAllText($tempNotesFile, $releaseNotesText, [System.Text.UTF8Encoding]::new($false))
+
+& gh release create $tag $ApkPath --repo qinghe-zy/Pixory --verify-tag --title "Pixory $Version" --notes-file $tempNotesFile
 Assert-NativeSuccess 'Create GitHub release'
+if (Test-Path -LiteralPath $tempNotesFile) { Remove-Item -LiteralPath $tempNotesFile -Force }
 & (Join-Path $PSScriptRoot 'deploy-docs-mist01.ps1') -ApkPath $ApkPath -Version $Version
 if (-not $?) { throw 'Official website deployment failed.' }
 Write-Host "Published $tag to GitHub and the official website."

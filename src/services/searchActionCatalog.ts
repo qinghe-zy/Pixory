@@ -591,6 +591,33 @@ export const SEARCHABLE_FEATURE_CATALOG: readonly SearchableFeatureEntry[] = [
       enabled: false,
     },
   },
+  {
+    id: 'file-transfer-assistant-toggle',
+    title: '文件传输助手',
+    icon: 'folder-outline',
+    route: 'file-transfer-assistant-toggle',
+    category: 'system_security',
+    aliases: ['文件传输助手', '传输助手', '传文件', '发文件', '文件传输', '发图片', '传电脑', '我的文件', '传输', '快传', '文件助手', '中转'],
+    systemAssistant: {
+      enabled: false,
+    },
+  },
+  {
+    id: 'system-sessions-settings',
+    title: '系统会话',
+    icon: 'chatbox-ellipses-outline',
+    route: 'system-sessions-settings',
+    category: 'system_security',
+    aliases: ['系统会话', '系统会话设置', '管家与传输助手', '系统助手设置', '官方助手'],
+    systemAssistant: {
+      actionTitle: '系统会话',
+      routeAliases: ['system-sessions', 'system-sessions-settings'],
+      promptHint: '当用户要求管理系统管家或文件传输助手开关、系统会话设置时',
+      recoverOrder: 30,
+      intentPattern: /(?:系统会话|系统管家设置|传输助手设置|文件传输助手设置)/i,
+      exactRequestPattern: /^(?:系统会话|系统助手)$/i,
+    },
+  },
 
   // ==========================================
   // 4. 帮助与支持 (help_support)

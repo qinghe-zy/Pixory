@@ -212,13 +212,19 @@ export class OpenAiCompatEngine implements TtsEngine {
       }
     }
 
-    const userStylePrompt = request.style?.trim() || '自然流畅的口语对白风格';
+    const textToSpeak = request.ttsScript?.trim() || request.text;
+    const effectiveStyle = request.styleOverride?.trim() || request.style?.trim() || '自然流畅的口语对白风格';
+    // 对于小米 MiMo：若有动态语气覆盖，在 assistant content 头部注入 <style> 标签双重强化语气与副语言（如叹气、哈欠）拟声表现
+    const mimoAssistantContent = request.styleOverride?.trim()
+      ? `<style>${request.styleOverride.trim()}</style>${textToSpeak}`
+      : textToSpeak;
+
     const payload: Record<string, any> = isMimo
       ? {
           model: request.model || 'mimo-v2.5-tts',
           messages: [
-            { role: 'user', content: userStylePrompt },
-            { role: 'assistant', content: request.text },
+            { role: 'user', content: effectiveStyle },
+            { role: 'assistant', content: mimoAssistantContent },
           ],
           audio: {
             voice: request.voiceId || '冰糖',
@@ -227,7 +233,7 @@ export class OpenAiCompatEngine implements TtsEngine {
         }
       : {
           model: request.model || 'tts-1',
-          input: request.text,
+          input: textToSpeak,
           voice: request.voiceId || 'alloy',
           response_format: 'mp3',
           speed: Math.max(0.25, Math.min(4.0, request.rate || 1.0)),
