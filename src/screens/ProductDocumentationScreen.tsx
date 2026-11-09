@@ -48,7 +48,7 @@ export function ProductDocumentationScreen({
   const [showSweep, setShowSweep] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const version = Constants.expoConfig?.version ?? '2.9.3';
+  const version = Constants.expoConfig?.version ?? '2.9.4';
 
   const readable = useMemo<Pick<AiReadableDocument, 'text'> | null>(
     () => (markdown ? { text: markdown } : null),

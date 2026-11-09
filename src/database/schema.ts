@@ -421,12 +421,6 @@ CREATE TABLE IF NOT EXISTS ai_threads (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL,
   archivedAt TEXT,
-  chat_mode TEXT NOT NULL DEFAULT 'standard' CHECK (chat_mode IN ('standard', 'im')),
-  background_image_uri TEXT,
-  nudge_text TEXT,
-  context_window_n INTEGER DEFAULT 20,
-  heartbeat_enabled INTEGER DEFAULT 1,
-  proactive_enabled INTEGER DEFAULT 1,
   im_settings_json TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (boundKnowledgeBaseId) REFERENCES ai_knowledge_bases(id) ON DELETE SET NULL
 );
@@ -449,8 +443,6 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   updatedAt TEXT NOT NULL,
   completedAt TEXT,
   FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
-  visible_at INTEGER,
-  burst_group_id TEXT,
   FOREIGN KEY (branchRootMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
 );
 
@@ -555,11 +547,9 @@ CREATE INDEX IF NOT EXISTS idx_ai_threads_context ON ai_threads(space, contextTy
 CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
   ON ai_threads(space, archivedAt, roleCardId, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_threads_unique_im_role 
-  ON ai_threads(roleCardId, space) 
-  WHERE chat_mode = 'im' AND roleCardId IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_ai_messages_visible_at ON ai_messages(threadId, visible_at);
-CREATE INDEX IF NOT EXISTS idx_ai_messages_burst_group ON ai_messages(threadId, burst_group_id);
+-- (idx_ai_threads_unique_im_role 由 V67 创建)
+-- visible_at / burst_group_id 索引由 V67 在补列后创建
+-- (burst_group 索引同上由 V67 创建)
 CREATE INDEX IF NOT EXISTS idx_ai_messages_branch ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_thread ON ai_message_versions(threadId, originalMessageId);
