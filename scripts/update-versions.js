@@ -79,10 +79,12 @@ function planVersions(root, target, date) {
     [/currentDoc\.path \+ '\?v=[^']+'/g, `currentDoc.path + '?v=${target}'`]
   ]);
   edit('docs/sitemap.xml', [[/<lastmod>[^<]+<\/lastmod>/g, `<lastmod>${date}</lastmod>`]]);
-  edit('docs/feature-matrix.md', [
-    [/最后更新：\d{4}-\d{2}-\d{2}/, `最后更新：${date}`],
-    [/适用版本：Pixory [\d.]+/, `适用版本：Pixory ${target}`]
-  ]);
+  if (fs.existsSync(path.join(root, 'docs/feature-matrix.md'))) {
+    edit('docs/feature-matrix.md', [
+      [/最后更新：\d{4}-\d{2}-\d{2}/, `最后更新：${date}`],
+      [/适用版本：Pixory [\d.]+/, `适用版本：Pixory ${target}`]
+    ]);
+  }
   edit('docs/pixory-product-bid-handbook.md', [[/适用版本：Pixory [\d.]+/, `适用版本：Pixory ${target}`]]);
   const handbookPath = 'docs/pixory-product-bid-handbook.md';
   const publicHandbook = plan.get(handbookPath);

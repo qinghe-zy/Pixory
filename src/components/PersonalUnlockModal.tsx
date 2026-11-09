@@ -18,7 +18,7 @@ import {
   verifyRecoveryKey,
 } from '../services/personalSystemService';
 
-const unlockPatternImage = require('../../docs/black.png');
+const unlockPatternImage = require('../../assets/black.png');
 
 interface PersonalUnlockModalProps {
   hasCredential: boolean | null;

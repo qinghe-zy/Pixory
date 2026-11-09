@@ -24,7 +24,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { RecoveryKeyModal } from '../components/RecoveryKeyModal';
 import { SecurityUnlockModule } from '../components/SecurityUnlockModule';
 
-const unlockPatternImage = require('../../docs/black.png');
+const unlockPatternImage = require('../../assets/black.png');
 
 interface Props {
   onBack: () => void;

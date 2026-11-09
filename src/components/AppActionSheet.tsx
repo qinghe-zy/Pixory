@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 
-const actionSheetPatternImage = require('../../docs/black.png');
+const actionSheetPatternImage = require('../../assets/black.png');
 
 export interface AppActionSheetItem {
   key: string;

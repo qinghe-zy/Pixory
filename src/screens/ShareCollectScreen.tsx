@@ -14,7 +14,7 @@ import { finishNativeShareActivity, type NativeShareItem } from '../native/pixor
 import { importSingleImage, type PickedImageAsset } from '../services/imageImportService';
 import { importVideosToIp, type PickedVideoAsset } from '../services/videoImportService';
 
-const shareSheetPatternImage = require('../../docs/black.png');
+const shareSheetPatternImage = require('../../assets/black.png');
 
 interface ShareCollectScreenProps {
   items: NativeShareItem[];

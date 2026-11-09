@@ -34,7 +34,7 @@ const MACARON_COLORS: Record<string, string> = {
   'temporary-cache': '#B0B0B0',
   'trash': '#E57373',
 };
-const sheetPatternImage = require('../../docs/black.png');
+const sheetPatternImage = require('../../assets/black.png');
 
 export function StorageUsageScreen({
   space = 'normal',
