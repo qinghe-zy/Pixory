@@ -6,10 +6,11 @@ import { aiLightColors } from './aiLightTheme';
 
 interface AiChatErrorBannerProps {
   message: string;
+  onDismiss?: () => void;
   onRetry?: () => void;
 }
 
-export function AiChatErrorBanner({ message, onRetry }: AiChatErrorBannerProps) {
+export function AiChatErrorBanner({ message, onDismiss, onRetry }: AiChatErrorBannerProps) {
   return (
     <View style={styles.wrap}>
       <Ionicons color={aiLightColors.primaryActive} name="alert-circle-outline" size={16} />
@@ -17,6 +18,17 @@ export function AiChatErrorBanner({ message, onRetry }: AiChatErrorBannerProps) 
       {onRetry ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
           <Text style={styles.retryText}>重试</Text>
+        </Pressable>
+      ) : null}
+      {onDismiss ? (
+        <Pressable
+          accessibilityLabel="关闭提示"
+          accessibilityRole="button"
+          hitSlop={spacing[2]}
+          onPress={onDismiss}
+          style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}
+        >
+          <Ionicons color={aiLightColors.muted} name="close" size={16} />
         </Pressable>
       ) : null}
     </View>
@@ -48,6 +60,9 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.primaryActive,
     fontWeight: '700',
+  },
+  dismiss: {
+    padding: spacing[1],
   },
   pressed: {
     opacity: 0.78,

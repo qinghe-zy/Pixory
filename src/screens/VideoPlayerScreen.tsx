@@ -2,21 +2,24 @@ import { applyPitchPreservingRate } from "../media/videoPlaybackRate";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import * as Brightness from "expo-brightness";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   AppState,
+  FlatList,
   InteractionManager,
   PanResponder,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
   type GestureResponderEvent,
+  type ListRenderItemInfo,
+  type PanResponderGestureState,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VolumeManager } from "react-native-volume-manager";
@@ -38,7 +41,7 @@ import {
   type IpListItem,
   type PixorySpace,
 } from "../database";
-import { colors, radius, spacing, typography } from "../design/tokens";
+import { colors, metrics, radius, spacing, typography } from "../design/tokens";
 import { useToast } from "../components/AppToast";
 import {
   importVideosToIp,
@@ -50,16 +53,29 @@ import {
   saveVideoPlayerPreferences,
   type VideoPlaybackOrder,
 } from "../services/mediaExperiencePreferences";
-import {
-  formatDuration,
-  formatFileSize,
-  formatImageDimensions,
-} from "../utils/formatters";
+import { formatDuration } from "../utils/formatters";
 import { VideoShuffleSession } from "../media/videoShuffleSession";
-import { resolveVideoSwipe } from "../media/videoSwipePolicy";
+import {
+  resolveVideoSwipe,
+  VIDEO_SWIPE_DISTANCE_RATIO,
+  VIDEO_SWIPE_VELOCITY_THRESHOLD,
+} from "../media/videoSwipePolicy";
+import {
+  computeVerticalGestureValue,
+  type VerticalGestureKind,
+} from "../media/videoVerticalGesture";
+import { DrawerQueueRow } from "../components/video/DrawerQueueRow";
+import { VerticalGestureHud } from "../components/video/VerticalGestureHud";
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
+const VIDEO_FULLSCREEN_OPTIONS = { enable: false } as const;
+const VIDEO_KEEP_AWAKE_TAG = "pixory-video-player";
+const HUD_BUTTON_HIT_SLOP = { top: 4, right: 4, bottom: 4, left: 4 } as const;
+const DRAWER_CLOSE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
+const DRAWER_ITEM_HEIGHT = 60;
+const DRAWER_ITEM_GAP = spacing[2];
 const CONTROL_HIDE_DELAY_MS = 5000;
+const VERTICAL_HUD_HIDE_DELAY_MS = 750;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const DOUBLE_TAP_PAUSE_WINDOW_MS = 280;
 const SCRUB_PREVIEW_SEEK_INTERVAL_MS = 90;
@@ -107,15 +123,12 @@ const SURFACE_SEEK_FINE_HIGH_FACTOR = 0.15;
 type GestureFeedbackKind =
   | "seek-backward"
   | "seek-forward"
-  | "brightness"
-  | "volume"
   | "locked"
   | "unlocked";
 
 interface GestureFeedbackState {
   kind: GestureFeedbackKind;
   label: string;
-  value?: number;
 }
 
 interface VideoPlayerScreenProps {
@@ -177,9 +190,13 @@ export function VideoPlayerScreen({
   const [holdSpeed, setHoldSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(3);
   const [playbackOrder, setPlaybackOrder] =
     useState<VideoPlaybackOrder>("sequence");
+  const playbackOrderRef = useRef<VideoPlaybackOrder>(playbackOrder);
+  playbackOrderRef.current = playbackOrder;
+  const [shuffleRevision, setShuffleRevision] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [speedMenuVisible, setSpeedMenuVisible] = useState(false);
   const [queueVisible, setQueueVisible] = useState(false);
+  const [drawerMounted, setDrawerMounted] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [holdSpeedVisible, setHoldSpeedVisible] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -189,7 +206,16 @@ export function VideoPlayerScreen({
   const [isPlayerLocked, setIsPlayerLocked] = useState(false);
   const [gestureFeedback, setGestureFeedback] =
     useState<GestureFeedbackState | null>(null);
-  const [brightnessOverlayOpacity, setBrightnessOverlayOpacity] = useState(0);
+  const [verticalHud, setVerticalHud] = useState<{
+    kind: VerticalGestureKind | null;
+    value: number;
+    visible: boolean;
+  }>({ kind: null, value: 0.5, visible: false });
+  const [personalExportConfirmVisible, setPersonalExportConfirmVisible] =
+    useState(false);
+  const [isAppActive, setIsAppActive] = useState(
+    AppState.currentState === "active",
+  );
   const [ipPickerVisible, setIpPickerVisible] = useState(false);
   const [normalIps, setNormalIps] = useState<IpListItem[]>([]);
   const [newIpDialogVisible, setNewIpDialogVisible] = useState(false);
@@ -203,6 +229,8 @@ export function VideoPlayerScreen({
   const [loadingCoverVideo, setLoadingCoverVideo] = useState<
     ImageListItem | ImageDetailRecord | null
   >(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
@@ -218,10 +246,20 @@ export function VideoPlayerScreen({
   const gestureFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const verticalHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const previewSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const pendingPreviewSeekTimeRef = useRef<number | null>(null);
+  const switchCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const switchSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const isMountedRef = useRef(true);
   const lastPreviewSeekAtRef = useRef(0);
   const progressTrackRef = useRef<View>(null);
   const trackPageXRef = useRef(0);
@@ -248,8 +286,37 @@ export function VideoPlayerScreen({
   const controlsVisibleRef = useRef(controlsVisible);
   const controlsVisibleBeforeHoldRef = useRef(false);
   const scrubStartTimeRef = useRef(0);
-  const verticalGestureStartValueRef = useRef(0);
-  const verticalGestureKindRef = useRef<"brightness" | "volume" | null>(null);
+  const verticalGestureStartValueRef = useRef(0.5);
+  const verticalGestureKindRef = useRef<VerticalGestureKind | null>(null);
+  const verticalGestureTokenRef = useRef(0);
+  const verticalGestureAnchorDyRef = useRef(0);
+  const verticalGestureLatestDyRef = useRef(0);
+  const lastBrightnessRef = useRef(0.5);
+  const lastVolumeRef = useRef(0.5);
+  const playbackErrorRef = useRef<string | null>(null);
+  playbackErrorRef.current = playbackError;
+  const isSavingLocalRef = useRef(false);
+  const handleSaveLocalRef = useRef<(() => Promise<void>) | null>(null);
+  const openSaveToIpRef = useRef<(() => Promise<void>) | null>(null);
+  const loadedQueueMetaRef = useRef<{
+    space: PixorySpace;
+    ipId: number;
+    refreshToken: number;
+  } | null>(null);
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const handlePlayToEndRef = useRef<(() => void) | null>(null);
+  const switchVideoRef = useRef<
+    ((
+      nextVideoId: number,
+      nextVideo?: ImageListItem,
+      options?: {
+        showControls?: boolean;
+        pauseBeforeSwitch?: boolean;
+        historyMode?: VideoSwitchHistoryMode;
+      },
+    ) => void) | null
+  >(null);
   const surfaceGestureModeRef = useRef<
     "pending" | "scrub" | "vertical" | "video-switch" | "hold" | null
   >(null);
@@ -337,6 +404,7 @@ export function VideoPlayerScreen({
   useEffect(() => {
     queueVisibleRef.current = queueVisible;
     if (queueVisible) {
+      setDrawerMounted(true);
       setControlsVisible(true);
       clearHideTimer();
     }
@@ -348,6 +416,17 @@ export function VideoPlayerScreen({
       stiffness: 200,
     }).start();
   }, [queueVisible, drawerTranslateX]);
+
+  useEffect(() => {
+    if (isPlaying && !playbackError) {
+      void activateKeepAwakeAsync(VIDEO_KEEP_AWAKE_TAG).catch(() => undefined);
+      return () => {
+        void deactivateKeepAwake(VIDEO_KEEP_AWAKE_TAG).catch(() => undefined);
+      };
+    }
+    void deactivateKeepAwake(VIDEO_KEEP_AWAKE_TAG).catch(() => undefined);
+    return undefined;
+  }, [isPlaying, playbackError]);
 
   useEffect(() => {
     let isMounted = true;
@@ -402,6 +481,11 @@ export function VideoPlayerScreen({
         clearTimeout(gestureFeedbackTimerRef.current);
         gestureFeedbackTimerRef.current = null;
       }
+      if (verticalHudTimerRef.current) {
+        clearTimeout(verticalHudTimerRef.current);
+        verticalHudTimerRef.current = null;
+      }
+      void deactivateKeepAwake(VIDEO_KEEP_AWAKE_TAG).catch(() => undefined);
       void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
     };
   }, []);
@@ -418,6 +502,7 @@ export function VideoPlayerScreen({
       setVideo(null);
       setSwitchPreviewVideo(null);
       setLoadingCoverVideo(null);
+      loadedQueueMetaRef.current = null;
       setQueue([]);
       currentPlaybackVideoIdRef.current = null;
       const initialDisplayTime = 0;
@@ -454,11 +539,25 @@ export function VideoPlayerScreen({
       );
       currentTimeRef.current = savedTime;
       setCurrentTime(savedTime);
-      const queueItems = await runWithDatabaseSpace(space, (db) =>
-        assetRepository.findQueueVideosByIpId(db, detail.ipId),
-      );
+      const cachedQueueMatches =
+        loadedQueueMetaRef.current?.space === space &&
+        loadedQueueMetaRef.current?.ipId === detail.ipId &&
+        loadedQueueMetaRef.current?.refreshToken === refreshToken &&
+        queueRef.current.some((item) => item.id === detail.id);
+      const queueItems = cachedQueueMatches
+        ? null
+        : await runWithDatabaseSpace(space, (db) =>
+            assetRepository.findQueueVideosByIpId(db, detail.ipId),
+          );
       if (isMounted) {
-        setQueue(queueItems);
+        if (queueItems) {
+          loadedQueueMetaRef.current = {
+            space,
+            ipId: detail.ipId,
+            refreshToken,
+          };
+          setQueue(queueItems);
+        }
         void runWithDatabaseSpace(space, (db) =>
           imageRepository.touchLastViewedAt(db, detail.id),
         );
@@ -475,7 +574,10 @@ export function VideoPlayerScreen({
   // Initialize or sync shuffle session when queue or playback order changes
   useEffect(() => {
     if (externalSource || queue.length <= 1) {
-      shuffleSessionRef.current = null;
+      if (shuffleSessionRef.current) {
+        shuffleSessionRef.current = null;
+        setShuffleRevision((v) => v + 1);
+      }
       return;
     }
     const queueIds = queue.map((item) => item.id);
@@ -485,11 +587,13 @@ export function VideoPlayerScreen({
           queueIds,
           currentId: activeVideoId,
         });
-      } else {
-        shuffleSessionRef.current.syncQueue(queueIds);
+        setShuffleRevision((v) => v + 1);
+      } else if (shuffleSessionRef.current.syncQueue(queueIds)) {
+        setShuffleRevision((v) => v + 1);
       }
-    } else {
+    } else if (shuffleSessionRef.current) {
       shuffleSessionRef.current = null;
+      setShuffleRevision((v) => v + 1);
     }
   }, [activeVideoId, externalSource, playbackOrder, queue]);
 
@@ -511,6 +615,7 @@ export function VideoPlayerScreen({
     isLandscape,
     playbackOrder,
     queue,
+    shuffleRevision,
   ]);
 
   useEffect(() => {
@@ -518,6 +623,7 @@ export function VideoPlayerScreen({
       return;
     }
     let isActive = true;
+    setPlaybackError(null);
     const loadVersion = sourceLoadVersionRef.current + 1;
     sourceLoadVersionRef.current = loadVersion;
     safePausePlayer();
@@ -558,7 +664,7 @@ export function VideoPlayerScreen({
           return;
         }
         player.timeUpdateEventInterval = 0.25;
-        applyPitchPreservingRate(player, speed);
+        applyPitchPreservingRate(player, speedRef.current);
         player.loop = Boolean(externalSource) || queue.length <= 1;
         if (initialDisplayTime > 0) {
           player.currentTime = initialDisplayTime;
@@ -575,11 +681,9 @@ export function VideoPlayerScreen({
             coverShowTimerRef.current = null;
           }
           setLoadingCoverVideo(null);
-          showToast(
-            error instanceof Error
-              ? `视频加载失败：${error.message}`
-              : "视频加载失败",
-          );
+          const errorMessage = formatPlaybackErrorMessage(error);
+          setPlaybackError(errorMessage);
+          showToast(errorMessage);
         }
       });
     return () => {
@@ -594,6 +698,7 @@ export function VideoPlayerScreen({
     externalSource,
     player,
     queue.length,
+    reloadToken,
     showToast,
     sourceUri,
   ]);
@@ -631,10 +736,10 @@ export function VideoPlayerScreen({
       }
       currentTimeRef.current = payload.currentTime;
       setCurrentTime(payload.currentTime);
-      setDuration(
+      setDuration((prevDuration) =>
         Number.isFinite(player.duration) && player.duration > 0
           ? player.duration
-          : duration,
+          : prevDuration,
       );
     });
     const playingSubscription = player.addListener(
@@ -647,10 +752,9 @@ export function VideoPlayerScreen({
     const sourceSubscription = player.addListener("sourceLoad", (payload) => {
       setDuration(payload.duration);
     });
-    const playToEndSubscription = player.addListener(
-      "playToEnd",
-      handlePlayToEnd,
-    );
+    const playToEndSubscription = player.addListener("playToEnd", () => {
+      handlePlayToEndRef.current?.();
+    });
 
     return () => {
       timeSubscription.remove();
@@ -658,27 +762,16 @@ export function VideoPlayerScreen({
       sourceSubscription.remove();
       playToEndSubscription.remove();
     };
-  }, [
-    activeVideoId,
-    currentIndex,
-    duration,
-    externalSource,
-    playbackOrder,
-    player,
-    queue,
-  ]);
+  }, [player]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     resetHideTimer();
     return () => {
-      if (isHoldingFastForwardRef.current) {
-        applyPitchPreservingRate(player, speedRef.current);
-        isHoldingFastForwardRef.current = false;
-      }
+      isMountedRef.current = false;
+      resetHoldFastForwardState();
       clearHideTimer();
-      clearLongPressTimer();
-      clearHoldProgressInterval();
-      setHoldSpeedVisible(false);
+      clearVideoSwitchTimers();
       clearPreviewSeekTimer();
       safePausePlayer();
       void ScreenOrientation.lockAsync(
@@ -716,11 +809,29 @@ export function VideoPlayerScreen({
           )
         : null;
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") {
-        wasPlayingRef.current = isPlayingRef.current;
+      const nextActive = state === "active";
+      setIsAppActive(nextActive);
+      if (!nextActive) {
+        // Never auto-resume personal-space playback on foreground return to protect privacy.
+        wasPlayingRef.current = space === "personal" ? false : isPlayingRef.current;
         safePausePlayer();
         persistPlaybackPosition();
-      } else if (wasPlayingRef.current) {
+        resetHoldFastForwardState();
+        verticalGestureTokenRef.current += 1;
+        verticalGestureKindRef.current = null;
+        setVerticalHud((current) =>
+          current.visible ? { ...current, visible: false } : current,
+        );
+        if (space === "personal") {
+          setPersonalExportConfirmVisible(false);
+          setMoreVisible(false);
+          setQueueVisible(false);
+        }
+      } else if (
+        space !== "personal" &&
+        wasPlayingRef.current &&
+        !playbackErrorRef.current
+      ) {
         safePlayPlayer();
       }
     });
@@ -765,7 +876,9 @@ export function VideoPlayerScreen({
         key: "save-local",
         label: "保存本地",
         icon: "download-outline",
-        onPress: handleSaveLocal,
+        onPress: () => {
+          void handleSaveLocalRef.current?.();
+        },
       },
       ...(externalSource
         ? [
@@ -773,12 +886,14 @@ export function VideoPlayerScreen({
               key: "save-ip",
               label: "保存到 IP",
               icon: "albums-outline" as const,
-              onPress: openSaveToIp,
+              onPress: () => {
+                void openSaveToIpRef.current?.();
+              },
             },
           ]
         : []),
     ],
-    [externalSource, video, isLandscape, activeVideoId, onOpenDetail],
+    [externalSource, activeVideoId, onOpenDetail],
   );
 
   const seekPanResponder = useMemo(
@@ -801,194 +916,257 @@ export function VideoPlayerScreen({
     [duration, player, trackWidth],
   );
 
+  const surfacePanHandlersRef = useRef<{
+    onMoveShouldSetPanResponder: (
+      event: GestureResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => boolean;
+    onPanResponderGrant: (event: GestureResponderEvent) => void;
+    onPanResponderMove: (
+      event: GestureResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => void;
+    onPanResponderRelease: (
+      event: GestureResponderEvent,
+      gestureState: PanResponderGestureState,
+    ) => void;
+    onPanResponderTerminate: () => void;
+  } | null>(null);
+
+  surfacePanHandlersRef.current = {
+    onMoveShouldSetPanResponder: (_event, gestureState) => {
+      if (isPlayerLocked || isVideoSwitchTransitioning) {
+        return false;
+      }
+      const absDx = Math.abs(gestureState.dx);
+      const absDy = Math.abs(gestureState.dy);
+      return (
+        (absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy) ||
+        (absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx)
+      );
+    },
+    onPanResponderGrant: (event) => {
+      surfaceGestureModeRef.current = "pending";
+      lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
+      controlsVisibleBeforeHoldRef.current = controlsVisibleRef.current;
+      if (isPlayerLocked || isVideoSwitchTransitioning) {
+        return;
+      }
+      clearLongPressTimer();
+      longPressTimerRef.current = setTimeout(() => {
+        if (surfaceGestureModeRef.current !== "pending") {
+          return;
+        }
+        surfaceGestureModeRef.current = "hold";
+        startHoldFastForward();
+      }, 260);
+    },
+    onPanResponderMove: (event, gestureState) => {
+      if (isPlayerLocked || isVideoSwitchTransitioning) {
+        return;
+      }
+      const absDx = Math.abs(gestureState.dx);
+      const absDy = Math.abs(gestureState.dy);
+      if (surfaceGestureModeRef.current === "pending") {
+        const shouldScrub =
+          absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy;
+        const shouldAdjustVertically =
+          absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx;
+        if (!shouldScrub && !shouldAdjustVertically) {
+          return;
+        }
+        clearLongPressTimer();
+        if (shouldAdjustVertically) {
+          if (
+            shouldSwitchVideoFromCenterVerticalGesture(
+              event.nativeEvent.locationX,
+              absDx,
+              absDy,
+            )
+          ) {
+            surfaceGestureModeRef.current = "video-switch";
+            updateVideoSwitchDrag(gestureState.dy);
+            return;
+          }
+          surfaceGestureModeRef.current = "vertical";
+          void beginVerticalGesture(event, gestureState.dy);
+          return;
+        }
+        surfaceGestureModeRef.current = "scrub";
+        beginScrub("surface");
+        scrubStartTimeRef.current = currentTimeRef.current;
+      }
+      if (verticalGestureKindRef.current) {
+        updateVerticalGesture(gestureState.dy);
+        return;
+      }
+      if (surfaceGestureModeRef.current === "video-switch") {
+        updateVideoSwitchDrag(gestureState.dy);
+        return;
+      }
+      if (surfaceGestureModeRef.current !== "scrub") {
+        return;
+      }
+      updateScrubFromSurfaceGesture(gestureState.dx, gestureState.dy);
+    },
+    onPanResponderRelease: (_event, gestureState) => {
+      if (surfaceGestureModeRef.current === "pending") {
+        surfaceGestureModeRef.current = null;
+        clearLongPressTimer();
+        handleSurfacePress();
+        return;
+      }
+      if (surfaceGestureModeRef.current === "hold") {
+        surfaceGestureModeRef.current = null;
+        finishHoldFastForward();
+        return;
+      }
+      if (verticalGestureKindRef.current) {
+        surfaceGestureModeRef.current = null;
+        finishVerticalGesture();
+        return;
+      }
+      if (surfaceGestureModeRef.current === "video-switch") {
+        surfaceGestureModeRef.current = null;
+        finishCenterVideoSwitchGesture(gestureState.dy, gestureState.vy);
+        return;
+      }
+      surfaceGestureModeRef.current = null;
+      commitScrub();
+    },
+    onPanResponderTerminate: () => {
+      if (surfaceGestureModeRef.current === "hold") {
+        finishHoldFastForward();
+        surfaceGestureModeRef.current = null;
+        return;
+      }
+      if (verticalGestureKindRef.current) {
+        finishVerticalGesture();
+        surfaceGestureModeRef.current = null;
+        return;
+      }
+      if (surfaceGestureModeRef.current === "video-switch") {
+        surfaceGestureModeRef.current = null;
+        resetVideoSwitchDrag();
+        return;
+      }
+      if (surfaceGestureModeRef.current === "scrub") {
+        cancelScrub();
+      } else {
+        resetHoldFastForwardState();
+      }
+      surfaceGestureModeRef.current = null;
+    },
+  };
+
+  // Delegate through a render-updated ref so panHandlers stay stable across state
+  // changes (e.g. hold fast-forward or play toggles) without capturing stale adjacent
+  // switch targets or playback state in PanResponder closures.
   const surfacePanResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_event, gestureState) => {
-          if (isPlayerLocked || isVideoSwitchTransitioning) {
-            return false;
-          }
-          const absDx = Math.abs(gestureState.dx);
-          const absDy = Math.abs(gestureState.dy);
-          return (
-            (absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy) ||
-            (absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx)
-          );
-        },
+        onMoveShouldSetPanResponder: (event, gestureState) =>
+          surfacePanHandlersRef.current?.onMoveShouldSetPanResponder(
+            event,
+            gestureState,
+          ) ?? false,
         onPanResponderGrant: (event) => {
-          surfaceGestureModeRef.current = "pending";
-          lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
-          controlsVisibleBeforeHoldRef.current = controlsVisibleRef.current;
-          if (isPlayerLocked || isVideoSwitchTransitioning) {
-            return;
-          }
-          clearLongPressTimer();
-          longPressTimerRef.current = setTimeout(() => {
-            if (surfaceGestureModeRef.current !== "pending") {
-              return;
-            }
-            surfaceGestureModeRef.current = "hold";
-            startHoldFastForward();
-          }, 260);
+          surfacePanHandlersRef.current?.onPanResponderGrant(event);
         },
         onPanResponderMove: (event, gestureState) => {
-          if (isPlayerLocked || isVideoSwitchTransitioning) {
-            return;
-          }
-          const absDx = Math.abs(gestureState.dx);
-          const absDy = Math.abs(gestureState.dy);
-          if (surfaceGestureModeRef.current === "pending") {
-            const shouldScrub =
-              absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy;
-            const shouldAdjustVertically =
-              absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx;
-            if (!shouldScrub && !shouldAdjustVertically) {
-              return;
-            }
-            clearLongPressTimer();
-            if (shouldAdjustVertically) {
-              if (
-                shouldSwitchVideoFromCenterVerticalGesture(
-                  event.nativeEvent.locationX,
-                  absDx,
-                  absDy,
-                )
-              ) {
-                surfaceGestureModeRef.current = "video-switch";
-                updateVideoSwitchDrag(gestureState.dy);
-                return;
-              }
-              showControls();
-              surfaceGestureModeRef.current = "vertical";
-              void beginVerticalGesture(event);
-              return;
-            }
-            surfaceGestureModeRef.current = "scrub";
-            beginScrub("surface");
-            scrubStartTimeRef.current = currentTimeRef.current;
-          }
-          if (verticalGestureKindRef.current) {
-            updateVerticalGesture(gestureState.dy);
-            return;
-          }
-          if (surfaceGestureModeRef.current === "video-switch") {
-            updateVideoSwitchDrag(gestureState.dy);
-            return;
-          }
-          if (surfaceGestureModeRef.current !== "scrub") {
-            return;
-          }
-          updateScrubFromSurfaceGesture(gestureState.dx, gestureState.dy);
+          surfacePanHandlersRef.current?.onPanResponderMove(
+            event,
+            gestureState,
+          );
         },
-        onPanResponderRelease: (_event, gestureState) => {
-          if (surfaceGestureModeRef.current === "pending") {
-            surfaceGestureModeRef.current = null;
-            clearLongPressTimer();
-            handleSurfacePress();
-            return;
-          }
-          if (surfaceGestureModeRef.current === "hold") {
-            surfaceGestureModeRef.current = null;
-            finishHoldFastForward();
-            return;
-          }
-          if (verticalGestureKindRef.current) {
-            surfaceGestureModeRef.current = null;
-            finishVerticalGesture();
-            return;
-          }
-          if (surfaceGestureModeRef.current === "video-switch") {
-            surfaceGestureModeRef.current = null;
-            finishCenterVideoSwitchGesture(gestureState.dy, gestureState.vy);
-            return;
-          }
-          surfaceGestureModeRef.current = null;
-          commitScrub();
+        onPanResponderRelease: (event, gestureState) => {
+          surfacePanHandlersRef.current?.onPanResponderRelease(
+            event,
+            gestureState,
+          );
         },
         onPanResponderTerminate: () => {
-          if (surfaceGestureModeRef.current === "hold") {
-            finishHoldFastForward();
-            surfaceGestureModeRef.current = null;
-            return;
-          }
-          if (verticalGestureKindRef.current) {
-            finishVerticalGesture();
-            surfaceGestureModeRef.current = null;
-            return;
-          }
-          if (surfaceGestureModeRef.current === "video-switch") {
-            surfaceGestureModeRef.current = null;
-            resetVideoSwitchDrag();
-            return;
-          }
-          if (surfaceGestureModeRef.current === "scrub") {
-            cancelScrub();
-          } else {
-            clearLongPressTimer();
-            clearHoldProgressInterval();
-            setHoldSpeedVisible(false);
-          }
-          surfaceGestureModeRef.current = null;
+          surfacePanHandlersRef.current?.onPanResponderTerminate();
         },
         onShouldBlockNativeResponder: () => true,
       }),
-    [
-      externalSource,
-      isLandscape,
-      isPlayerLocked,
-      isVideoSwitchTransitioning,
-      player,
-      queue.length,
-      surfaceWidth,
-      surfaceHeight,
-    ],
+    [],
   );
 
-  async function handleSaveLocal() {
-    if (!sourceUri) {
+  async function executeSaveLocal() {
+    if (!isMountedRef.current || !sourceUri || isSavingLocalRef.current) {
       return;
     }
+    isSavingLocalRef.current = true;
     try {
       await saveVideoToSystemAlbum(sourceUri, sourceFileName);
-      showToast("已保存到系统视频目录");
+      if (isMountedRef.current) {
+        showToast("已保存到系统视频目录");
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      showToast(`保存失败：${message}`);
+      if (isMountedRef.current) {
+        showToast(`保存失败：${formatActionErrorMessage(error, "请检查存储权限后重试")}`);
+      }
+    } finally {
+      isSavingLocalRef.current = false;
     }
   }
 
+  async function handleSaveLocal() {
+    if (!isMountedRef.current || !sourceUri || isSavingLocalRef.current) {
+      return;
+    }
+    if (space === "personal") {
+      setPersonalExportConfirmVisible(true);
+      return;
+    }
+    await executeSaveLocal();
+  }
+
+  handleSaveLocalRef.current = handleSaveLocal;
+
   async function openSaveToIp() {
-    if (!externalSource) {
+    if (!externalSource || !isMountedRef.current) {
       return;
     }
     const ips = await runWithDatabaseSpace("normal", (db) =>
       ipRepository.findLibraryItems(db),
     );
+    if (!isMountedRef.current) {
+      return;
+    }
     setNormalIps(ips);
     setIpPickerVisible(true);
   }
 
+  openSaveToIpRef.current = openSaveToIp;
+
   async function saveExternalVideoToIp(ipId: number) {
-    if (!externalSource || isSavingToIp) {
+    if (!externalSource || isSavingToIp || !isMountedRef.current) {
       return;
     }
     setIsSavingToIp(true);
     try {
       await importExternalVideoToIp(ipId);
-      showToast("已保存到 IP");
-      setIpPickerVisible(false);
+      if (isMountedRef.current) {
+        showToast("已保存到 IP");
+        setIpPickerVisible(false);
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      showToast(`保存到 IP 失败：${message}`);
+      if (isMountedRef.current) {
+        showToast(`保存到 IP 失败：${formatActionErrorMessage(error, "导入失败，请重试")}`);
+      }
     } finally {
-      setIsSavingToIp(false);
+      if (isMountedRef.current) {
+        setIsSavingToIp(false);
+      }
     }
   }
 
   async function createIpAndSaveExternalVideo() {
     const preparedName = newIpName.trim();
-    if (!preparedName || isSavingToIp) {
+    if (!preparedName || isSavingToIp || !isMountedRef.current) {
       return;
     }
     setIsSavingToIp(true);
@@ -999,20 +1177,25 @@ export function VideoPlayerScreen({
       );
       createdIpId = createdIp.id;
       await importExternalVideoToIp(createdIp.id);
-      setNewIpDialogVisible(false);
-      setNewIpName("");
-      setIpPickerVisible(false);
-      showToast("已新建 IP 并保存");
+      if (isMountedRef.current) {
+        setNewIpDialogVisible(false);
+        setNewIpName("");
+        setIpPickerVisible(false);
+        showToast("已新建 IP 并保存");
+      }
     } catch (error) {
       if (createdIpId != null) {
         await runWithDatabaseSpace("normal", (db) =>
           db.runAsync("DELETE FROM ips WHERE id = ?", createdIpId),
         ).catch(() => undefined);
       }
-      const message = error instanceof Error ? error.message : "未知错误";
-      showToast(`新建 IP 失败：${message}`);
+      if (isMountedRef.current) {
+        showToast(`新建 IP 失败：${formatActionErrorMessage(error, "创建失败，请重试")}`);
+      }
     } finally {
-      setIsSavingToIp(false);
+      if (isMountedRef.current) {
+        setIsSavingToIp(false);
+      }
     }
   }
 
@@ -1078,6 +1261,27 @@ export function VideoPlayerScreen({
     pendingPreviewSeekTimeRef.current = null;
   }
 
+  function clearVideoSwitchTimers() {
+    if (switchCommitTimerRef.current) {
+      clearTimeout(switchCommitTimerRef.current);
+      switchCommitTimerRef.current = null;
+    }
+    if (switchSafetyTimerRef.current) {
+      clearTimeout(switchSafetyTimerRef.current);
+      switchSafetyTimerRef.current = null;
+    }
+  }
+
+  function resetHoldFastForwardState() {
+    if (isHoldingFastForwardRef.current) {
+      applyPitchPreservingRate(player, speedRef.current);
+      isHoldingFastForwardRef.current = false;
+    }
+    clearLongPressTimer();
+    clearHoldProgressInterval();
+    setHoldSpeedVisible(false);
+  }
+
   function flushPreviewSeek() {
     const pendingTime = pendingPreviewSeekTimeRef.current;
     pendingPreviewSeekTimeRef.current = null;
@@ -1134,14 +1338,11 @@ export function VideoPlayerScreen({
   }
 
   function finishHoldFastForward() {
-    applyPitchPreservingRate(player, speedRef.current);
-    if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
+    const wasHolding = isHoldingFastForwardRef.current;
+    resetHoldFastForwardState();
+    if (wasHolding && !holdWasPlayingRef.current) {
       safePausePlayer();
     }
-    isHoldingFastForwardRef.current = false;
-    clearLongPressTimer();
-    clearHoldProgressInterval();
-    setHoldSpeedVisible(false);
     if (controlsVisibleBeforeHoldRef.current) {
       setControlsVisible(true);
       resetHideTimer();
@@ -1153,7 +1354,7 @@ export function VideoPlayerScreen({
 
   function togglePlay() {
     showControls();
-    if (isPlaying) {
+    if (isPlayingRef.current) {
       safePausePlayer();
     } else {
       safePlayPlayer();
@@ -1165,16 +1366,28 @@ export function VideoPlayerScreen({
       clearTimeout(gestureFeedbackTimerRef.current);
     }
     setGestureFeedback(nextFeedback);
-    if (nextFeedback.kind === "brightness") {
-      setBrightnessOverlayOpacity(
-        Math.max(0, Math.min(0.46, 0.46 - (nextFeedback.value ?? 0.5) * 0.36)),
-      );
-    }
     gestureFeedbackTimerRef.current = setTimeout(() => {
       setGestureFeedback(null);
-      setBrightnessOverlayOpacity(0);
       gestureFeedbackTimerRef.current = null;
     }, 900);
+  }
+
+  function showVerticalHud(kind: VerticalGestureKind, value: number) {
+    if (verticalHudTimerRef.current) {
+      clearTimeout(verticalHudTimerRef.current);
+      verticalHudTimerRef.current = null;
+    }
+    setVerticalHud({ kind, value, visible: true });
+  }
+
+  function scheduleVerticalHudHide() {
+    if (verticalHudTimerRef.current) {
+      clearTimeout(verticalHudTimerRef.current);
+    }
+    verticalHudTimerRef.current = setTimeout(() => {
+      verticalHudTimerRef.current = null;
+      setVerticalHud((current) => ({ ...current, visible: false }));
+    }, VERTICAL_HUD_HIDE_DELAY_MS);
   }
 
   function handleSurfacePress() {
@@ -1185,26 +1398,7 @@ export function VideoPlayerScreen({
     const now = Date.now();
     if (now - lastSurfaceTapAtRef.current <= DOUBLE_TAP_PAUSE_WINDOW_MS) {
       lastSurfaceTapAtRef.current = 0;
-      const locationX = lastSurfacePressLocationXRef.current;
-      const leftBoundary = surfaceWidth / 3;
-      const rightBoundary = (surfaceWidth * 2) / 3;
-      if (locationX < leftBoundary) {
-        seekByOffset(-GESTURE_DOUBLE_TAP_SEEK_SECONDS);
-        showGestureFeedback({
-          kind: "seek-backward",
-          label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s`,
-        });
-        return;
-      }
-      if (locationX > rightBoundary) {
-        seekByOffset(GESTURE_DOUBLE_TAP_SEEK_SECONDS);
-        showGestureFeedback({
-          kind: "seek-forward",
-          label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s`,
-        });
-        return;
-      }
-      togglePlay();
+      handlePartitionDoubleTap(lastSurfacePressLocationXRef.current);
       return;
     }
     lastSurfaceTapAtRef.current = now;
@@ -1243,6 +1437,11 @@ export function VideoPlayerScreen({
       const nextLocked = !locked;
       if (nextLocked) {
         clearHideTimer();
+        verticalGestureTokenRef.current += 1;
+        verticalGestureKindRef.current = null;
+        setVerticalHud((current) =>
+          current.visible ? { ...current, visible: false } : current,
+        );
         setControlsVisible(false);
         setSpeedMenuVisible(false);
         setQueueVisible(false);
@@ -1259,32 +1458,65 @@ export function VideoPlayerScreen({
     });
   }
 
-  async function beginVerticalGesture(event: GestureResponderEvent) {
-    const isBrightnessGesture = event.nativeEvent.locationX < surfaceWidth / 2;
-    verticalGestureKindRef.current = isBrightnessGesture
-      ? "brightness"
-      : "volume";
-    if (isBrightnessGesture) {
-      const currentBrightness = await Brightness.getBrightnessAsync().catch(
-        () => 0.5,
-      );
-      verticalGestureStartValueRef.current = currentBrightness;
-      showGestureFeedback({
-        kind: "brightness",
-        label: "亮度",
-        value: currentBrightness,
-      });
+  async function beginVerticalGesture(
+    event: GestureResponderEvent,
+    initialDy = 0,
+  ) {
+    const gestureKind: VerticalGestureKind =
+      event.nativeEvent.locationX < surfaceWidth / 2 ? "brightness" : "volume";
+    const token = verticalGestureTokenRef.current + 1;
+    verticalGestureTokenRef.current = token;
+    verticalGestureKindRef.current = gestureKind;
+    verticalGestureAnchorDyRef.current = initialDy;
+    verticalGestureLatestDyRef.current = initialDy;
+
+    const cachedStart =
+      gestureKind === "brightness"
+        ? lastBrightnessRef.current
+        : lastVolumeRef.current;
+    verticalGestureStartValueRef.current = cachedStart;
+    showVerticalHud(gestureKind, cachedStart);
+
+    const resolvedStart =
+      gestureKind === "brightness"
+        ? await Brightness.getBrightnessAsync().catch(() => cachedStart)
+        : await VolumeManager.getVolume()
+            .then((result) => result.volume)
+            .catch(() => cachedStart);
+
+    if (
+      !isMountedRef.current ||
+      verticalGestureTokenRef.current !== token ||
+      verticalGestureKindRef.current !== gestureKind
+    ) {
       return;
     }
-    const currentVolume = await VolumeManager.getVolume().catch(() => ({
-      volume: 0.5,
-    }));
-    verticalGestureStartValueRef.current = currentVolume.volume;
-    showGestureFeedback({
-      kind: "volume",
-      label: "音量",
-      value: currentVolume.volume,
-    });
+
+    verticalGestureStartValueRef.current = resolvedStart;
+    const effectiveDy =
+      verticalGestureLatestDyRef.current - verticalGestureAnchorDyRef.current;
+    if (effectiveDy === 0) {
+      if (gestureKind === "brightness") {
+        lastBrightnessRef.current = resolvedStart;
+      } else {
+        lastVolumeRef.current = resolvedStart;
+      }
+      showVerticalHud(gestureKind, resolvedStart);
+      return;
+    }
+
+    const rebasedValue = computeVerticalGestureValue(
+      resolvedStart,
+      effectiveDy,
+      surfaceHeight,
+      VERTICAL_GESTURE_FULL_HEIGHT_RATIO,
+    );
+    if (gestureKind === "brightness") {
+      void adjustBrightnessFromGesture(rebasedValue);
+    } else {
+      void adjustVolumeFromGesture(rebasedValue);
+    }
+    showVerticalHud(gestureKind, rebasedValue);
   }
 
   function updateVerticalGesture(deltaY: number) {
@@ -1292,40 +1524,59 @@ export function VideoPlayerScreen({
     if (!gestureKind) {
       return;
     }
-    const nextValue = clamp01(
-      verticalGestureStartValueRef.current -
-        deltaY /
-          Math.max(1, surfaceHeight * VERTICAL_GESTURE_FULL_HEIGHT_RATIO),
+    verticalGestureLatestDyRef.current = deltaY;
+    const effectiveDy = deltaY - verticalGestureAnchorDyRef.current;
+    const nextValue = computeVerticalGestureValue(
+      verticalGestureStartValueRef.current,
+      effectiveDy,
+      surfaceHeight,
+      VERTICAL_GESTURE_FULL_HEIGHT_RATIO,
     );
     if (gestureKind === "brightness") {
       void adjustBrightnessFromGesture(nextValue);
-      showGestureFeedback({
-        kind: "brightness",
-        label: "亮度",
-        value: nextValue,
-      });
+      showVerticalHud("brightness", nextValue);
       return;
     }
     void adjustVolumeFromGesture(nextValue);
-    showGestureFeedback({ kind: "volume", label: "音量", value: nextValue });
+    showVerticalHud("volume", nextValue);
   }
 
   function finishVerticalGesture() {
+    verticalGestureTokenRef.current += 1;
     verticalGestureKindRef.current = null;
-    resetHideTimer();
+    verticalGestureAnchorDyRef.current = 0;
+    verticalGestureLatestDyRef.current = 0;
+    scheduleVerticalHudHide();
+    if (controlsVisibleRef.current) {
+      resetHideTimer();
+    }
   }
 
   function togglePlaybackOrder() {
-    setPlaybackOrder((current) => {
-      const nextOrder: VideoPlaybackOrder =
-        current === "sequence"
-          ? "shuffle"
-          : current === "shuffle"
-            ? "single"
-            : "sequence";
-      showControls();
-      return nextOrder;
-    });
+    const currentOrder = playbackOrderRef.current;
+    const nextOrder: VideoPlaybackOrder =
+      currentOrder === "sequence"
+        ? "shuffle"
+        : currentOrder === "shuffle"
+          ? "single"
+          : "sequence";
+    playbackOrderRef.current = nextOrder;
+    setPlaybackOrder(nextOrder);
+
+    if (nextOrder === "shuffle") {
+      if (!externalSource && queue.length > 1) {
+        shuffleSessionRef.current = new VideoShuffleSession({
+          queueIds: queue.map((item) => item.id),
+          currentId: activeVideoId,
+        });
+      }
+      historyRef.current = activeVideoId ? [activeVideoId] : [];
+      historyCursorRef.current = 0;
+    } else {
+      shuffleSessionRef.current = null;
+    }
+    setShuffleRevision((v) => v + 1);
+    showControls();
   }
 
   function shouldSwitchVideoFromCenterVerticalGesture(
@@ -1346,14 +1597,34 @@ export function VideoPlayerScreen({
   }
 
   function finishCenterVideoSwitchGesture(deltaY: number, velocityY?: number) {
+    const effectiveVelocityY = velocityY ?? 0;
     const resolution = resolveVideoSwipe({
       canGoNext: nextSwitchVideo != null,
       canGoPrevious: previousSwitchVideo != null,
       translationY: deltaY,
-      velocityY: velocityY ?? 0,
+      velocityY: effectiveVelocityY,
       viewportHeight: surfaceHeight,
     });
     if (resolution.action === "cancel") {
+      const hasVelocityCommit =
+        Math.abs(effectiveVelocityY) >= VIDEO_SWIPE_VELOCITY_THRESHOLD;
+      const hasDistanceCommit =
+        surfaceHeight > 0 &&
+        Math.abs(deltaY) >= surfaceHeight * VIDEO_SWIPE_DISTANCE_RATIO;
+      if (hasVelocityCommit || hasDistanceCommit) {
+        const intendedDirection = hasVelocityCommit
+          ? effectiveVelocityY < 0
+            ? 1
+            : -1
+          : deltaY < 0
+            ? 1
+            : -1;
+        if (intendedDirection === -1 && previousSwitchVideo == null) {
+          showToast("已经是第一个视频");
+        } else if (intendedDirection === 1 && nextSwitchVideo == null) {
+          showToast("已经是最后一个视频");
+        }
+      }
       resetVideoSwitchDrag();
       return;
     }
@@ -1373,9 +1644,12 @@ export function VideoPlayerScreen({
   function updateVideoSwitchDrag(deltaY: number) {
     if (swipeSettlingRef.current) {
       // Reverse interception during settle: stop the settle animation and resume drag
+      swipeSettlingRef.current = false;
+      clearVideoSwitchTimers();
       videoSwitchTranslateY.stopAnimation(() => {
-        swipeSettlingRef.current = false;
-        setIsVideoSwitchTransitioning(false);
+        if (isMountedRef.current) {
+          setIsVideoSwitchTransitioning(false);
+        }
       });
     }
     const maxTranslate = Math.max(1, surfaceHeight);
@@ -1394,7 +1668,7 @@ export function VideoPlayerScreen({
       useNativeDriver: true,
     }).start(({ finished }) => {
       swipeSettlingRef.current = false;
-      if (finished) {
+      if (finished && isMountedRef.current) {
         resetHideTimer();
       }
     });
@@ -1408,16 +1682,11 @@ export function VideoPlayerScreen({
     if (isVideoSwitchTransitioning && !swipeSettlingRef.current) {
       return;
     }
+    clearVideoSwitchTimers();
     setIsVideoSwitchTransitioning(true);
     swipeSettlingRef.current = true;
-    if (isHoldingFastForwardRef.current) {
-      applyPitchPreservingRate(player, speedRef.current);
-      isHoldingFastForwardRef.current = false;
-    }
+    resetHoldFastForwardState();
     clearHideTimer();
-    clearLongPressTimer();
-    clearHoldProgressInterval();
-    setHoldSpeedVisible(false);
     setSpeedMenuVisible(false);
     setQueueVisible(false);
     setMoreVisible(false);
@@ -1429,19 +1698,33 @@ export function VideoPlayerScreen({
       toValue: direction * -transitionHeight,
       duration: VIDEO_SWITCH_EXIT_DURATION_MS,
       useNativeDriver: true,
-    }).start(() => {
+    }).start(({ finished }) => {
+      if (!isMountedRef.current || !finished) {
+        clearVideoSwitchTimers();
+        swipeSettlingRef.current = false;
+        if (isMountedRef.current) {
+          setIsVideoSwitchTransitioning(false);
+          videoSwitchTranslateY.setValue(0);
+        }
+        return;
+      }
       // 2. The adjacent cover is now perfectly covering the screen.
       // We seamlessly swap the VideoView to screen pos 0 and load the new video.
-      
+
       // Set the loading cover immediately.
       coverOpacityAnim.setValue(1);
       setLoadingCoverVideo(nextVideo);
       safePausePlayer(); // instantly stop playing old audio during transition delay
-      
-      // Delay coordinate reset AND the actual switch to prevent React from 
+
+      // Delay coordinate reset AND the actual switch to prevent React from
       // instantly changing the adjacent cover we just dragged in to the next-next cover.
       // This prevents a rapid flash of the next-next video's cover during the 50ms mount window.
-      setTimeout(() => {
+      switchCommitTimerRef.current = setTimeout(() => {
+        switchCommitTimerRef.current = null;
+        clearVideoSwitchTimers();
+        if (!isMountedRef.current) {
+          return;
+        }
         videoSwitchTranslateY.setValue(0);
         switchVideo(nextVideo.id, nextVideo, {
           historyMode,
@@ -1454,30 +1737,28 @@ export function VideoPlayerScreen({
       }, 50);
     });
 
-    // Safety unlock: if the animation chain is interrupted
-    const safetyTimeout = setTimeout(
+    // Safety unlock: if the animation chain is interrupted without a finish callback
+    switchSafetyTimerRef.current = setTimeout(
       () => {
-        if (swipeSettlingRef.current) {
+        switchSafetyTimerRef.current = null;
+        if (isMountedRef.current && swipeSettlingRef.current) {
           swipeSettlingRef.current = false;
           setIsVideoSwitchTransitioning(false);
           videoSwitchTranslateY.setValue(0);
           resetHideTimer();
         }
       },
-      VIDEO_SWITCH_EXIT_DURATION_MS + 100,
+      VIDEO_SWITCH_EXIT_DURATION_MS + 250,
     );
-    (
-      switchVideoWithTransition as unknown as {
-        _safetyTimer?: ReturnType<typeof setTimeout>;
-      }
-    )._safetyTimer = safetyTimeout;
   }
 
   async function adjustBrightnessFromGesture(value: number) {
+    lastBrightnessRef.current = value;
     await Brightness.setBrightnessAsync(value).catch(() => undefined);
   }
 
   async function adjustVolumeFromGesture(value: number) {
+    lastVolumeRef.current = value;
     await VolumeManager.setVolume(value, {
       type: "music",
       showUI: false,
@@ -1546,14 +1827,8 @@ export function VideoPlayerScreen({
   }
 
   function beginScrub(source: "controls" | "surface" = "controls") {
-    if (isHoldingFastForwardRef.current) {
-      applyPitchPreservingRate(player, speedRef.current);
-      isHoldingFastForwardRef.current = false;
-    }
+    resetHoldFastForwardState();
     clearHideTimer();
-    clearLongPressTimer();
-    clearHoldProgressInterval();
-    setHoldSpeedVisible(false);
     const isSurfaceSource = source === "surface";
     setIsSurfaceScrubbing(isSurfaceSource);
     if (isSurfaceSource) {
@@ -1777,6 +2052,7 @@ export function VideoPlayerScreen({
       showControls?: boolean;
     },
   ) {
+    resetHoldFastForwardState();
     if (!externalSource && video) {
       const positionMs = Math.round(currentTimeRef.current * 1000);
       void persistPlaybackPosition(video.id, positionMs);
@@ -1806,6 +2082,7 @@ export function VideoPlayerScreen({
         } else {
           session.markPlayed(nextVideoId);
         }
+        setShuffleRevision((v) => v + 1);
       }
     }
     setSwitchPreviewVideo(nextVideo ?? null);
@@ -1832,6 +2109,8 @@ export function VideoPlayerScreen({
       showControls();
     }
   }
+
+  switchVideoRef.current = switchVideo;
 
   function getSequenceVideoByOffset(offset: 1 | -1) {
     if (queue.length === 0 || currentIndex < 0) {
@@ -1934,6 +2213,8 @@ export function VideoPlayerScreen({
     }
   }
 
+  handlePlayToEndRef.current = handlePlayToEnd;
+
   const title = sourceFileName;
 
   function handleBack() {
@@ -1990,17 +2271,18 @@ export function VideoPlayerScreen({
   const displayQueue = useMemo(() => {
     if (playbackOrder === "shuffle" && shuffleSessionRef.current) {
       const session = shuffleSessionRef.current;
-      const playedIds = Array.from(session.getPlayedIds());
-      const playedItems = playedIds
-        .map((id) => queue.find((item) => item.id === id))
-        .filter(Boolean) as ImageListItem[];
-      const candidateItems = session["candidates"]
-        .map((id) => queue.find((item) => item.id === id))
-        .filter(Boolean) as ImageListItem[];
+      const queueById = new Map(queue.map((item) => [item.id, item]));
+      const playedItems = Array.from(session.getPlayedIds())
+        .map((id) => queueById.get(id))
+        .filter((item): item is ImageListItem => Boolean(item));
+      const candidateItems = session
+        .getCandidates()
+        .map((id) => queueById.get(id))
+        .filter((item): item is ImageListItem => Boolean(item));
 
       const combined = [...playedItems, ...candidateItems];
-      if (activeVideoId && !combined.find((v) => v.id === activeVideoId)) {
-        const currentItem = queue.find((item) => item.id === activeVideoId);
+      if (activeVideoId && !combined.some((v) => v.id === activeVideoId)) {
+        const currentItem = queueById.get(activeVideoId);
         if (currentItem) {
           combined.splice(playedItems.length, 0, currentItem);
         }
@@ -2008,7 +2290,144 @@ export function VideoPlayerScreen({
       return combined;
     }
     return queue;
-  }, [queue, playbackOrder, activeVideoId]);
+  }, [queue, playbackOrder, activeVideoId, shuffleRevision]);
+
+  const drawerKeyExtractor = useCallback(
+    (item: ImageListItem) => String(item.id),
+    [],
+  );
+
+  const getDrawerItemLayout = useCallback(
+    (_data: ArrayLike<ImageListItem> | null | undefined, index: number) => ({
+      index,
+      length: DRAWER_ITEM_HEIGHT,
+      offset: (DRAWER_ITEM_HEIGHT + DRAWER_ITEM_GAP) * index,
+    }),
+    [],
+  );
+
+  const renderDrawerSeparator = useCallback(
+    () => <View style={styles.drawerItemSeparator} />,
+    [],
+  );
+
+  const drawerEmptyNode = useMemo(
+    () => (
+      <View style={styles.drawerEmptyState}>
+        <Ionicons
+          color="rgba(255,255,255,0.52)"
+          name="film-outline"
+          size={26}
+        />
+        <Text style={styles.drawerEmptyTitle}>暂无可切换视频</Text>
+        <Text style={styles.drawerEmptyHint}>
+          {externalSource
+            ? "当前为外部打开的视频文件"
+            : "当前所属分类下没有其他视频"}
+        </Text>
+      </View>
+    ),
+    [externalSource],
+  );
+
+  const drawerDisplayTimeSec = queueVisible ? Math.floor(displayTime) : 0;
+
+  const handleSelectDrawerItem = useCallback((selectedItem: ImageListItem) => {
+    switchVideoRef.current?.(selectedItem.id, selectedItem);
+  }, []);
+
+  const renderDrawerItem = useCallback(
+    ({ item }: ListRenderItemInfo<ImageListItem>) => {
+      const isActive = item.id === activeVideoId;
+      return (
+        <DrawerQueueRow
+          activeDisplayTimeSec={isActive ? drawerDisplayTimeSec : 0}
+          height={DRAWER_ITEM_HEIGHT}
+          isActive={isActive}
+          item={item}
+          onSelect={handleSelectDrawerItem}
+          space={space}
+        />
+      );
+    },
+    [activeVideoId, drawerDisplayTimeSec, handleSelectDrawerItem, space],
+  );
+
+  const handleVideoFirstFrameRender = useCallback(() => {
+    // Cancel pending cover-show: for fast local files, the first frame
+    // arrives before the grace period expires, so the cover never shows.
+    if (coverShowTimerRef.current) {
+      clearTimeout(coverShowTimerRef.current);
+      coverShowTimerRef.current = null;
+    }
+    // If the cover is already showing (slow source or resumed after
+    // background), fade it out smoothly. Version guard protects against
+    // stale callbacks from a previous source or a quality-track change.
+    const dismissVersion = coverDismissVersionRef.current;
+    Animated.timing(coverOpacityAnim, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (
+        finished &&
+        isMountedRef.current &&
+        coverDismissVersionRef.current === dismissVersion
+      ) {
+        setLoadingCoverVideo(null);
+      }
+    });
+  }, [coverOpacityAnim]);
+
+  const displayQueueIndex = useMemo(() => {
+    const idx = displayQueue.findIndex((item) => item.id === activeVideoId);
+    return idx >= 0 ? idx + 1 : 0;
+  }, [displayQueue, activeVideoId]);
+
+  const adjacentCoverOpacity = useMemo(
+    () =>
+      videoSwitchTranslateY.interpolate({
+        inputRange: [-1, -0.01, 0, 0.01, 1],
+        outputRange: [1, 1, 0, 1, 1],
+        extrapolate: "clamp",
+      }),
+    [videoSwitchTranslateY],
+  );
+
+  function renderAdjacentSwitchCover(
+    targetVideo: ImageListItem | null,
+    topOffset: number,
+  ) {
+    if (!targetVideo || surfaceHeight <= 1) {
+      return null;
+    }
+    const coverUri =
+      targetVideo.coverThumbnailFileUri ?? targetVideo.thumbnailFileUri;
+    return (
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.videoAdjacentCoverSlot,
+          {
+            top: topOffset,
+            height: surfaceHeight,
+            opacity: adjacentCoverOpacity,
+          },
+        ]}
+      >
+        {coverUri ? (
+          <SecureImage
+            contentFit={videoContentFit}
+            space={space}
+            style={styles.videoAdjacentCoverImage}
+            uri={coverUri}
+          />
+        ) : (
+          <View style={styles.videoAdjacentPlaceholder} />
+        )}
+      </Animated.View>
+    );
+  }
 
   return (
     <View style={styles.shell}>
@@ -2020,100 +2439,15 @@ export function VideoPlayerScreen({
         }}
         style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
-        {/* Previous video cover — sits one screen above, visible only during manual drag */}
-        {previousSwitchVideo && surfaceHeight > 1 && (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: -surfaceHeight,
-              left: 0,
-              right: 0,
-              height: surfaceHeight,
-              backgroundColor: "#050607",
-              opacity: videoSwitchTranslateY.interpolate({
-                inputRange: [-1, -0.01, 0, 0.01, 1],
-                outputRange: [1, 1, 0, 1, 1],
-                extrapolate: "clamp",
-              }),
-            }}
-          >
-            {(previousSwitchVideo.coverThumbnailFileUri ??
-              previousSwitchVideo.thumbnailFileUri) ? (
-              <SecureImage
-                contentFit={videoContentFit}
-                space={space}
-                style={styles.videoAdjacentCoverImage}
-                uri={
-                  (previousSwitchVideo.coverThumbnailFileUri ??
-                    previousSwitchVideo.thumbnailFileUri) as string
-                }
-              />
-            ) : (
-              <View style={styles.videoAdjacentPlaceholder} />
-            )}
-          </Animated.View>
-        )}
-        {/* Next video cover — sits one screen below, visible only during manual drag */}
-        {nextSwitchVideo && surfaceHeight > 1 && (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: surfaceHeight,
-              left: 0,
-              right: 0,
-              height: surfaceHeight,
-              backgroundColor: "#050607",
-              opacity: videoSwitchTranslateY.interpolate({
-                inputRange: [-1, -0.01, 0, 0.01, 1],
-                outputRange: [1, 1, 0, 1, 1],
-                extrapolate: "clamp",
-              }),
-            }}
-          >
-            {(nextSwitchVideo.coverThumbnailFileUri ??
-              nextSwitchVideo.thumbnailFileUri) ? (
-              <SecureImage
-                contentFit={videoContentFit}
-                space={space}
-                style={styles.videoAdjacentCoverImage}
-                uri={
-                  (nextSwitchVideo.coverThumbnailFileUri ??
-                    nextSwitchVideo.thumbnailFileUri) as string
-                }
-              />
-            ) : (
-              <View style={styles.videoAdjacentPlaceholder} />
-            )}
-          </Animated.View>
-        )}
+        {/* Adjacent video covers sit one screen above/below, visible only during manual drag */}
+        {renderAdjacentSwitchCover(previousSwitchVideo, -surfaceHeight)}
+        {renderAdjacentSwitchCover(nextSwitchVideo, surfaceHeight)}
         <VideoView
           allowsPictureInPicture={false}
           contentFit={videoContentFit}
-          fullscreenOptions={{ enable: false }}
+          fullscreenOptions={VIDEO_FULLSCREEN_OPTIONS}
           nativeControls={false}
-          onFirstFrameRender={() => {
-            // Cancel pending cover-show: for fast local files, the first frame
-            // arrives before the grace period expires, so the cover never shows.
-            if (coverShowTimerRef.current) {
-              clearTimeout(coverShowTimerRef.current);
-              coverShowTimerRef.current = null;
-            }
-            // If the cover is already showing (slow source or resumed after
-            // background), fade it out smoothly. Version guard protects against
-            // stale callbacks from a previous source or a quality-track change.
-            const dismissVersion = coverDismissVersionRef.current;
-            Animated.timing(coverOpacityAnim, {
-              toValue: 0,
-              duration: 180,
-              useNativeDriver: true,
-            }).start(({ finished }) => {
-              if (finished && coverDismissVersionRef.current === dismissVersion) {
-                setLoadingCoverVideo(null);
-              }
-            });
-          }}
+          onFirstFrameRender={handleVideoFirstFrameRender}
           player={player}
           startsPictureInPictureAutomatically={false}
           style={styles.videoView}
@@ -2141,15 +2475,58 @@ export function VideoPlayerScreen({
         />
       </Animated.View>
 
-      {brightnessOverlayOpacity > 0 ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.brightnessOverlay,
-            { opacity: brightnessOverlayOpacity },
-          ]}
-        />
+      {playbackError ? (
+        <View pointerEvents="box-none" style={styles.playbackErrorOverlay}>
+          <View style={styles.playbackErrorCard}>
+            <Ionicons
+              color={colors.text.inverse}
+              name="alert-circle-outline"
+              size={28}
+            />
+            <Text style={styles.playbackErrorTitle}>视频暂时无法播放</Text>
+            <Text numberOfLines={2} style={styles.playbackErrorMessage}>
+              {playbackError}
+            </Text>
+            <View style={styles.playbackErrorActions}>
+              <Pressable
+                accessibilityLabel="重试播放"
+                accessibilityRole="button"
+                onPress={() => {
+                  setPlaybackError(null);
+                  setReloadToken((n) => n + 1);
+                }}
+                style={({ pressed }) => [
+                  styles.playbackErrorPrimaryButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.playbackErrorPrimaryText}>重试</Text>
+              </Pressable>
+              {!externalSource && queue.length > 1 ? (
+                <Pressable
+                  accessibilityLabel="播放下一个视频"
+                  accessibilityRole="button"
+                  onPress={() => switchVideoByOffset(1)}
+                  style={({ pressed }) => [
+                    styles.playbackErrorSecondaryButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.playbackErrorSecondaryText}>下一个</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        </View>
       ) : null}
+
+      <VerticalGestureHud
+        kind={verticalHud.kind}
+        leftInset={insets.left}
+        rightInset={insets.right}
+        value={verticalHud.value}
+        visible={verticalHud.visible}
+      />
 
       {gestureFeedback ? (
         <View pointerEvents="none" style={styles.gestureFeedback}>
@@ -2161,16 +2538,6 @@ export function VideoPlayerScreen({
           <Text style={styles.gestureFeedbackText}>
             {gestureFeedback.label}
           </Text>
-          {gestureFeedback.value != null ? (
-            <View style={styles.gestureFeedbackBar}>
-              <View
-                style={[
-                  styles.gestureFeedbackFill,
-                  { width: `${Math.round(gestureFeedback.value * 100)}%` },
-                ]}
-              />
-            </View>
-          ) : null}
         </View>
       ) : null}
 
@@ -2257,6 +2624,7 @@ export function VideoPlayerScreen({
                 >
                   {moreItems.map((item) => (
                     <Pressable
+                      accessibilityLabel={item.label}
                       accessibilityRole="button"
                       key={item.key}
                       onPress={() => {
@@ -2298,6 +2666,9 @@ export function VideoPlayerScreen({
                   <View style={styles.speedGrid}>
                     {SPEED_OPTIONS.map((option) => (
                       <Pressable
+                        accessibilityLabel={`播放速度 ${option} 倍`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: speed === option }}
                         key={option}
                         onPress={() => {
                           setSpeed(option);
@@ -2331,6 +2702,9 @@ export function VideoPlayerScreen({
                     {SPEED_OPTIONS.filter((option) => option >= 1).map(
                       (option) => (
                         <Pressable
+                          accessibilityLabel={`长按快进 ${option} 倍`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: holdSpeed === option }}
                           key={option}
                           onPress={() => setHoldSpeed(option)}
                           style={[
@@ -2358,6 +2732,8 @@ export function VideoPlayerScreen({
 
             {queueVisible && (
               <Pressable
+                accessibilityLabel="关闭播放队列"
+                accessibilityRole="button"
                 style={StyleSheet.absoluteFill}
                 onPress={() => setQueueVisible(false)}
               />
@@ -2442,6 +2818,13 @@ export function VideoPlayerScreen({
               <View style={styles.masterControlDock}>
                 <View style={styles.dockLeft}>
                   <Pressable
+                    accessibilityLabel={
+                      videoContentFit === "cover"
+                        ? "切换为完整显示"
+                        : "切换为铺满画面"
+                    }
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={() =>
                       setVideoContentFit((prev) =>
                         prev === "contain" ? "cover" : "contain",
@@ -2454,6 +2837,15 @@ export function VideoPlayerScreen({
                 </View>
                 <View style={styles.dockCenter} pointerEvents="box-none">
                   <Pressable
+                    accessibilityLabel={
+                      playbackOrder === "shuffle"
+                        ? "随机播放"
+                        : playbackOrder === "single"
+                          ? "单曲循环"
+                          : "顺序播放"
+                    }
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={togglePlaybackOrder}
                     style={styles.hudButton}
                   >
@@ -2470,6 +2862,9 @@ export function VideoPlayerScreen({
                     />
                   </Pressable>
                   <Pressable
+                    accessibilityLabel="上一个视频"
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={() => switchVideoByOffset(-1)}
                     style={styles.hudButton}
                   >
@@ -2480,6 +2875,9 @@ export function VideoPlayerScreen({
                     />
                   </Pressable>
                   <Pressable
+                    accessibilityLabel={isPlaying ? "暂停" : "播放"}
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={togglePlay}
                     style={styles.masterPlayToggle}
                   >
@@ -2490,6 +2888,9 @@ export function VideoPlayerScreen({
                     />
                   </Pressable>
                   <Pressable
+                    accessibilityLabel="下一个视频"
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={() => switchVideoByOffset(1)}
                     style={styles.hudButton}
                   >
@@ -2498,6 +2899,9 @@ export function VideoPlayerScreen({
                 </View>
                 <View style={styles.dockRight}>
                   <Pressable
+                    accessibilityLabel={`播放速度 ${speed} 倍`}
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={() => {
                       setSpeedMenuVisible((current) => !current);
                       setQueueVisible(false);
@@ -2520,6 +2924,9 @@ export function VideoPlayerScreen({
                     </Text>
                   </Pressable>
                   <Pressable
+                    accessibilityLabel={isLandscape ? "切换为竖屏" : "切换为横屏"}
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={toggleOrientation}
                     style={styles.hudButton}
                   >
@@ -2530,6 +2937,9 @@ export function VideoPlayerScreen({
                     />
                   </Pressable>
                   <Pressable
+                    accessibilityLabel="播放队列"
+                    accessibilityRole="button"
+                    hitSlop={HUD_BUTTON_HIT_SLOP}
                     onPress={() => {
                       setQueueVisible((current) => !current);
                       setSpeedMenuVisible(false);
@@ -2566,105 +2976,46 @@ export function VideoPlayerScreen({
                 <View style={styles.drawerHeaderLeft}>
                   <Text style={styles.drawerTitle}>播放队列</Text>
                   <Text style={styles.drawerSubtitle}>
-                    {(displayQueue.findIndex(
-                      (item) => item.id === activeVideoId,
-                    ) >= 0
-                      ? displayQueue.findIndex(
-                          (item) => item.id === activeVideoId,
-                        ) + 1
-                      : 0
-                    )
-                      .toString()
-                      .padStart(2, "0")}{" "}
-                    / {queue.length} 剪辑片段
+                    {displayQueueIndex.toString().padStart(2, "0")} /{" "}
+                    {queue.length} 剪辑片段
                   </Text>
                 </View>
                 <Pressable
+                  accessibilityLabel="关闭播放队列"
+                  accessibilityRole="button"
+                  hitSlop={DRAWER_CLOSE_HIT_SLOP}
                   onPress={() => setQueueVisible(false)}
                   style={styles.drawerCloseButton}
                 >
                   <MaterialIcons name="close" size={20} color="#fff" />
                 </Pressable>
               </View>
-              <ScrollView
-                nestedScrollEnabled={true}
-                showsVerticalScrollIndicator={false}
-                style={styles.drawerScroll}
-                contentContainerStyle={[
-                  styles.drawerScrollContent,
-                  { paddingBottom: insets.bottom + spacing[3] },
-                ]}
-              >
-                {displayQueue.map((item, idx) => {
-                  const isActive = item.id === activeVideoId;
-                  return (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => switchVideo(item.id, item)}
-                      style={[
-                        styles.drawerItem,
-                        isActive && styles.drawerItemActive,
-                      ]}
-                    >
-                      <View style={styles.drawerItemCover}>
-                        {(item.coverThumbnailFileUri ??
-                        item.thumbnailFileUri) ? (
-                          <SecureImage
-                            contentFit="cover"
-                            space={space}
-                            style={styles.drawerItemImage}
-                            uri={
-                              (item.coverThumbnailFileUri ??
-                                item.thumbnailFileUri) as string
-                            }
-                          />
-                        ) : null}
-                        <View style={styles.drawerItemDuration}>
-                          <Text style={styles.drawerItemDurationText}>
-                            {formatDuration(item.durationMs)}
-                          </Text>
-                        </View>
-                        {isActive && (
-                          <View style={styles.drawerItemActiveOverlay}>
-                            <MaterialIcons
-                              name="graphic-eq"
-                              size={20}
-                              color="#fff"
-                            />
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.drawerItemInfo}>
-                        <View style={styles.drawerItemTitleRow}>
-                          <Text
-                            numberOfLines={1}
-                            style={styles.drawerItemTitle}
-                          >
-                            {item.originalFilename}
-                          </Text>
-                          {isActive && <View style={styles.activeDot} />}
-                        </View>
-                        {isActive ? (
-                          <Text style={styles.drawerItemNowPlaying}>
-                            播放中 · {formatDuration(displayTime * 1000)} /{" "}
-                            {formatDuration(item.durationMs)}
-                          </Text>
-                        ) : (
-                          <Text style={styles.drawerItemMeta}>
-                            {formatImageDimensions(item.width, item.height)} ·{" "}
-                            {formatFileSize(item.fileSize)}
-                          </Text>
-                        )}
-                      </View>
-                      <MaterialIcons
-                        name={isActive ? "equalizer" : "chevron-right"}
-                        size={20}
-                        color={isActive ? "#fff" : "rgba(255,255,255,0.5)"}
-                      />
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              {drawerMounted ? (
+                <FlatList
+                  ItemSeparatorComponent={renderDrawerSeparator}
+                  ListEmptyComponent={drawerEmptyNode}
+                  contentContainerStyle={[
+                    styles.drawerScrollContent,
+                    { paddingBottom: insets.bottom + spacing[3] },
+                  ]}
+                  data={displayQueue}
+                  extraData={
+                    queueVisible
+                      ? `${activeVideoId}:${drawerDisplayTimeSec}`
+                      : activeVideoId
+                  }
+                  getItemLayout={getDrawerItemLayout}
+                  initialNumToRender={8}
+                  keyExtractor={drawerKeyExtractor}
+                  maxToRenderPerBatch={6}
+                  nestedScrollEnabled={true}
+                  removeClippedSubviews={true}
+                  renderItem={renderDrawerItem}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.drawerScroll}
+                  windowSize={5}
+                />
+              ) : null}
             </Animated.View>
           </>
         )}
@@ -2678,9 +3029,10 @@ export function VideoPlayerScreen({
           holdSpeedVisible ? styles.layerHiddenDuringHold : null,
         ]}
       >
-        {isPlayerLocked ? (
+        {isPlayerLocked || controlsVisible ? (
           <Pressable
-            accessibilityLabel="解锁播放器"
+            accessibilityLabel={isPlayerLocked ? "解锁播放器" : "锁定播放器"}
+            accessibilityRole="button"
             onPress={togglePlayerLock}
             style={[
               styles.rightSideLockButton,
@@ -2689,28 +3041,11 @@ export function VideoPlayerScreen({
           >
             <MaterialIcons
               color="rgba(255,255,255,0.3)"
-              name="lock"
+              name={isPlayerLocked ? "lock" : "lock-open"}
               size={24}
             />
           </Pressable>
-        ) : (
-          controlsVisible && (
-            <Pressable
-              accessibilityLabel="锁定播放器"
-              onPress={togglePlayerLock}
-              style={[
-                styles.rightSideLockButton,
-                { bottom: insets.bottom + 120 },
-              ]}
-            >
-              <MaterialIcons
-                color="rgba(255,255,255,0.3)"
-                name="lock-open"
-                size={24}
-              />
-            </Pressable>
-          )
-        )}
+        ) : null}
       </Animated.View>
 
       <AppActionSheet
@@ -2755,12 +3090,61 @@ export function VideoPlayerScreen({
           value={newIpName}
         />
       </AppDialog>
+      <AppDialog
+        danger
+        message="当前视频位于私密空间，保存到系统相册后将脱离应用内隐私加密隔离保护，确定继续导出？"
+        onClose={() => setPersonalExportConfirmVisible(false)}
+        onPrimary={() => {
+          setPersonalExportConfirmVisible(false);
+          void executeSaveLocal();
+        }}
+        primaryLabel="仍然保存"
+        title="导出私密视频"
+        visible={personalExportConfirmVisible}
+      />
+      {space === "personal" && !isAppActive ? (
+        <View pointerEvents="none" style={styles.personalPrivacyCurtain} />
+      ) : null}
     </View>
   );
 }
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
+function formatPlaybackErrorMessage(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message.toLowerCase() : "";
+  if (
+    rawMessage.includes("enoent") ||
+    rawMessage.includes("not found") ||
+    rawMessage.includes("no such file")
+  ) {
+    return "视频文件不存在或已被移动";
+  }
+  if (
+    rawMessage.includes("codec") ||
+    rawMessage.includes("format") ||
+    rawMessage.includes("decoder") ||
+    rawMessage.includes("unsupported")
+  ) {
+    return "暂不支持当前视频编码格式";
+  }
+  return "无法读取视频内容，请重试";
+}
+
+function formatActionErrorMessage(error: unknown, fallback: string): string {
+  const rawMessage = error instanceof Error ? error.message.toLowerCase() : "";
+  if (rawMessage.includes("permission") || rawMessage.includes("denied")) {
+    return "缺少媒体存储权限";
+  }
+  if (
+    rawMessage.includes("enoent") ||
+    rawMessage.includes("not found") ||
+    rawMessage.includes("no such file")
+  ) {
+    return "原视频文件不可用";
+  }
+  if (rawMessage.includes("enospc") || rawMessage.includes("space")) {
+    return "设备可用存储空间不足";
+  }
+  return fallback;
 }
 
 function formatScrubDelta(deltaSeconds: number): string {
@@ -2779,8 +3163,6 @@ function formatScrubMeta(deltaSeconds: number, hint: string | null): string {
 function getGestureFeedbackIcon(kind: GestureFeedbackKind) {
   if (kind === "seek-backward") return "play-back";
   if (kind === "seek-forward") return "play-forward";
-  if (kind === "brightness") return "sunny-outline";
-  if (kind === "volume") return "volume-high-outline";
   if (kind === "locked") return "lock-closed-outline";
   if (kind === "unlocked") return "lock-open-outline";
   return "information-circle-outline";
@@ -2803,7 +3185,15 @@ const styles = StyleSheet.create({
   },
   videoAdjacentSlot: {
     ...StyleSheet.absoluteFillObject,
+    // Dark video theater backdrop has no semantic token in light-mode colors.ts
     backgroundColor: "#050607",
+  },
+  videoAdjacentCoverSlot: {
+    // Dark video theater backdrop has no semantic token in light-mode colors.ts
+    backgroundColor: "#050607",
+    left: 0,
+    position: "absolute",
+    right: 0,
   },
   videoAdjacentCoverImage: {
     height: "100%",
@@ -2821,9 +3211,11 @@ const styles = StyleSheet.create({
     height: "100%",
     width: "100%",
   },
-  brightnessOverlay: {
+  personalPrivacyCurtain: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#000",
+    // Theater black matches shell background to conceal personal frame in background snapshots.
+    backgroundColor: "#050607",
+    zIndex: 100,
   },
   gestureFeedback: {
     alignItems: "center",
@@ -2834,9 +3226,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
     justifyContent: "center",
-    minHeight: 104,
-    minWidth: 126,
-    padding: spacing[4],
+    minHeight: 86,
+    minWidth: 112,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
     position: "absolute",
     top: "42%",
   },
@@ -2844,18 +3237,6 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.inverse,
     fontWeight: "800",
-  },
-  gestureFeedbackBar: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: radius.pill,
-    height: 4,
-    overflow: "hidden",
-    width: 82,
-  },
-  gestureFeedbackFill: {
-    backgroundColor: colors.primary.hover,
-    borderRadius: radius.pill,
-    height: "100%",
   },
   surfaceScrubOverlay: {
     alignItems: "center",
@@ -3606,7 +3987,7 @@ const styles = StyleSheet.create({
   drawerCloseButton: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: radius.pill,
     backgroundColor: "rgba(255,255,255,0.1)",
     justifyContent: "center",
     alignItems: "center",
@@ -3616,81 +3997,82 @@ const styles = StyleSheet.create({
   },
   drawerScrollContent: {
     paddingHorizontal: spacing[3],
-    gap: spacing[2],
   },
-  drawerItem: {
-    flexDirection: "row",
+  drawerItemSeparator: {
+    height: DRAWER_ITEM_GAP,
+  },
+  drawerEmptyState: {
     alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[2],
-    borderRadius: radius.md,
-  },
-  drawerItemActive: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderColor: "rgba(255,255,255,0.3)",
-    borderWidth: 1,
-  },
-  drawerItemCover: {
-    width: 64,
-    height: 44,
-    borderRadius: radius.sm,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    overflow: "hidden",
-    position: "relative",
-  },
-  drawerItemImage: {
-    width: "100%",
-    height: "100%",
-  },
-  drawerItemDuration: {
-    position: "absolute",
-    bottom: 2,
-    right: 4,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    paddingHorizontal: 4,
-    borderRadius: 2,
-  },
-  drawerItemDurationText: {
-    ...typography.textStyles.micro,
-    fontSize: 8,
-    color: "#ffffff",
-  },
-  drawerItemActiveOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    gap: spacing[2],
     justifyContent: "center",
-    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[8],
   },
-  drawerItemInfo: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "column",
-    gap: 2,
+  drawerEmptyTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.inverse,
   },
-  drawerItemTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  drawerItemTitle: {
+  drawerEmptyHint: {
     ...typography.textStyles.caption,
-    color: "#ffffff",
-    fontWeight: "800",
-    flexShrink: 1,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#ffffff",
-  },
-  drawerItemNowPlaying: {
-    ...typography.textStyles.micro,
-    color: "#ffffff",
-    fontWeight: "800",
-  },
-  drawerItemMeta: {
-    ...typography.textStyles.micro,
     color: "rgba(255,255,255,0.6)",
+    textAlign: "center",
+  },
+  playbackErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing[6],
+    zIndex: 30,
+  },
+  playbackErrorCard: {
+    alignItems: "center",
+    backgroundColor: "rgba(12, 15, 13, 0.88)",
+    borderColor: "rgba(255,255,255,0.14)",
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    maxWidth: 320,
+    padding: spacing[5],
+    width: "100%",
+  },
+  playbackErrorTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.inverse,
+  },
+  playbackErrorMessage: {
+    ...typography.textStyles.caption,
+    color: "rgba(255,255,255,0.72)",
+    textAlign: "center",
+  },
+  playbackErrorActions: {
+    flexDirection: "row",
+    gap: spacing[3],
+    marginTop: spacing[2],
+  },
+  playbackErrorPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: colors.background.surface,
+    borderRadius: radius.pill,
+    justifyContent: "center",
+    minHeight: metrics.minTouchSize,
+    paddingHorizontal: spacing[5],
+  },
+  playbackErrorPrimaryText: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: "700",
+  },
+  playbackErrorSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: radius.pill,
+    justifyContent: "center",
+    minHeight: metrics.minTouchSize,
+    paddingHorizontal: spacing[5],
+  },
+  playbackErrorSecondaryText: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: "700",
   },
 });

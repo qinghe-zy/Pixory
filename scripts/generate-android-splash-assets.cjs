@@ -3,8 +3,12 @@ const path = require('node:path');
 const { Jimp, ResizeStrategy } = require('jimp');
 
 const root = path.resolve(__dirname, '..');
-const sourcePath = path.join(root, 'icons/splash_foreground.png');
-const compactPath = path.join(root, 'icons/splash_foreground_compact.png');
+const sourcePath = fs.existsSync(path.join(root, 'assets/splash/splash_foreground.png'))
+  ? path.join(root, 'assets/splash/splash_foreground.png')
+  : path.join(root, 'icons/splash_foreground.png');
+const compactPath = fs.existsSync(path.join(root, 'assets/splash/splash_foreground_compact.png'))
+  ? path.join(root, 'assets/splash/splash_foreground_compact.png')
+  : path.join(root, 'icons/splash_foreground_compact.png');
 const compactScale = 0.875;
 const targets = {
   mdpi: 288,

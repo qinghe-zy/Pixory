@@ -30,6 +30,7 @@ $excludeDirs = @(
     ".codex*", ".superpowers", "superpowers", "日志", ".playwright-mcp", ".worktrees", ".local",
     "版本文档", "temp", "temp_*", ".idea", ".vscode", "coverage", "playwright-report",
     ".gradle", ".kotlin", ".cxx", "build", (Join-Path $sourceDir 'scripts/local'),
+    "icons", (Join-Path $sourceDir 'icons'),
     (Join-Path $sourceDir 'docs/assets/images'), (Join-Path $sourceDir 'docs/superpowers'), (Join-Path $sourceDir 'docs/日志')
 )
 
@@ -89,6 +90,12 @@ if (Test-Path $docsCleanDir) {
             Remove-Item -Path $targetItem -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+}
+
+# 针对 clean 仓库中历史存在的 icons 目录进行彻底清理
+$cleanIconsDir = Join-Path $TargetDir "icons"
+if (Test-Path $cleanIconsDir) {
+    Remove-Item -Path $cleanIconsDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "文件同步完成！" -ForegroundColor Green

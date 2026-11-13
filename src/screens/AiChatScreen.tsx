@@ -1,11 +1,10 @@
-import { clearAiThreadMessages, ensureFileTransferThread } from '../ai/aiChatService';
-import { FILE_TRANSFER_THREAD_ID, SYSTEM_ASSISTANT_THREAD_ID } from '../ai/systemAssistant/capabilityProfile';
+import { clearAiThreadMessages } from '../ai/aiChatService';
+import { SYSTEM_ASSISTANT_THREAD_ID } from '../ai/systemAssistant/capabilityProfile';
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 
 const AI_SYSTEM_AVATAR = require('../../assets/ai_system_avatar.png');
-const FILE_TRANSFER_AVATAR = require('../../assets/file_transfer_avatar.png');
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -873,103 +872,15 @@ function findLatestVisibleBranchRootMessageId(
 
 function AiChatStarterHints({
   isSystemAssistant,
-  isFileTransfer,
   onPickSuggestion,
-  onPickPhotos,
-  onPickDocs,
-  onPasteClipboard,
 }: {
   isSystemAssistant?: boolean;
-  isFileTransfer?: boolean;
   onPickSuggestion: (value: string) => void;
-  onPickPhotos?: () => void;
-  onPickDocs?: () => void;
-  onPasteClipboard?: () => void;
 }) {
-  if (isFileTransfer) {
-    return (
-      <View style={styles.starterWrap}>
-        <View style={styles.fileTransferStarterCard}>
-          <ExpoImage
-            accessibilityLabel="文件传输助手头像"
-            contentFit="cover"
-            source={FILE_TRANSFER_AVATAR}
-            style={styles.starterAvatarImage}
-          />
-          <View style={styles.starterCardHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.starterCardTitle}>文件传输助手</Text>
-              <View style={styles.starterSystemBadge}>
-                <Text style={styles.starterSystemBadgeText}>系统</Text>
-              </View>
-            </View>
-            <Text style={styles.starterCardSubtitle}>
-              随时保存、收集和跨端流转文字、图片与各类文件
-            </Text>
-          </View>
-
-          <View style={styles.starterFeatureList}>
-            <View style={styles.starterFeatureRow}>
-              <Ionicons color={aiLightColors.ink} name="flash-outline" size={16} />
-              <Text style={styles.starterFeatureText}>
-                即发即存：纯本地即时存储，无需等待回复，零模型消耗
-              </Text>
-            </View>
-            <View style={styles.starterFeatureRow}>
-              <Ionicons color={aiLightColors.ink} name="folder-outline" size={16} />
-              <Text style={styles.starterFeatureText}>
-                全格式支持：照片、视频、PDF、文档、安装包与压缩包
-              </Text>
-            </View>
-            <View style={styles.starterFeatureRow}>
-              <Ionicons color={aiLightColors.ink} name="shield-checkmark-outline" size={16} />
-              <Text style={styles.starterFeatureText}>
-                安全隔离：独立本地数据管理，随时批量清理
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.starterActionPills}>
-            <Pressable
-              accessibilityLabel="发送照片与视频"
-              accessibilityRole="button"
-              hitSlop={spacing[2]}
-              onPress={onPickPhotos}
-              style={({ pressed }) => [styles.starterActionBtn, pressed && styles.pressed]}
-            >
-              <Ionicons color={aiLightColors.ink} name="images-outline" size={16} />
-              <Text style={styles.starterActionBtnText}>发送照片与视频</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="发送本地文件"
-              accessibilityRole="button"
-              hitSlop={spacing[2]}
-              onPress={onPickDocs}
-              style={({ pressed }) => [styles.starterActionBtn, pressed && styles.pressed]}
-            >
-              <Ionicons color={aiLightColors.ink} name="document-attach-outline" size={16} />
-              <Text style={styles.starterActionBtnText}>发送本地文件</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="粘贴剪贴板内容"
-              accessibilityRole="button"
-              hitSlop={spacing[2]}
-              onPress={onPasteClipboard}
-              style={({ pressed }) => [styles.starterActionBtn, pressed && styles.pressed]}
-            >
-              <Ionicons color={aiLightColors.ink} name="clipboard-outline" size={16} />
-              <Text style={styles.starterActionBtnText}>粘贴剪贴板内容</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
   if (isSystemAssistant) {
     return (
       <View style={styles.starterWrap}>
-        <View style={styles.fileTransferStarterCard}>
+        <View style={styles.systemStarterCard}>
           <ExpoImage
             accessibilityLabel="Pixory 系统管家头像"
             contentFit="cover"
@@ -1149,35 +1060,11 @@ export function AiChatScreen({
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
   const isSystemAssistant = threadId === SYSTEM_ASSISTANT_THREAD_ID;
-  const isFileTransfer = threadId === FILE_TRANSFER_THREAD_ID;
-  const isSpecialSystemThread = isSystemAssistant || isFileTransfer;
   const isSystemAssistantRef = useRef(isSystemAssistant);
   isSystemAssistantRef.current = isSystemAssistant;
-  const isFileTransferRef = useRef(isFileTransfer);
-  isFileTransferRef.current = isFileTransfer;
-
-  useEffect(() => {
-    if (!isFileTransfer) return;
-    void ensureFileTransferThread(space);
-  }, [space, isFileTransfer]);
 
   const initialBottomInsetRef = useRef(insets.bottom);
   const { showToast, showUndoSnackbar } = useToast();
-
-  const handlePasteClipboard = useCallback(async () => {
-    try {
-      const text = await Clipboard.getStringAsync();
-      if (text && text.trim()) {
-        setComposerText((current) => (current ? `${current}\n${text.trim()}` : text.trim()));
-        showToast('已粘贴剪贴板内容');
-      } else {
-        showToast('剪贴板中没有文字内容');
-      }
-    } catch (err) {
-      console.warn('Failed to read clipboard:', err);
-      showToast('无法读取剪贴板内容');
-    }
-  }, [showToast]);
   const [pinnedDocumentIds, setPinnedDocumentIds] = useState<Set<string>>(() => new Set());
   const [pinningDocumentId, setPinningDocumentId] = useState<string | null>(null);
   const [activeDocAction, setActiveDocAction] = useState<{ documentId: string; title: string } | null>(null);
@@ -2897,7 +2784,7 @@ export function AiChatScreen({
             messageUsesStandaloneAssistantDisplay(message)),
         showUserAvatar:
           message.role === 'user' &&
-          (isFileTransfer || startsNewDate || previousMessage?.role !== 'user'),
+          (startsNewDate || previousMessage?.role !== 'user'),
       });
       const systemTask = isSystemAssistant ? systemAssistant.tasks[message.id] : null;
       const isLatestOrGenerating = message.versionIndex === message.versionTotal || message.versionIndex === 0 || message.status === 'generating';
@@ -3875,9 +3762,6 @@ export function AiChatScreen({
       recordDiagnosticIncident({ id: `blank_${space}_${Date.now()}`, space, incidentType: 'message_list_empty', severity: 'error', fingerprint: `message_list_empty:${activeThreadIdRef.current}`, occurredAtUtc: new Date().toISOString(), traceId: diagnosticTraceIdRef.current, generationId: activeStreamingIdentityRef.current?.generationId, payload: { state: { generating, isMessageListReady }, metrics: { messageCount: 0 }, anomalies: ['message_list_empty'] } });
     }
     if (!isInitialMessageLoading && invertedMessageItems.length > 0) {
-      if (isFileTransfer && bottomLockedRef.current) {
-        messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
-      }
       const layoutKey = `${activeThreadIdRef.current ?? "new"}:${invertedMessageItems.length}`;
       if (chatFirstLayoutKeyRef.current !== layoutKey) {
         chatFirstLayoutKeyRef.current = layoutKey;
@@ -3900,7 +3784,7 @@ export function AiChatScreen({
         setIsMessageListReady(true);
       }
     }
-  }, [invertedMessageItems.length, isFileTransfer, isInitialMessageLoading, isMessageListReady, space]);
+  }, [invertedMessageItems.length, isInitialMessageLoading, isMessageListReady, space]);
 
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -5989,12 +5873,6 @@ export function AiChatScreen({
     if (!screenMountedRef.current) {
       return null;
     }
-    if (isFileTransfer) {
-      await ensureFileTransferThread(space);
-      activeThreadIdRef.current = FILE_TRANSFER_THREAD_ID;
-      setActiveThreadId(FILE_TRANSFER_THREAD_ID);
-      return FILE_TRANSFER_THREAD_ID;
-    }
     if (activeThreadId || activeThreadIdRef.current) {
       return activeThreadId || activeThreadIdRef.current;
     }
@@ -6708,7 +6586,7 @@ export function AiChatScreen({
     const typedText = composerText.trim();
     const diaryCommandRequested = isDiaryCreationRequest(typedText);
     const attachments = pendingAttachments;
-    let content = isFileTransfer ? typedText : buildChatMessageContent(typedText, attachments);
+    let content = buildChatMessageContent(typedText, attachments);
     if (activeTweakArtifact) {
       const dynamicSection = buildSandboxDynamicPromptSection({
         activeArtifact: activeTweakArtifact,
@@ -6778,59 +6656,6 @@ export function AiChatScreen({
         return;
       }
       const targetThreadId = nextThreadId;
-      if (isFileTransfer) {
-        await ensureFileTransferThread(space);
-        await runWithDatabaseSpace(space, async (db) => {
-          await aiThreadRepository.createMessage(db, {
-            id: tempUserMessageId,
-            threadId: targetThreadId,
-            branchRootMessageId: null,
-            branchVersionIndex: null,
-            role: 'user',
-            status: 'completed',
-            content,
-            createdAt: sendPressedAt,
-            completedAt: sendPressedAt,
-          });
-          if (attachments.length > 0) {
-            await Promise.all(
-              attachments.map((att) =>
-                aiThreadRepository.createMessageAttachment(db, {
-                  id: att.id,
-                  messageId: tempUserMessageId,
-                  threadId: targetThreadId,
-                  kind: att.kind,
-                  name: att.name,
-                  localUri: att.uri,
-                  mimeType: att.mimeType ?? undefined,
-                  fileSize: att.size ?? undefined,
-                })
-              )
-            );
-          }
-          const firstAtt = attachments[0];
-          const attPreview = firstAtt
-            ? (firstAtt.kind === 'image' ? '[图片]' : (firstAtt.name ? `[文档] ${firstAtt.name}` : '[文档]'))
-            : '';
-          const previewText = content.trim() || attPreview;
-          await aiThreadRepository.updateThread(db, targetThreadId, {
-            lastMessagePreview: previewText,
-          });
-        });
-        setGenerating(false);
-        finishGenerationAction(actionToken);
-        await reloadMessages(targetThreadId, true);
-        void reloadRecentThreads();
-        bottomLockedRef.current = true;
-        [0, 50, 150].forEach((delay) => {
-          setTimeout(() => {
-            if (screenMountedRef.current) {
-              messageListRef.current?.scrollToOffset({ animated: false, offset: 0 });
-            }
-          }, delay);
-        });
-        return;
-      }
       let shouldOfferDiaryCreation = false;
       if (diaryCommandRequested) {
         try {
@@ -7497,23 +7322,6 @@ export function AiChatScreen({
             const idsToDelete = Array.from(selectedMessageIds);
             await runWithDatabaseSpace(space, async (db) => {
               await aiThreadRepository.deleteMessagesByIds(db, idsToDelete);
-              const tid = activeThreadIdRef.current ?? threadId;
-              if (tid && isFileTransferRef.current) {
-                const remainingMessages = await aiThreadRepository.listMessages(db, tid);
-                const lastMsg = remainingMessages[remainingMessages.length - 1];
-                let attPreview = '';
-                if (lastMsg) {
-                  const atts = await aiThreadRepository.listMessageAttachments(db, lastMsg.id);
-                  const firstAtt = atts[0];
-                  if (firstAtt) {
-                    attPreview = firstAtt.kind === 'image' ? '[图片]' : (firstAtt.name ? `[文档] ${firstAtt.name}` : '[文档]');
-                  }
-                }
-                const preview = lastMsg ? (lastMsg.content?.trim() || attPreview || '') : '';
-                await aiThreadRepository.updateThread(db, tid, {
-                  lastMessagePreview: preview,
-                });
-              }
             });
             setIsMultiSelectMode(false);
             setSelectedMessageIds(new Set());
@@ -7918,23 +7726,6 @@ export function AiChatScreen({
               void (async () => {
                 await runWithDatabaseSpace(space, async (db) => {
                   await aiThreadRepository.deleteMessagesByIds(db, [message.id]);
-                  const tid = activeThreadIdRef.current ?? threadId;
-                  if (tid && isFileTransferRef.current) {
-                    const remainingMessages = await aiThreadRepository.listMessages(db, tid);
-                    const lastMsg = remainingMessages[remainingMessages.length - 1];
-                    let attPreview = '';
-                    if (lastMsg) {
-                      const atts = await aiThreadRepository.listMessageAttachments(db, lastMsg.id);
-                      const firstAtt = atts[0];
-                      if (firstAtt) {
-                        attPreview = firstAtt.kind === 'image' ? '[图片]' : (firstAtt.name ? `[文档] ${firstAtt.name}` : '[文档]');
-                      }
-                    }
-                    const preview = lastMsg ? (lastMsg.content?.trim() || attPreview || '') : '';
-                    await aiThreadRepository.updateThread(db, tid, {
-                      lastMessagePreview: preview,
-                    });
-                  }
                 });
                 await reloadMessages(activeThreadIdRef.current ?? threadId ?? null, false);
                 void reloadRecentThreads();
@@ -8384,7 +8175,7 @@ export function AiChatScreen({
                 });
               }}
               userProfile={{
-                avatarEnabled: isFileTransfer ? true : participantAppearance.userAvatarEnabled,
+                avatarEnabled: participantAppearance.userAvatarEnabled,
                 avatarUri: participantAppearance.userAvatarUri,
                 nickname: participantAppearance.userNickname,
               }}
@@ -8457,7 +8248,6 @@ export function AiChatScreen({
       activeVoicePlaybackId,
       synthesizingVoiceMessageId,
       handleToggleVoiceSpeak,
-      isFileTransfer,
       isMultiSelectMode,
       selectedMessageIds,
       toggleMultiSelectMessage,
@@ -8543,20 +8333,18 @@ export function AiChatScreen({
                 <Text numberOfLines={1} style={styles.title}>
                   {isMultiSelectMode
                     ? (selectedMessageIds.size > 0 ? `已选择 ${selectedMessageIds.size} 项` : '选择消息')
-                    : isFileTransfer
-                    ? '文件传输助手'
                     : isSystemAssistant
                     ? 'Pixory 系统管家'
                     : displayTitle}
                 </Text>
-                {!isMultiSelectMode && isSpecialSystemThread ? (
+                {!isMultiSelectMode && isSystemAssistant ? (
                   <View style={styles.headerSystemBadge}>
                     <Text style={styles.headerSystemBadgeText}>系统</Text>
                   </View>
                 ) : null}
                 {!isMultiSelectMode && thinking ? <View style={styles.liveDot} /> : null}
               </View>
-              {!isMultiSelectMode && !isSpecialSystemThread && modelLabel ? (
+              {!isMultiSelectMode && !isSystemAssistant && modelLabel ? (
                 <Text numberOfLines={1} style={styles.modelSubtitle}>
                   {modelLabel}
                 </Text>
@@ -8581,7 +8369,7 @@ export function AiChatScreen({
                     {selectedMessageIds.size === visibleMessages.length && visibleMessages.length > 0 ? '取消全选' : '全选'}
                   </Text>
                 </Pressable>
-              ) : isFileTransfer ? null : !isSystemAssistant ? (
+              ) : !isSystemAssistant ? (
                 <Pressable
                   accessibilityLabel="会话设置"
                   accessibilityRole="button"
@@ -8652,7 +8440,7 @@ export function AiChatScreen({
                 keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 keyboardShouldPersistTaps="handled"
                 keyExtractor={messageKeyExtractor}
-                maintainVisibleContentPosition={isFileTransfer ? undefined : MESSAGE_LIST_ANCHOR_CONFIG}
+                maintainVisibleContentPosition={MESSAGE_LIST_ANCHOR_CONFIG}
                 maxToRenderPerBatch={tailListMaxToRenderPerBatch}
                 removeClippedSubviews={tailListRemoveClippedSubviews}
                 updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
@@ -8732,11 +8520,7 @@ export function AiChatScreen({
             {invertedMessageItems.length === 0 && isMessageListReady && !errorMessage && !messageLoadError ? (
               <View style={styles.starterOverlay}>
                 <AiChatStarterHints
-                  isFileTransfer={isFileTransfer}
                   isSystemAssistant={isSystemAssistant}
-                  onPasteClipboard={handlePasteClipboard}
-                  onPickDocs={() => void pickChatDocuments()}
-                  onPickPhotos={() => void pickChatImages()}
                   onPickSuggestion={setComposerText}
                 />
               </View>
@@ -8940,10 +8724,8 @@ export function AiChatScreen({
               <AiChatComposer
                 attachments={pendingAttachments}
                 generating={generating}
-                modelIconBrand={isSpecialSystemThread ? undefined : modelIconBrand}
-                hideModelIcon={isFileTransfer}
-                hideReplyAssist={isFileTransfer}
-                voiceAvailable={!isFileTransfer}
+                modelIconBrand={isSystemAssistant ? undefined : modelIconBrand}
+                voiceAvailable={true}
                 onAddDocumentAttachment={() => void pickChatDocuments()}
                 onAddImageAttachment={() => void pickChatImages()}
                 onChangeText={setComposerText}
@@ -8959,7 +8741,7 @@ export function AiChatScreen({
                     current.filter((attachment) => attachment.id !== id),
                   )
                 }
-                placeholder={isFileTransfer ? "发送文字、链接或备忘..." : ""}
+                placeholder=""
                 replyAssistDisabled={
                   generating || !canOpenReplyAssist(visibleMessages)
                 }
@@ -9017,7 +8799,7 @@ export function AiChatScreen({
       </KeyboardAvoidingView>
   );
 
-  const rightConfigDrawerNode = isFileTransfer ? null : (
+  const rightConfigDrawerNode = (
     <AiSessionConfigScreen
       contextTitle={contextTitle}
       contextType={contextType}
@@ -9158,22 +8940,14 @@ export function AiChatScreen({
     >
       {isPushScaleSidebar ? (
         <AiPushScaleDrawerStage
-          canOpenRightDrawer={activeThreadId !== SYSTEM_ASSISTANT_THREAD_ID && !isFileTransfer}
+          canOpenRightDrawer={activeThreadId !== SYSTEM_ASSISTANT_THREAD_ID}
           leftDrawer={leftRecordDrawerNode}
           leftDrawerVisible={recordDrawerVisible}
           mainCardContentStyle={{ paddingBottom: mainBottomPadding }}
           onCloseLeftDrawer={() => setRecordDrawerVisible(false)}
-          onCloseRightDrawer={() => {
-            if (isFileTransfer) {
-              return;
-            }
-            setConfigDrawerVisible(false);
-          }}
+          onCloseRightDrawer={() => setConfigDrawerVisible(false)}
           onOpenLeftDrawer={() => setRecordDrawerVisible(true)}
           onOpenRightDrawer={() => {
-            if (isFileTransfer) {
-              return;
-            }
             if (activeThreadId !== SYSTEM_ASSISTANT_THREAD_ID) {
               if (activeThreadId) {
                 prefetchBranchTree({ space, threadId: activeThreadId });
@@ -9182,7 +8956,7 @@ export function AiChatScreen({
             }
           }}
           rightDrawer={rightConfigDrawerNode}
-          rightDrawerVisible={isFileTransfer ? false : configDrawerVisible}
+          rightDrawerVisible={configDrawerVisible}
           spatialPreset={sidebarSpatialPreset}
         >
           {mainChatContentNode}
@@ -9660,7 +9434,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[8],
     paddingHorizontal: spacing[2],
   },
-  fileTransferStarterCard: {
+  systemStarterCard: {
     backgroundColor: aiLightColors.surface,
     borderRadius: radius.xl,
     padding: spacing[5],
@@ -9718,30 +9492,6 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: aiLightColors.ink,
     lineHeight: 16,
-  },
-  starterActionPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
-    justifyContent: 'center',
-    width: '100%',
-    marginTop: spacing[1],
-  },
-  starterActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-    borderRadius: radius.pill,
-    backgroundColor: aiLightColors.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: aiLightColors.hairline,
-  },
-  starterActionBtnText: {
-    ...typography.textStyles.caption,
-    fontWeight: '500',
-    color: aiLightColors.ink,
   },
   starterGreeting: {
     color: aiLightColors.ink,

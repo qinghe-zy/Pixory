@@ -55,14 +55,20 @@ export class VideoShuffleSession {
     }
   }
 
-  syncQueue(currentQueueIds: number[]): void {
+  /**
+   * Synchronizes the shuffle session with the latest queue IDs.
+   * Returns true if played history, candidates, or round order changed.
+   */
+  syncQueue(currentQueueIds: number[]): boolean {
     const oldQueueSet = new Set(this.queueIds);
     const newQueueSet = new Set(currentQueueIds);
+    let changed = false;
 
     // Remove played IDs that are no longer in queue
     for (const playedId of this.playedIds) {
       if (!newQueueSet.has(playedId)) {
         this.playedIds.delete(playedId);
+        changed = true;
       }
     }
 
@@ -75,18 +81,26 @@ export class VideoShuffleSession {
     }
 
     // Remove candidates that are no longer in queue
+    const prevCandidateCount = this.candidates.length;
     this.candidates = this.candidates.filter(c => newQueueSet.has(c));
+    if (this.candidates.length !== prevCandidateCount) {
+      changed = true;
+    }
 
     if (newCandidates.length > 0) {
       this.candidates.push(...newCandidates);
       fisherYatesShuffle(this.candidates);
+      changed = true;
     }
 
     this.queueIds = [...currentQueueIds];
 
     if (this.queueIds.length > 0 && this.candidates.length === 0) {
       this.rebuildRound();
+      changed = true;
     }
+
+    return changed;
   }
 
   reset(options: VideoShuffleSessionOptions): void {
@@ -113,6 +127,10 @@ export class VideoShuffleSession {
 
   getPlayedIds(): ReadonlySet<number> {
     return new Set(this.playedIds);
+  }
+
+  getCandidates(): readonly number[] {
+    return [...this.candidates];
   }
 
   private rebuildRound(): void {

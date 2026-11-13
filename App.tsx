@@ -47,6 +47,7 @@ import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { GlobalHeartbeatEngine } from './src/im/heartbeat/globalHeartbeatEngine';
 import { AiBranchTreeScreen } from './src/screens/AiBranchTreeScreen';
 import { AiChatScreen } from './src/screens/AiChatScreen';
+import { FileTransferScreen } from './src/screens/FileTransferScreen';
 import { AiChatSearchScreen } from './src/screens/AiChatSearchScreen';
 import { AiDocumentReaderScreen } from './src/screens/AiDocumentReaderScreen';
 import { AiHistoryScreen } from './src/screens/AiHistoryScreen';
@@ -83,6 +84,7 @@ import { coordinateDiaryRuntime } from './src/ai/diary/diaryRuntimeCoordinator';
 import { resumePersonalCompanionMaintenance, runCompanionMaintenancePass, suspendCompanionMaintenance } from './src/ai/companion/companionMaintenanceQueue';
 import { aiGenerationManager } from './src/ai/aiGenerationManager';
 import { clearThreadMessagePrefetch, prefetchThreadMessages } from './src/ai/aiThreadMessagePrefetch';
+import { FILE_TRANSFER_THREAD_ID } from './src/ai/systemAssistant/capabilityProfile';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
@@ -237,6 +239,12 @@ type AppRoute =
         branchVersionIndex: number;
         selectionMap: Record<string, number>;
       };
+    }
+  | {
+      name: 'file-transfer';
+      space: PixorySpace;
+      searchTargetMessageId?: string;
+      searchTargetKey?: string;
     }
   | {
       name: 'im-chat';
@@ -430,6 +438,19 @@ let aiChatRouteInstanceCounter = 0;
 function createAiChatRouteInstanceKey(): string {
   aiChatRouteInstanceCounter += 1;
   return `ai-chat-route-${aiChatRouteInstanceCounter}`;
+}
+
+function buildFileTransferRoute(
+  space: PixorySpace,
+  searchTargetMessageId?: string,
+  searchTargetKey?: string
+): Extract<AppRoute, { name: 'file-transfer' }> {
+  return {
+    name: 'file-transfer',
+    space,
+    searchTargetKey,
+    searchTargetMessageId,
+  };
 }
 
 function prepareAiChatRouteForPush(route: Extract<AppRoute, { name: 'ai-chat' }>): Extract<AppRoute, { name: 'ai-chat' }> {
@@ -1177,31 +1198,42 @@ export default function App() {
 
   function pushRoute(route: AppRoute) {
     if (route.name === 'ai-chat') {
-      if (route.threadId) {
-        prefetchThreadMessages(route.space, route.threadId);
+      const targetThreadId = route.threadId === FILE_TRANSFER_THREAD_ID ? FILE_TRANSFER_THREAD_ID : route.threadId;
+      if (targetThreadId) {
+        prefetchThreadMessages(route.space, targetThreadId);
       }
       scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
-      const nextRoute = prepareAiChatRouteForPush(route);
+      const nextRoute: AppRoute =
+        route.threadId === FILE_TRANSFER_THREAD_ID
+          ? buildFileTransferRoute(route.space, route.searchTargetMessageId, route.searchTargetKey)
+          : prepareAiChatRouteForPush(route);
       setRouteStack((current) => [...current, nextRoute]);
       return;
+    }
+    if (route.name === 'file-transfer') {
+      prefetchThreadMessages(route.space, FILE_TRANSFER_THREAD_ID);
     }
     setRouteStack((current) => [...current, route]);
   }
 
   function openAiChatRoute(route: Extract<AppRoute, { name: 'ai-chat' }>) {
-    if (route.threadId) {
-      prefetchThreadMessages(route.space, route.threadId);
+    const isFileTransferTarget = route.threadId === FILE_TRANSFER_THREAD_ID;
+    const prefetchTargetId = isFileTransferTarget ? FILE_TRANSFER_THREAD_ID : route.threadId;
+    if (prefetchTargetId) {
+      prefetchThreadMessages(route.space, prefetchTargetId);
     }
     scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
-    const nextRoute = prepareAiChatRouteForPush(route);
+    const nextRoute: Extract<AppRoute, { name: 'ai-chat' | 'file-transfer' }> = isFileTransferTarget
+      ? buildFileTransferRoute(route.space, route.searchTargetMessageId, route.searchTargetKey)
+      : prepareAiChatRouteForPush(route);
     setRouteStack((current) => {
       const currentRoute = current[current.length - 1];
-      if (currentRoute?.name === 'ai-chat') {
+      if (currentRoute?.name === 'ai-chat' || currentRoute?.name === 'file-transfer') {
         return [...current.slice(0, -1), nextRoute];
       }
       if (currentRoute?.name === 'ai-history') {
         const previousRoute = current[current.length - 2];
-        if (previousRoute?.name === 'ai-chat') {
+        if (previousRoute?.name === 'ai-chat' || previousRoute?.name === 'file-transfer') {
           return [...current.slice(0, -2), nextRoute];
         }
         return [...current.slice(0, -1), nextRoute];
@@ -1346,8 +1378,17 @@ export default function App() {
   }
 
   function replaceCurrentRoute(route: AppRoute) {
+    if (route.name === 'ai-chat' && route.threadId === FILE_TRANSFER_THREAD_ID) {
+      prefetchThreadMessages(route.space, FILE_TRANSFER_THREAD_ID);
+      const transferRoute = buildFileTransferRoute(route.space, route.searchTargetMessageId, route.searchTargetKey);
+      setRouteStack((current) => [...current.slice(0, -1), transferRoute]);
+      return;
+    }
     if (route.name === 'ai-chat' && route.threadId) {
       prefetchThreadMessages(route.space, route.threadId);
+    }
+    if (route.name === 'file-transfer') {
+      prefetchThreadMessages(route.space, FILE_TRANSFER_THREAD_ID);
     }
     setRouteStack((current) => {
       const previousRoute = current[current.length - 1];
@@ -2355,6 +2396,19 @@ export default function App() {
         threadId={currentRoute.threadId}
       />
     );
+  } else if (currentRoute.name === 'file-transfer') {
+    content = (
+      <FileTransferScreen
+        isFocused={isTop}
+        onBack={popRoute}
+        onOpenSource={(documentId, title) =>
+          pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })
+        }
+        searchTargetKey={currentRoute.searchTargetKey}
+        searchTargetMessageId={currentRoute.searchTargetMessageId}
+        space={currentRoute.space}
+      />
+    );
   } else if (currentRoute.name === 'diary-reader') {
     content = <DiaryReaderScreen diaryId={currentRoute.diaryId} onBack={popRoute} space={currentRoute.space} versionId={currentRoute.versionId} />;
   } else if (currentRoute.name === 'ai-branch-tree') {
@@ -2389,6 +2443,21 @@ export default function App() {
         contextTitle={currentRoute.contextTitle}
         onBack={popRoute}
         onSelectResult={(result, branchScopes) => {
+          if (currentRoute.threadId === FILE_TRANSFER_THREAD_ID) {
+            const transferRoute = buildFileTransferRoute(
+              currentRoute.space,
+              result.messageId,
+              `${result.messageId}:${Date.now()}`
+            );
+            setRouteStack((current) => {
+              const withoutSearch = current.slice(0, -1);
+              if (withoutSearch[withoutSearch.length - 1]?.name === 'file-transfer') {
+                return [...withoutSearch.slice(0, -1), transferRoute];
+              }
+              return [...withoutSearch, transferRoute];
+            });
+            return;
+          }
           const nextRoute = buildAiChatRouteFromSearch(currentRoute, result, branchScopes, previousRoute);
           setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
         }}

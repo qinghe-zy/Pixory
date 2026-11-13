@@ -6,7 +6,9 @@ const { Jimp } = require('jimp');
 
 const root = path.resolve(__dirname, '..');
 const splashBackground = '#4a7bf7';
-const splashIcon = './icons/splash_foreground_compact.png';
+const splashIcon = fs.existsSync(path.join(root, 'assets/splash/splash_foreground_compact.png'))
+  ? './assets/splash/splash_foreground_compact.png'
+  : './icons/splash_foreground_compact.png';
 const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
 const expectedSplashSizes = {
   mdpi: 288,

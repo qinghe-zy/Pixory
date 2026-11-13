@@ -147,4 +147,12 @@ test('VideoShuffleSession', async (t) => {
     session.setPrevious(42);
     assert.strictEqual(session.previousId, 42);
   });
+
+  await t.test('14. syncQueue() returns boolean indicating whether state changed', () => {
+    const session = new VideoShuffleSession({ queueIds: [1, 2, 3], currentId: 1 });
+    assert.strictEqual(session.syncQueue([1, 2, 3]), false);
+    assert.strictEqual(session.syncQueue([1, 2, 3, 4]), true);
+    assert.strictEqual(session.syncQueue([1, 2, 3, 4]), false);
+    assert.strictEqual(session.syncQueue([1, 3, 4]), true);
+  });
 });

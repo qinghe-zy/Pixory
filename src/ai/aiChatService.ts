@@ -1579,8 +1579,8 @@ function getThreadAttachmentDirectory(space: PixorySpace, threadId: string): str
   return `${joinStoragePath(joinStoragePath(getAiDocumentsDir(space), `thread_${threadId}`), 'attachments')}/`;
 }
 
-async function copyAttachmentToThreadStorage(input: {
-  attachment: AiOutgoingAttachment;
+export async function copyAttachmentToThreadStorage(input: {
+  attachment: Pick<AiOutgoingAttachment, 'name' | 'uri'>;
   space: PixorySpace;
   threadId: string;
 }): Promise<string> {

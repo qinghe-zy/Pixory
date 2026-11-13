@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 import type { ImageDetailRecord, ImageListItem, PixorySpace } from '../database';
+import type { VideoPlaybackOrder } from '../services/mediaExperiencePreferences';
 import type { PickedVideoAsset } from '../services/videoImportService';
 
 export interface VideoPlayerContextValue {
@@ -16,8 +17,8 @@ export interface VideoPlayerContextValue {
   setSpeed: (speed: number) => void;
   holdSpeed: number;
   setHoldSpeed: (speed: number) => void;
-  playbackOrder: 'ordered' | 'shuffle';
-  setPlaybackOrder: (order: 'ordered' | 'shuffle') => void;
+  playbackOrder: VideoPlaybackOrder;
+  setPlaybackOrder: (order: VideoPlaybackOrder) => void;
   controlsVisible: boolean;
   queueVisible: boolean;
   setQueueVisible: (visible: boolean) => void;
