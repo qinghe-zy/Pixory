@@ -161,24 +161,25 @@ test('TagAwareStreamParser: Thought callbacks stream progress and completion wit
   });
 });
 
-test('HumanizeOutputGate & BurstDispatcher: Strips long inner monologues and drops empty sentences', async (t) => {
+test('HumanizeOutputGate & BurstDispatcher: Strips parenthesis actions when preserveInlineStageActions=false and preserves by default', async (t) => {
   const { sanitizeCompanionBubble } = loadModule('../src/im/engine/humanizeOutputGate.ts');
 
-  await t.test('Strips long parenthesis monologue (>50 characters)', () => {
+  await t.test('Strips long parenthesis monologue (>50 characters) when preserveInlineStageActions=false', () => {
     const longMonologue = '(昨晚从网页到贴纸折腾到后半夜，下午醒来第一句不能太黏，先拿网页那事戳他一下，看他怎么接。）醒了没，我这边头发总算干了。';
-    const cleaned = sanitizeCompanionBubble(longMonologue);
+    assert.equal(sanitizeCompanionBubble(longMonologue), longMonologue);
+    const cleaned = sanitizeCompanionBubble(longMonologue, { preserveInlineStageActions: false });
     assert.equal(cleaned, '醒了没，我这边头发总算干了。');
   });
 
-  await t.test('Strips multiple Chinese and English parenthesis stage directions', () => {
+  await t.test('Strips multiple Chinese and English parenthesis stage directions when preserveInlineStageActions=false', () => {
     const doubleMonologue = '(他那边还甩贴纸过来，紧张汗颜，跟凌晨被我问住网页那事儿一个样。）(不能显得太刻意。先随意提一句自己刚起，把话头递过去就行。）两点整，我这头发总算干了。';
-    const cleaned = sanitizeCompanionBubble(doubleMonologue);
+    const cleaned = sanitizeCompanionBubble(doubleMonologue, { preserveInlineStageActions: false });
     assert.equal(cleaned, '两点整，我这头发总算干了。');
   });
 
-  await t.test('Returns empty string when the whole sentence is a parenthesis direction', () => {
+  await t.test('Returns empty string when the whole sentence is a parenthesis direction and preserveInlineStageActions=false', () => {
     const pureAction = '（轻笑一声，靠在椅背上若有所思）';
-    const cleaned = sanitizeCompanionBubble(pureAction);
+    const cleaned = sanitizeCompanionBubble(pureAction, { preserveInlineStageActions: false });
     assert.equal(cleaned, '');
   });
 });
@@ -288,4 +289,160 @@ test('Context Builder: Cleans Rule 8 from IM protocol prompt and evicts error sy
   assert.equal(coalesced.length, 2);
   assert.equal(coalesced[0].content, '喂');
   assert.equal(coalesced[1].content, '人呢');
+});
+
+test('LlmStreamClient: Anthropic thinking_delta, budget clamping, gateway safety, and reasoning soft cap', async (t) => {
+  const {
+    LlmStreamClient,
+    isNativeReasoningModelId,
+    clampThinkingBudgetTokens,
+  } = loadModule('../src/core/llm-transport/streamClient.ts');
+
+  assert.equal(isNativeReasoningModelId('deepseek-r1'), true);
+  assert.equal(isNativeReasoningModelId('o4-mini'), true);
+  assert.equal(isNativeReasoningModelId('gpt-5'), true);
+  assert.equal(isNativeReasoningModelId('gemini-2.5-flash'), true);
+  assert.equal(isNativeReasoningModelId('deepseek-chat', false), false);
+  assert.equal(isNativeReasoningModelId('custom-model', true), true);
+
+  assert.equal(clampThinkingBudgetTokens(256), 1024);
+  assert.equal(clampThinkingBudgetTokens(1536), 1536);
+  assert.equal(clampThinkingBudgetTokens(8192), 2048);
+
+  const encoder = new TextEncoder();
+  const buildSseResponse = (sseChunks) => {
+    let idx = 0;
+    return {
+      ok: true,
+      status: 200,
+      body: new ReadableStream({
+        pull(controller) {
+          if (idx >= sseChunks.length) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(encoder.encode(sseChunks[idx++]));
+        },
+      }),
+    };
+  };
+
+  const originalFetch = globalThis.fetch;
+  try {
+    await t.test('Anthropic thinking_delta wraps in <think>...</think> and enforces max_tokens >= clampedBudget + 4096', async () => {
+      let capturedBody = null;
+      globalThis.fetch = async (_url, init) => {
+        capturedBody = JSON.parse(init.body);
+        return buildSseResponse([
+          'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"先想想他刚才的话"}}\n\n',
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"我在听呢"}}\n\n',
+          'data: {"type":"message_stop"}\n\n',
+        ]);
+      };
+
+      const client = new LlmStreamClient();
+      const chunks = [];
+      for await (const chunk of client.streamText([{ role: 'user', content: 'hi' }], {
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4.5',
+        protocol: 'anthropic',
+        apiKey: 'sk-ant-test',
+        baseUrl: 'https://api.anthropic.com',
+        companionFastThinking: true,
+        thinkingBudgetTokens: 5000,
+        maxTokens: 2048,
+      })) {
+        chunks.push(chunk);
+      }
+
+      assert.equal(chunks.join(''), '<think>先想想他刚才的话</think>我在听呢');
+      assert.deepEqual(capturedBody.thinking, { type: 'enabled', budget_tokens: 2048 });
+      assert.equal(capturedBody.max_tokens, 2048 + 4096);
+      assert.equal(capturedBody.temperature, undefined);
+    });
+
+    await t.test('OpenAI o3/gpt-5 sets reasoning_effort low; strict OpenAI gateway has no unsupported thinking fields; Gemini applies clamped budget', async () => {
+      const capturedBodies = [];
+      globalThis.fetch = async (_url, init) => {
+        capturedBodies.push(JSON.parse(init.body));
+        return buildSseResponse(['data: {"choices":[{"delta":{"content":"好的"}}]}\n\n', 'data: [DONE]\n\n']);
+      };
+
+      const client = new LlmStreamClient();
+      for await (const _ of client.streamText([{ role: 'user', content: 'hi' }], {
+        providerId: 'openai',
+        modelId: 'o3-mini',
+        apiKey: 'sk-oai',
+        baseUrl: 'https://api.openai.com/v1',
+        companionFastThinking: true,
+        thinkingBudgetTokens: 1536,
+      })) {}
+
+      for await (const _ of client.streamText([{ role: 'user', content: 'hi' }], {
+        providerId: 'custom_relay',
+        modelId: 'deepseek-chat',
+        protocol: 'openai_compatible',
+        apiKey: 'sk-proxy',
+        baseUrl: 'https://strict-gateway.example.com/v1',
+        companionFastThinking: true,
+      })) {}
+
+      for await (const _ of client.streamText([{ role: 'user', content: 'hi' }], {
+        providerId: 'gemini',
+        modelId: 'gemini-2.5-pro',
+        protocol: 'gemini',
+        apiKey: 'sk-gem',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        companionFastThinking: true,
+        thinkingBudgetTokens: 1536,
+      })) {}
+
+      assert.equal(capturedBodies[0].reasoning_effort, 'low');
+      assert.equal(capturedBodies[0].thinking, undefined);
+      assert.equal(capturedBodies[1].thinking, undefined);
+      assert.equal(capturedBodies[1].enable_thinking, undefined);
+      assert.equal(capturedBodies[1].thinkingConfig, undefined);
+      assert.equal(capturedBodies[2].reasoning_effort, 'low');
+      assert.deepEqual(capturedBodies[2].google, { thinking_config: { thinking_budget: 1536 } });
+    });
+
+    await t.test('Soft reasoning character cap closes </think> without aborting valid dialogue', async () => {
+      const longThought = '思'.repeat(5000);
+      globalThis.fetch = async () =>
+        buildSseResponse([
+          `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: longThought } }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '更多失控循环思考' } }] })}\n\n`,
+          'data: {"choices":[{"delta":{"content":"别担心，我在呢"}}]}\n\n',
+          'data: [DONE]\n\n',
+        ]);
+
+      const client = new LlmStreamClient();
+      const chunks = [];
+      for await (const chunk of client.streamText([{ role: 'user', content: 'hi' }], {
+        providerId: 'deepseek',
+        modelId: 'deepseek-reasoner',
+        apiKey: 'sk-ds',
+        baseUrl: 'https://api.deepseek.com',
+        companionFastThinking: true,
+        thinkingBudgetTokens: 1024,
+      })) {
+        chunks.push(chunk);
+      }
+
+      const full = chunks.join('');
+      assert.ok(full.startsWith('<think>'), 'must open think block');
+      assert.ok(full.includes('</think>别担心，我在呢'), 'must close </think> cleanly and stream subsequent dialogue');
+      assert.ok(!full.includes('更多失控循环思考'), 'must suppress excess reasoning past soft cap');
+      const innerThought = full.slice('<think>'.length, full.indexOf('</think>'));
+      assert.equal(innerThought.length, 4096);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const sessionCode = fs.readFileSync(path.resolve(__dirname, '../src/im/hooks/useImChatSession.ts'), 'utf8');
+  assert.ok(
+    sessionCode.includes('await updateImMessageContent(space, persistedThoughtId, cleanThought);'),
+    'createThoughtHandlers must idempotently update existing persistedThoughtId instead of inserting a second thought bubble'
+  );
 });

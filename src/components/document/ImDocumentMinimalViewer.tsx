@@ -28,6 +28,7 @@ import type {
   InDocSearchState,
   UniversalDocumentSource,
 } from '../../ai/readers/readerTypes';
+import type { PixorySpace } from '../../database';
 import { aiLightColors } from '../ai/aiLightTheme';
 import { ReaderExportSheet } from '../reader/ReaderExportSheet';
 import { ReaderHeader } from '../reader/ReaderHeader';
@@ -47,6 +48,7 @@ export type PdfViewMode = 'page' | 'text';
 export interface ImDocumentMinimalViewerProps {
   visible: boolean;
   onClose: () => void;
+  space?: PixorySpace;
   documentUri?: string;
   documentTitle?: string;
   content?: string | Uint8Array;
@@ -57,6 +59,7 @@ export interface ImDocumentMinimalViewerProps {
 export function ImDocumentMinimalViewer({
   visible,
   onClose,
+  space = 'normal',
   documentUri,
   documentTitle,
   content,
@@ -195,6 +198,7 @@ export function ImDocumentMinimalViewer({
             onTocExtracted={setTocItems}
             overrideFormat={overrideFormat}
             source={source}
+            space={space}
             theme={theme}
           />
         </View>

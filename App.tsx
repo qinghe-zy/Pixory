@@ -2399,7 +2399,7 @@ export default function App() {
   } else if (currentRoute.name === 'file-transfer') {
     content = (
       <FileTransferScreen
-        isFocused={isTop}
+        isFocused={isTop && (currentRoute.space !== 'personal' || personalSessionState === 'unlocked')}
         onBack={popRoute}
         onOpenSource={(documentId, title) =>
           pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })

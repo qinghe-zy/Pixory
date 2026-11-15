@@ -72,7 +72,7 @@ test('Fallback Proactive Planner: 模型漏写 [PING] 时自动按情境+退避+
     'Tier 1 兜底主动闹钟应落在合理日常窗口内'
   );
 
-  // 2. 情境化表达“我去洗澡啦” -> 自动识别洗澡情境关心意图
+  // 2. 情境化表达“我去洗澡啦” -> 延迟 30m，使用 scheduled_checkin 内部标记不绑架模型人设
   const bathPlan = planFallbackProactivePing({
     consecutiveUnreplied: 0,
     lastUserInteractionAt: now1930,
@@ -80,9 +80,10 @@ test('Fallback Proactive Planner: 模型漏写 [PING] 时自动按情境+退避+
     now: now1930,
   });
   assert.ok(bathPlan);
-  assert.ok(bathPlan.intent.includes('洗完澡'));
+  assert.equal(bathPlan.intent, 'scheduled_checkin');
+  assert.equal(bathPlan.targetTimestamp, now1930 + 30 * 60 * 1000);
 
-  // 3. 深夜 23:20 触发 -> 目标落入睡眠免打扰窗，自动钳位至次晨 07:35 ~ 08:15 早安问候
+  // 3. 深夜 23:20 触发 -> 目标落入睡眠免打扰窗，自动钳位至次晨 07:35 ~ 08:15
   const late2320 = new Date('2026-10-28T23:20:00').getTime();
   const clampedPlan = planFallbackProactivePing({
     consecutiveUnreplied: 0,
@@ -93,7 +94,7 @@ test('Fallback Proactive Planner: 模型漏写 [PING] 时自动按情境+退避+
   assert.ok(clampedPlan);
   const clampedDate = new Date(clampedPlan.targetTimestamp);
   assert.ok(clampedDate.getHours() === 7 || clampedDate.getHours() === 8);
-  assert.ok(clampedPlan.intent.includes('早安'));
+  assert.equal(clampedPlan.intent, 'scheduled_checkin');
 
   // 4. 连续 3 次未回 -> 在 72h 内依然保持心跳早晚问候，绝不静默断连
   const continuedPlan = planFallbackProactivePing({
@@ -491,4 +492,157 @@ test('Audit Guard 3 (UI/UX/A11y/Context Contracts): 跑马灯无障碍减动效�
   );
   assert.ok(!sessionSrc.includes('网络开小差了，稍后再试一次吧~'), '网络错误严禁伪造 assistant 气泡污染 Layer 3 上下文');
   assert.ok(sessionSrc.includes("type: 'system_notice'"), '网络错误应通过非污染型 system_notice 提示用户');
+});
+
+test('Wakeup Anti-Loop: [PASS] (含 <think>) 彻底杜绝孤儿思考入库、不累加未回复计数且不续挂 fallback 闹钟', async () => {
+  let clearedPing = false;
+  let savedPing = null;
+  let updatedUnread = false;
+  const inserted = [];
+
+  const nowTs = new Date('2026-10-28T14:00:00').getTime();
+
+  const mockDb = {
+    getFirstAsync: async (sql) => {
+      if (sql.includes('FROM ai_threads')) {
+        return {
+          id: 'th_pass_1',
+          roleCardId: 'role_pass_1',
+          providerId: 'provider_1',
+          modelId: 'deepseek-chat',
+          proactive_enabled: 1,
+          context_window_n: 20,
+          living_state_json: null,
+          consecutive_unreplied_count: 0,
+          last_user_interaction_at: nowTs - 60 * 60 * 1000,
+        };
+      }
+      if (sql.includes('FROM ai_role_cards')) {
+        return { name: '白离', prompt: '高冷独行侠', description: null, sourceJson: null };
+      }
+      return null;
+    },
+    runAsync: async (sql) => {
+      if (sql.includes('im_unread_count') || sql.includes('consecutive_unreplied_count')) {
+        updatedUnread = true;
+      }
+    },
+  };
+
+  const mockRepo = {
+    getPendingPing: async () => ({
+      pendingPingAt: nowTs - 1000,
+      intent: 'scheduled_checkin',
+      retryCount: 0,
+    }),
+    clearPendingPing: async () => {
+      clearedPing = true;
+    },
+    savePendingPing: async (_space, _tid, ts, intent) => {
+      savedPing = { ts, intent };
+    },
+    postponePendingPing: async () => {},
+    getContextMessagesFromAnchor: async () => [],
+    getVisibleImMessages: async () => [
+      { id: 'm1', threadId: 'th_pass_1', role: 'user', content: '我先去自习了', createdAt: new Date(nowTs - 3600000).toISOString() },
+    ],
+    consumeThreadPendingDiaryHook: async () => null,
+    insertImMessage: async (_space, msg) => {
+      inserted.push(msg);
+    },
+    updateThreadLivingState: async () => {},
+  };
+
+  // Case 1: 模型输出带 <think> 的 [PASS]，必须干净退出、零入库、零未读递增、零 fallback
+  const { executeWakeupGeneration } = loadModule('../src/im/services/imWakeupGenerationService.ts', {
+    '../../database': { initDatabase: async () => mockDb },
+    '../repository/imThreadRepository': mockRepo,
+    '../repository/imEpochRepository': { imEpochRepository: { getOrCreateState: async () => null } },
+    '../../core/memory/memoryRepository': {
+      memoryRepository: { listMemories: async () => [], listCoreProfileFacts: async () => [] },
+    },
+    '../../core/memory/zeroVectorRetriever': { retrieveRelevantMemories: async () => [] },
+    './imNotificationManager': { scheduleProactivePingAlarm: async () => {} },
+    '../../core/llm-transport/secureApiKey': {
+      getActiveProviderConfig: async (_sp, pId, mId) => ({
+        providerId: pId,
+        modelId: mId,
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'sk-test',
+      }),
+    },
+    '../../core/llm-transport/streamClient': {
+      streamClient: {
+        streamText: async function* () {
+          yield '<think>此刻对方正在专心自习，不便随意打扰。</think>[PASS]';
+        },
+      },
+    },
+    '../heartbeat/globalHeartbeatEngine': {
+      GlobalHeartbeatEngine: {
+        shared: {
+          isThreadActivelyOpen: () => false,
+          notifyListeners: () => {},
+        },
+      },
+    },
+  });
+
+  const res1 = await executeWakeupGeneration('normal', 'th_pass_1', { isHeadless: true, now: nowTs });
+  assert.equal(res1, false, '唤醒输出 [PASS] 应返回 false');
+  assert.equal(clearedPing, true, '必须清除已触发的本次闹钟');
+  assert.equal(inserted.length, 0, '严禁向 SQLite 落库孤立的 thought 气泡');
+  assert.equal(updatedUnread, false, '未开口说话时严禁递增未回复次数与未读计数');
+  assert.equal(savedPing, null, '模型输出 [PASS] 且未预约新 PING 时严禁自动接力挂载下一轮 fallback 闹钟');
+
+  // Case 2: 模型输出 [PASS] 但显式预约了下次特定时间 [PING: +2h | 下午再联系]
+  let savedExplicitPing = null;
+  const mockRepoWithExplicit = {
+    ...mockRepo,
+    savePendingPing: async (_space, _tid, ts, intent) => {
+      savedExplicitPing = { ts, intent };
+    },
+  };
+  const { executeWakeupGeneration: executeWithExplicit } = loadModule('../src/im/services/imWakeupGenerationService.ts', {
+    '../../database': { initDatabase: async () => mockDb },
+    '../repository/imThreadRepository': mockRepoWithExplicit,
+    '../repository/imEpochRepository': { imEpochRepository: { getOrCreateState: async () => null } },
+    '../../core/memory/memoryRepository': {
+      memoryRepository: { listMemories: async () => [], listCoreProfileFacts: async () => [] },
+    },
+    '../../core/memory/zeroVectorRetriever': { retrieveRelevantMemories: async () => [] },
+    './imNotificationManager': { scheduleProactivePingAlarm: async () => {} },
+    '../../core/llm-transport/secureApiKey': {
+      getActiveProviderConfig: async (_sp, pId, mId) => ({
+        providerId: pId,
+        modelId: mId,
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'sk-test',
+      }),
+    },
+    '../../core/llm-transport/streamClient': {
+      streamClient: {
+        streamText: async function* () {
+          yield '<think>先不吵他</think>[PASS][PING: +2h | 傍晚联系]';
+        },
+      },
+    },
+    '../heartbeat/globalHeartbeatEngine': {
+      GlobalHeartbeatEngine: {
+        shared: {
+          isThreadActivelyOpen: () => false,
+          notifyListeners: () => {},
+        },
+      },
+    },
+  });
+
+  const res2 = await executeWithExplicit('normal', 'th_pass_1', { isHeadless: true, now: nowTs });
+  assert.equal(res2, false);
+  assert.ok(savedExplicitPing, '显式 [PING: +2h] 必须得到保存');
+  assert.equal(savedExplicitPing.intent, '傍晚联系');
+  assert.ok(
+    savedExplicitPing.ts >= nowTs + 115 * 60 * 1000 && savedExplicitPing.ts <= nowTs + 125 * 60 * 1000,
+    '预约时间戳应顺延约 2 小时'
+  );
 });

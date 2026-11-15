@@ -53,12 +53,13 @@ export function getLocalDayRange(dateStr: string): LocalDayRange {
   };
 }
 
-const TAG_STRIP_REGEX = /\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING|NUDGE|STICKER):[^\]]+\]|\[PASS\]|\[NUDGE\]|[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*[^\]】\n]+[\]】]/gi;
+const TAG_STRIP_REGEX =
+  /<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)|\[(STATUS|NEXT_FOLLOWUP|STAGE_FOLLOWUP|HEARTBEAT|PING|NUDGE|STICKER|MEMORY_RECALL|MEMORY_NOTE|VOICE):[^\]]*\]|\[(?:PASS|NUDGE|BR)\]|[[\[【]\s*(?:STICKER|表情)\s*[:：]\s*[^\]】\n]+[\]】]/gi;
 
 /**
  * 清洗并提取手账日记专属的对话语料：
- * 1. 过滤系统通知、日记卡片、拍一拍等非对话消息；
- * 2. 剥离模型内部协议标签；
+ * 1. 过滤系统通知、日记卡片、独立心声、拍一拍等非对话消息；
+ * 2. 剥离模型内部协议标签与思考标签；
  * 3. 超长对话智能保留精彩首尾，中间紧凑抽样。
  */
 export function selectDiaryDialogue(
@@ -70,7 +71,12 @@ export function selectDiaryDialogue(
   const validDialogue: Array<{ role: string; content: string }> = [];
 
   for (const msg of messages) {
-    if (msg.type === 'diary_card' || msg.type === 'notice' || msg.type === 'system') {
+    if (
+      msg.type === 'diary_card' ||
+      msg.type === 'notice' ||
+      msg.type === 'system' ||
+      msg.type === 'thought'
+    ) {
       continue;
     }
 
@@ -83,7 +89,7 @@ export function selectDiaryDialogue(
       continue;
     }
 
-    let clean = (msg.content || '').replace(TAG_STRIP_REGEX, '').trim();
+    let clean = (msg.content || '').replace(TAG_STRIP_REGEX, ' ').replace(/\s{2,}/g, ' ').trim();
     if (!clean || clean.startsWith('{"type":"diary_card"') || clean.startsWith('[系统提示:')) {
       continue;
     }

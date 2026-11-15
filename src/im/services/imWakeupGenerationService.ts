@@ -10,7 +10,7 @@
  */
 
 import { initDatabase, type PixorySpace } from '../../database';
-import { streamClient } from '../../core/llm-transport/streamClient';
+import { streamClient, isNativeReasoningModelId } from '../../core/llm-transport/streamClient';
 import { getActiveProviderConfig } from '../../core/llm-transport/secureApiKey';
 import type { CompanionMemoryRecord, MemoryRecallCandidate } from '../../core/memory/memoryTypes';
 import {
@@ -28,7 +28,7 @@ import type { ImCompanionPersonalization } from '../repository/imSettingsReposit
 import { resolveEffectiveDnd, DEFAULT_DND_CONFIG, type EffectiveDndConfig } from '../heartbeat/imDndGuard';
 import { HIBERNATION_CUTOFF_MS } from '../heartbeat/proactivePacingGuard';
 import { buildChatPayload } from '../engine/imContextBuilder';
-import { parseStatusTag, parsePingTag, parseVoiceTag } from '../engine/imTagParser';
+import { parseStatusTag, parsePingTag, parseVoiceTag, tokenizeMultimodalSegment } from '../engine/imTagParser';
 import { stripMetaTags, sanitizeThoughtForUi } from '../engine/tagAwareStreamParser';
 import { sanitizeCompanionBubble } from '../engine/humanizeOutputGate';
 import { advanceLivingState } from '../engine/imAgencyEngine';
@@ -197,15 +197,35 @@ export async function executeWakeupGeneration(
   const { rolePrompt, companionName, personaAnchor } = resolveCompanionRolePrompt(role, undefined, personalization);
   const windowN = thread.context_window_n || 20;
 
-  // 3. 并行加载完整五层记忆与世代快照 (async-parallel，容错兼容轻量测试 Mock)
+  let recentMessages: ImMessage[] = [];
   let epochSlotJson: string | undefined;
   let epochSummaryJson: string | undefined;
+  let epochCoreFactsJson: string | undefined;
   let anchorMessageId: string | undefined;
   let l1Slots: CompanionMemoryRecord[] = [];
   let l1Summary: CompanionMemoryRecord | null = null;
   let coreFacts: CompanionMemoryRecord[] = [];
+  let allL2Memories: CompanionMemoryRecord[] = [];
   let recalledMemories: MemoryRecallCandidate[] = [];
+  let epochCatalogText: string | undefined;
+  let activeArcNotice: string | null | undefined;
   let pendingDiaryHook: string | null = null;
+
+  try {
+    const { imEpochRepository } = await import('../repository/imEpochRepository');
+    const preEpochState =
+      thread.roleCardId && typeof imEpochRepository?.getOrCreateState === 'function'
+        ? await imEpochRepository.getOrCreateState(space, threadId, thread.roleCardId).catch(() => null)
+        : null;
+    anchorMessageId = preEpochState?.active_anchor_msg_id || undefined;
+  } catch {}
+
+  if (anchorMessageId && typeof getContextMessagesFromAnchor === 'function') {
+    recentMessages = await getContextMessagesFromAnchor(space, threadId, anchorMessageId, Math.max(windowN * 4, 120)).catch(() => []);
+  }
+  if (recentMessages.length === 0) {
+    recentMessages = (await getVisibleImMessages(space, threadId, Math.max(windowN * 3, 60))).reverse();
+  }
 
   try {
     const diaryHookPromise =
@@ -214,26 +234,33 @@ export async function executeWakeupGeneration(
         : Promise.resolve(null);
 
     if (thread.roleCardId) {
-      const [{ imEpochRepository }, { memoryRepository }, { retrieveRelevantMemories }] = await Promise.all([
-        import('../repository/imEpochRepository'),
-        import('../../core/memory/memoryRepository'),
-        import('../../core/memory/zeroVectorRetriever'),
-      ]);
-      const [epochState, slots, summaries, facts, recalled, diaryHook] = await Promise.all([
-        imEpochRepository.getOrCreateState(space, threadId, thread.roleCardId),
-        memoryRepository.listMemories(thread.roleCardId, space, 'L1_SLOT'),
-        memoryRepository.listMemories(thread.roleCardId, space, 'L1_SUMMARY'),
-        memoryRepository.listCoreProfileFacts(thread.roleCardId, space, 8),
-        ping.intent ? retrieveRelevantMemories(thread.roleCardId, space, ping.intent, 3) : Promise.resolve([]),
+      const recentUserMsg = [...recentMessages].reverse().find((m) => m.role === 'user' && m.content);
+      const memoryUserInput = recentUserMsg?.content || ping.intent || '';
+      const { prepareTurnMemoryContext } = await import('../engine/memoryTurnCoordinator');
+      const [prepared, diaryHook] = await Promise.all([
+        prepareTurnMemoryContext({
+          space,
+          threadId,
+          roleCardId: thread.roleCardId,
+          userInput: memoryUserInput,
+          recentMessages,
+          recallLimit: 3,
+          isWakeupOrProactive: true,
+          nowMs: now,
+        }),
         diaryHookPromise,
       ]);
-      epochSlotJson = epochState.active_slot_json;
-      epochSummaryJson = epochState.active_summary_json;
-      anchorMessageId = epochState.active_anchor_msg_id || undefined;
-      l1Slots = slots;
-      l1Summary = summaries[0] ?? null;
-      coreFacts = facts;
-      recalledMemories = recalled;
+      epochSlotJson = prepared.epochState?.active_slot_json;
+      epochSummaryJson = prepared.epochState?.active_summary_json;
+      epochCoreFactsJson = prepared.epochState?.active_core_facts_json;
+      anchorMessageId = prepared.epochState?.active_anchor_msg_id || anchorMessageId;
+      l1Slots = prepared.slots;
+      l1Summary = prepared.l1Summary;
+      coreFacts = prepared.coreFacts;
+      allL2Memories = prepared.allL2Memories;
+      recalledMemories = prepared.recalled;
+      epochCatalogText = prepared.epochCatalogText;
+      activeArcNotice = prepared.activeArcNotice;
       pendingDiaryHook = diaryHook;
     } else {
       pendingDiaryHook = await diaryHookPromise;
@@ -242,13 +269,24 @@ export async function executeWakeupGeneration(
     // 轻量测试环境无完整表时平滑降级
   }
 
-  let recentMessages: ImMessage[] = [];
-  if (anchorMessageId && typeof getContextMessagesFromAnchor === 'function') {
-    recentMessages = await getContextMessagesFromAnchor(space, threadId, anchorMessageId, Math.max(windowN * 4, 120)).catch(() => []);
+  let midEpochDeltaFacts: CompanionMemoryRecord[] = [];
+  if (epochCoreFactsJson && coreFacts.length > 0) {
+    try {
+      const { computeMidEpochDeltaFacts } = await import('../engine/imContextBuilder');
+      midEpochDeltaFacts = computeMidEpochDeltaFacts(coreFacts, epochCoreFactsJson);
+    } catch {}
   }
-  if (recentMessages.length === 0) {
-    recentMessages = (await getVisibleImMessages(space, threadId, Math.max(windowN * 3, 60))).reverse();
+
+  // 4. 获取会话级 Provider 配置并完整透传 baseUrl + apiKey 调用大模型
+  const providerConfig = await getActiveProviderConfig(space, thread.providerId, thread.modelId);
+  if (!providerConfig || !providerConfig.apiKey) {
+    await clearPendingPing(space, threadId);
+    return false;
   }
+
+  const isNativeReasoningModel = typeof isNativeReasoningModelId === 'function'
+    ? isNativeReasoningModelId(thread.modelId || providerConfig.modelId, providerConfig.supportsThinking)
+    : false;
 
   // 若杀后台逾期较久后在深夜补偿白天闹钟，时间锚定为原定闹钟时刻以保持作息逻辑自洽
   const lastMsgTime = recentMessages.length > 0 && recentMessages[recentMessages.length - 1]?.createdAt
@@ -266,8 +304,13 @@ export async function executeWakeupGeneration(
       l1Slots,
       l1Summary,
       coreFacts,
+      allL2Memories,
+      epochCatalogText,
+      activeArcNotice,
       epochSlotJson,
       epochSummaryJson,
+      epochCoreFactsJson,
+      midEpochDeltaFacts,
       recalledMemories,
       pendingDiaryHook,
       historyMessages: recentMessages,
@@ -280,16 +323,10 @@ export async function executeWakeupGeneration(
       anchorMessageId,
       voiceReplyEnabled,
       personaAnchor,
+      isNativeReasoningModel,
     },
     ''
   );
-
-  // 4. 获取会话级 Provider 配置并完整透传 baseUrl + apiKey 调用大模型
-  const providerConfig = await getActiveProviderConfig(space, thread.providerId, thread.modelId);
-  if (!providerConfig || !providerConfig.apiKey) {
-    await clearPendingPing(space, threadId);
-    return false;
-  }
 
   let fullRawResponse = '';
   const abortController = new AbortController();
@@ -302,6 +339,10 @@ export async function executeWakeupGeneration(
       modelId: thread.modelId || providerConfig.modelId,
       baseUrl: providerConfig.baseUrl,
       apiKey: providerConfig.apiKey,
+      protocol: providerConfig.protocol,
+      supportsThinking: providerConfig.supportsThinking,
+      companionFastThinking: true,
+      thinkingBudgetTokens: isNativeReasoningModel ? 1536 : undefined,
       abortSignal: abortController.signal,
     });
 
@@ -352,23 +393,34 @@ export async function executeWakeupGeneration(
   for (const s of rawSentences) {
     const trimmed = s.trim();
     if (!trimmed || trimmed === '[PASS]') continue;
-    const vTag = parseVoiceTag(trimmed);
-    if (vTag) {
-      if (voiceReplyEnabled) {
-        cleanItems.push({ text: vTag.text, isVoice: true, style: vTag.styleDirective });
-      } else {
-        cleanItems.push({ text: vTag.text, isVoice: false });
-      }
-    } else {
-      const sanitized = sanitizeCompanionBubble(stripMetaTags(trimmed), { preserveInlineStageActions: true });
-      if (sanitized) {
-        cleanItems.push({ text: sanitized, isVoice: false });
+    const atoms = tokenizeMultimodalSegment(trimmed);
+    for (const atom of atoms) {
+      if (atom.kind === 'text') {
+        const sanitized = sanitizeCompanionBubble(atom.payload, { preserveInlineStageActions: true });
+        if (sanitized && sanitized !== '[PASS]') {
+          cleanItems.push({ text: sanitized, isVoice: false });
+        }
+      } else if (atom.kind === 'voice') {
+        const vTag = parseVoiceTag(atom.payload);
+        if (vTag) {
+          if (voiceReplyEnabled) {
+            cleanItems.push({ text: vTag.text, isVoice: true, style: vTag.styleDirective });
+          } else {
+            cleanItems.push({ text: vTag.text, isVoice: false });
+          }
+        }
       }
     }
   }
 
-  if (cleanItems.length === 0 && !thoughtText) {
+  // 当整轮回复无实质对白/语音（含 [PASS]，无论是否带 <think>）时：
+  // 清除本次闹钟，不落库孤立 thought 气泡，不递增未回计数，不挂载下一轮 fallback 闹钟（仅当模型显式输出新 [PING:...] 时才保存该预约）
+  if (cleanItems.length === 0) {
     await clearPendingPing(space, threadId);
+    if (nextPing && typeof savePendingPing === 'function') {
+      await savePendingPing(space, threadId, nextPing.targetTimestamp, nextPing.intent);
+      void scheduleProactivePingAlarm(threadId, nextPing.targetTimestamp, space);
+    }
     return false;
   }
 
@@ -423,6 +475,22 @@ export async function executeWakeupGeneration(
       createdAt: new Date(msgTime).toISOString(),
     };
     await insertImMessage(space, msg);
+  }
+
+  if (thread.roleCardId && cleanItems.length > 0) {
+    try {
+      const { settlePostReplyMemorySignals } = await import('../engine/memoryTurnCoordinator');
+      await settlePostReplyMemorySignals({
+        space,
+        threadId,
+        roleCardId: thread.roleCardId,
+        recalled: recalledMemories,
+        fullRawResponse,
+        alreadyExecutedRecallRound: true,
+      });
+    } catch {
+      // 轻量测试环境或记忆库不可用时平滑降级
+    }
   }
 
   // 8. 递增未回复计数与未读红点计数（若用户当前未停留在该聊天窗口）

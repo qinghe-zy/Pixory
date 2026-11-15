@@ -135,6 +135,7 @@ import {
   type MemoryCaptureNoticeItem,
 } from "../ai/aiMemoryService";
 import {
+  createAiMessageId,
   createThreadFromContext,
   DEFAULT_AI_USER_AVATAR_ENABLED,
   deleteAiThreads,
@@ -279,7 +280,7 @@ import {
 } from '../ai/dream/dreamService';
 import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
 import { presentDreamFailure } from '../ai/dream/dreamPolicy';
-import { loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
+import { clearDreamRuntimeNotice, loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
 import { hashBranchRoute } from '../ai/context/conversationCoverage';
 import { hashPromptCacheText } from '../ai/aiPromptCache';
 import { prewarmDefaultAiConnection } from '../ai/aiConnectionPrewarmer';
@@ -312,6 +313,15 @@ import {
   useAiSidebarSpatialPresetPreference,
   useAiSidebarStylePreference,
 } from "../services/aiChatPreferences";
+import {
+  extractSafeFileNameFromUri,
+  normalizeImageMimeType,
+  resolveAttachmentKind,
+} from "../utils/attachmentKind";
+import {
+  copyCachedImageDimensions,
+  rememberImageDimensions,
+} from "../utils/chatImageSizing";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
@@ -320,7 +330,6 @@ const USER_SCROLL_IDLE_TIMEOUT_MS = 150;
 const SHRINK_DEBOUNCE_MS = 150;
 const SHRINK_STABLE_DELAY_MS = 200;
 const RETAIN_RECONCILE_WINDOW_MS = 350;
-const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
@@ -366,8 +375,7 @@ const CHAT_DOCUMENT_TYPES = [
 ];
 
 function getFileNameFromUri(uri: string, fallback: string): string {
-  const rawName = uri.split(/[\\/]/).pop()?.split("?")[0]?.trim();
-  return rawName ? decodeURIComponent(rawName) : fallback;
+  return extractSafeFileNameFromUri(uri, fallback);
 }
 
 function toUserFacingErrorMessage(error: unknown, fallback: string): string {
@@ -1441,6 +1449,12 @@ export function AiChatScreen({
   const [roleDreamJobs, setRoleDreamJobs] = useState<DreamJobRecord[]>([]);
   const [regeneratingDreamGroupIds, setRegeneratingDreamGroupIds] = useState<Set<string>>(new Set());
   const [dreamNotice, setDreamNotice] = useState<DreamRuntimeNotice | null>(null);
+  const dismissPendingManualDreamConfirmation = useCallback((targetThreadId?: string | null) => {
+    const threadId = targetThreadId ?? activeThreadIdRef.current;
+    if (!threadId) return;
+    setDreamNotice((previous) => (previous?.type === 'manual_confirmation' ? null : previous));
+    clearDreamRuntimeNotice(threadId, 'manual_confirmation');
+  }, []);
   const [diaryManualHint, setDiaryManualHint] = useState(false);
   const [diaryCommandHint, setDiaryCommandHint] = useState(false);
   const [diaryGenerationStatus, setDiaryGenerationStatus] = useState<
@@ -1824,10 +1838,12 @@ export function AiChatScreen({
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [clippingEnabled, setClippingEnabled] = useState(false);
   const [isInitialMessageLoading, setIsInitialMessageLoading] = useState(true);
   const [isMessageListReady, setIsMessageListReady] = useState(false);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
+  const [composerClearSignal, setComposerClearSignal] = useState(0);
+  const locallyCreatedThreadIdRef = useRef<string | null>(null);
+  const suppressNextAppStateReloadRef = useRef(false);
 
   const [showSweep, setShowSweep] = useState(true);
 
@@ -2309,7 +2325,7 @@ export function AiChatScreen({
       const allGroups = await dreamRepository.listVersionGroupsForRole(db, thread.roleCardId);
       const allJobs = await dreamRepository.listJobsForRole(db, thread.roleCardId);
       const hiddenGroupIds = await companionArtifactChatStateRepository.listHiddenGroupIds(db, targetThreadId, 'dream');
-      const routeJobs = allJobs.filter(job => job.threadId === targetThreadId && job.branchRouteHash === route && job.lineageVersion === (thread.lineageVersion ?? 0));
+      const routeJobs = allJobs.filter(job => job.threadId === targetThreadId && job.branchRouteHash === route && job.lineageVersion <= (thread.lineageVersion ?? 0));
       return {
         groups: allGroups.filter((group) => {
           const current = group.versions.find((dream) => dream.isCurrent) ?? group.versions.at(-1);
@@ -2317,9 +2333,9 @@ export function AiChatScreen({
           return !hiddenGroupIds.has(group.id)
             && current.sourceThreadId === targetThreadId
             && current.sourceBranchRouteHash === route
-            && current.lineageVersion === (thread.lineageVersion ?? 0);
+            && current.lineageVersion <= (thread.lineageVersion ?? 0);
         }),
-        jobs: routeJobs.filter(job => job.targetVersionGroupId == null),
+        jobs: routeJobs.filter(job => job.targetVersionGroupId == null && job.phase === 'generating'),
         regeneratingGroupIds: routeJobs
           .filter(job => job.targetVersionGroupId != null && ['pending', 'running', 'retry', 'waiting_model'].includes(job.status))
           .map(job => job.targetVersionGroupId as string),
@@ -3334,11 +3350,41 @@ export function AiChatScreen({
           return nextMessages;
         });
         scheduleIntentionalLatestJump(false);
-        // If the user included attachments, reload from DB immediately so the
-        // image shows up as soon as generation starts rather than after it ends.
-        if (!pendingUserMessage || pendingUserMessage?.hasAttachments) {
+        if (!pendingUserMessage) {
           void reloadMessages(targetThreadId);
         }
+      },
+      onAttachmentsPersisted: ({ threadId: persistedThreadId, userMessageId, attachments }) => {
+        if (!isCurrentStream(persistedThreadId, generation) || attachments.length === 0) {
+          return;
+        }
+        setMessages((current) => {
+          let changed = false;
+          const next = current.map((msg) => {
+            if (msg.id !== userMessageId) {
+              return msg;
+            }
+            changed = true;
+            const previousAttachments = msg.attachments ?? [];
+            attachments.forEach((persistedAtt, idx) => {
+              const prevLocalUri = previousAttachments[idx]?.localUri;
+              if (prevLocalUri && persistedAtt.localUri) {
+                copyCachedImageDimensions(prevLocalUri, persistedAtt.localUri);
+              }
+            });
+            return {
+              ...msg,
+              threadId: persistedThreadId,
+              attachments,
+            };
+          });
+          if (!changed) {
+            return current;
+          }
+          messagesRef.current = next;
+          rebuildMessageIndex(next);
+          return next;
+        });
       },
       onMessagePatch: (patch) => {
         if (!isCurrentStreamingPatch(targetThreadId, generation, patch)) {
@@ -3769,8 +3815,8 @@ export function AiChatScreen({
       }
       if (!isMessageListReady && !pendingSearchScrollMessageIdRef.current) {
         // First layout with real data: the inverted list starts at offset 0
-        // (= latest message), but maintainVisibleContentPosition can shift it
-        // during the initial render burst.  Force it back unconditionally so the
+        // (= latest message), but initial layout adjustments can shift it
+        // during the initial render burst. Force it back unconditionally so the
         // user always lands on the newest message after the skeleton hides.
         // Skip when a search anchor is pending — that scroll will be handled
         // by scheduleSearchTargetScroll instead.
@@ -5185,25 +5231,12 @@ export function AiChatScreen({
   const tailReplayReadinessActive =
     streamingTailStateRef.current.status !== "idle" &&
     tailViewportPolicy.shouldExpandRenderWindow;
-  const shouldRelaxClipping =
-    streamingTailStateRef.current.status !== "idle" &&
-    tailViewportPolicy.shouldRelaxClipping;
   const shouldExpandRenderWindow = tailReplayReadinessActive;
   const tailListMaxToRenderPerBatch = shouldExpandRenderWindow ? 16 : 12;
   const tailListWindowSize = shouldExpandRenderWindow ? 15 : 11;
   const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow ? 16 : 30;
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    if (generating || shouldRelaxClipping || streamingTailStateRef.current.status !== "idle") {
-      setClippingEnabled(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (!thinkingHeaderReadingRef.current) setClippingEnabled(true);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [generating, shouldRelaxClipping, streamingTailVersion]);
-  const tailListRemoveClippedSubviews = Platform.OS === "android" ? clippingEnabled : undefined;
+  // Disable Android FlatList subview clipping permanently to avoid Fabric inverted-list blank frames on image attachments.
+  const tailListRemoveClippedSubviews = Platform.OS === "android" ? false : undefined;
 
   const handleReturnToLatestPress = useCallback(() => {
     followLatestMessage(false);
@@ -5297,6 +5330,16 @@ export function AiChatScreen({
       setIsMessageListReady(true);
       return;
     }
+    if (
+      locallyCreatedThreadIdRef.current === targetThreadId &&
+      generationBusyRef.current
+    ) {
+      locallyCreatedThreadIdRef.current = null;
+      setIsInitialMessageLoading(false);
+      setIsMessageListReady(true);
+      return;
+    }
+    locallyCreatedThreadIdRef.current = null;
     let cancelled = false;
     const hasSearchTarget = Boolean(searchTargetMessageId);
     void (async () => {
@@ -5696,12 +5739,14 @@ export function AiChatScreen({
       appActiveRef.current = state === "active";
       setAppIsActive(state === "active");
       if (state === 'active') {
+        const shouldSkipPickerReload = suppressNextAppStateReloadRef.current;
+        suppressNextAppStateReloadRef.current = false;
         const targetThreadId = activeThreadIdRef.current;
         if (targetThreadId) {
           const active = aiGenerationManager.refreshThread(spaceRef.current, targetThreadId);
           if (active) {
             scheduleStreamingTailReconcile('foreground', { forceRender: true });
-          } else {
+          } else if (!shouldSkipPickerReload) {
             const hadFinalBuffer = pendingFinalReloadRef.current;
             const resumeGeneration = activeStreamGenerationRef.current;
             void (async () => {
@@ -5897,6 +5942,7 @@ export function AiChatScreen({
       void clearComposerDraft(draftThreadKey);
     }
 
+    locallyCreatedThreadIdRef.current = thread.id;
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
     onThreadReady?.(thread.id);
@@ -6033,6 +6079,7 @@ export function AiChatScreen({
   }
 
   async function pickChatImages() {
+    suppressNextAppStateReloadRef.current = true;
     try {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -6050,18 +6097,24 @@ export function AiChatScreen({
       if (result.canceled) {
         return;
       }
-      const picked = result.assets.map<AiComposerAttachment>(
-        (asset, index) => ({
+      const picked = result.assets.map<AiComposerAttachment>((asset, index) => {
+        rememberImageDimensions(asset.uri, asset.width, asset.height);
+        const resolvedName =
+          asset.fileName?.trim() ||
+          extractSafeFileNameFromUri(asset.uri, `image-${index + 1}`);
+        return {
           id: `image-${Date.now()}-${index}-${asset.uri}`,
           kind: "image",
-          mimeType: asset.mimeType ?? null,
-          name:
-            asset.fileName ??
-            getFileNameFromUri(asset.uri, `image-${index + 1}`),
+          mimeType: normalizeImageMimeType(
+            asset.mimeType,
+            resolvedName,
+            asset.uri,
+          ),
+          name: resolvedName,
           size: asset.fileSize ?? null,
           uri: asset.uri,
-        }),
-      );
+        };
+      });
       const nextAttachments = [...pendingAttachments, ...picked];
       const validation = validateAiChatAttachments(nextAttachments);
       if (!validation.ok) {
@@ -6071,11 +6124,24 @@ export function AiChatScreen({
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "选择图片失败");
+    } finally {
+      setTimeout(() => {
+        suppressNextAppStateReloadRef.current = false;
+      }, 1200);
     }
   }
 
   const handleToggleIpImage = useCallback(
     (asset: IpImageItem) => {
+      if (asset.uri) {
+        Image.getSize(
+          asset.uri,
+          (width, height) => {
+            rememberImageDimensions(asset.uri, width, height);
+          },
+          () => undefined,
+        );
+      }
       setPendingAttachments((current) => {
         const existingIndex = current.findIndex(
           (a) =>
@@ -6085,11 +6151,16 @@ export function AiChatScreen({
         if (existingIndex >= 0) {
           return current.filter((_, idx) => idx !== existingIndex);
         }
+        const resolvedName = asset.name || `image-${asset.id}.jpg`;
         const newAttachment: AiComposerAttachment = {
           id: `ip-image-${asset.id}`,
           kind: "image",
-          mimeType: asset.mimeType ?? "image/jpeg",
-          name: asset.name || `image-${asset.id}.jpg`,
+          mimeType: normalizeImageMimeType(
+            asset.mimeType,
+            resolvedName,
+            asset.uri,
+          ),
+          name: resolvedName,
           size: asset.size ?? null,
           uri: asset.uri,
         };
@@ -6107,6 +6178,7 @@ export function AiChatScreen({
   );
 
   async function pickChatDocuments() {
+    suppressNextAppStateReloadRef.current = true;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
@@ -6117,16 +6189,37 @@ export function AiChatScreen({
         return;
       }
       const picked = result.assets.map<AiComposerAttachment>(
-        (asset, index) => ({
-          id: `document-${Date.now()}-${index}-${asset.uri}`,
-          kind: "document",
-          mimeType: asset.mimeType ?? null,
-          name:
-            asset.name ??
-            getFileNameFromUri(asset.uri, `document-${index + 1}`),
-          size: asset.size ?? null,
-          uri: asset.uri,
-        }),
+        (asset, index) => {
+          const resolvedName =
+            asset.name?.trim() ||
+            extractSafeFileNameFromUri(asset.uri, `document-${index + 1}`);
+          const kind = resolveAttachmentKind(
+            asset.mimeType,
+            resolvedName,
+            asset.uri,
+            { includeSvg: false },
+          );
+          if (kind === "image") {
+            Image.getSize(
+              asset.uri,
+              (width, height) => {
+                rememberImageDimensions(asset.uri, width, height);
+              },
+              () => undefined,
+            );
+          }
+          return {
+            id: `${kind}-${Date.now()}-${index}-${asset.uri}`,
+            kind,
+            mimeType:
+              kind === "image"
+                ? normalizeImageMimeType(asset.mimeType, resolvedName, asset.uri)
+                : (asset.mimeType ?? null),
+            name: resolvedName,
+            size: asset.size ?? null,
+            uri: asset.uri,
+          };
+        },
       );
       const nextAttachments = [...pendingAttachments, ...picked];
       const validation = validateAiChatAttachments(nextAttachments);
@@ -6137,6 +6230,10 @@ export function AiChatScreen({
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "选择文档失败");
+    } finally {
+      setTimeout(() => {
+        suppressNextAppStateReloadRef.current = false;
+      }, 1200);
     }
   }
 
@@ -6605,12 +6702,12 @@ export function AiChatScreen({
     if (!actionToken) {
       return;
     }
-    const tempUserMessageId = `optimistic_user_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const userMessageId = createAiMessageId();
     const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
     const optimisticInitialThreadId = activeThreadIdRef.current ?? threadId ?? 'draft_thread';
     const optimisticUserMessage = createOptimisticUserMessage(
       optimisticInitialThreadId,
-      tempUserMessageId,
+      userMessageId,
       content,
       sendPressedAt,
       activeBranch?.branchRootMessageId ?? null,
@@ -6620,7 +6717,7 @@ export function AiChatScreen({
     );
     function rollbackOptimisticSend() {
       setMessages((current) => {
-        const next = current.filter((m) => m.id !== tempUserMessageId);
+        const next = current.filter((m) => m.id !== userMessageId);
         messagesRef.current = next;
         rebuildMessageIndex(next);
         return next;
@@ -6633,6 +6730,7 @@ export function AiChatScreen({
       markIntentionalLatestJump();
       await flushBufferedStreamingState({ followLatest: false });
       setComposerText("");
+      setComposerClearSignal((current) => current + 1);
       void clearComposerDraft(draftThreadKey);
       setPendingAttachments([]);
       setIsIpPickerOpen(false);
@@ -6671,6 +6769,7 @@ export function AiChatScreen({
         }
       }
       const shouldResetContext = isSystemAssistant && visibleMessages.length > 0 && nowForSystemTask - new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > 10 * 60 * 1000 && new Date(visibleMessages[visibleMessages.length - 1].createdAt).getTime() > systemTaskContinuedTime;
+      dismissPendingManualDreamConfirmation(targetThreadId);
       const streamRequest = beginStreamingRequest(
         targetThreadId,
         {
@@ -6681,7 +6780,7 @@ export function AiChatScreen({
           createdAt: sendPressedAt,
           hasAttachments: attachments.length > 0,
           resetContext: shouldResetContext,
-          tempMessageId: tempUserMessageId,
+          tempMessageId: userMessageId,
         },
       );
       streamGeneration = streamRequest.generation;
@@ -6697,7 +6796,7 @@ export function AiChatScreen({
               onCreated: ({
                 assistantMessageId,
                 generationId,
-                userMessageId,
+                userMessageId: createdUserMessageId,
                 thinkingExpected,
               }) => {
                 if (!isCurrentStream(targetThreadId, streamGeneration)) {
@@ -6707,12 +6806,13 @@ export function AiChatScreen({
                   assistantMessageId,
                   generationId,
                   thinkingExpected,
-                  userMessageId,
+                  userMessageId: createdUserMessageId,
                 });
                 showLatestMessageVersion(replyTarget.messageId);
               },
             },
             threadId: targetThreadId,
+            userMessageId,
           })
         : (() => {
             return aiGenerationManager.startSendUserMessage({
@@ -6725,6 +6825,7 @@ export function AiChatScreen({
               space,
               subscriber: streamRequest.subscriber,
               threadId: targetThreadId,
+              userMessageId,
             });
           })();
       streamUnsubscribe = managedGeneration.unsubscribe;
@@ -6794,6 +6895,8 @@ export function AiChatScreen({
       setPendingMessageActionId(userMessageId);
       editingUserMessageIdRef.current = null;
       setEditingUserMessageId(null);
+      setDreamNotice(null);
+      clearDreamRuntimeNotice(targetThreadId);
       setGenerating(true);
       setErrorMessage(null);
       scheduleIntentionalLatestJump(false);
@@ -6899,6 +7002,7 @@ export function AiChatScreen({
   ) {
     const sendPressedAt = new Date().toISOString();
     let streamUnsubscribe: (() => void) | null = null;
+    dismissPendingManualDreamConfirmation(targetThreadId);
     const { generation: streamGeneration, subscriber } =
       beginStreamingRequest(targetThreadId);
     try {
@@ -6964,6 +7068,7 @@ export function AiChatScreen({
     }
     const sendPressedAt = new Date().toISOString();
     let streamUnsubscribe: (() => void) | null = null;
+    dismissPendingManualDreamConfirmation(targetThreadId);
     const { generation: streamGeneration, subscriber } =
       beginStreamingRequest(targetThreadId);
     const continuingMessage =
@@ -7065,6 +7170,7 @@ export function AiChatScreen({
     }
     const sendPressedAt = new Date().toISOString();
     let streamUnsubscribe: (() => void) | null = null;
+    dismissPendingManualDreamConfirmation(targetThreadId);
     const { generation: streamGeneration, subscriber } =
       beginStreamingRequest(targetThreadId);
     try {
@@ -7826,88 +7932,102 @@ export function AiChatScreen({
   const renderMessageItem = useCallback(
     ({ item, index }: { item: VisibleMessageItem; index: number }) => {
       if (item.type === 'systemTask') {
-        return <SystemAssistantTaskCard task={item.task} ips={systemAssistant.ips} disabled={generating && item.task.status !== 'planning'}
-          onSelectIp={ipId => { void systemAssistant.runtime?.resolveInput(item.task.assistantMessageId, ipId); }}
-          onConfirm={() => { void systemAssistant.runtime?.approve(item.task.assistantMessageId); }}
-          onCancel={() => { void systemAssistant.runtime?.cancel(item.task.assistantMessageId); }}
-          onRetry={() => {
-            if (!item.task.action || item.task.action.type === 'role-draft') void handleRegenerate(item.task.assistantMessageId);
-            else void systemAssistant.runtime?.retry(item.task.assistantMessageId);
-          }}
-          onUndo={() => { void systemAssistant.runtime?.undo(item.task.assistantMessageId); }}
-          onCreateIp={() => onNavigateToCreateIp?.()}
-          onOpenRole={roleCardId => onNavigateToGlobalRoute?.('ai-role-card-detail', { roleCardId })}
-          onStartChat={roleCardId => onStartChatWithRole?.(roleCardId)} />;
+        return (
+          <View style={styles.messageItemRowSpacing}>
+            <SystemAssistantTaskCard task={item.task} ips={systemAssistant.ips} disabled={generating && item.task.status !== 'planning'}
+              onSelectIp={ipId => { void systemAssistant.runtime?.resolveInput(item.task.assistantMessageId, ipId); }}
+              onConfirm={() => { void systemAssistant.runtime?.approve(item.task.assistantMessageId); }}
+              onCancel={() => { void systemAssistant.runtime?.cancel(item.task.assistantMessageId); }}
+              onRetry={() => {
+                if (!item.task.action || item.task.action.type === 'role-draft') void handleRegenerate(item.task.assistantMessageId);
+                else void systemAssistant.runtime?.retry(item.task.assistantMessageId);
+              }}
+              onUndo={() => { void systemAssistant.runtime?.undo(item.task.assistantMessageId); }}
+              onCreateIp={() => onNavigateToCreateIp?.()}
+              onOpenRole={roleCardId => onNavigateToGlobalRoute?.('ai-role-card-detail', { roleCardId })}
+              onStartChat={roleCardId => onStartChatWithRole?.(roleCardId)} />
+          </View>
+        );
       }
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
       }
       if (item.type === "systemTaskEnded") {
         return (
-          <View style={{ padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+          <View style={[styles.messageItemRowSpacing, { padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }]}>
             <Text style={{ color: aiLightColors.muted, fontSize: 12 }}>任务已结束</Text>
           </View>
         );
       }
       if (item.type === 'diary') {
         return (
-          <DiaryChatCard
-            contextOptIn={item.diary.contextOptIn}
-            createdAt={item.diary.updatedAt}
-            diaryDate={item.diary.diaryDate}
-            onContextChoice={(accepted) => {
-              // Optimistic update: reflect the choice immediately in the UI
-              // without waiting for the async DB write to complete.
-              setRoleDiaries((prev) =>
-                prev.map((d) => d.id === item.diary.id ? { ...d, contextOptIn: accepted } : d),
-              );
-              void runWithDatabaseSpace(space, (db) =>
-                diaryRepository.setContextOptIn(db, item.diary.id, accepted),
-              )
-                .then(() => reloadRoleDiaries())
-                .catch(() => undefined);
-            }}
-            onLongPress={(pageX, pageY) => handleArtifactLongPress(
-              'diary', item.diary.id, item.version.id, item.diary.updatedAt, pageX, pageY,
-            )}
-            onNextVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
-              ...current,
-              [item.diary.id]: (diaryVersionsById[item.diary.id] ?? [])[Math.min(item.versionIndex, item.versionTotal - 1)]?.id ?? item.version.id,
-            }))}
-            onOpen={() => onOpenDiary(item.diary.id, item.version.id)}
-            onPreviousVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
-              ...current,
-              [item.diary.id]: (diaryVersionsById[item.diary.id] ?? [])[Math.max(0, item.versionIndex - 2)]?.id ?? item.version.id,
-            }))}
-            themeKey={item.diary.themeKey}
-            versionIndex={item.versionIndex}
-            versionTotal={item.versionTotal}
-          />
+          <View style={styles.messageItemRowSpacing}>
+            <DiaryChatCard
+              contextOptIn={item.diary.contextOptIn}
+              createdAt={item.diary.updatedAt}
+              diaryDate={item.diary.diaryDate}
+              onContextChoice={(accepted) => {
+                // Optimistic update: reflect the choice immediately in the UI
+                // without waiting for the async DB write to complete.
+                setRoleDiaries((prev) =>
+                  prev.map((d) => d.id === item.diary.id ? { ...d, contextOptIn: accepted } : d),
+                );
+                void runWithDatabaseSpace(space, (db) =>
+                  diaryRepository.setContextOptIn(db, item.diary.id, accepted),
+                )
+                  .then(() => reloadRoleDiaries())
+                  .catch(() => undefined);
+              }}
+              onLongPress={(pageX, pageY) => handleArtifactLongPress(
+                'diary', item.diary.id, item.version.id, item.diary.updatedAt, pageX, pageY,
+              )}
+              onNextVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+                ...current,
+                [item.diary.id]: (diaryVersionsById[item.diary.id] ?? [])[Math.min(item.versionIndex, item.versionTotal - 1)]?.id ?? item.version.id,
+              }))}
+              onOpen={() => onOpenDiary(item.diary.id, item.version.id)}
+              onPreviousVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+                ...current,
+                [item.diary.id]: (diaryVersionsById[item.diary.id] ?? [])[Math.max(0, item.versionIndex - 2)]?.id ?? item.version.id,
+              }))}
+              themeKey={item.diary.themeKey}
+              versionIndex={item.versionIndex}
+              versionTotal={item.versionTotal}
+            />
+          </View>
         );
       }
       switch (item.type) {
         case 'dream':
-          return <DreamChatCard
-            createdAt={item.anchorCreatedAt}
-            onLongPress={(pageX, pageY) => handleArtifactLongPress(
-              'dream', item.dream.versionGroupId, item.dream.id, item.anchorCreatedAt, pageX, pageY,
-            )}
-            onNextVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
-              ...current,
-              [item.dream.versionGroupId]: (dreamVersionsByGroupId[item.dream.versionGroupId] ?? [])[Math.min(item.versionIndex, item.versionTotal - 1)]?.id ?? item.dream.id,
-            }))}
-            onOpen={() => onOpenDream(item.dream.id)}
-            onPreviousVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
-              ...current,
-              [item.dream.versionGroupId]: (dreamVersionsByGroupId[item.dream.versionGroupId] ?? [])[Math.max(0, item.versionIndex - 2)]?.id ?? item.dream.id,
-            }))}
-            title={item.dream.title}
-            versionIndex={item.versionIndex}
-            versionTotal={item.versionTotal}
-          />;
+          return (
+            <View style={styles.messageItemRowSpacing}>
+              <DreamChatCard
+                createdAt={item.anchorCreatedAt}
+                onLongPress={(pageX, pageY) => handleArtifactLongPress(
+                  'dream', item.dream.versionGroupId, item.dream.id, item.anchorCreatedAt, pageX, pageY,
+                )}
+                onNextVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+                  ...current,
+                  [item.dream.versionGroupId]: (dreamVersionsByGroupId[item.dream.versionGroupId] ?? [])[Math.min(item.versionIndex, item.versionTotal - 1)]?.id ?? item.dream.id,
+                }))}
+                onOpen={() => onOpenDream(item.dream.id)}
+                onPreviousVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+                  ...current,
+                  [item.dream.versionGroupId]: (dreamVersionsByGroupId[item.dream.versionGroupId] ?? [])[Math.max(0, item.versionIndex - 2)]?.id ?? item.dream.id,
+                }))}
+                title={item.dream.title}
+                versionIndex={item.versionIndex}
+                versionTotal={item.versionTotal}
+              />
+            </View>
+          );
         case 'dreamJob':
           const failure = presentDreamFailure(item.job.lastErrorCode);
-          return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onCancel={() => void handleDreamJobCancel(item.job)} onRetry={() => void handleDreamJobRetry(item.job)} onLongPress={(pageX, pageY) => handleArtifactLongPress('dreamJob', item.job.id, item.job.id, item.job.createdAt, pageX, pageY)} />;
+          return (
+            <View style={styles.messageItemRowSpacing}>
+              <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onCancel={() => void handleDreamJobCancel(item.job)} onRetry={() => void handleDreamJobRetry(item.job)} onLongPress={(pageX, pageY) => handleArtifactLongPress('dreamJob', item.job.id, item.job.id, item.job.createdAt, pageX, pageY)} />
+            </View>
+          );
       }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
@@ -8029,6 +8149,7 @@ export function AiChatScreen({
         <>
           <View
             style={[
+              styles.messageItemRowSpacing,
               searchHighlightMessageId === message.id && styles.searchHighlightWrap,
               item.isRoleTransition && styles.roleTransitionSpacing,
               isMultiSelectMode && styles.multiSelectRow,
@@ -8093,6 +8214,15 @@ export function AiChatScreen({
               onPinDocument={handlePinDocument}
               onOpenDocumentActionSheet={handleOpenDocumentActionSheet}
               onOpenDocument={(target) => {
+                if (
+                  target.uri &&
+                  resolveAttachmentKind(undefined, target.title ?? "", target.uri, {
+                    includeSvg: true,
+                  }) === "image"
+                ) {
+                  setPreviewImageUri(target.uri);
+                  return;
+                }
                 setDocViewerState({
                   visible: true,
                   title: target.title,
@@ -8102,6 +8232,19 @@ export function AiChatScreen({
                 });
               }}
               onAttachmentPress={(attachment) => {
+                if (
+                  attachment.localUri &&
+                  (attachment.kind === "image" ||
+                    resolveAttachmentKind(
+                      attachment.mimeType,
+                      attachment.name,
+                      attachment.localUri,
+                      { includeSvg: true },
+                    ) === "image")
+                ) {
+                  setPreviewImageUri(attachment.localUri);
+                  return;
+                }
                 if (attachment.kind === "document") {
                   if (attachment.documentId) {
                     onOpenSource(attachment.documentId, attachment.name);
@@ -8114,8 +8257,6 @@ export function AiChatScreen({
                       mode: "clean",
                     });
                   }
-                } else if (attachment.kind === "image" && attachment.localUri) {
-                  setPreviewImageUri(attachment.localUri);
                 }
               }}
               pendingActionMessageId={pendingMessageActionId}
@@ -8164,7 +8305,6 @@ export function AiChatScreen({
                 thinkingHeaderReadingRef.current = expanded
                   ? messageId
                   : (thinkingHeaderReadingRef.current === messageId ? null : thinkingHeaderReadingRef.current);
-                if (Platform.OS === 'android') setClippingEnabled(false);
                 const sameTailMessage =
                   streamingTailStateRef.current.messageId === messageId &&
                   streamingTailStateRef.current.status !== "idle";
@@ -8440,7 +8580,6 @@ export function AiChatScreen({
                 keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 keyboardShouldPersistTaps="handled"
                 keyExtractor={messageKeyExtractor}
-                maintainVisibleContentPosition={MESSAGE_LIST_ANCHOR_CONFIG}
                 maxToRenderPerBatch={tailListMaxToRenderPerBatch}
                 removeClippedSubviews={tailListRemoveClippedSubviews}
                 updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
@@ -8600,8 +8739,30 @@ export function AiChatScreen({
                 <View style={styles.diaryHint}>
                   <Ionicons color={aiLightColors.primaryActive} name="moon" size={metrics.iconSizeSm} />
                   <Text style={styles.diaryHintText}>是否触发梦境？</Text>
-                  <Pressable accessibilityRole="button" onPress={() => void confirmManualDream(space, dreamNotice.seedId, true)} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>是</Text></Pressable>
-                  <Pressable accessibilityRole="button" onPress={() => { void confirmManualDream(space, dreamNotice.seedId, false); setDreamNotice(null); }} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>否</Text></Pressable>
+                  <Pressable
+                    accessibilityLabel="确认制作梦境"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => {
+                      setDreamNotice(null);
+                      void confirmManualDream(space, dreamNotice.seedId, true);
+                    }}
+                    style={styles.diaryHintTouch}
+                  >
+                    <Text style={styles.diaryHintAction}>是</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="取消制作梦境"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => {
+                      setDreamNotice(null);
+                      void confirmManualDream(space, dreamNotice.seedId, false);
+                    }}
+                    style={styles.diaryHintTouch}
+                  >
+                    <Text style={styles.diaryHintDismiss}>否</Text>
+                  </Pressable>
                 </View>
               ) : null}
               {diaryGenerationStatus ? (
@@ -8723,8 +8884,10 @@ export function AiChatScreen({
               ) : null}
               <AiChatComposer
                 attachments={pendingAttachments}
+                clearSignal={composerClearSignal}
                 generating={generating}
                 modelIconBrand={isSystemAssistant ? undefined : modelIconBrand}
+                space={space}
                 voiceAvailable={true}
                 onAddDocumentAttachment={() => void pickChatDocuments()}
                 onAddImageAttachment={() => void pickChatImages()}
@@ -9398,9 +9561,12 @@ const styles = StyleSheet.create({
   },
   messageScrollContent: {
     flexGrow: 1,
-    gap: 14,
     paddingBottom: spacing[3],
     paddingTop: spacing[2],
+  },
+  messageItemRowSpacing: {
+    // Half of prior 14px list gap on each row; avoids Fabric inverted FlatList gap blank screens.
+    marginVertical: 7,
   },
   roleTransitionSpacing: {
     marginTop: 4,
@@ -9541,6 +9707,8 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     alignSelf: "center",
     color: aiLightColors.muted,
+    // Matches messageItemRowSpacing vertical rhythm without FlatList gap
+    marginVertical: 7,
     paddingVertical: spacing[1],
   },
   inlineMemoryNotice: {

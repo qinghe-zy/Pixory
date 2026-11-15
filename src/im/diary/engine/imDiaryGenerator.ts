@@ -172,32 +172,45 @@ export async function generateCompanionDailyDiary({
     let type: string = 'text';
     let content = r.content;
     let metadata: any = null;
+    const trimmed = typeof r.content === 'string' ? r.content.trim() : '';
 
-    if (
-      r.content.startsWith('{"type":"diary_card"') ||
-      r.content.startsWith('{"diaryDate":') ||
-      r.content.startsWith('{"diaryId":')
-    ) {
-      type = 'diary_card';
-    } else if (r.content.startsWith('{"type":"sticker"')) {
-      type = 'sticker';
+    if (trimmed.startsWith('{')) {
       try {
-        const p = JSON.parse(r.content);
-        content = p.name ?? p.text ?? '[表情]';
-      } catch {}
-    } else if (r.content.startsWith('{"imageUri":')) {
-      type = 'image';
-      try {
-        const p = JSON.parse(r.content);
-        content = p.text ?? '[图片]';
-      } catch {}
-    } else if (r.content.startsWith('{"type":"document"') || r.content.startsWith('{"document":')) {
-      type = 'document';
-      try {
-        const p = JSON.parse(r.content);
-        content = p.title ?? '[文档]';
-      } catch {}
-    } else if (r.role === 'system' || r.content.startsWith('[系统提示:')) {
+        const parsed = JSON.parse(trimmed) as Record<string, any> | null;
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.type === 'diary_card' || 'diaryDate' in parsed || 'diaryId' in parsed) {
+            type = 'diary_card';
+          } else if (parsed.type === 'thought') {
+            // 内部思考心声严禁写入手账语料，防止思维链与裸 JSON 泄露
+            type = 'thought';
+            content = '';
+          } else if (parsed.type === 'voice') {
+            type = 'voice';
+            const spoken = String(parsed.transcription ?? parsed.text ?? '').trim();
+            content = spoken ? `[语音] ${spoken}` : '';
+          } else if (parsed.type === 'sticker') {
+            type = 'sticker';
+            content = String(parsed.name ?? parsed.text ?? '[表情]');
+            metadata = { sticker: parsed };
+          } else if (parsed.type === 'image' || 'imageUri' in parsed) {
+            type = 'image';
+            content = String(parsed.text ?? '').trim() || '[图片]';
+          } else if (parsed.type === 'document' || 'document' in parsed) {
+            type = 'document';
+            const title = String(parsed.title ?? parsed.fileName ?? '').trim();
+            content = title ? `[文档: ${title}]` : '[文档]';
+          } else {
+            // 未知 JSON 信封降级提取可读正文，若无可读正文则置空丢弃，避免裸 JSON 混入手账上下文
+            const fallbackText = parsed.text ?? parsed.content ?? parsed.transcription ?? parsed.message;
+            content = typeof fallbackText === 'string' ? fallbackText.trim() : '';
+          }
+        }
+      } catch {
+        // 非合法 JSON，保留原文交给下游清洗
+      }
+    }
+
+    if (type === 'text' && (r.role === 'system' || trimmed.startsWith('[系统提示:'))) {
       type = 'notice';
     }
 
@@ -215,15 +228,64 @@ export async function generateCompanionDailyDiary({
     throw new Error('NO_MESSAGES_FOR_DATE');
   }
 
-  // 4. 提取当天生活状态轨迹与会话模型配置
+  // 4. 提取当天生活状态轨迹、会话模型配置、角色人设与称谓
   const threadRow = await db.getFirstAsync<{
     providerId: string | null;
     modelId: string | null;
     living_state_json: string | null;
+    roleSnapshotJson?: string | null;
+    im_settings_json?: string | null;
   }>(
-    `SELECT providerId, modelId, living_state_json FROM ai_threads WHERE id = ? LIMIT 1;`,
+    `SELECT providerId, modelId, living_state_json, roleSnapshotJson, im_settings_json FROM ai_threads WHERE id = ? LIMIT 1;`,
     [threadId]
-  );
+  ).catch(async () => {
+    return db.getFirstAsync<{
+      providerId: string | null;
+      modelId: string | null;
+      living_state_json: string | null;
+      roleSnapshotJson?: string | null;
+      im_settings_json?: string | null;
+    }>(
+      `SELECT providerId, modelId, living_state_json FROM ai_threads WHERE id = ? LIMIT 1;`,
+      [threadId]
+    );
+  });
+
+  let rolePrompt = '';
+  let roleDescription = '';
+  if (roleCardId) {
+    try {
+      const roleRow = await db.getFirstAsync<{
+        prompt?: string | null;
+        description?: string | null;
+      }>(
+        `SELECT prompt, description FROM ai_role_cards WHERE id = ? LIMIT 1;`,
+        [roleCardId]
+      );
+      if (roleRow) {
+        rolePrompt = roleRow.prompt ? roleRow.prompt.trim() : '';
+        roleDescription = roleRow.description ? roleRow.description.trim() : '';
+      }
+    } catch {}
+  }
+  if (!rolePrompt && threadRow?.roleSnapshotJson) {
+    try {
+      const snap = JSON.parse(threadRow.roleSnapshotJson);
+      if (snap?.prompt) rolePrompt = String(snap.prompt).trim();
+      if (snap?.description) roleDescription = String(snap.description).trim();
+    } catch {}
+  }
+
+  let userNickname = '';
+  if (threadRow?.im_settings_json) {
+    try {
+      const parsedSettings = JSON.parse(threadRow.im_settings_json);
+      if (parsedSettings?.personalization?.userNickname) {
+        userNickname = String(parsedSettings.personalization.userNickname).trim();
+      }
+    } catch {}
+  }
+
   let trajectorySummary = '';
   if (threadRow?.living_state_json) {
     try {
@@ -244,18 +306,19 @@ export async function generateCompanionDailyDiary({
     throw new Error('NO_PROVIDER_CONFIGURED');
   }
 
-  const trajPrompt = trajectorySummary ? `\n你今天白天真实经历的生活轨迹如下：${trajectorySummary}。\n` : '';
-  const prompt = `你是${roleName}。今天是${dateStr}。现在是深夜，你正处于温暖安静的环境中写私人手账日记。\n` +
-    `今日真实输入事件与对话：\n${dialogueText}${trajPrompt}\n` +
-    `【撰写与记忆留存准则】\n` +
-    `篇幅根据今日实际交流内容自然决定（聊得多则详尽叙述，聊得少则精炼温润，通常 300~800 字左右，事多则详，事简则精，严禁机械注水）。禁止使用小标题，以自然段落推进，包含以下维度：\n` +
-    `1. 当下空间锚定：写此刻环境、光线与身体感受，把思绪自然拉回白天；\n` +
-    `2. 慢镜头细节复盘(核心记忆区)：回味核心互动，自然嵌入具体地点、食物、提到的物品、对方喜好与约定；\n` +
-    `3. 潜台词与私密心事(情绪区)：白天未表现出来但很在意的微表情、心跳与咽回去的心声；\n` +
-    `4. 记忆钩子与余韵收尾(召回区)：记录产生的小动作或未来计划(信物收在何处、下次要聊的话题)，温暖停笔。\n` +
-    `【约束】拒绝空洞抒情与AI口号套话，重在具体画面与真实动作细节。\n` +
-    `信纸5选1：sage(草木绿)/rainwater(雨水蓝)/rose(粉蔷薇)/lavender(薰衣草紫)/celadon(青瓷墨)。\n` +
-    `【输出格式】\n[THEME: sage|rainwater|rose|lavender|celadon]\n[MOOD: 1~4字心情(如小确幸/挂念/踏实)]\n[WEATHER: 1~4字天气(如微风/细雨/晴暖)]\n<Diary_Content>\n(根据今日实际情况自然成文的沉浸日记正文)\n</Diary_Content>\n` +
+  const trajPrompt = trajectorySummary ? `\n你今天真实经历的生活轨迹如下：${trajectorySummary}。\n` : '';
+  const personaBlock = rolePrompt ? `\n【你的角色人设与性格】\n${rolePrompt}\n` : '';
+  const nicknameBlock = userNickname ? `\n【你对对方的专属称呼】：${userNickname}\n` : '';
+
+  const prompt = `你是「${roleName}」。今天是${dateStr}。${personaBlock}${nicknameBlock}` +
+    `今日真实互动与对话记录：\n${dialogueText}${trajPrompt}\n` +
+    `【撰写准则】\n` +
+    `请站在「${roleName}」的第一人称视角，写下一篇真实记录今日经历与内心独白的私密手账日记。\n` +
+    `- 人设立场：完全符合你的性格口吻与心理活动（依角色性格可以克制、吐槽、暗自欢喜、深情回味或冷淡寡言，切勿套用千篇一律的温暖日记套话）；\n` +
+    `- 内容与细节：自然融入白天的互动细节、对方提到的喜好、具体地点或未完成的约定，记录产生的心绪起伏与真实内心独白；\n` +
+    `- 篇幅与结构：篇幅根据今日交流情况自发决定（通常 300~800 字左右，事多则详，事简则精，严禁机械注水），禁止使用小标题，以自然段落推进成文。\n` +
+    `信纸风格（根据今日心境5选1）：sage(草木绿)/rainwater(雨水蓝)/rose(粉蔷薇)/lavender(薰衣草紫)/celadon(青瓷墨)。\n` +
+    `【输出格式】\n[THEME: sage|rainwater|rose|lavender|celadon]\n[MOOD: 1~4字心情(如小确幸/挂念/踏实/纠结)]\n[WEATHER: 1~4字天气(如微风/细雨/晴暖/阴)]\n<Diary_Content>\n(以第一人称自然写就的手账日记正文)\n</Diary_Content>\n` +
     `<Memory_Metadata>\n- 核心事件摘要：(客观简要总结)\n- 捕捉到的用户偏好/状态：(习惯喜好或情绪)\n- 关键物品与地点：(信物与地点)\n- 待触发钩子：(未完成约定或下次话题)\n</Memory_Metadata>`;
 
   let generated = '';
@@ -284,16 +347,17 @@ export async function generateCompanionDailyDiary({
 
   let parsed = parseDualLayerDiary(generated);
   if (!parsed.content || parsed.content.length < 10) {
-    // 拟真温情保底：当大模型输出异常中断或为空时，基于今日对话提炼一段真实陪伴手账
+    // 拟真保底：当大模型输出异常中断或为空时，基于今日对话提炼一段真实陪伴手账
     const cleanDialogueSummary = dialogueText
       .replace(/\[(BR|br)\]/g, ' ')
       .replace(/\s+/g, ' ')
       .slice(0, 100);
+    const userRef = userNickname || '你';
     parsed = {
       theme: 'sage',
-      mood: '温润',
-      weather: '静谧',
-      content: `夜色渐深，翻开手账回想起今天与你的对话：“${cleanDialogueSummary}…” 虽然只是简短的碎片，但在我心里都是无可替代的珍贵印记。愿你今晚有好梦相伴，明天我们再接着聊。`,
+      mood: '平静',
+      weather: '夜色',
+      content: `回顾今天与${userRef}的对话：“${cleanDialogueSummary}…” 诸多细节犹在眼前。静下心随手记下几笔，明天再续。`,
       metadata: {
         rawText: '今日交流日常小记',
         summary: cleanDialogueSummary.slice(0, 50),

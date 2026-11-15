@@ -1,6 +1,7 @@
 import { initDatabase, type PixorySpace } from '../../database';
 import {
   deleteImMessage as repoDeleteImMessage,
+  flushRevealingAndCancelStagedBubbles as repoFlushRevealingAndCancelStagedBubbles,
   truncateDownstreamMessages as repoTruncateDownstreamMessages,
 } from '../repository/imThreadRepository';
 
@@ -21,6 +22,17 @@ export const imMessageRollback = {
     space: PixorySpace
   ): Promise<void> {
     await repoTruncateDownstreamMessages(space, threadId, targetMessageCreatedAt);
+  },
+
+  /**
+   * 用户插话打断：将本轮尚未显影的 revealing 气泡提前落盘显影，并清理未触发的 staged 气泡
+   */
+  async flushRevealingAndCancelStagedBubbles(
+    threadId: string,
+    space: PixorySpace,
+    beforeTimestampMs: number = Date.now()
+  ): Promise<{ flushedCount: number; cancelledStagedCount: number }> {
+    return repoFlushRevealingAndCancelStagedBubbles(space, threadId, beforeTimestampMs);
   },
 
   /**

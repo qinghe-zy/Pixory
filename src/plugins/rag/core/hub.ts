@@ -1,4 +1,4 @@
-import { ComponentNotFoundError, ProviderNotActiveError } from './errors';
+import { ComponentNotFoundError, ProviderNotActiveError, RagError } from './errors';
 import { RagComponentRegistry } from './registry';
 import type { IRagProvider } from '../provider';
 import type {
@@ -89,5 +89,85 @@ export class RagHub {
   public async dispose(): Promise<void> {
     await this.registry.clear();
     this.activeProviderId = null;
+  }
+}
+
+/**
+ * 空间物理隔离的 RAG 调度中枢 (SpaceScopedRagHub)
+ * 为不同数据域（如 Pixory 的 normal 与 personal 空间）维护独立的 RagHub 实例，
+ * 并对隐私空间实施 Fail-Closed（故障安全默认拒绝）策略：严禁接入远程或未显式声明本地能力的 Provider。
+ */
+export class SpaceScopedRagHub<TSpace extends string = 'normal' | 'personal'> {
+  private readonly hubs = new Map<TSpace, RagHub>();
+
+  constructor(private readonly restrictedSpaces: ReadonlySet<TSpace> = new Set(['personal' as TSpace])) {}
+
+  public getHub(space: TSpace): RagHub {
+    let hub = this.hubs.get(space);
+    if (!hub) {
+      hub = new RagHub();
+      this.hubs.set(space, hub);
+    }
+    return hub;
+  }
+
+  public assertProviderAllowedForSpace(space: TSpace, provider: IRagProvider): void {
+    if (this.restrictedSpaces.has(space) && provider.capabilities?.isRemote !== false) {
+      throw new RagError(
+        `空间 "${space}" 为受保护隐私域，拒绝接入远程或未显式声明本地隔离(isRemote: false)的 RAG Provider: ${provider.id}`,
+        'REMOTE_PROVIDER_FORBIDDEN_IN_PERSONAL_SPACE'
+      );
+    }
+  }
+
+  public registerAndActivateProvider(space: TSpace, provider: IRagProvider): void {
+    this.assertProviderAllowedForSpace(space, provider);
+    this.getHub(space).registerAndActivate(provider);
+  }
+
+  public setActiveProvider(space: TSpace, providerId: string): void {
+    const hub = this.getHub(space);
+    const provider = hub.registry.get<IRagProvider>(providerId);
+    if (!provider || provider.kind !== 'provider') {
+      throw new ComponentNotFoundError(`找不到 Provider 实例: ${providerId}`);
+    }
+    this.assertProviderAllowedForSpace(space, provider);
+    hub.setActiveProvider(providerId);
+  }
+
+  public getActiveProvider(space: TSpace): IRagProvider {
+    const provider = this.getHub(space).getActiveProvider();
+    this.assertProviderAllowedForSpace(space, provider);
+    return provider;
+  }
+
+  public async ingest(space: TSpace, document: RagDocument): Promise<IngestResult> {
+    return this.getActiveProvider(space).ingest(document);
+  }
+
+  public async delete(space: TSpace, documentId: string): Promise<boolean> {
+    return this.getActiveProvider(space).delete(documentId);
+  }
+
+  public async search(space: TSpace, query: string, options?: RagSearchOptions): Promise<RagSnippet[]> {
+    return this.getActiveProvider(space).search(query, options);
+  }
+
+  public buildContext(space: TSpace, snippets: RagSnippet[], budget?: ContextBudget): PromptContextResult {
+    return this.getActiveProvider(space).buildContext(snippets, budget);
+  }
+
+  public async disposeSpace(space: TSpace): Promise<void> {
+    const hub = this.hubs.get(space);
+    if (!hub) return;
+    await hub.dispose();
+    this.hubs.delete(space);
+  }
+
+  public async disposeAll(): Promise<void> {
+    for (const hub of this.hubs.values()) {
+      await hub.dispose();
+    }
+    this.hubs.clear();
   }
 }

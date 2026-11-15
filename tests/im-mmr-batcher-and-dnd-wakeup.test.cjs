@@ -30,13 +30,21 @@ function loadTsModule(relativePath, mockRequire = {}) {
 }
 
 const {
+  compute2GramJaccardSimilarity: realCompute2GramJaccardSimilarity,
+} = loadTsModule('../src/core/memory/memoryScorer.ts');
+
+const {
   compute2GramJaccardSimilarity,
   selectDiverseMemoriesMMR,
 } = loadTsModule('../src/core/memory/zeroVectorRetriever.ts', {
   '../../database': {},
   '../../database/index': {},
   './memoryRepository': {},
-  './memoryScorer': { scoreCompanionMemory: () => null, sanitizeAndExtractFtsTerms: () => [] },
+  './memoryScorer': {
+    compute2GramJaccardSimilarity: realCompute2GramJaccardSimilarity,
+    scoreCompanionMemory: () => null,
+    sanitizeAndExtractFtsTerms: () => [],
+  },
 });
 
 const {

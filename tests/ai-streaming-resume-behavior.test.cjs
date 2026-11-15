@@ -161,6 +161,7 @@ function foregroundFixture() {
   const context = {
     space: 'normal', spaceRef: ref('normal'), screenMountedRef: ref(false), appActiveRef: ref(false),
     activeThreadIdRef: ref('t'), activeStreamGenerationRef: ref(1), pendingFinalReloadRef: ref(false),
+    suppressNextAppStateReloadRef: ref(false),
     activeMessageBranchScopesRef: ref([]), messagesRef: ref([{}, {}]), CHAT_MESSAGE_PAGE_SIZE: 40,
     voiceSessionActiveRef: ref(false), voiceCancelledRef: ref(false), newChatFeedbackTimeoutRef: ref(null),
     AppState: { addEventListener: (_name, callback) => { handler = callback; return { remove() {} }; } },
@@ -223,13 +224,13 @@ test('service ends thinking before database waits and guards foreground replay a
   assert.match(source, /const originalThinkingEnd = readThinkingEndedAt\(assistantMessage.promptSnapshotJson\)/);
 });
 
-test('thinking toggles keep the live renderer attached and relax Android native clipping', () => {
+test('thinking toggles keep the live renderer attached with Android clipping disabled', () => {
   const source = fs.readFileSync(path.join(root, 'src/screens/AiChatScreen.tsx'), 'utf8');
   const start = source.indexOf('onThinkingExpandedChange={(messageId, expanded) => {');
   const end = source.indexOf('userProfile={{', start);
   const toggle = source.slice(start, end);
   assert.doesNotMatch(toggle, /bottomLockedRef.current = false|userScrolledAwayFromBottomRef.current = true/);
-  assert.match(toggle, /setClippingEnabled\(false\)/);
+  assert.match(source, /tailListRemoveClippedSubviews = Platform\.OS === "android" \? false : undefined/);
   assert.match(toggle, /if \(sameTailMessage\) scheduleStreamingTailReconcile/);
-  assert.match(source, /if \(!thinkingHeaderReadingRef.current\) setClippingEnabled\(true\)/);
+  assert.doesNotMatch(source, /setClippingEnabled\(true\)/);
 });

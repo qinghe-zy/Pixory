@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 
 import { setLatestAssistantBubbleContentWidth } from '../../ai/aiStreamingBubbleWidthRegistry';
+import { ProportionalSecureImage } from '../ProportionalSecureImage';
 import { SecureImage } from '../SecureImage';
 import type { AiMessageWithCitations } from '../../ai/aiChatService';
 import type { AiCitationRecord } from '../../ai/types';
@@ -41,6 +42,28 @@ import type { AiMessageAttachmentRecord } from '../../database/repositories/aiTh
 import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
 
 const AI_SYSTEM_AVATAR = require('../../../assets/ai_system_avatar.png');
+
+const SINGLE_ATTACHMENT_IMAGE_BOUNDS = {
+  fallbackHeight: 135,
+  fallbackWidth: 180,
+  maxAspectRatio: 2.2,
+  maxHeight: 280,
+  maxWidth: 220,
+  minAspectRatio: 0.45,
+  minHeight: 84,
+  minWidth: 96,
+} as const;
+
+const MULTI_ATTACHMENT_IMAGE_BOUNDS = {
+  fallbackHeight: 112,
+  fallbackWidth: 132,
+  maxAspectRatio: 2.2,
+  maxHeight: 196,
+  maxWidth: 144,
+  minAspectRatio: 0.45,
+  minHeight: 72,
+  minWidth: 80,
+} as const;
 
 import { DocumentBubbleCard } from '../document/DocumentBubbleCard';
 import { parseDocumentTag, parseDocumentPatchTag } from '../../im/engine/imTagParser';
@@ -616,45 +639,108 @@ function AiMessageBubbleComponent({
         ) : null}
         {message.attachments && message.attachments.length > 0 ? (
           <View style={[styles.attachmentGalleryOuter, !isUser && styles.attachmentGalleryOuterAssistant]}>
-            {message.attachments.map((attachment) => {
-              const isPinned = attachment.documentId ? pinnedDocumentIds?.has(attachment.documentId) : false;
-              const isPinning = attachment.documentId ? pinningDocumentId === attachment.documentId : false;
+            {(() => {
+              const imageAttachmentCount = message.attachments.filter((item) => item.kind === 'image').length;
+              const imageBounds = imageAttachmentCount > 1
+                ? MULTI_ATTACHMENT_IMAGE_BOUNDS
+                : SINGLE_ATTACHMENT_IMAGE_BOUNDS;
+              return message.attachments.map((attachment) => {
+                const isPinned = attachment.documentId ? pinnedDocumentIds?.has(attachment.documentId) : false;
+                const isPinning = attachment.documentId ? pinningDocumentId === attachment.documentId : false;
 
-              if (attachment.kind === 'image') {
-                return (
-                  <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
-                    <SecureImage
-                      contentFit="cover"
-                      space={space}
-                      style={styles.attachmentImageOuter}
-                      uri={attachment.localUri}
-                    />
-                  </Pressable>
-                );
-              }
-
-              return (
-                <View key={attachment.id} style={{ marginVertical: 4 }}>
-                  <DocumentBubbleCard
-                    title={attachment.name}
-                    sizeBytes={attachment.fileSize ?? undefined}
-                    onPress={() => {
-                      if (onOpenDocument) {
-                        onOpenDocument({ uri: attachment.localUri, title: attachment.name });
-                      } else if (attachment.documentId) {
-                        onAttachmentPress?.(attachment);
+                if (attachment.kind === 'image') {
+                  return (
+                    <Pressable
+                      key={attachment.id}
+                      delayLongPress={260}
+                      onLongPress={
+                        !editing && onLongPress
+                          ? (event) =>
+                              onLongPress(
+                                message,
+                                event.nativeEvent.pageX,
+                                event.nativeEvent.pageY,
+                              )
+                          : undefined
                       }
-                    }}
-                    onShare={() => {
-                      void exportDocumentToShare({
-                        uri: attachment.localUri,
-                        title: attachment.name,
-                      });
-                    }}
-                  />
-                </View>
-              );
-            })}
+                      onPress={() => onAttachmentPress?.(attachment)}
+                    >
+                      <ProportionalSecureImage
+                        bounds={imageBounds}
+                        contentFit="cover"
+                        space={space}
+                        style={styles.attachmentImageOuter}
+                        uri={attachment.localUri}
+                      />
+                    </Pressable>
+                  );
+                }
+
+                return (
+                  <View key={attachment.id} style={{ marginVertical: 4 }}>
+                    <DocumentBubbleCard
+                      title={attachment.name}
+                      sizeBytes={attachment.fileSize ?? undefined}
+                      onLongPress={
+                        !editing && onLongPress
+                          ? (event) =>
+                              onLongPress(
+                                message,
+                                event?.nativeEvent?.pageX ?? 0,
+                                event?.nativeEvent?.pageY ?? 0,
+                              )
+                          : undefined
+                      }
+                      onPress={() => {
+                        if (onOpenDocument) {
+                          onOpenDocument({ uri: attachment.localUri, title: attachment.name });
+                        } else if (attachment.documentId) {
+                          onAttachmentPress?.(attachment);
+                        }
+                      }}
+                      onShare={() => {
+                        void exportDocumentToShare({
+                          uri: attachment.localUri,
+                          title: attachment.name,
+                        });
+                      }}
+                    />
+                    {attachment.documentId && onPinDocument ? (
+                      <View style={{ flexDirection: 'row', justifyContent: isUser ? 'flex-end' : 'flex-start', marginTop: 2 }}>
+                        <Pressable
+                          accessibilityLabel={isPinned ? '管理常驻设定' : '设为常驻设定'}
+                          accessibilityRole="button"
+                          accessibilityState={{ busy: isPinning, disabled: isPinning, selected: isPinned }}
+                          disabled={isPinning}
+                          hitSlop={8}
+                          onPress={() => {
+                            if (isPinned) {
+                              onOpenDocumentActionSheet?.(attachment.documentId!, attachment.name);
+                            } else {
+                              onPinDocument(attachment.documentId!, attachment.name);
+                            }
+                          }}
+                          style={({ pressed }) => [
+                            styles.pinPill,
+                            isPinned && styles.pinPillActive,
+                            isPinning && styles.disabledAction,
+                            pressed && !isPinning && styles.pressed,
+                          ]}
+                        >
+                          <Text style={[styles.pinPillText, isPinned && styles.pinPillTextActive]}>
+                            {isPinning
+                              ? '处理中...'
+                              : isPinned
+                                ? '📌 已常驻设定 · 管理'
+                                : '📌 设为常驻设定'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              });
+            })()}
           </View>
         ) : null}
         {isSystemAssistant && !isUser ? (
@@ -823,6 +909,16 @@ function AiMessageBubbleComponent({
             <DocumentBubbleCard
               title={docTag.title}
               charCount={docTag.content.length}
+              onLongPress={
+                !editing && onLongPress
+                  ? (event) =>
+                      onLongPress(
+                        message,
+                        event?.nativeEvent?.pageX ?? 0,
+                        event?.nativeEvent?.pageY ?? 0,
+                      )
+                  : undefined
+              }
               onPress={() => onOpenDocument?.({ title: docTag.title, content: docTag.content })}
               onShare={() => {
                 void exportDocumentToShare({
@@ -839,6 +935,16 @@ function AiMessageBubbleComponent({
               charCount={patchTag.patchContent.length}
               hasRevisions
               diffSummary="基于原件差量修订"
+              onLongPress={
+                !editing && onLongPress
+                  ? (event) =>
+                      onLongPress(
+                        message,
+                        event?.nativeEvent?.pageX ?? 0,
+                        event?.nativeEvent?.pageY ?? 0,
+                      )
+                  : undefined
+              }
               onPress={() => onOpenDocument?.({ title: patchTag.title, content: patchTag.patchContent, mode: 'diff' })}
               onShare={() => {
                 void exportDocumentToShare({
@@ -1272,11 +1378,10 @@ const styles = StyleSheet.create({
   },
   attachmentImageOuter: {
     borderRadius: radius.md,
-    height: 120,
-    width: 120,
     backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
     borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   attachmentDocumentOuter: {
     alignItems: 'center',

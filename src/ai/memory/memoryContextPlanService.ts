@@ -132,6 +132,31 @@ export async function compileMemoryContextPlan(
   };
 }
 
+export function createEmptyMemoryContextPlan(
+  threadId: string,
+  lineageVersion: number
+): MemoryContextPlan {
+  return {
+    cacheTier: 'none',
+    candidateClaimIds: [],
+    contextPlanId: createContextPlanId({
+      lineageVersion,
+      projectionVersion: 0,
+      query: '',
+      threadId,
+    }),
+    createdAt: createTimestamp(),
+    lineageVersion,
+    omittedClaimIds: [],
+    projectionVersion: 0,
+    providerCachedTokens: null,
+    retrievalScorerVersion: RETRIEVAL_SCORER_VERSION,
+    segmentHashes: [],
+    selectedClaimIds: [],
+    selectedEvidenceIds: [],
+  };
+}
+
 export function attachProviderUsageToContextPlan(
   plan: MemoryContextPlan,
   providerCachedTokens: number | null

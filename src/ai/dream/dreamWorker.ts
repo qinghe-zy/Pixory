@@ -51,7 +51,7 @@ async function failOrRetry(space: PixorySpace, job: DreamJobRecord, workerId: st
     await dreamRepository.transitionJob(db, { errorCode: code, id: job.id, nextRunAt: addMs(now, Math.min(6, job.attemptCount) * 60 * 60 * 1000), now, status: terminal ? 'failed' : 'retry', workerId });
     if (terminal) await dreamRepository.updateSeed(db, { decision: 'failed', id: job.seedId, now });
   });
-  if (terminal) emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' });
+  if (terminal && job.phase === 'generating') emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' });
   return terminal ? 'failed' as const : 'failed' as const;
 }
 
@@ -67,7 +67,7 @@ async function waitForModel(space: PixorySpace, job: DreamJobRecord, workerId: s
       workerId,
     });
   });
-  emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' });
+  if (job.phase === 'generating') emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' });
 }
 
 export async function runDreamJob(input: { space: PixorySpace; jobId: string; now?: string; allowRemoteModelForPersonal?: boolean; assertActive?: () => void }): Promise<'completed'|'deferred'|'failed'|'skipped'> {
@@ -82,7 +82,7 @@ export async function runDreamJob(input: { space: PixorySpace; jobId: string; no
   }
   const source = await validateSource(input.space, job); input.assertActive?.(); if (!source) {
     await runWithDatabaseSpace(input.space, async (db) => { await dreamRepository.releaseQuota(db, job, now); await dreamRepository.transitionJob(db, { errorCode: 'source_changed', id: job.id, now, status: 'failed', workerId }); await dreamRepository.updateSeed(db, { decision: 'failed', id: job.seedId, now }); });
-    emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' }); return 'failed';
+    if (job.phase === 'generating') emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' }); return 'failed';
   }
   if (job.phase === 'generating' && !source.seed.manual && !job.quotaReserved) {
     const reserved = await runWithDatabaseSpace(input.space, (db) => dreamRepository.reserveQuota(db, job, now));

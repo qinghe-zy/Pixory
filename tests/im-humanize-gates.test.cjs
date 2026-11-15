@@ -26,23 +26,50 @@ function loadModule(relativePath, mockRequire = {}) {
   return m.exports;
 }
 
-test('HumanizeOutputGate: Strips parenthetical stage directions and robotic cliches', () => {
+test('HumanizeOutputGate: Preserves stage actions and natural prose by default, strips on false and strips protocol/think tags', () => {
   const { sanitizeCompanionBubble } = loadModule('../src/im/engine/humanizeOutputGate.ts');
 
-  // Strip Chinese parentheses stage action
+  // Default preserves inline Chinese and English parenthetical stage actions
   const sample1 = '（轻笑）快去休息吧，明天还要早起呢！';
-  assert.equal(sanitizeCompanionBubble(sample1), '快去休息吧，明天还要早起呢！');
+  assert.equal(sanitizeCompanionBubble(sample1), '（轻笑）快去休息吧，明天还要早起呢！');
 
-  // Strip English parentheses stage action
   const sample2 = '(揉了揉眼睛) 怎么还没睡呀？';
-  assert.equal(sanitizeCompanionBubble(sample2), '怎么还没睡呀？');
+  assert.equal(sanitizeCompanionBubble(sample2), '(揉了揉眼睛) 怎么还没睡呀？');
 
-  // Strip customer-support cliches
+  // Explicit preserveInlineStageActions: false strips stage directions (e.g. for TTS script)
+  assert.equal(
+    sanitizeCompanionBubble(sample1, { preserveInlineStageActions: false }),
+    '快去休息吧，明天还要早起呢！'
+  );
+  assert.equal(
+    sanitizeCompanionBubble(sample2, { preserveInlineStageActions: false }),
+    '怎么还没睡呀？'
+  );
+
+  // Natural prose including phrases like "有什么可以帮您的呢" is no longer stripped
   const sample3 = '好的呢，有什么可以帮您的呢？明天见！';
-  assert.equal(sanitizeCompanionBubble(sample3), '好的呢明天见！');
+  assert.equal(sanitizeCompanionBubble(sample3), '好的呢，有什么可以帮您的呢？明天见！');
+
+  // Strips technical control tags and residual <think>/<thought> tags
+  const protocolSample =
+    '<think>内部思考</think></think>[NEXT_FOLLOWUP: 30s | 怎么还不理我][STATUS: online]早安[PASS][MEMORY_RECALL: 早餐][MEMORY_NOTE: ADD | 喜欢豆浆]';
+  assert.equal(sanitizeCompanionBubble(protocolSample), '早安');
+
+  // Empty, whitespace-only, and oversized STICKER/VOICE residue never leaks "]"
+  assert.equal(sanitizeCompanionBubble('[STICKER:   ]'), '');
+  assert.equal(sanitizeCompanionBubble('[VOICE:   ]'), '');
+  assert.equal(sanitizeCompanionBubble('[VOICE: 轻声 |   ]'), '');
+  assert.equal(
+    sanitizeCompanionBubble('[STICKER: 超过四十个字的贴纸描述超过四十个字的贴纸描述超过四十个字的贴纸描述]'),
+    ''
+  );
+  assert.equal(
+    sanitizeCompanionBubble('哈哈[STICKER: 超过四十个字的贴纸描述超过四十个字的贴纸描述超过四十个字的贴纸描述]真的绝'),
+    '哈哈真的绝'
+  );
 });
 
-test('HumanizeOutputGate: Detects repetitive starter tokens and excessive question ratio', () => {
+test('HumanizeOutputGate: Disables starter suppression and triggers question hint only on >= 3 consecutive questions', () => {
   const {
     extractStarterToken,
     detectRepetitiveStarters,
@@ -52,23 +79,39 @@ test('HumanizeOutputGate: Detects repetitive starter tokens and excessive questi
   assert.equal(extractStarterToken('哈哈太逗了'), '哈哈');
   assert.equal(extractStarterToken('！好呀没问题'), '好呀');
 
-  // Starter repeats 3 times out of last 8
+  // detectRepetitiveStarters is disabled and always returns null
   const repetitiveList = ['哈哈真的假的', '确实不错', '哈哈笑死我了', '明天见', '哈哈好巧'];
-  const notice = detectRepetitiveStarters(repetitiveList);
-  assert.ok(notice !== null);
-  assert.ok(notice.includes('「哈哈」'));
+  assert.equal(detectRepetitiveStarters(repetitiveList), null);
 
-  // Excessive questions > 40%
-  const questionList = [
+  // 2 consecutive questions -> ignored (null)
+  assert.equal(
+    detectExcessiveQuestions(['你在干嘛呢？', '今天吃什么了呀？']),
+    null
+  );
+
+  // Mixed list with <= 2 consecutive trailing questions (even if >= 40% overall) -> ignored (null)
+  assert.equal(
+    detectExcessiveQuestions([
+      '你在干嘛呢？',
+      '今天吃什么了呀？',
+      '作业写完了吗？',
+      '晚安好梦。',
+      '今天天气真好呢？',
+    ]),
+    null
+  );
+
+  // >= 3 consecutive question-ending bubbles -> triggers non-imperative flow hint
+  const qNotice = detectExcessiveQuestions([
+    '今天好冷呀。',
     '你在干嘛呢？',
     '今天吃什么了呀？',
     '作业写完了吗？',
-    '几点睡觉呢？',
-    '晚安好梦。',
-  ];
-  const qNotice = detectExcessiveQuestions(questionList);
-  assert.ok(qNotice !== null);
-  assert.ok(qNotice.includes('互动节律提示'));
+  ]);
+  assert.equal(
+    qNotice,
+    '[对话流向提示: 近期已连续多轮向对方发问，本轮可自然陈述自身看法、反应或状态，无需刻意在句末抛问题]'
+  );
 });
 
 test('HumanizeOutputGate: Duplicate bubble dice similarity detection', () => {

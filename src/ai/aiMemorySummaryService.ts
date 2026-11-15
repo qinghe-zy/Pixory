@@ -11,10 +11,24 @@ import {
   hashCoverageMessageVersions,
   summaryPrewarmRoundThreshold,
 } from './context/conversationCoverage';
+import { shouldPrewarmContext } from './context/contextWindowPolicy';
 
 export const COMPRESS_OLDEST_ROUND_COUNT = 20;
 export const SUMMARY_SEGMENT_LIMIT = 5;
 export const PRESERVE_LATEST_SEGMENT_COUNT = 2;
+
+export function resolveSummarySegmentPolicy(contextHistoryRoundLimit?: number | null): {
+  segmentLimit: number;
+  preserveLatestCount: number;
+} {
+  const roundLimit = contextHistoryRoundLimit ?? 30;
+  if (roundLimit <= 30) {
+    return { segmentLimit: SUMMARY_SEGMENT_LIMIT, preserveLatestCount: PRESERVE_LATEST_SEGMENT_COUNT };
+  }
+  const segmentLimit = Math.min(16, Math.max(SUMMARY_SEGMENT_LIMIT, Math.floor(roundLimit / 6)));
+  const preserveLatestCount = Math.min(5, Math.max(PRESERVE_LATEST_SEGMENT_COUNT, Math.floor(segmentLimit / 3)));
+  return { segmentLimit, preserveLatestCount };
+}
 
 interface CompleteRound {
   user: AiMessageRecord;
@@ -144,16 +158,24 @@ export async function compressOldestThreadRounds(
       threadId,
       uncompressedRoundCount: estimatedRoundCount,
     });
-    if (estimatedRoundCount <= prewarmRoundThreshold) {
+    const prewarmTriggered = shouldPrewarmContext({
+      target: prewarmRoundThreshold,
+      uncompressedRounds: estimatedRoundCount,
+    });
+    if (estimatedRoundCount <= prewarmRoundThreshold && !prewarmTriggered) {
       return null;
     }
     const messageScanLimit = (prewarmRoundThreshold + COMPRESS_OLDEST_ROUND_COUNT + 5) * 2;
     const messages = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, messageScanLimit, options.branchScopes);
     const rounds = pairCompletedRounds(messages);
-    if (rounds.length <= prewarmRoundThreshold) {
+    if (rounds.length <= prewarmRoundThreshold && !prewarmTriggered) {
       return null;
     }
-    const selectedRounds = rounds.slice(0, COMPRESS_OLDEST_ROUND_COUNT);
+    const compressRoundTarget = Math.min(rounds.length, COMPRESS_OLDEST_ROUND_COUNT);
+    if (compressRoundTarget <= 0) {
+      return null;
+    }
+    const selectedRounds = rounds.slice(0, compressRoundTarget);
     const first = selectedRounds[0];
     const last = selectedRounds[selectedRounds.length - 1];
     return {
@@ -184,9 +206,32 @@ export async function compressOldestThreadRounds(
   const summaryText = modelResult.text ?? buildLocalCompressionSummary(prepared.conversation);
 
   await runWithDatabaseSpace(space, async (db) => {
-    if (!options.allowIrreversibleImportEffects && options.reversibleImportSessionId) {
-      await aiThreadRepository.createReversibleContinuitySummarySegment(db, {
-        continuityImportSessionId: options.reversibleImportSessionId,
+    await db.withTransactionAsync(async () => {
+      if (!options.allowIrreversibleImportEffects && options.reversibleImportSessionId) {
+        await aiThreadRepository.createReversibleContinuitySummarySegment(db, {
+          continuityImportSessionId: options.reversibleImportSessionId,
+          endAt: prepared.endAt,
+          endMessageId: prepared.endMessageId,
+          id: createAiMemoryId('aisum'),
+          kind: 'compressed',
+          branchRouteHash: hashBranchRoute(options.branchScopes),
+          lineageVersion: prepared.thread.lineageVersion ?? 0,
+          quality: modelResult.text ? 'model' : 'local',
+          roundCount: prepared.roundCount,
+          sourceMessageIdsJson: JSON.stringify(prepared.sourceMessages.map((message) => message.id)),
+          sourceMessageVersionHash: hashCoverageMessageVersions(prepared.sourceMessages),
+          sourceSegmentIdsJson: '[]',
+          space,
+          startAt: prepared.startAt,
+          startMessageId: prepared.startMessageId,
+          summaryText,
+          threadId,
+          status: 'active',
+        });
+        return;
+      }
+      await aiThreadRepository.createSummarySegment(db, {
+        continuityImportSessionId: null,
         endAt: prepared.endAt,
         endMessageId: prepared.endMessageId,
         id: createAiMemoryId('aisum'),
@@ -205,33 +250,12 @@ export async function compressOldestThreadRounds(
         threadId,
         status: 'active',
       });
-      return;
-    }
-    await aiThreadRepository.createSummarySegment(db, {
-      continuityImportSessionId: null,
-      endAt: prepared.endAt,
-      endMessageId: prepared.endMessageId,
-      id: createAiMemoryId('aisum'),
-      kind: 'compressed',
-      branchRouteHash: hashBranchRoute(options.branchScopes),
-      lineageVersion: prepared.thread.lineageVersion ?? 0,
-      quality: modelResult.text ? 'model' : 'local',
-      roundCount: prepared.roundCount,
-      sourceMessageIdsJson: JSON.stringify(prepared.sourceMessages.map((message) => message.id)),
-      sourceMessageVersionHash: hashCoverageMessageVersions(prepared.sourceMessages),
-      sourceSegmentIdsJson: '[]',
-      space,
-      startAt: prepared.startAt,
-      startMessageId: prepared.startMessageId,
-      summaryText,
-      threadId,
-      status: 'active',
-    });
-    await aiThreadRepository.updateThreadMemoryJob(db, {
-      lastCompressedMessageId: prepared.endMessageId,
-      lastMaintenanceError: remoteFallbackError(modelResult.error),
-      threadId,
-      uncompressedRoundCount: Math.max(0, prepared.uncompressedRoundCount - prepared.roundCount),
+      await aiThreadRepository.updateThreadMemoryJob(db, {
+        lastCompressedMessageId: prepared.endMessageId,
+        lastMaintenanceError: remoteFallbackError(modelResult.error),
+        threadId,
+        uncompressedRoundCount: Math.max(0, prepared.uncompressedRoundCount - prepared.roundCount),
+      });
     });
   });
   return stepResultFromModel(modelResult, !modelResult.text);
@@ -248,7 +272,7 @@ export async function maybeMergeSummarySegments(
     signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
-  if (options.allowIrreversibleImportEffects === false) {
+  if (options.allowIrreversibleImportEffects === false || options.allowRemoteModel === false) {
     return emptyMaintenanceStepResult();
   }
   const prepared = await runWithDatabaseSpace(space, async (db) => {
@@ -266,10 +290,11 @@ export async function maybeMergeSummarySegments(
         segment.branchRouteHash === branchRouteHash
         && segment.lineageVersion === (thread.lineageVersion ?? 0)
       );
-    if (segments.length <= SUMMARY_SEGMENT_LIMIT) {
+    const segmentPolicy = resolveSummarySegmentPolicy(thread.contextHistoryRoundLimit);
+    if (segments.length <= segmentPolicy.segmentLimit) {
       return null;
     }
-    const mergeSegments = segments.slice(0, -PRESERVE_LATEST_SEGMENT_COUNT);
+    const mergeSegments = segments.slice(0, -segmentPolicy.preserveLatestCount);
     const sourceMessageIds = mergeSourceMessageIds(mergeSegments.map((segment) => segment.sourceMessageIdsJson));
     if (!sourceMessageIds) {
       return null;
@@ -299,42 +324,45 @@ export async function maybeMergeSummarySegments(
   if (!prepared) {
     return emptyMaintenanceStepResult();
   }
-  const modelResult = options.allowRemoteModel === false
-    ? localMemoryMaintenanceResult()
-    : await callMemoryMaintenanceModel({
-      signal: options.signal,
-      space,
-      systemPrompt: '你是 Pixory 的后台摘要整合器。只输出指定结构。',
-      thread: prepared.thread,
-      userPrompt: buildSummaryMergePrompt(prepared.summaries),
-    });
-  const summaryText = modelResult.text ?? buildLocalMergedSummary(prepared.summaries);
+  const modelResult = await callMemoryMaintenanceModel({
+    signal: options.signal,
+    space,
+    systemPrompt: '你是 Pixory 的后台摘要整合器。只输出指定结构。',
+    thread: prepared.thread,
+    userPrompt: buildSummaryMergePrompt(prepared.summaries, Math.min(2000, Math.max(900, Math.floor(prepared.summaries.length * 0.6)))),
+  });
+  if (!modelResult.text?.trim()) {
+    return stepResultFromModel(modelResult, true);
+  }
+  const summaryText = modelResult.text.trim();
   await runWithDatabaseSpace(space, async (db) => {
-    await aiThreadRepository.createSummarySegment(db, {
-      continuityImportSessionId: null,
-      endAt: prepared.endAt,
-      endMessageId: prepared.endMessageId,
-      id: createAiMemoryId('aisum'),
-      kind: 'merged',
-      branchRouteHash: prepared.branchRouteHash,
-      lineageVersion: prepared.thread.lineageVersion ?? 0,
-      quality: modelResult.text ? 'model' : 'merged',
-      roundCount: prepared.roundCount,
-      sourceMessageIdsJson: JSON.stringify(prepared.sourceMessageIds),
-      sourceMessageVersionHash: prepared.sourceMessageVersionHash,
-      sourceSegmentIdsJson: JSON.stringify(prepared.ids),
-      space,
-      startAt: prepared.startAt,
-      startMessageId: prepared.startMessageId,
-      summaryText,
-      threadId,
-      status: 'active',
-    });
-    await aiThreadRepository.deleteSummarySegments(db, prepared.ids);
-    await aiThreadRepository.updateThreadMemoryJob(db, {
-      lastMaintenanceError: remoteFallbackError(modelResult.error),
-      threadId,
+    await db.withTransactionAsync(async () => {
+      await aiThreadRepository.createSummarySegment(db, {
+        continuityImportSessionId: null,
+        endAt: prepared.endAt,
+        endMessageId: prepared.endMessageId,
+        id: createAiMemoryId('aisum'),
+        kind: 'merged',
+        branchRouteHash: prepared.branchRouteHash,
+        lineageVersion: prepared.thread.lineageVersion ?? 0,
+        quality: modelResult.text ? 'model' : 'merged',
+        roundCount: prepared.roundCount,
+        sourceMessageIdsJson: JSON.stringify(prepared.sourceMessageIds),
+        sourceMessageVersionHash: prepared.sourceMessageVersionHash,
+        sourceSegmentIdsJson: JSON.stringify(prepared.ids),
+        space,
+        startAt: prepared.startAt,
+        startMessageId: prepared.startMessageId,
+        summaryText,
+        threadId,
+        status: 'active',
+      });
+      await aiThreadRepository.deleteSummarySegments(db, prepared.ids);
+      await aiThreadRepository.updateThreadMemoryJob(db, {
+        lastMaintenanceError: remoteFallbackError(modelResult.error),
+        threadId,
+      });
     });
   });
-  return stepResultFromModel(modelResult, !modelResult.text);
+  return stepResultFromModel(modelResult, false);
 }

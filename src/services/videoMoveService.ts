@@ -86,7 +86,10 @@ async function moveAssetsToIpInternal({
       }
 
       const sourceGroups = await imageRepository.findGroupsByImageId(db, sourceAsset.id);
-      const targetGroups = await Promise.all(sourceGroups.map((group) => resolveTargetGroup(db, targetIpId, group)));
+      const targetGroups = [];
+      for (const group of sourceGroups) {
+        targetGroups.push(await resolveTargetGroup(db, targetIpId, group));
+      }
       const tagNames = (await tagRepository.findByImageId(db, sourceAsset.id)).map((tag) => tag.name);
       const internalFilename = generateInternalFilename(sourceAsset.originalFilename);
       const originalDestinationDir = `${joinStoragePath(getOriginalsDir(space), `ip_${targetIpId}`)}/`;

@@ -23,6 +23,7 @@ import type {
   ImBubbleSkinPreset,
 } from '../../repository/imSettingsRepository';
 import { BUBBLE_SKIN_PRESETS } from '../../theme/imTheme';
+import { normalizePersonalizationForUi } from '../../engine/imRolePromptResolver';
 import { ImCustomBubbleColorModal } from './ImCustomBubbleColorModal';
 import { VoicePresetPicker } from '../../../voice/ui/VoicePresetPicker';
 
@@ -38,6 +39,7 @@ export interface ImCompanionPersonaModalProps {
 }
 
 const RELATIONSHIP_OPTIONS: Array<{ key: ImRelationshipPreset; label: string; desc: string }> = [
+  { key: 'role_default', label: '遵从角色卡原设', desc: '不附加预设相处关系定位' },
   { key: 'close_friend', label: '知心挚友', desc: '无话不谈、温暖陪伴' },
   { key: 'romantic', label: '心动角色', desc: '双向奔赴、亲昵依恋' },
   { key: 'friend', label: '日常朋友', desc: '轻松闲聊、自然随和' },
@@ -47,7 +49,8 @@ const RELATIONSHIP_OPTIONS: Array<{ key: ImRelationshipPreset; label: string; de
 ];
 
 const REPLY_STYLE_OPTIONS: Array<{ key: ImReplyStyleGear; label: string; desc: string }> = [
-  { key: 'balanced', label: '自然亲切', desc: '语调温和自然，随性真实' },
+  { key: 'role_default', label: '遵从角色卡原设', desc: '不附加预设说话风格限制' },
+  { key: 'balanced', label: '自然亲切', desc: '语调温和，不额外覆盖角色原设口吻' },
   { key: 'empathetic', label: '温柔共情', desc: '细腻敏锐，情绪安全感拉满' },
   { key: 'playful', label: '元气幽默', desc: '活泼灵动，爱开玩笑与玩梗' },
   { key: 'tsundere', label: '傲娇口嫌', desc: '嘴硬心软，越怼越深情' },
@@ -75,14 +78,15 @@ export function ImCompanionPersonaModal({
   const insets = useSafeAreaInsets();
 
   const personalization = settings.personalization;
+  const normalizedPersonalization = normalizePersonalizationForUi(personalization);
 
   const [userNickname, setUserNickname] = useState(personalization?.userNickname || '');
   const [companionCallName, setCompanionCallName] = useState(personalization?.companionCallName || '');
   const [relationship, setRelationship] = useState<ImRelationshipPreset>(
-    personalization?.relationshipPreset || 'close_friend'
+    normalizedPersonalization.relationshipPreset
   );
   const [replyStyle, setReplyStyle] = useState<ImReplyStyleGear>(
-    personalization?.replyStyleGear || 'balanced'
+    normalizedPersonalization.replyStyleGear
   );
   const [proactiveFreq, setProactiveFreq] = useState<ImProactiveFrequencyGear>(
     personalization?.proactiveFrequencyGear || 'balanced'
@@ -120,10 +124,11 @@ export function ImCompanionPersonaModal({
 
   useEffect(() => {
     if (visible) {
+      const normalized = normalizePersonalizationForUi(settings.personalization);
       setUserNickname(settings.personalization?.userNickname || '');
       setCompanionCallName(settings.personalization?.companionCallName || '');
-      setRelationship(settings.personalization?.relationshipPreset || 'close_friend');
-      setReplyStyle(settings.personalization?.replyStyleGear || 'balanced');
+      setRelationship(normalized.relationshipPreset);
+      setReplyStyle(normalized.replyStyleGear);
       setProactiveFreq(settings.personalization?.proactiveFrequencyGear || 'balanced');
       setBubbleSkin(settings.personalization?.bubbleSkinPreset || 'wechat_green');
       setCustomColorModalVisible(false);
@@ -184,7 +189,7 @@ export function ImCompanionPersonaModal({
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.modalTitle}>专属相处与个性定制</Text>
-              <Text style={styles.modalSubTitle}>与 {companionName} 的契约羁绊与双向默契</Text>
+              <Text style={styles.modalSubTitle}>为 {companionName} 补充可选称谓与互动偏好，默认遵从角色原设</Text>
             </View>
             <Pressable
               accessibilityLabel="关闭个性化设置"
@@ -211,7 +216,7 @@ export function ImCompanionPersonaModal({
                 <Text style={styles.sectionTitle}>彼此专属称谓</Text>
               </View>
               <Text style={styles.sectionTip}>
-                写入第一层前缀契约，对方将永久铭记并以此称呼你。
+                可选填写；填写后对方会在对话中自然使用该称呼，不填则按角色原设称呼。
               </Text>
               <View style={styles.inputRow}>
                 <Text style={styles.inputLabel}>TA 称呼我为：</Text>
@@ -252,6 +257,7 @@ export function ImCompanionPersonaModal({
                     <Pressable
                       accessibilityLabel={`羁绊关系：${item.label}`}
                       accessibilityRole="button"
+                      accessibilityState={{ selected }}
                       key={item.key}
                       onPress={() => setRelationship(item.key)}
                       style={[styles.chipItem, selected && styles.chipItemSelected]}
@@ -281,6 +287,7 @@ export function ImCompanionPersonaModal({
                     <Pressable
                       accessibilityLabel={`说话风格：${item.label}`}
                       accessibilityRole="button"
+                      accessibilityState={{ selected }}
                       key={item.key}
                       onPress={() => setReplyStyle(item.key)}
                       style={[styles.chipItem, selected && styles.chipItemSelected]}
@@ -310,6 +317,7 @@ export function ImCompanionPersonaModal({
                     <Pressable
                       accessibilityLabel={`主动频次：${item.label}`}
                       accessibilityRole="button"
+                      accessibilityState={{ selected }}
                       key={item.key}
                       onPress={() => setProactiveFreq(item.key)}
                       style={[styles.chipItem, selected && styles.chipItemSelected]}
@@ -340,6 +348,7 @@ export function ImCompanionPersonaModal({
                     <Pressable
                       accessibilityLabel={`气泡配色：${skin.label}`}
                       accessibilityRole="button"
+                      accessibilityState={{ selected }}
                       key={key}
                       onPress={() => setBubbleSkin(key)}
                       style={[styles.skinItem, selected && styles.skinItemSelected]}
@@ -357,6 +366,7 @@ export function ImCompanionPersonaModal({
                   <Pressable
                     accessibilityLabel={`当前自定义气泡配色：${bubbleSkin}`}
                     accessibilityRole="button"
+                    accessibilityState={{ selected: true }}
                     onPress={() => setCustomColorModalVisible(true)}
                     style={[styles.skinItem, styles.skinItemSelected]}
                   >

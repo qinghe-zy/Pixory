@@ -18,16 +18,20 @@ const EMBEDDING_CONCURRENCY = 3;
 export class PixoryDynamicEmbedder implements IRagEmbedder {
   public readonly id = 'embedder:pixory-dynamic';
   public readonly kind = 'embedder' as const;
-  public readonly dimensions: number;
+  public dimensions: number;
+  public readonly providerId: string;
+  public readonly modelId: string;
 
   constructor(
     private space: PixorySpace,
-    private providerId: string,
-    private modelId: string,
+    providerId: string,
+    modelId: string,
     private apiKey: string,
     private baseUrl: string,
     dimensions = 1536
   ) {
+    this.providerId = providerId;
+    this.modelId = modelId;
     this.dimensions = dimensions;
   }
 
@@ -56,7 +60,21 @@ export class PixoryDynamicEmbedder implements IRagEmbedder {
       });
     });
 
-    return settled.map((item) => (item.status === 'fulfilled' ? item.value : []));
+    const finalVectors = settled.map((item) => {
+      if (item.status !== 'fulfilled' || !Array.isArray(item.value) || item.value.length === 0) {
+        return [];
+      }
+      return item.value.every((val) => typeof val === 'number' && Number.isFinite(val))
+        ? item.value
+        : [];
+    });
+
+    const firstValid = finalVectors.find((v) => v.length > 0);
+    if (firstValid && this.dimensions !== firstValid.length) {
+      this.dimensions = firstValid.length;
+    }
+
+    return finalVectors;
   }
 }
 
@@ -65,10 +83,13 @@ export class PixoryDynamicEmbedder implements IRagEmbedder {
  * 若未配置或缺少 API Key，安全返回 undefined（激活纯 BM25 本地检索）
  */
 export async function resolvePixoryEmbedder(
-  space: PixorySpace
+  space: PixorySpace,
+  overrides?: { providerId?: string | null; modelId?: string | null }
 ): Promise<IRagEmbedder | undefined> {
   try {
-    const configured = await getEmbeddingProviderForSpace(space);
+    const configured = overrides?.providerId && overrides?.modelId
+      ? { providerId: overrides.providerId, modelId: overrides.modelId }
+      : await getEmbeddingProviderForSpace(space);
     if (!configured?.providerId || !configured?.modelId) {
       return undefined;
     }

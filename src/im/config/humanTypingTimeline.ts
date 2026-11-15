@@ -13,6 +13,7 @@ export interface HumanTypingOptions {
   dampingMultiplier?: number;
   burstIndex?: number;
   totalBurstCount?: number;
+  modality?: 'text' | 'sticker' | 'voice';
   rng?: () => number;
 }
 
@@ -60,6 +61,9 @@ export function calculateHumanTypingDelay(
     if (options?.isSleeping) {
       return Math.round((20000 + rng() * 30000) * gearMultiplier);
     }
+    if (options?.modality === 'sticker') {
+      return Math.round(250 + rng() * 150);
+    }
 
     // 正常首句：基准阅读与思考耗时
     const readChars = options?.userTextLength ?? 10;
@@ -67,6 +71,11 @@ export function calculateHumanTypingDelay(
     const jitter = 0.85 + rng() * 0.3; // 85% ~ 115% 抖动
     const firstDelay = Math.round(baseCognitive * jitter * gearMultiplier * damping);
     return Math.max(200, Math.min(2400, firstDelay));
+  }
+
+  // 表情贴纸模态固定快速节律 (250ms ~ 400ms)
+  if (options?.modality === 'sticker') {
+    return Math.round(250 + rng() * 150);
   }
 
   // 3. 后续分句气泡延迟：真实击键 + 偶发停顿/顺势连发
@@ -87,15 +96,23 @@ export function calculateHumanTypingDelay(
 
   // 叠加间隔底色
   const baseInterBubbleGap = 200 + rng() * 180;
-  let finalDelay = (baseInterBubbleGap + typingDuration) * gearMultiplier * damping;
+  const finalDelay = (baseInterBubbleGap + typingDuration) * gearMultiplier * damping;
 
   // 单条气泡软上限 clamp 到 180ms ~ 4500ms
-  finalDelay = Math.max(180, Math.min(4500, Math.round(finalDelay)));
-  return finalDelay;
+  const raw = Math.max(180, Math.min(4500, Math.round(finalDelay)));
+
+  // 连发第 3 句起施加指数衰减 (0.7^(burstIndex - 2))，保持 300ms 最低节奏底线
+  const burstIndex = options?.burstIndex ?? 1;
+  if (burstIndex >= 3) {
+    const decay = Math.pow(0.7, burstIndex - 2);
+    return Math.max(300, Math.round(raw * decay));
+  }
+
+  return raw;
 }
 
 /**
- * 为一组连发气泡规划完整时间线，并施加总时长软上限保护（<= 14秒）
+ * 为一组连发气泡规划完整时间线，并施加总时长软上限保护（<= 6秒，忙碌首句保留阅读延迟）
  */
 export function scheduleHumanBurstTimeline(
   sentences: string[],
@@ -103,33 +120,69 @@ export function scheduleHumanBurstTimeline(
   settings: ImGlobalPacingSettings = DEFAULT_IM_GLOBAL_SETTINGS,
   options?: HumanTypingOptions
 ): Array<{ text: string; visibleAt: number; delayMs: number }> {
-  let currentTime = baseTime;
-  const limited = sentences.slice(0, 5);
+  if (sentences.length === 0) {
+    return [];
+  }
 
-  const rawDelays: number[] = limited.map((text, idx) => {
+  let currentTime = baseTime;
+  const rawDelays: number[] = sentences.map((text, idx) => {
     return calculateHumanTypingDelay(text, settings, idx === 0, {
       ...options,
       burstIndex: idx,
-      totalBurstCount: limited.length,
+      totalBurstCount: sentences.length,
     });
   });
 
-  // 如果总耗时超过 14s 软上限，按比例适度压缩后续分句，避免用户等待过久
+  // 如果总耗时超过 6s 软上限，按比例适度压缩后续分句，避免长连发让用户等待过久
   const totalRawDuration = rawDelays.reduce((sum, d) => sum + d, 0);
-  const MAX_TOTAL_BURST_MS = 14000;
-  let scaleFactor = 1.0;
-  if (totalRawDuration > MAX_TOTAL_BURST_MS && limited.length > 1) {
+  const MAX_TOTAL_BURST_MS = 6000;
+  let finalDelays = rawDelays.slice();
+
+  if (totalRawDuration > MAX_TOTAL_BURST_MS && sentences.length > 1) {
     const firstDelay = rawDelays[0];
     const subsequentSum = totalRawDuration - firstDelay;
     const allowedSubsequent = Math.max(2000, MAX_TOTAL_BURST_MS - firstDelay);
-    scaleFactor = allowedSubsequent / subsequentSum;
+    const scaleFactor = subsequentSum > 0 ? allowedSubsequent / subsequentSum : 1.0;
+
+    if (scaleFactor < 1.0) {
+      const subsequentCount = sentences.length - 1;
+      const minFloor = Math.min(160, Math.floor(allowedSubsequent / subsequentCount));
+      const scaledSubsequent = rawDelays
+        .slice(1)
+        .map((delay) => Math.max(minFloor, Math.floor(delay * scaleFactor)));
+
+      let scaledSum = scaledSubsequent.reduce((sum, d) => sum + d, 0);
+      if (scaledSum > allowedSubsequent) {
+        let floorSum = 0;
+        let adjustableSum = 0;
+        for (const d of scaledSubsequent) {
+          if (d <= minFloor) floorSum += d;
+          else adjustableSum += d;
+        }
+        if (adjustableSum > 0 && allowedSubsequent >= floorSum) {
+          const adjScale = (allowedSubsequent - floorSum) / adjustableSum;
+          for (let i = 0; i < scaledSubsequent.length; i += 1) {
+            if (scaledSubsequent[i] > minFloor) {
+              scaledSubsequent[i] = Math.max(minFloor, Math.floor(scaledSubsequent[i] * adjScale));
+            }
+          }
+          scaledSum = scaledSubsequent.reduce((sum, d) => sum + d, 0);
+        }
+        for (let i = scaledSubsequent.length - 1; i >= 0 && scaledSum > allowedSubsequent; i -= 1) {
+          if (scaledSubsequent[i] > minFloor) {
+            const cut = Math.min(scaledSubsequent[i] - minFloor, scaledSum - allowedSubsequent);
+            scaledSubsequent[i] -= cut;
+            scaledSum -= cut;
+          }
+        }
+      }
+
+      finalDelays = [firstDelay, ...scaledSubsequent];
+    }
   }
 
-  return limited.map((text, idx) => {
-    let delay = rawDelays[idx];
-    if (idx > 0 && scaleFactor < 1.0) {
-      delay = Math.max(160, Math.round(delay * scaleFactor));
-    }
+  return sentences.map((text, idx) => {
+    const delay = finalDelays[idx];
     currentTime += delay;
     return {
       text,

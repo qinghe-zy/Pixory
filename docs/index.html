@@ -156,11 +156,13 @@
       </a>
 
       <nav class="flex items-center gap-5 sm:gap-7 text-xs sm:text-[13px] text-body">
-        <!-- Delicate Circle + Triangle Play Button (置于使用手记左侧，淡雅克制) -->
+        <!-- Delicate Circle + Triangle Play Button (暂时关闭，视频不予公布) -->
         <button type="button"
-                class="video-play-trigger w-7 h-7 -my-1 flex items-center justify-center text-ink/35 hover:text-ink/80 hover:scale-110 active:scale-95 transition-all cursor-pointer"
-                title="放映叙事电影短片 (100s)"
-                aria-label="播放视频">
+                class="video-play-trigger hidden w-7 h-7 -my-1 items-center justify-center text-ink/35 hover:text-ink/80 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                title="放映概念动画短片《小世界》"
+                aria-label="播放视频"
+                style="display: none;"
+                aria-hidden="true">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
             <!-- Right half solid: from (12,2) to (12,22) -->
             <path d="M 12 2 A 10 10 0 0 1 12 22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -275,8 +277,8 @@
       <div class="relative z-10 flex items-center justify-between px-4 sm:px-6 py-3 sm:py-3.5 border-b border-[#8A6B47]/20 bg-[#161513]/92 backdrop-blur-md">
         <div class="flex items-center space-x-2.5 sm:space-x-3">
           <span class="w-2 h-2 rounded-full bg-[#D4A840] shadow-[0_0_8px_rgba(212,168,64,0.6)]"></span>
-          <span class="text-[11px] sm:text-[12px] tracking-[0.16em] font-serif uppercase text-[#EADFCB]">PIXORY · 叙事电影短片</span>
-          <span class="hidden xs:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono text-[#D4A840]/90 bg-[#D4A840]/10 border border-[#D4A840]/25">1080P · 100s</span>
+          <span class="text-[11px] sm:text-[12px] tracking-[0.16em] font-serif uppercase text-[#EADFCB]">PIXORY · 概念动画短片《小世界》</span>
+          <span class="hidden xs:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono text-[#D4A840]/90 bg-[#D4A840]/10 border border-[#D4A840]/25">1080P · 60FPS · 45s</span>
         </div>
         <button id="video-modal-close" type="button" class="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-white/15 bg-white/5 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/15 transition-all duration-200 cursor-pointer" aria-label="关闭视频">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -285,11 +287,8 @@
 
       <!-- 16:9 Video Player Viewport Container -->
       <div class="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
-        <video id="pixory-main-video" class="w-full h-full object-contain block" playsinline controls muted preload="metadata">
-          <source src="assets/videos/Pixory-Story-100s.mp4" type="video/mp4">
-          <source src="../pixory-video/out/Pixory-Story-100s.mp4" type="video/mp4">
-          <source src="../../pixory-video/out/Pixory-Story-100s.mp4" type="video/mp4">
-          您的浏览器暂不支持直接播放该视频。
+        <video id="pixory-main-video" class="w-full h-full object-contain block" playsinline controls muted preload="none">
+          <!-- 视频暂未公开发布 -->
         </video>
         <!-- Floating Exposed Sound/Volume Toggle Button (默认静音，纯净图标按钮，无常驻文字) -->
         <button id="video-sound-toggle" type="button" class="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/65 hover:bg-black/85 active:scale-95 backdrop-blur-md border border-white/25 text-white flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.4)] transition-all cursor-pointer group" title="切换声音" aria-label="切换声音">

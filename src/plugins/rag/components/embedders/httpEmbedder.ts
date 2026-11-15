@@ -17,9 +17,11 @@ export class HttpRagEmbedder implements IRagEmbedder {
   public readonly id = 'embedder:http';
   public readonly kind = 'embedder' as const;
   public readonly dimensions: number;
+  public readonly modelId: string;
 
   constructor(private options: HttpEmbedderOptions) {
     this.dimensions = options.dimensions ?? 1536;
+    this.modelId = options.model;
   }
 
   public async embedQuery(text: string): Promise<number[]> {

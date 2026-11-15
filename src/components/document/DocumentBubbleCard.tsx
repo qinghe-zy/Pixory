@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -32,7 +32,7 @@ export interface DocumentBubbleCardProps {
   versionLabel?: string;
   onPress?: () => void;
   onShare?: () => void;
-  onLongPress?: () => void;
+  onLongPress?: (event: GestureResponderEvent) => void;
   accessibilityHint?: string;
 }
 

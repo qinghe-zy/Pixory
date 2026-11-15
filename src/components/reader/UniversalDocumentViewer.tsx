@@ -35,7 +35,12 @@ import type {
 } from '../../ai/readers/readerTypes';
 import { parseDocxToHtml } from '../../ai/documentParsers/docxParser';
 import { parsePptx, renderPptxSlidesHtml } from '../../ai/documentParsers/pptxParser';
+import type { PixorySpace } from '../../database';
 import { radius, spacing, typography } from '../../design/tokens';
+import {
+  containsBinaryNullOrGarbledText,
+  resolveAttachmentKind,
+} from '../../utils/attachmentKind';
 import { AiPdfReader, type AiPdfReaderHandle } from '../ai/AiPdfReader';
 import { safeShareFileAsync } from '../../services/export/exportDocumentService';
 import { aiLightColors } from '../ai/aiLightTheme';
@@ -58,6 +63,7 @@ export interface UniversalDocumentViewerHandle {
 
 export interface UniversalDocumentViewerProps {
   source: UniversalDocumentSource;
+  space?: PixorySpace;
   theme?: DocumentReaderTheme;
   fontSize?: number;
   layoutMode?: DocumentLayoutMode;
@@ -109,6 +115,7 @@ export const UniversalDocumentViewer = forwardRef<
   UniversalDocumentViewerProps
 >(({
   source,
+  space = 'normal',
   theme = 'paper',
   fontSize = 16,
   layoutMode = 'flow',
@@ -182,6 +189,14 @@ export const UniversalDocumentViewer = forwardRef<
           return;
         }
 
+        if (
+          resolveAttachmentKind(mimeType, fileName, fileUri, {
+            includeSvg: true,
+          }) === 'image'
+        ) {
+          throw new Error('该附件为图片格式，无法以文档文本预览。请点击下方「其他应用打开」查看原图。');
+        }
+
         let contentPayload = '';
         let fallbackSemanticDocx = '';
 
@@ -201,7 +216,7 @@ export const UniversalDocumentViewer = forwardRef<
               FileSystem.readAsStringAsync(usableUri, {
                 encoding: FileSystem.EncodingType.Base64,
               }),
-              parseDocxToHtml({ fileUri: usableUri, space: 'normal' }).catch(() => null),
+              parseDocxToHtml({ fileUri: usableUri, space }).catch(() => null),
             ]);
             contentPayload = b64;
             if (parsed) {
@@ -241,7 +256,7 @@ export const UniversalDocumentViewer = forwardRef<
               encoding: FileSystem.EncodingType.Base64,
             });
             // 异步提取幻灯片目录供抽屉使用，不阻塞主渲染
-            parsePptx({ fileUri: usableUri, space: 'normal' })
+            parsePptx({ fileUri: usableUri, space })
               .then((parsed) => {
                 if (isMounted && parsed.slides.length > 0) {
                   onTocExtractedRef.current?.(
@@ -270,19 +285,30 @@ export const UniversalDocumentViewer = forwardRef<
               : fileUri
                 ? await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 })
                 : '';
+          if (containsBinaryNullOrGarbledText(textToParse)) {
+            throw new Error('该文件包含二进制或乱码内容，无法直接以文本预览，请使用「其他应用打开」查看原文件。');
+          }
           contentPayload = (await marked.parse(textToParse || '暂无内容')) as string;
         } else if (format === 'html') {
-          contentPayload = fileUri
+          const rawHtml = fileUri
             ? await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 })
             : rawText || '';
+          if (containsBinaryNullOrGarbledText(rawHtml)) {
+            throw new Error('该文件包含二进制或乱码内容，无法直接以文本预览，请使用「其他应用打开」查看原文件。');
+          }
+          contentPayload = rawHtml;
         } else {
           // txt / code
-          contentPayload =
+          const plainContent =
             rawText !== undefined
               ? rawText
               : fileUri
                 ? await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 })
                 : '暂无文本内容';
+          if (containsBinaryNullOrGarbledText(plainContent)) {
+            throw new Error('该文件包含二进制或乱码内容，无法直接以文本预览，请使用「其他应用打开」查看原文件。');
+          }
+          contentPayload = plainContent;
         }
 
         if (isMounted) {
@@ -314,7 +340,7 @@ export const UniversalDocumentViewer = forwardRef<
     return () => {
       isMounted = false;
     };
-  }, [format, fileUri, rawText, htmlViewMode, enableBlockIds, locator, reloadCounter]);
+  }, [format, fileUri, rawText, htmlViewMode, enableBlockIds, locator, reloadCounter, space]);
 
   // Push theme changes to WebView without reloading document
   useEffect(() => {

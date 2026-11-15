@@ -9,6 +9,7 @@ import {
   aiThreadRepository,
   settingsRepository,
   runWithDatabaseSpace,
+  runWithTransactionRetry,
   type AiBoundaryMode,
   type AiCitationRecord,
   type AiContextType,
@@ -22,13 +23,22 @@ import {
 } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessagePageCursor, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiThreadHistoryPage, AiThreadHistoryPageCursor, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
+import {
+  buildTargetRoleV2MemoryBundle,
+  planRoleV2SpaceMove,
+  type RoleV2MemoryBundle,
+  type RoleV2SpaceMovePlan,
+} from '../database/repositories/memoryV2SpaceMoveHelper';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { settleWithConcurrency } from './aiBoundedConcurrency';
 import { assertAiChatAttachments } from './aiAttachmentPolicy';
 import { executeTwoStepDocQuery } from '../services/docQuery/aiDocQueryCoordinator';
 import { detectDocQueryIntent } from '../services/docQuery/docQueryIntentDetector';
-import { AI_CHAT_ATTACHMENT_READ_CONCURRENCY } from '../constants/limits';
+import {
+  AI_CHAT_ATTACHMENT_READ_CONCURRENCY,
+  AI_CHAT_IMAGE_MAX_BYTES,
+} from '../constants/limits';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
 import { assertAiThreadSpaceMoveAllowed } from './aiThreadSpaceMovePolicy';
@@ -48,8 +58,15 @@ import {
   rollbackThreadContinuityImport as rollbackThreadContinuityImportService,
 } from './aiContinuityImportService';
 import { buildSystemAssistantPrompt } from './systemAssistant';
-import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
+import {
+  buildMaterialBoundPrompt,
+  buildNormalChatPrompt,
+  extractReplayableUserTurnContent,
+  fitBuiltPromptToContextBudget,
+  splitCompanionMemoryPrefix,
+} from './promptBuilder';
 import { loadCurrentIpCitationSnippet, retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
+import { resolvePixoryEmbedder } from './rag/pixoryRagEmbedder';
 import {
   buildCitationRegistry,
   CitationMarkerStreamParser,
@@ -64,6 +81,8 @@ import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from './aiContextSett
 import {
   buildCompanionMemoryPrefix,
   buildStableMemoryPrefix,
+  getSelectedStableClaimIds,
+  touchInjectedMemories,
 } from './aiMemoryService';
 import { scheduleDeferredCompanionMemoryMaintenance } from './aiMemoryMaintenanceService';
 import { drainCurrentTurnMemory } from './memory/localFastExtractor';
@@ -71,6 +90,7 @@ import { detectMemoryIntent } from './memory/memoryIntentDetector';
 import { writeCurrentTurnObservation } from './memory/memoryCurrentTurnRepository';
 import {
   compileMemoryContextPlan,
+  createEmptyMemoryContextPlan,
   type MemoryContextPlan,
 } from './memory/memoryContextPlanService';
 import { resolveMemoryIntentTargetClaimIds } from './memory/memoryRetrievalService';
@@ -160,12 +180,18 @@ import { verifyPersonalPassword } from '../services/personalSystemService';
 import {
   copyAiRoleAvatarToAppStorage,
   copyLocalFile,
+  deleteLocalFile,
   ensureLocalDirectory,
   generateInternalFilename,
   getAiDocumentsDir,
   getAiRoleAvatarsDir,
   joinStoragePath,
 } from '../services/fileStorageService';
+import {
+  normalizeImageMimeType,
+  resolveImageFileExtension,
+} from '../utils/attachmentKind';
+import { copyCachedImageDimensions } from '../utils/chatImageSizing';
 import { normalizeBaseUrl, type AiChatAttachment, type AiStreamEvent } from './providers/base';
 import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
 import { resolveModelIconBrand, type AiModelIconBrand } from './aiModelIconService';
@@ -223,6 +249,7 @@ export interface CreateThreadFromContextInput {
 export interface SendUserMessageInput {
   space: PixorySpace;
   threadId: string;
+  userMessageId?: string;
   content: string;
   attachments?: AiOutgoingAttachment[];
   branchRootMessageId?: string | null;
@@ -231,6 +258,11 @@ export interface SendUserMessageInput {
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
+  onAttachmentsPersisted?: (payload: {
+    threadId: string;
+    userMessageId: string;
+    attachments: AiMessageAttachmentRecord[];
+  }) => void;
   onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
@@ -296,12 +328,18 @@ export interface AiGenerationCreatedInfo {
 export interface ReplyToAssistantMessageInput {
   space: PixorySpace;
   threadId: string;
+  userMessageId?: string;
   assistantMessageId: string;
   content: string;
   attachments?: AiOutgoingAttachment[];
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
+  onAttachmentsPersisted?: (payload: {
+    threadId: string;
+    userMessageId: string;
+    attachments: AiMessageAttachmentRecord[];
+  }) => void;
   onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
@@ -685,9 +723,6 @@ export interface AiMessageFavoriteListItem {
 }
 
 const CHAT_MESSAGE_PAGE_SIZE = 60;
-const DEEP_MEMORY_LIMIT = 5;
-const RELATED_HISTORY_LIMIT = 4;
-const DEEP_MEMORY_RECENT_MESSAGE_LIMIT = 30;
 const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
 const MODEL_TITLE_MAX_CHARS = 8;
 const REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT = 12;
@@ -960,6 +995,10 @@ function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const random = Math.random().toString(36).slice(2, 10);
   return `${prefix}_${timestamp}_${random}`;
+}
+
+export function createAiMessageId(): string {
+  return createAiId('aimsg');
 }
 
 function parseFavoriteBranchScopes(value: string): AiBranchScope[] {
@@ -1374,29 +1413,43 @@ function describeOutgoingAttachmentKind(kind: AiOutgoingAttachment['kind']): str
 }
 
 async function readImageAttachment(attachment: AiOutgoingAttachment): Promise<AiChatAttachment> {
+  const normalizedMime = normalizeImageMimeType(
+    attachment.mimeType,
+    attachment.name,
+    attachment.uri,
+  );
   let readUri = attachment.uri;
-  // Android ImagePicker 有时返回 content:// URI，Expo FileSystem 无法直接读取；
-  // 需要先将文件复制到沙盒缓存目录，获得 file:// 路径才能读取。
-  if (readUri.startsWith('content://')) {
-    const ext = attachment.mimeType === 'image/png' ? '.png'
-      : attachment.mimeType === 'image/gif' ? '.gif'
-      : attachment.mimeType === 'image/webp' ? '.webp'
-      : '.jpg';
-    const cacheUri = `${FileSystem.cacheDirectory}pixory_img_${Date.now()}${ext}`;
-    await FileSystem.copyAsync({ from: readUri, to: cacheUri });
-    readUri = cacheUri;
+  let tempCacheUri: string | null = null;
+  try {
+    // Android DocumentPicker / ImagePicker 有时返回 content:// URI，Expo FileSystem 无法直接读取；
+    // 先流式复制到沙盒临时目录，读取完成后在 finally 中清理临时副本。
+    if (readUri.startsWith('content://')) {
+      const ext = resolveImageFileExtension(normalizedMime, attachment.name, attachment.uri);
+      tempCacheUri = `${FileSystem.cacheDirectory}pixory_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      await copyLocalFile(readUri, tempCacheUri);
+      readUri = tempCacheUri;
+    }
+    const info = await FileSystem.getInfoAsync(readUri);
+    if (!info.exists || info.isDirectory) {
+      throw new Error(`图片附件 ${attachment.name} 不存在或无法读取。`);
+    }
+    if (typeof info.size === 'number' && info.size > AI_CHAT_IMAGE_MAX_BYTES) {
+      throw new Error(`图片附件 ${attachment.name} 体积过大，无法发送给模型。`);
+    }
+    const base64Data = await FileSystem.readAsStringAsync(readUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return {
+      base64Data,
+      mimeType: normalizedMime,
+      name: attachment.name,
+      type: 'input_image',
+    };
+  } finally {
+    if (tempCacheUri) {
+      await deleteLocalFile(tempCacheUri).catch(() => undefined);
+    }
   }
-  const base64Data = await FileSystem.readAsStringAsync(readUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  // 不在前端对 DeepSeek 图片做 MIME/签名校验（mimeType 可能为 null 导致误抛），
-  // 交由服务端点自行判断是否支持，返回 API 报错即可。
-  return {
-    base64Data,
-    mimeType: attachment.mimeType || 'image/jpeg',
-    name: attachment.name,
-    type: 'input_image',
-  };
 }
 
 async function buildDocumentAttachmentContext(input: {
@@ -1514,7 +1567,15 @@ async function prepareOutgoingAttachments(input: {
   }
   const resolvedAttachments = sizeResults
     .filter((result): result is PromiseFulfilledResult<AiOutgoingAttachment> => result.status === 'fulfilled')
-    .map((result) => result.value);
+    .map((result) => {
+      const attachment = result.value;
+      return attachment.kind === 'image'
+        ? {
+            ...attachment,
+            mimeType: normalizeImageMimeType(attachment.mimeType, attachment.name, attachment.uri),
+          }
+        : attachment;
+    });
   assertAiChatAttachments(resolvedAttachments);
 
   const imageAttachments = resolvedAttachments.filter((attachment) => attachment.kind === 'image');
@@ -1588,6 +1649,7 @@ export async function copyAttachmentToThreadStorage(input: {
   await ensureLocalDirectory(targetDir);
   const targetUri = joinStoragePath(targetDir, generateInternalFilename(input.attachment.name));
   await copyLocalFile(input.attachment.uri, targetUri);
+  copyCachedImageDimensions(input.attachment.uri, targetUri);
   return targetUri;
 }
 
@@ -1636,6 +1698,7 @@ interface AiRoleCardSpaceMoveBundle {
     targetRoleCardId: string;
   }>;
   snapshots: AiThreadExportSnapshot[];
+  v2RoleMemory: RoleV2MemoryBundle;
 }
 
 function rewriteThreadRoleSnapshotForMove(input: {
@@ -1661,6 +1724,8 @@ async function copyRoleCardsBetweenSpaces(input: {
   memoryIdMap: Map<string, string>;
   roleCards: AiRoleCardRecord[];
   roleIdMap: Map<string, string>;
+  roleV2Memory: RoleV2MemoryBundle;
+  roleV2Plan: RoleV2SpaceMovePlan;
   skippedMemoryIds: Set<string>;
   snapshots: AiThreadExportSnapshot[];
   targetSpace: PixorySpace;
@@ -1758,7 +1823,15 @@ async function copyRoleCardsBetweenSpaces(input: {
         };
       });
 
-    return { copiedTargetAvatarUris, memories, roleCards, snapshots };
+    const v2RoleMemory = buildTargetRoleV2MemoryBundle({
+      movedMessageIds,
+      plan: input.roleV2Plan,
+      roleIdMap: input.roleIdMap,
+      source: input.roleV2Memory,
+      targetSpace: input.targetSpace,
+    });
+
+    return { copiedTargetAvatarUris, memories, roleCards, snapshots, v2RoleMemory };
   } catch (error) {
     await cleanupDeletedMaterialFiles(copiedTargetAvatarUris);
     throw error;
@@ -1791,25 +1864,37 @@ async function persistOutgoingAttachments(input: {
   messageId: string;
   space: PixorySpace;
   threadId: string;
-}): Promise<AiOutgoingAttachment[]> {
+}): Promise<{ outgoing: AiOutgoingAttachment[]; records: AiMessageAttachmentRecord[] }> {
   const attachments = input.attachments ?? [];
   if (attachments.length === 0) {
-    return [];
+    return { outgoing: [], records: [] };
   }
   assertAiChatAttachments(attachments);
-  const persisted: AiOutgoingAttachment[] = [];
+  const outgoing: AiOutgoingAttachment[] = [];
+  const records: AiMessageAttachmentRecord[] = [];
   for (const attachment of attachments) {
     if (attachment.kind === 'video') {
       continue;
     }
     const attachmentKind = attachment.kind;
+    const normalizedMime = attachmentKind === 'image'
+      ? normalizeImageMimeType(attachment.mimeType, attachment.name, attachment.uri)
+      : (attachment.mimeType ?? null);
     const importedDocument = attachment.kind === 'document'
       ? await importDocumentAttachment({ attachment, space: input.space, threadId: input.threadId })
       : null;
     const localUri = importedDocument?.localUri
       ?? await copyAttachmentToThreadStorage({ attachment, space: input.space, threadId: input.threadId });
-    const persistedAttachment: AiOutgoingAttachment = { ...attachment, documentId: importedDocument?.id ?? null, uri: localUri };
-    await runWithDatabaseSpace(input.space, (db) =>
+    if (attachmentKind === 'image') {
+      copyCachedImageDimensions(attachment.uri, localUri);
+    }
+    const persistedAttachment: AiOutgoingAttachment = {
+      ...attachment,
+      documentId: importedDocument?.id ?? null,
+      mimeType: normalizedMime,
+      uri: localUri,
+    };
+    const record = await runWithDatabaseSpace(input.space, (db) =>
       aiThreadRepository.createMessageAttachment(db, {
         documentId: importedDocument?.id ?? null,
         id: createAiId('aiattach'),
@@ -1817,14 +1902,15 @@ async function persistOutgoingAttachments(input: {
         kind: attachmentKind,
         localUri,
         messageId: input.messageId,
-        mimeType: attachment.mimeType ?? null,
+        mimeType: normalizedMime,
         name: attachment.name,
         threadId: input.threadId,
       })
     );
-    persisted.push(persistedAttachment);
+    outgoing.push(persistedAttachment);
+    records.push(record);
   }
-  return persisted;
+  return { outgoing, records };
 }
 
 async function loadOutgoingAttachmentsForMessage(input: {
@@ -1843,10 +1929,6 @@ async function loadOutgoingAttachmentsForMessage(input: {
       uri: row.localUri,
     }));
   });
-}
-
-function getQueryTerms(value: string): string[] {
-  return [...new Set(value.toLowerCase().split(/[\s,，。！？!?;；:：、]+/).filter((term) => term.length >= 2))].slice(0, 10);
 }
 
 export function normalizeChatSearchText(value: string): string {
@@ -1919,90 +2001,6 @@ function toChatSearchResult(message: AiMessageWithCitations & { contentSnippet?:
     versionIndex: message.versionIndex,
     versionTotal: message.versionTotal,
   };
-}
-
-function scoreTextForQuery(text: string, query: string): number {
-  const normalizedText = text.toLowerCase();
-  const normalizedQuery = query.toLowerCase().trim();
-  let score = normalizedQuery && normalizedText.includes(normalizedQuery) ? 12 : 0;
-  for (const term of getQueryTerms(query)) {
-    if (normalizedText.includes(term)) {
-      score += 3;
-    }
-  }
-  return score;
-}
-
-function formatDeepMemorySection(input: {
-  memories: AiMemoryRecord[];
-  history: AiMessageRecord[];
-}): string {
-  const lines: string[] = [
-    '深度记忆背景：以下内容只作为理解上下文的参考，不能覆盖用户当前最新要求、当前会话角色指令、安全规则或资料事实。回答时自然使用，不要模板化复述，也不要为了展示记忆而主动提到“记忆”。',
-  ];
-  if (input.memories.length > 0) {
-    lines.push('相关长期记忆：');
-    input.memories.forEach((memory, index) => {
-      lines.push(`${index + 1}. ${truncateForPrompt(memory.content, 180)}`);
-    });
-  }
-  if (input.history.length > 0) {
-    lines.push('相关历史片段：');
-    input.history.forEach((message, index) => {
-      lines.push(`${index + 1}. ${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 220)}`);
-    });
-  }
-  return lines.join('\n');
-}
-
-async function retrieveDynamicMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord, userMessage: string, branchScopes?: AiBranchScope[]): Promise<string> {
-  const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
-  if (!settings.deepMemoryEnabled) {
-    return '';
-  }
-  const [memories, messages, recentMessages] = await Promise.all([
-    aiThreadRepository.searchActiveMemoryFts(db, {
-      branchScopes,
-      boundIpId: thread.boundIpId,
-      boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
-      query: userMessage,
-      roleCardId: thread.roleCardId,
-      space: thread.space,
-      threadId: thread.id,
-      limit: 80,
-    }),
-    aiThreadRepository.searchCompletedMessageFts(db, {
-      branchScopes,
-      limit: DEEP_MEMORY_RECENT_MESSAGE_LIMIT + RELATED_HISTORY_LIMIT + 12,
-      query: userMessage,
-      threadId: thread.id,
-    }),
-    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, DEEP_MEMORY_RECENT_MESSAGE_LIMIT, branchScopes),
-  ]);
-  const rankedMemories = memories
-    .map((memory) => ({
-      memory,
-      score: scoreTextForQuery(memory.content, userMessage) + memory.importance * 2 + (memory.type === 'correction' ? 4 : 0),
-    }))
-    .filter((item) => item.score > 0 || item.memory.importance >= 3)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, DEEP_MEMORY_LIMIT)
-    .map((item) => item.memory);
-  const recentIds = new Set(recentMessages.map((message) => message.id));
-  const rankedHistory = messages
-    .filter((message) => message.status === 'completed' && message.role !== 'system' && !recentIds.has(message.id))
-    .map((message) => ({ message, score: scoreTextForQuery(message.content, userMessage) }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, RELATED_HISTORY_LIMIT)
-    .map((item) => item.message);
-  if (rankedMemories.length > 0) {
-    await aiThreadRepository.touchMemories(db, rankedMemories.map((memory) => memory.id));
-  }
-  return formatDeepMemorySection({
-    history: rankedHistory,
-    memories: rankedMemories,
-  });
 }
 
 function invalidThreadModel(message: string, providerId?: string | null, modelId?: string | null): ResolvedThreadChatModel {
@@ -2325,18 +2323,21 @@ async function buildPromptForThread(
   const generationMetrics = options?.generationMetrics ?? null;
   const fastPathContext = await runWithDatabaseSpace(thread.space, async (db) => {
     const isSystemAssistant = thread.id === 'pixory-system-assistant';
-    const [threadMaterialCount, messageCount, roleCard, systemIps] = await Promise.all([
-      aiKnowledgeRepository.countDocumentsByOwner(db, {
-        ownerId: thread.id,
-        ownerType: 'thread',
-        space: thread.space,
-      }),
-      aiThreadRepository.countCompletedNonSystemMessages(db, thread.id, branchScopes),
-      thread.roleCardId ? aiRoleCardRepository.findById(db, thread.roleCardId) : Promise.resolve(null),
-      isSystemAssistant ? ipRepository.findAll(db) : Promise.resolve([]),
-    ]);
+    const threadMaterialCount = await aiKnowledgeRepository.countDocumentsByOwner(db, {
+      ownerId: thread.id,
+      ownerType: 'thread',
+      space: thread.space,
+    });
+    const messageCount = await aiThreadRepository.countCompletedNonSystemMessages(db, thread.id, branchScopes);
+    const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
+    const systemIps = isSystemAssistant ? await ipRepository.findAll(db) : [];
+    const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+    if (isSystemAssistant) {
+      memorySettings.deepMemoryEnabled = false;
+    }
     return {
       hasThreadMaterials: threadMaterialCount > 0,
+      memorySettings,
       messageCount,
       roleCard,
       systemIps,
@@ -2353,23 +2354,27 @@ async function buildPromptForThread(
       effectiveSystemPrompt = fastPathContext.roleCard.prompt;
     }
   }
+  const memorySettings = fastPathContext.memorySettings;
   const fastPath = classifyAiChatFastPath({
     contextType: thread.contextType,
+    hasMemoryContext: memorySettings.deepMemoryEnabled,
     hasThreadMaterials: fastPathContext.hasThreadMaterials,
     includeIpDocuments: thread.includeIpDocuments,
     messageCount: fastPathContext.messageCount,
     userMessage,
   });
+  const useMemoryPipeline =
+    fastPath.classification !== 'normal_no_material_fast_path' && memorySettings.deepMemoryEnabled;
+  const shouldSelectCompanionArtifact =
+    options.allowCompanionArtifact !== false
+    && Boolean(thread.roleCardId)
+    && !isSystemAssistantThread(thread.id);
   const memoryPromise = (async () => {
     if (generationMetrics) {
       markGenerationMetric(generationMetrics, 'memoryResolveStartAt');
     }
     try {
       const memoryBundle = await runWithDatabaseSpace(thread.space, async (db) => {
-        const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
-        if (thread.id === 'pixory-system-assistant') {
-          memorySettings.deepMemoryEnabled = false;
-        }
         if (generationMetrics) {
           markGenerationMetric(generationMetrics, 'historyLoadStartAt');
         }
@@ -2382,35 +2387,51 @@ async function buildPromptForThread(
         if (generationMetrics) {
           markGenerationMetric(generationMetrics, 'historyLoadEndAt');
         }
-        const intent = detectMemoryIntent(userMessage);
-        const excludedClaimIds = await resolveMemoryIntentTargetClaimIds(db, {
-          branchScopes,
-          observation: intent,
-          thread,
-        });
-        const compiledMemory = await compileMemoryContextPlan(db, {
-          branchScopes,
-          excludedClaimIds,
-          historyMessageIds: coverage.plan.recentMessageIds,
-          query: memorySettings.deepMemoryEnabled ? userMessage : '',
-          thread,
-        });
-        const artifactSelection = await selectCompanionArtifactForTurn(db, {
-          allowArtifact: options.allowCompanionArtifact !== false,
-          assistantMessageId: options.assistantMessageId,
-          branchRouteHash: coverage.plan.branchRouteHash,
-          branchScopes: branchScopes ?? [],
-          now: new Date().toISOString(),
-          thread,
-        });
+        const intent = useMemoryPipeline ? detectMemoryIntent(userMessage) : null;
+        const excludedClaimIds =
+          useMemoryPipeline && intent && intent.intent !== 'none'
+            ? await resolveMemoryIntentTargetClaimIds(db, {
+                branchScopes,
+                observation: intent,
+                thread,
+              })
+            : [];
+        const stableMemoryPrefix = useMemoryPipeline
+          ? await buildStableMemoryPrefix(db, thread, { branchScopes, excludedClaimIds, settings: memorySettings })
+          : '';
+        const compiledMemory = useMemoryPipeline
+          ? await compileMemoryContextPlan(db, {
+              branchScopes,
+              excludedClaimIds: Array.from(new Set([...excludedClaimIds, ...getSelectedStableClaimIds(memorySettings)])),
+              historyMessageIds: coverage.plan.recentMessageIds,
+              query: memorySettings.deepMemoryEnabled ? userMessage : '',
+              thread,
+            })
+          : {
+              context: '',
+              plan: createEmptyMemoryContextPlan(thread.id, coverage.plan.lineageVersion),
+            };
+        const artifactSelection = shouldSelectCompanionArtifact
+          ? await selectCompanionArtifactForTurn(db, {
+              allowArtifact: options.allowCompanionArtifact !== false,
+              assistantMessageId: options.assistantMessageId,
+              branchRouteHash: coverage.plan.branchRouteHash,
+              branchScopes: branchScopes ?? [],
+              now: new Date().toISOString(),
+              thread,
+            })
+          : null;
+        const companionMemoryPrefix = useMemoryPipeline
+          ? await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings })
+          : '';
         return {
-          companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+          companionMemoryPrefix,
           coverage,
           artifactSelection,
           dynamicMemoryContext: compiledMemory.context,
           memoryContextPlan: compiledMemory.plan,
           memorySettings,
-          stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, excludedClaimIds, settings: memorySettings }),
+          stableMemoryPrefix,
         };
       });
       return memoryBundle;
@@ -2425,6 +2446,22 @@ async function buildPromptForThread(
       markGenerationMetric(generationMetrics, 'retrievalStartAt');
     }
     try {
+      let sharedQueryVector: number[] | undefined;
+      const isDualRetrieval = thread.contextType !== 'normal' && Boolean(thread.boundIpId || thread.boundKnowledgeBaseId);
+      if (isDualRetrieval && fastPath.retrievalTier !== 'keyword' && fastPath.retrievalTier !== 'none') {
+        try {
+          const embedder = await resolvePixoryEmbedder(thread.space);
+          if (embedder) {
+            const vector = await embedder.embedQuery(userMessage);
+            if (vector.length > 0) {
+              sharedQueryVector = vector;
+            }
+          }
+        } catch {
+          // 容错降级，由后续各路独立执行
+        }
+      }
+
       const skippedRetrievalResult: ThreadRetrievalResult = { mode: 'skipped', partial: false, snippets: [], timedOut: false };
       const threadMaterialRetrievalPromise: Promise<ThreadRetrievalResult> = fastPath.retrievalTier === 'none'
         ? Promise.resolve(skippedRetrievalResult)
@@ -2433,6 +2470,7 @@ async function buildPromptForThread(
             ownerType: 'thread',
             ownerId: thread.id,
             query: userMessage,
+            queryVector: sharedQueryVector,
             tier: fastPath.retrievalTier === 'keyword' ? 'keyword' : 'full',
           });
       if (thread.contextType === 'normal') {
@@ -2452,6 +2490,7 @@ async function buildPromptForThread(
             ownerType,
             ownerId,
             query: userMessage,
+            queryVector: sharedQueryVector,
             tier: 'full',
           })
         : { mode: 'keyword' as const, partial: false, snippets: [], timedOut: false };
@@ -2471,7 +2510,7 @@ async function buildPromptForThread(
     }
   })();
   const [
-    { artifactSelection, companionMemoryPrefix, coverage, dynamicMemoryContext, memoryContextPlan, memorySettings, stableMemoryPrefix },
+    { artifactSelection, companionMemoryPrefix, coverage, dynamicMemoryContext, memoryContextPlan, stableMemoryPrefix },
     { boundOwnerSnippets, threadMaterialRetrieval, threadMaterialSnippets },
   ] = await Promise.all([memoryPromise, retrievalPromise]);
   const finalFastPath = classifyAiChatFastPath({
@@ -2508,6 +2547,7 @@ async function buildPromptForThread(
     generationMetrics.context.retrievalPartial = threadMaterialRetrieval.partial;
     generationMetrics.context.retrievalTimedOut = threadMaterialRetrieval.timedOut;
   }
+  const { stableProfilePrefix, dynamicRelationshipObservation } = splitCompanionMemoryPrefix(companionMemoryPrefix);
   const memoryEpoch = [
     'thread',
     thread.id,
@@ -2515,7 +2555,7 @@ async function buildPromptForThread(
     thread.boundaryMode,
     memoryContextPlan.projectionVersion,
     memoryContextPlan.lineageVersion,
-    hashPromptCacheText([coverage.stableSummaryText, stableMemoryPrefix].filter(Boolean).join('\n\n')).slice(0, 16),
+    hashPromptCacheText([coverage.stableSummaryText, stableMemoryPrefix, stableProfilePrefix].filter(Boolean).join('\n\n')).slice(0, 16),
   ].join(':');
   const roleCardContext = buildRolePromptContextFromThread(thread);
   const systemAssistantClockContext = isSystemAssistantThread(thread.id) ? buildSystemAssistantClockContext() : '';
@@ -2536,7 +2576,7 @@ async function buildPromptForThread(
     }] : []),
     ...(options?.companionDynamicSegments ?? []),
     ...(artifactSelection ? [artifactSelection.segment] : []),
-    ...(companionMemoryPrefix ? [{
+    ...(dynamicRelationshipObservation ? [{
       branchRouteHash: coverage.plan.branchRouteHash,
       expiresAt: null,
       id: `user-observation:${memoryContextPlan.projectionVersion}`,
@@ -2544,8 +2584,8 @@ async function buildPromptForThread(
       priority: 60,
       scope: `thread:${thread.id}`,
       source: 'automatic-profile-and-relationship',
-      text: companionMemoryPrefix,
-      tokenEstimate: estimatePromptTokens(companionMemoryPrefix),
+      text: dynamicRelationshipObservation,
+      tokenEstimate: estimatePromptTokens(dynamicRelationshipObservation),
       traceOnly: false,
       trust: 'derived' as const,
       type: 'user_observation' as const,
@@ -2581,6 +2621,7 @@ async function buildPromptForThread(
     return {
       prompt: builderFn({
         chatMode,
+        companionMemoryPrefix,
         dynamicMemoryContext,
         dynamicSegments,
         memoryEpoch,
@@ -2591,6 +2632,7 @@ async function buildPromptForThread(
         roleCardContext,
         systemPrompt: thread.contextType === 'normal' ? effectiveSystemPrompt : effectiveSystemPrompt || DEFAULT_AI_ROLE_PROMPT,
         materialSnippets: citationRegistry.map((snippet) => ({ label: snippet.label, refId: snippet.refId, text: snippet.text })),
+        pinnedLoreSnapshot: thread.pinnedLoreSnapshot,
         attachmentPromptContext: options?.attachmentPromptContext ?? null,
         userMessage,
       }),
@@ -2611,6 +2653,7 @@ async function buildPromptForThread(
   return {
     prompt: builderFn({
       chatMode,
+      companionMemoryPrefix,
       editablePrompt: effectiveSystemPrompt || DEFAULT_AI_ROLE_PROMPT,
       dynamicMemoryContext,
       dynamicSegments,
@@ -2621,6 +2664,7 @@ async function buildPromptForThread(
       stableSummarySnapshot: coverage.stableSummaryText,
       roleCardContext,
       materialRules: materialRulesForMode(thread.boundaryMode),
+      pinnedLoreSnapshot: thread.pinnedLoreSnapshot,
       contextSummary: thread.title,
       snippets: snippets.map((snippet) => ({ label: snippet.label, refId: snippet.refId, text: snippet.text })),
       attachmentPromptContext: options?.attachmentPromptContext ?? null,
@@ -3151,10 +3195,8 @@ export async function listAiHomeThreads(input: {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
     
-    const [systemAssistantEnabled, fileTransferEnabled] = await Promise.all([
-      settingsRepository.getSystemAssistantEnabled(db),
-      settingsRepository.getFileTransferEnabled(db),
-    ]);
+    const systemAssistantEnabled = await settingsRepository.getSystemAssistantEnabled(db);
+    const fileTransferEnabled = await settingsRepository.getFileTransferEnabled(db);
     
     if (systemAssistantEnabled) {
       if (!threads.some(t => t.id === SYSTEM_ASSISTANT_THREAD_ID)) {
@@ -3261,25 +3303,59 @@ export async function ensureSystemAssistantThread(space: PixorySpace): Promise<v
   });
 }
 
+const fileTransferEnsureInFlight = new Map<PixorySpace, Promise<void>>();
+const ensuredFileTransferThreadDbs = new WeakSet<SQLiteDatabase>();
+
 export async function ensureFileTransferThread(space: PixorySpace): Promise<void> {
-  return runWithDatabaseSpace(space, async (db) => {
+  const existingPromise = fileTransferEnsureInFlight.get(space);
+  if (existingPromise) {
+    return existingPromise;
+  }
+  const promise = runWithDatabaseSpace(space, async (db) => {
+    if (ensuredFileTransferThreadDbs.has(db)) {
+      return;
+    }
     const thread = await aiThreadRepository.findThreadById(db, FILE_TRANSFER_THREAD_ID);
     if (!thread) {
-      await aiThreadRepository.createThread(db, {
-        id: FILE_TRANSFER_THREAD_ID,
-        space,
-        contextType: 'normal',
-        title: '文件传输助手',
-        titleStatus: 'custom',
-        systemPrompt: '',
-        roleInstructionWeight: 'default',
-        replyPreference: 'auto',
-        isPinned: false
-      });
+      try {
+        await aiThreadRepository.createThread(db, {
+          id: FILE_TRANSFER_THREAD_ID,
+          space,
+          contextType: 'normal',
+          title: '文件传输助手',
+          titleStatus: 'custom',
+          systemPrompt: '',
+          roleInstructionWeight: 'default',
+          replyPreference: 'auto',
+          isPinned: false
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('UNIQUE constraint')) {
+          throw error;
+        }
+        const concurrentThread = await aiThreadRepository.findThreadById(db, FILE_TRANSFER_THREAD_ID);
+        if (!concurrentThread) {
+          throw error;
+        }
+        if (concurrentThread.titleStatus !== 'custom' || concurrentThread.title !== '文件传输助手') {
+          await aiThreadRepository.updateThread(db, FILE_TRANSFER_THREAD_ID, {
+            titleStatus: 'custom',
+            title: '文件传输助手',
+          });
+        }
+      }
     } else if (thread.titleStatus !== 'custom' || thread.title !== '文件传输助手') {
       await aiThreadRepository.updateThread(db, FILE_TRANSFER_THREAD_ID, { titleStatus: 'custom', title: '文件传输助手' });
     }
+    ensuredFileTransferThreadDbs.add(db);
+  }).finally(() => {
+    if (fileTransferEnsureInFlight.get(space) === promise) {
+      fileTransferEnsureInFlight.delete(space);
+    }
   });
+  fileTransferEnsureInFlight.set(space, promise);
+  return promise;
 }
 
 export async function searchGlobalThreads(input: {
@@ -3290,10 +3366,8 @@ export async function searchGlobalThreads(input: {
   return runWithDatabaseSpace(input.space, async (db) => {
     // Fetch a larger pool of recent threads without text filtering (so we don't match message contents)
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', 1000, '');
-    const [systemAssistantEnabled, fileTransferEnabled] = await Promise.all([
-      settingsRepository.getSystemAssistantEnabled(db),
-      settingsRepository.getFileTransferEnabled(db),
-    ]);
+    const systemAssistantEnabled = await settingsRepository.getSystemAssistantEnabled(db);
+    const fileTransferEnabled = await settingsRepository.getFileTransferEnabled(db);
     const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
     const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
     const ipIds = threads
@@ -3794,10 +3868,15 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
       input.sourceSpace,
       roleCardIds
     );
-    return { roleCards, roleMemories, snapshots: exported };
+    const roleV2Memory = await aiThreadRepository.listRoleV2MemoryForSpaceMove(
+      db,
+      input.sourceSpace,
+      roleCardIds
+    );
+    return { roleCards, roleMemories, roleV2Memory, snapshots: exported };
   });
 
-  const { roleCards, roleMemories, snapshots } = moveExport;
+  const { roleCards, roleMemories, roleV2Memory, snapshots } = moveExport;
   if (snapshots.length === 0) {
     return 0;
   }
@@ -3866,10 +3945,18 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
       memoryIdMap.set(memory.id, targetMemoryId);
       reservedMemoryIds.add(targetMemoryId);
     }
+
+    const roleV2Plan = await planRoleV2SpaceMove(db, {
+      targetSpace: input.targetSpace,
+      roleIdMap,
+      roleV2Memory,
+    });
+
     return {
       existingTargetRoleCards,
       memoryIdMap,
       roleIdMap,
+      roleV2Plan,
       skippedMemoryIds,
     };
   });
@@ -3877,6 +3964,7 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
     existingTargetRoleCards,
     memoryIdMap,
     roleIdMap,
+    roleV2Plan,
     skippedMemoryIds,
   } = targetRoleState;
   let snapshotsForImport = snapshots;
@@ -3884,6 +3972,12 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
   let targetRoleAvatarUris: string[] = [];
   let importedTargetRoleCardIds: string[] = [];
   let importedTargetRoleMemoryIds: string[] = [];
+  let importedTargetRoleV2ClaimIds: string[] = [];
+  let importedTargetRoleV2AggregateIds: {
+    episodeIds: string[];
+    profileIds: string[];
+    relationalStateIds: string[];
+  } = { episodeIds: [], profileIds: [], relationalStateIds: [] };
   let reactivatedTargetRoleCards: Array<{
     archivedAt: string;
     id: string;
@@ -3896,6 +3990,8 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
       memoryIdMap,
       roleCards,
       roleIdMap,
+      roleV2Memory,
+      roleV2Plan,
       skippedMemoryIds,
       snapshots,
       targetSpace: input.targetSpace,
@@ -3905,6 +4001,15 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
       .filter((roleBundle) => roleBundle.shouldImport)
       .map((roleBundle) => roleBundle.targetRoleCardId);
     importedTargetRoleMemoryIds = copiedRoles.memories.map((memory) => memory.id);
+    importedTargetRoleV2ClaimIds = copiedRoles.v2RoleMemory.claims.map((claim) => claim.id);
+    importedTargetRoleV2AggregateIds = {
+      episodeIds: copiedRoles.v2RoleMemory.episodes.map((ep) => ep.id),
+      profileIds: copiedRoles.v2RoleMemory.profiles.map((p) => p.id),
+      relationalStateIds: copiedRoles.v2RoleMemory.relationalStates.map((r) => r.id),
+    };
+    const copiedMessageIds = new Set(
+      copiedRoles.snapshots.flatMap((snapshot) => snapshot.messages.map((message) => message.id))
+    );
     reactivatedTargetRoleCards = copiedRoles.roleCards
       .filter(
         (roleBundle) =>
@@ -3948,6 +4053,12 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
           await aiThreadRepository.importThread(db, snapshot, input.targetSpace);
         }
         await aiThreadRepository.importRoleMemoriesForSpaceMove(db, copiedRoles.memories);
+        await aiThreadRepository.importRoleV2MemoryForSpaceMove(
+          db,
+          input.targetSpace,
+          copiedRoles.v2RoleMemory,
+          copiedMessageIds
+        );
         for (const roleCardId of roleCards.map((roleCard) => roleCard.id)) {
           await dreamRepository.rebuildRoleRoundCounter(db, {
             roleCardId: roleIdMap.get(roleCardId) ?? roleCardId,
@@ -4039,6 +4150,12 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
               db,
               input.targetSpace,
               importedTargetRoleMemoryIds
+            );
+            await aiThreadRepository.deleteRoleV2MemoryForSpaceMove(
+              db,
+              input.targetSpace,
+              importedTargetRoleV2ClaimIds,
+              importedTargetRoleV2AggregateIds
             );
             for (const roleCard of reactivatedTargetRoleCards) {
               await aiRoleCardRepository.setArchivedAtForSpaceMove(
@@ -4529,43 +4646,6 @@ async function stageExplicitMemoryIntentObservation(input: {
   });
 }
 
-async function runWithTransactionRetry<T>(
-  db: SQLiteDatabase,
-  fn: (txn: SQLiteDatabase) => Promise<T>,
-  maxRetries = 3,
-): Promise<T> {
-  let attempt = 0;
-  while (true) {
-    try {
-      let result: T;
-      if (typeof db.withExclusiveTransactionAsync === 'function') {
-        await db.withExclusiveTransactionAsync(async (txn) => {
-          result = await fn(txn as unknown as SQLiteDatabase);
-        });
-      } else {
-        await db.withTransactionAsync(async () => {
-          result = await fn(db);
-        });
-      }
-      return result!;
-    } catch (error: any) {
-      attempt += 1;
-      const message = String(error?.message || '');
-      const isLockError =
-        message.includes('database is locked') ||
-        message.includes('cannot rollback') ||
-        message.includes('finalizeAsync') ||
-        message.includes('SQLITE_BUSY') ||
-        message.includes('SQLITE_LOCKED');
-      if (isLockError && attempt <= maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 60 * Math.pow(2, attempt - 1)));
-        continue;
-      }
-      throw error;
-    }
-  }
-}
-
 async function streamAssistantReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -4593,17 +4673,17 @@ async function streamAssistantReply(input: {
   onUpdated?: () => void;
 }): Promise<void> {
   if (input.thread.id !== 'pixory-system-assistant') {
-    await drainCurrentTurnMemory({
-      maxDurationMs: 20,
-      space: input.space,
-      threadId: input.thread.id,
-    }).catch(() => 0);
     await stageExplicitMemoryIntentObservation({
       messageContent: input.userMessage.content,
       messageId: input.userMessage.id,
       space: input.space,
       thread: input.thread,
     });
+    await drainCurrentTurnMemory({
+      maxDurationMs: 20,
+      space: input.space,
+      threadId: input.thread.id,
+    }).catch(() => 0);
   }
   const mode = input.mode ?? 'replace';
   const messageDisplayKind: AiMessageDisplayKind | null =
@@ -5977,7 +6057,7 @@ async function streamAssistantReply(input: {
         await writeCompletedDeepSeekPromptRequest(db, deepSeekLedgerRequestId, [{
           branchRouteHash: buildBranchRouteHash(branchScopes),
           messageId: input.userMessage.id,
-          renderedContent: prompt.user,
+          renderedContent: extractReplayableUserTurnContent(prompt),
           role: 'user',
           sourceMessageVersionHash: sourceMessageVersionHash(input.userMessage.content),
         }]);
@@ -6013,10 +6093,8 @@ async function streamAssistantReply(input: {
         }
         if (input.thread.roleCardId) {
           try {
-            const [userRecord, recentMessages] = await Promise.all([
-              aiThreadRepository.findMessageById(db, input.userMessage.id),
-              aiThreadRepository.listSnapshotCandidateMessages(db, input.thread.id, 20, branchScopes),
-            ]);
+            const userRecord = await aiThreadRepository.findMessageById(db, input.userMessage.id);
+            const recentMessages = await aiThreadRepository.listSnapshotCandidateMessages(db, input.thread.id, 20, branchScopes);
             if (userRecord) {
               const dream = await registerCompanionDreamRound(db, {
                 assistantMessage: current,
@@ -6168,6 +6246,7 @@ async function streamAssistantReply(input: {
         answerText,
         injectedClaimIds,
       });
+      void touchInjectedMemories(input.space, injectedClaimIds).catch(() => {});
     }
     if (input.space === 'personal') {
       const resumeAt = new Date().toISOString();
@@ -6195,11 +6274,12 @@ export async function recoverInterruptedGeneration(input: {
 }): Promise<void> {
   const snapshot = parseGenerationRequestSnapshot(input.job.requestSnapshotJson);
   if (!snapshot) throw new Error('生成恢复快照无效。');
-  const loaded = await runWithDatabaseSpace(input.job.space, async (db) => Promise.all([
-    aiThreadRepository.findThreadById(db, input.job.threadId),
-    aiThreadRepository.findMessageById(db, input.job.userMessageId),
-    aiThreadRepository.findMessageById(db, input.job.assistantMessageId),
-  ]));
+  const loaded = await runWithDatabaseSpace(input.job.space, async (db) => {
+    const foundThread = await aiThreadRepository.findThreadById(db, input.job.threadId);
+    const foundUserMessage = await aiThreadRepository.findMessageById(db, input.job.userMessageId);
+    const foundAssistantMessage = await aiThreadRepository.findMessageById(db, input.job.assistantMessageId);
+    return [foundThread, foundUserMessage, foundAssistantMessage] as const;
+  });
   const [currentThread, userMessage, assistantMessage] = loaded;
   if (!currentThread || currentThread.space !== input.job.space || currentThread.lineageVersion !== input.job.lineageVersion) {
     throw new Error('会话分支已变化，无法安全恢复生成。');
@@ -6312,10 +6392,8 @@ export async function generateReplyAssistSuggestions(
   const [cacheSettings, memorySnapshot] = await Promise.all([
     resolvePromptCacheSettings(input.space),
     runWithDatabaseSpace(input.space, async (db) => {
-      const [companionMemoryPrefix, stableMemoryPrefix] = await Promise.all([
-        buildCompanionMemoryPrefix(db, thread, { branchScopes: input.branchScopes }),
-        buildStableMemoryPrefix(db, thread, { branchScopes: input.branchScopes }),
-      ]);
+      const companionMemoryPrefix = await buildCompanionMemoryPrefix(db, thread, { branchScopes: input.branchScopes });
+      const stableMemoryPrefix = await buildStableMemoryPrefix(db, thread, { branchScopes: input.branchScopes });
       return { companionMemoryPrefix, stableMemoryPrefix };
     }),
   ]);
@@ -6462,7 +6540,7 @@ export async function sendUserMessage(
     throw new Error('AI thread was not found.');
   }
 
-  const userMessageId = createAiId('aimsg');
+  const userMessageId = input.userMessageId?.trim() || createAiId('aimsg');
   const assistantMessageId = createAiId('aimsg');
   const generationMetrics = createGenerationMetricsDraft({
     contextType: thread.contextType,
@@ -6520,12 +6598,20 @@ export async function sendUserMessage(
   input.onUpdated?.();
   let persistedAttachments: AiOutgoingAttachment[] = [];
   try {
-    persistedAttachments = await persistOutgoingAttachments({
+    const persistedResult = await persistOutgoingAttachments({
       attachments: input.attachments,
       messageId: userMessageId,
       space: input.space,
       threadId: thread.id,
     });
+    persistedAttachments = persistedResult.outgoing;
+    if (persistedResult.records.length > 0) {
+      input.onAttachmentsPersisted?.({
+        threadId: thread.id,
+        userMessageId,
+        attachments: persistedResult.records,
+      });
+    }
   } catch (error) {
     const readableError = normalizeAiErrorMessage(error);
     const failureCode = setGenerationFailureReason(generationMetrics, error);
@@ -6899,7 +6985,7 @@ export async function replyToAssistantMessage(
     throw new Error("AI thread was not found.");
   }
 
-  const userMessageId = createAiId("aimsg");
+  const userMessageId = input.userMessageId?.trim() || createAiId("aimsg");
   const assistantMessageId = createAiId("aimsg");
   const generationMetrics = createGenerationMetricsDraft({
     contextType: thread.contextType,
@@ -6985,12 +7071,20 @@ export async function replyToAssistantMessage(
   input.onUpdated?.();
   let persistedAttachments: AiOutgoingAttachment[] = [];
   try {
-    persistedAttachments = await persistOutgoingAttachments({
+    const persistedResult = await persistOutgoingAttachments({
       attachments: input.attachments,
       messageId: userMessageId,
       space: input.space,
       threadId: thread.id,
     });
+    persistedAttachments = persistedResult.outgoing;
+    if (persistedResult.records.length > 0) {
+      input.onAttachmentsPersisted?.({
+        threadId: thread.id,
+        userMessageId,
+        attachments: persistedResult.records,
+      });
+    }
   } catch (error) {
     const readableError = normalizeAiErrorMessage(error);
     const failureCode = setGenerationFailureReason(generationMetrics, error);

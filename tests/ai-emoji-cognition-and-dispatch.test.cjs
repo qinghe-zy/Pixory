@@ -106,17 +106,93 @@ test('tagAwareStreamParser tolerates full/half-width brackets and splits bubbles
   assert.ok(parserSource.includes('STICKER_TAG_REGEX'), 'Must export STICKER_TAG_REGEX');
 });
 
-// 6. 测试 BurstMessageDispatcher 确定性冷却状态机与尾锚定 (Tail-Anchor) 重排
-test('BurstMessageDispatcher implements cooldown thresholds, tail-anchor reordering, and emoji compensation', () => {
+// 6. 测试 BurstMessageDispatcher 兼容导出、窗口压缩与多贴纸自由混排（无冷却拦截锁）
+test('BurstMessageDispatcher supports free multi-sticker inline mixing without cooldown lock and compresses pacing', async () => {
+  const path = require('node:path');
+  const ts = require('typescript');
   const source = read('src/im/engine/burstDispatcher.ts');
 
   assert.ok(source.includes('export function getStickerCooldownThreshold'), 'Must export getStickerCooldownThreshold');
   assert.ok(source.includes('turnsSinceLastSticker'), 'Must track turnsSinceLastSticker');
   assert.ok(source.includes('dispatchSticker'), 'Must implement dispatchSticker');
   assert.ok(source.includes('advanceTurnWithoutSticker'), 'Must implement advanceTurnWithoutSticker');
+  assert.ok(
+    source.includes('applyBurstWindowCap') &&
+      source.includes("modality: 'sticker'") &&
+      source.includes('250') &&
+      source.includes('calculateHumanTypingDelay'),
+    'dispatchSticker must route sticker base delay (calculateHumanTypingDelay with modality: sticker, fallback 250ms) through applyBurstWindowCap'
+  );
 
-  // 尾部锚定：固定附加 250ms 节奏间隔
-  assert.ok(source.includes('this.accumulatedDelay += 250'), 'Sticker must be delayed by +250ms at the burst tail');
+  // Runtime test: load BurstMessageDispatcher and dispatch multiple stickers in one burst without cooldown lock
+  const inserted = [];
+  const loadTsModule = (absPath, mocks) => {
+    const code = fs.readFileSync(absPath, 'utf8');
+    const out = ts.transpileModule(code, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const mod = { exports: {} };
+    const req = (id) => {
+      if (mocks[id]) return mocks[id];
+      if (id.startsWith('.')) {
+        const resolved = path.resolve(path.dirname(absPath), id);
+        const file = resolved.endsWith('.ts') ? resolved : `${resolved}.ts`;
+        return loadTsModule(file, mocks);
+      }
+      return require(id);
+    };
+    new Function('module', 'exports', 'require', out)(mod, mod.exports, req);
+    return mod.exports;
+  };
+
+  const { BurstMessageDispatcher } = loadTsModule(
+    path.resolve(__dirname, '../src/im/engine/burstDispatcher.ts'),
+    {
+      'react-native': { AppState: { addEventListener: () => ({ remove: () => {} }) } },
+      '../../database': { runWithDatabaseSpace: async () => {}, initDatabase: async () => ({}) },
+      '../repository/imThreadRepository': {
+        getNextPendingVisibleAt: async () => null,
+        getNextPendingVisibleRow: async () => null,
+        insertImMessage: async (_space, msg) => {
+          inserted.push(msg);
+        },
+        revealPendingMessages: async () => 0,
+        updateImMessageVoice: async () => {},
+      },
+      '../../services/agent/vfs/casBlobStore': { CasBlobStore: class {} },
+      '../../services/sandbox/diff/fuzzyPatcher': { applyBatchSafely: () => ({ appliedCount: 0, resultText: '' }) },
+      '../../voice/voiceService': { voiceService: { prepareAudio: async () => ({ audioUri: '', durationMs: 1000 }) } },
+    }
+  );
+
+  const dispatcher = new BurstMessageDispatcher('th_multi_sticker', 'normal');
+  dispatcher.setTurnsSinceLastSticker(0);
+  dispatcher.beginBurst();
+
+  await dispatcher.dispatchSentence('哈哈笑死我了[STICKER: 拍桌大笑]真的绝了[STICKER: 抱抱]');
+  await dispatcher.waitForPendingDispatches();
+
+  assert.equal(inserted.length, 4);
+  assert.deepEqual(
+    inserted.map((m) => m.type),
+    ['text', 'sticker', 'text', 'sticker']
+  );
+  assert.equal(inserted[0].content, '哈哈笑死我了');
+  assert.equal(inserted[2].content, '真的绝了');
+  assert.ok(inserted[1].visibleAt < inserted[2].visibleAt);
+  assert.ok(inserted[2].visibleAt < inserted[3].visibleAt);
+
+  // Runtime test: useHumanTimeline forwards to dispatchSticker using modality: 'sticker' (250~400ms)
+  inserted.length = 0;
+  dispatcher.beginBurst();
+  await dispatcher.dispatchSentence('给你抱抱[STICKER: 抱抱]', undefined, { useHumanTimeline: true });
+  await dispatcher.waitForPendingDispatches();
+  assert.equal(inserted.length, 2);
+  const stickerGap = inserted[1].visibleAt - inserted[0].visibleAt;
+  assert.ok(
+    stickerGap >= 245 && stickerGap <= 450,
+    `Expected sticker delay within ~250-400ms via calculateHumanTypingDelay(modality: 'sticker'), got ${stickerGap}`
+  );
 });
 
 // 7. 测试承诺提取与手账日记物理隔离防护

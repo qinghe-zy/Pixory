@@ -192,6 +192,14 @@ export function sanitizeMemoryReconciliationOperations(input: {
     }
 
     if (operation.op === 'update') {
+      if (operation.scope === 'global') {
+        reject(operation, 'global_scope_requires_manual_action');
+        continue;
+      }
+      if (operation.scope && !input.allowedScopes.some((item) => item.scope === operation.scope)) {
+        reject(operation, 'scope_not_allowed');
+        continue;
+      }
       const content = normalizeText(operation.content);
       if (!content || content.length < 4 || operation.confidence < MIN_UPDATE_CONFIDENCE) {
         reject(operation, 'invalid_update_payload');

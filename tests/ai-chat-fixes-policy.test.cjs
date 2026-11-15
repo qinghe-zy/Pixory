@@ -732,8 +732,8 @@ test('AI deep memory defaults on and stores local summaries memories and setting
   assert.match(repository, /updateThreadMemorySettings/);
   assert.match(repository, /upsertThreadSummary/);
   assert.match(repository, /listActiveMemories/);
-  assert.match(service, /if \(!settings\.deepMemoryEnabled\)/);
-  assert.match(service, /retrieveDynamicMemoryContext/);
+  assert.match(service, /memorySettings\.deepMemoryEnabled/);
+  assert.match(service, /compileMemoryContextPlan/);
   assert.match(captureService, /captureDeepMemoryForExchange/);
   assert.match(captureService, /callMemoryMaintenanceModel/);
   assert.match(captureService, /buildMemoryModelPrompt/);
@@ -797,8 +797,7 @@ test.skip('AI chat uses configurable complete rounds and avoids full reload for 
   assert.match(chat, /ListFooterComponent=/);
   assert.match(chat, /invertedMessageItems/);
   assert.match(chat, /isLoadingEarlierRef/);
-  assert.match(chat, /maintainVisibleContentPosition=\{MESSAGE_LIST_ANCHOR_CONFIG\}/);
-  assert.doesNotMatch(chat, /maintainVisibleContentPosition=\{\{ minIndexForVisible: 0 \}\}/);
+  assert.doesNotMatch(chat, /maintainVisibleContentPosition/);
   assert.match(chat, /onContentSizeChange=\{handleMessageListContentSizeChange\}/);
   const contentSizeReadyHandler = /const handleMessageListContentSizeChange = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
   assert.doesNotMatch(contentSizeReadyHandler, /scrollToOffset|scrollToIndex|scrollToEnd/);
@@ -855,7 +854,7 @@ test('AI memory service exposes board lazy capture and prompt helpers', () => {
   assert.match(service, /maybeRunLazyMemoryConsolidation/);
   assert.match(service, /pendingTurnCount >= 5/);
   assert.match(service, /buildStableMemoryPrefix/);
-  assert.match(service, /retrieveDynamicMemoryContext/);
+  assert.match(service, /buildRelationalStateText/);
   assert.match(service, /getMemoryPromptPriority/);
   assert.match(service, /right\.priority - left\.priority/);
 });
@@ -986,6 +985,8 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
   const coverageService = read('src/ai/context/conversationCoverageService.ts');
+  const contextPlanService = read('src/ai/memory/memoryContextPlanService.ts');
+  const retrievalService = read('src/ai/memory/memoryRetrievalService.ts');
 
   assert.match(schema, /DATABASE_VERSION = (?:5[1-9]|6[0-9]|7[0-9])/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
@@ -1012,13 +1013,14 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(service, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, excludedClaimIds, settings: memorySettings \}\)/);
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
-  assert.match(service, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes/);
-  assert.match(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, DEEP_MEMORY_RECENT_MESSAGE_LIMIT, branchScopes\)/);
+  assert.match(service, /compileMemoryContextPlan\(db, \{[\s\S]*branchScopes/);
+  assert.match(service, /resolveMemoryIntentTargetClaimIds\(db, \{[\s\S]*branchScopes/);
   assert.match(service, /scheduleDeferredCompanionMemoryMaintenance\(\{[\s\S]*branchScopes/);
   assert.match(memoryService, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(memoryService, /listMemoryBoardItems\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
   assert.match(coverageService, /listSummarySegments\(db, input\.thread\.id, input\.branchScopes\)/);
-  assert.match(memoryService, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
+  assert.match(contextPlanService, /retrieveMemoryClaimsWithDiagnostics\(db, \{[\s\S]*branchScopes: input\.branchScopes/);
+  assert.match(retrievalService, /scopeAllowed\(claim, input\.thread, input\.branchScopes\)/);
   assert.match(maintenance, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(maintenance, /const branchScopes = input\.branchScopes \?\? \[\]/);
   assert.match(maintenance, /allowIrreversibleImportEffects/);
@@ -1617,6 +1619,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
+  const retrievalService = read('src/ai/memory/memoryRetrievalService.ts');
 
   assert.match(schema, /DATABASE_VERSION = (?:5[1-9]|6[0-9]|7[0-9])/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
@@ -1629,8 +1632,8 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   assert.match(repository, /buildSearchTerms/);
   assert.match(repository, /\\u4e00-\\u9fff/);
   assert.match(service, /searchCompletedMessageFts/);
-  assert.match(memoryService, /retrieveDynamicMemoryContext/);
-  assert.match(memoryService, /searchActiveMemoryFts/);
+  assert.match(service, /compileMemoryContextPlan/);
+  assert.match(retrievalService, /ai_memory_fts/);
   assert.doesNotMatch(memoryService, /getThreadSummary/);
   assert.doesNotMatch(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, DEEP_MEMORY_HISTORY_SCAN_LIMIT\)/);
 });
@@ -1654,6 +1657,7 @@ test('AI chat feedback voice empty state error and long navigation polish are wi
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const content = read('src/components/ai/AiMessageContent.tsx');
   const composer = read('src/components/ai/AiChatComposer.tsx');
+  const attachmentBar = read('src/components/ai/AiComposerAttachmentBar.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(bubble, /AiInlineFeedback/);
@@ -1663,7 +1667,8 @@ test('AI chat feedback voice empty state error and long navigation polish are wi
   assert.match(content, /代码已复制/);
   assert.match(composer, /AiVoiceInputStatus/);
   assert.match(composer, /voiceState/);
-  assert.match(composer, /attachmentThumb/);
+  assert.match(composer, /AiComposerAttachmentBar/);
+  assert.match(attachmentBar, /imageTile/);
   assert.match(composer, /disabledSendButton/);
   assert.doesNotMatch(chat, /AiEmptyChatSuggestions/);
   assert.match(chat, /AiChatErrorBanner/);

@@ -5,6 +5,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import type { PixorySpace } from '../database';
+import { rebuildAiMemoryFtsIndex } from '../database/aiMemoryFts';
+import { serializeSqliteDatabase } from '../database/sqliteSerialization';
 import { assertManagedManifestShape, isSafeBackupRelativePath } from './backupManifestProtocol';
 import { MAX_FILE_TASK_CONCURRENCY, settleFileTasksWithConcurrency } from './boundedFileConcurrency';
 import { appendManagedRestoreCollisionSuffix, createMappedLogicalId, remapManagedJsonReferences, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
@@ -371,12 +373,8 @@ async function rebuildManagedSearchIndexes(db: SQLiteDatabase, targetTables: Set
       WHERE status = 'completed' AND role <> 'system' AND content <> '';`);
     await db.runAsync("INSERT INTO ai_message_version_fts(ai_message_version_fts) VALUES('integrity-check')");
   }
-  if (targetTables.has('ai_memory_fts') && targetTables.has('ai_memories')) {
-    await db.execAsync(`DELETE FROM ai_memory_fts;
-      INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
-      SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt FROM ai_memories
-      WHERE status = 'active' AND supersededByMemoryId IS NULL;`);
-    await db.runAsync("INSERT INTO ai_memory_fts(ai_memory_fts) VALUES('integrity-check')");
+  if (targetTables.has('ai_memory_fts')) {
+    await rebuildAiMemoryFtsIndex(db, { checkIntegrity: true });
   }
 }
 
@@ -512,13 +510,16 @@ export async function mergeManagedDatabaseRecords(input: {
   uriByLogicalId: Map<string, string>;
 }): Promise<ManagedDatabaseMergeReport> {
   const slash = input.sourceDatabaseUri.lastIndexOf('/');
-  const directory = input.sourceDatabaseUri.slice(0, slash + 1);
-  const databaseName = input.sourceDatabaseUri.slice(slash + 1);
+  const directory = slash >= 0 ? input.sourceDatabaseUri.slice(0, slash + 1) : undefined;
+  const databaseName = slash >= 0 ? input.sourceDatabaseUri.slice(slash + 1) : input.sourceDatabaseUri;
   const ownsSourceDb = !input.sourceDb;
-  const sourceDb = input.sourceDb ?? await openDatabaseAsync(databaseName, { useNewConnection: true }, directory);
+  const sourceDb = serializeSqliteDatabase(
+    input.sourceDb ?? await openDatabaseAsync(databaseName, { useNewConnection: true }, directory),
+  );
   const report: ManagedDatabaseMergeReport = {
     insertedRecords: 0, preservedRecords: 0, remappedLogicalIds: 0, restoredTables: 0, uriRewriteFailures: [],
   };
+  let hasActiveError = false;
   try {
     input.assertActive?.();
     const tables = await sourceDb.getAllAsync<{ name: string }>(
@@ -664,7 +665,19 @@ export async function mergeManagedDatabaseRecords(input: {
       throw new Error(`AI 文件 URI 重写失败：${report.uriRewriteFailures.join('；')}`);
     }
     return report;
+  } catch (error) {
+    hasActiveError = true;
+    throw error;
   } finally {
-    if (ownsSourceDb) await sourceDb.closeAsync();
+    if (ownsSourceDb) {
+      try {
+        await sourceDb.closeAsync();
+      } catch (closeError) {
+        if (!hasActiveError) {
+          throw closeError;
+        }
+        console.warn('[ManagedBackup] Failed to close source database during rollback:', closeError);
+      }
+    }
   }
 }

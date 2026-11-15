@@ -24,7 +24,17 @@ test('broad sleep and dream signals map to ordered semantic intents', () => {
 
 test('manual requests are explicit and automatic frequency is first-dream friendly', () => {
   assert.equal(policy.detectManualDreamRequest('给我生成一张梦境卡片'), true);
+  assert.equal(policy.detectManualDreamRequest('制作梦境卡片'), true);
+  assert.equal(policy.detectManualDreamRequest('写一个梦境'), true);
+  assert.equal(policy.detectManualDreamRequest('想看你的梦境卡片'), true);
+  assert.equal(policy.detectManualDreamRequest('show me a dream card'), true);
   assert.equal(policy.detectManualDreamRequest('昨晚梦见下雨'), false);
+  assert.equal(policy.detectManualDreamRequest('做梦去吧'), false);
+  assert.equal(policy.detectManualDreamRequest('别做梦了'), false);
+  assert.equal(policy.detectManualDreamRequest('你做白日梦呢'), false);
+  assert.equal(policy.detectManualDreamRequest('这是我的梦想'), false);
+  assert.equal(policy.detectManualDreamRequest('晚安，今晚做个好梦'), false);
+  assert.equal(policy.detectManualDreamRequest('你会做梦吗'), false);
   assert.equal(policy.dreamFrequencyAllowed({ totalRounds: 1, lastDreamSuccessRound: null, dailyDreamSuccessCount: 0, dailyDreamReservedCount: 0 }), true);
   assert.equal(policy.dreamFrequencyAllowed({ totalRounds: 50, lastDreamSuccessRound: 1, dailyDreamSuccessCount: 0, dailyDreamReservedCount: 0 }), false);
   assert.equal(policy.dreamFrequencyAllowed({ totalRounds: 51, lastDreamSuccessRound: 1, dailyDreamSuccessCount: 0, dailyDreamReservedCount: 0 }), true);

@@ -21,6 +21,24 @@ import type {
 import type { PixorySpace } from '../db';
 import { booleanToSqlite, buildUpdateStatement, createTimestamp, normalizeOptionalText, sqliteToBoolean } from '../utils';
 import { formatMessagePreview } from '../../utils/formatMessagePreview';
+import {
+  deleteRoleV2MemoryData,
+  deleteThreadV2MemoryData,
+  deleteV2ClaimsAndOrphanedArtifacts,
+  exportV2AggregateMemoryForScopes,
+  exportV2ClaimDependencies,
+  hasMemoryV2Table,
+  importV2MemoryGraph,
+  type MemoryClaimFeedbackSnapshotRow,
+  type MemoryClaimSnapshotRow,
+  type MemoryCurrentTurnObservationSnapshotRow,
+  type MemoryEpisodeSnapshotRow,
+  type MemoryEventSnapshotRow,
+  type MemoryEvidenceSnapshotRow,
+  type MemoryProfileSnapshotRow,
+  type MemoryRelationalStateSnapshotRow,
+  type RoleV2MemoryBundle,
+} from './memoryV2SpaceMoveHelper';
 
 export interface AiMessageRecord {
   id: string;
@@ -385,6 +403,7 @@ export interface CreateAiThreadInput {
   thinkingDisabled?: boolean;
   systemPrompt?: string;
   materialRulesSnapshot?: string | null;
+  pinnedLoreSnapshot?: string | null;
   boundaryMode?: AiBoundaryMode;
   summary?: string | null;
   lastMessagePreview?: string | null;
@@ -441,6 +460,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'thinkingDisabled'
     | 'systemPrompt'
     | 'materialRulesSnapshot'
+    | 'pinnedLoreSnapshot'
     | 'boundaryMode'
     | 'summary'
     | 'isPinned'
@@ -683,6 +703,14 @@ export interface AiThreadExportSnapshot {
   companionThoughts?: CompanionSnapshotRow[];
   generationJobs?: CompanionSnapshotRow[];
   generationEvents?: CompanionSnapshotRow[];
+  v2Claims?: MemoryClaimSnapshotRow[];
+  v2Episodes?: MemoryEpisodeSnapshotRow[];
+  v2Events?: MemoryEventSnapshotRow[];
+  v2Evidence?: MemoryEvidenceSnapshotRow[];
+  v2ClaimFeedback?: MemoryClaimFeedbackSnapshotRow[];
+  v2CurrentTurnObservations?: MemoryCurrentTurnObservationSnapshotRow[];
+  v2Profiles?: MemoryProfileSnapshotRow[];
+  v2RelationalStates?: MemoryRelationalStateSnapshotRow[];
 }
 
 type CompanionSnapshotRow = Record<string, string | number | null>;
@@ -735,6 +763,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     boundaryMode: row.boundaryMode,
     systemPrompt: row.systemPrompt,
     materialRulesSnapshot: row.materialRulesSnapshot ?? null,
+    pinnedLoreSnapshot: row.pinnedLoreSnapshot ?? null,
     summary: row.summary ?? null,
     lastMessagePreview: row.lastMessagePreview ?? null,
     currentBranchRootMessageId: row.currentBranchRootMessageId ?? null,
@@ -1324,6 +1353,7 @@ export const aiThreadRepository = {
         thinkingDisabled,
         systemPrompt,
         materialRulesSnapshot,
+        pinnedLoreSnapshot,
         boundaryMode,
         summary,
         lastMessagePreview,
@@ -1331,7 +1361,7 @@ export const aiThreadRepository = {
         updatedAt,
         archivedAt,
         isPinned
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.space,
       input.contextType,
@@ -1354,6 +1384,7 @@ export const aiThreadRepository = {
       booleanToSqlite(input.thinkingDisabled ?? false),
       input.systemPrompt ?? '',
       input.materialRulesSnapshot ?? null,
+      input.pinnedLoreSnapshot ?? null,
       input.boundaryMode ?? 'free',
       input.summary ?? null,
       normalizeOptionalText(input.lastMessagePreview) ?? null,
@@ -1394,6 +1425,7 @@ export const aiThreadRepository = {
       isPinned: patch.isPinned === undefined ? undefined : booleanToSqlite(patch.isPinned),
       systemPrompt: patch.systemPrompt,
       materialRulesSnapshot: patch.materialRulesSnapshot,
+      pinnedLoreSnapshot: patch.pinnedLoreSnapshot,
       boundaryMode: patch.boundaryMode,
       summary: patch.summary,
       lastMessagePreview: normalizeOptionalText(patch.lastMessagePreview),
@@ -1664,6 +1696,62 @@ export const aiThreadRepository = {
       thread.space,
       threadId
     );
+    let v2Claims: MemoryClaimSnapshotRow[] = [];
+    let v2Events: MemoryEventSnapshotRow[] = [];
+    let v2Evidence: MemoryEvidenceSnapshotRow[] = [];
+    let v2ClaimFeedback: MemoryClaimFeedbackSnapshotRow[] = [];
+    let v2CurrentTurnObservations: MemoryCurrentTurnObservationSnapshotRow[] = [];
+    let v2Episodes: MemoryEpisodeSnapshotRow[] = [];
+    let v2Profiles: MemoryProfileSnapshotRow[] = [];
+    let v2RelationalStates: MemoryRelationalStateSnapshotRow[] = [];
+    if (await hasMemoryV2Table(db, 'memory_claims')) {
+      v2Claims = await db.getAllAsync<MemoryClaimSnapshotRow>(
+        `SELECT * FROM memory_claims
+         WHERE space = ?
+           AND (
+             (scopeType = 'thread' AND scopeId = ?)
+             OR (
+               scopeType = 'branch' AND (
+                 sourceMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?)
+                 OR (
+                   CASE
+                     WHEN instr(COALESCE(scopeId, ''), ':') > 0
+                       THEN substr(scopeId, 1, instr(scopeId, ':') - 1)
+                     ELSE COALESCE(scopeId, '')
+                   END IN (SELECT id FROM ai_messages WHERE threadId = ?)
+                 )
+               )
+             )
+           )
+         ORDER BY createdAt ASC, id ASC`,
+        thread.space,
+        threadId,
+        threadId,
+        threadId
+      );
+      const deps = await exportV2ClaimDependencies(
+        db,
+        thread.space,
+        v2Claims.map((claim) => claim.id),
+        messages.map((message) => message.id)
+      );
+      v2Events = deps.events;
+      v2Evidence = deps.evidence;
+      v2ClaimFeedback = deps.feedback;
+      const aggregates = await exportV2AggregateMemoryForScopes(db, thread.space, 'thread', [threadId]);
+      v2Episodes = aggregates.episodes;
+      v2Profiles = aggregates.profiles;
+      v2RelationalStates = aggregates.relationalStates;
+    }
+    if (await hasMemoryV2Table(db, 'memory_current_turn_observations')) {
+      v2CurrentTurnObservations = await db.getAllAsync<MemoryCurrentTurnObservationSnapshotRow>(
+        `SELECT * FROM memory_current_turn_observations
+         WHERE space = ? AND threadId = ?
+         ORDER BY createdAt ASC, id ASC`,
+        thread.space,
+        threadId
+      );
+    }
     return {
       attachments,
       branchRouteMetadata,
@@ -1698,6 +1786,14 @@ export const aiThreadRepository = {
       threadMemories,
       userProfile,
       versions,
+      v2Claims,
+      v2Episodes,
+      v2Events,
+      v2Evidence,
+      v2ClaimFeedback,
+      v2CurrentTurnObservations,
+      v2Profiles,
+      v2RelationalStates,
     };
   },
 
@@ -1725,6 +1821,7 @@ export const aiThreadRepository = {
         thinkingDisabled,
         systemPrompt,
         materialRulesSnapshot,
+        pinnedLoreSnapshot,
         boundaryMode,
         summary,
         lastMessagePreview,
@@ -1733,7 +1830,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.thread.id,
       targetSpace,
       snapshot.thread.contextType,
@@ -1755,6 +1852,7 @@ export const aiThreadRepository = {
       snapshot.thread.thinkingDisabled ?? 0,
       snapshot.thread.systemPrompt,
       snapshot.thread.materialRulesSnapshot ?? null,
+      snapshot.thread.pinnedLoreSnapshot ?? null,
       snapshot.thread.boundaryMode,
       snapshot.thread.summary ?? null,
       snapshot.thread.lastMessagePreview ?? null,
@@ -2378,6 +2476,61 @@ export const aiThreadRepository = {
         updatedAt: snapshot.userProfile.updatedAt,
       });
     }
+
+    const movedMessageIdSet = new Set((snapshot.messages ?? []).map((message) => message.id));
+    if (
+      (snapshot.v2Claims?.length ?? 0) > 0 ||
+      (snapshot.v2Evidence?.length ?? 0) > 0 ||
+      (snapshot.v2Episodes?.length ?? 0) > 0 ||
+      (snapshot.v2Profiles?.length ?? 0) > 0 ||
+      (snapshot.v2RelationalStates?.length ?? 0) > 0
+    ) {
+      await importV2MemoryGraph(db, {
+        targetSpace,
+        claims: snapshot.v2Claims ?? [],
+        episodes: snapshot.v2Episodes ?? [],
+        events: snapshot.v2Events ?? [],
+        evidence: snapshot.v2Evidence ?? [],
+        feedback: snapshot.v2ClaimFeedback ?? [],
+        profiles: snapshot.v2Profiles ?? [],
+        relationalStates: snapshot.v2RelationalStates ?? [],
+        knownValidMessageIds: movedMessageIdSet,
+      });
+    }
+
+    if (
+      (snapshot.v2CurrentTurnObservations?.length ?? 0) > 0 &&
+      (await hasMemoryV2Table(db, 'memory_current_turn_observations'))
+    ) {
+      for (const observation of snapshot.v2CurrentTurnObservations!) {
+        if (!movedMessageIdSet.has(observation.messageId)) {
+          continue;
+        }
+        await db.runAsync(
+          `INSERT OR IGNORE INTO memory_current_turn_observations (
+            id, space, threadId, branchRootMessageId, branchVersionIndex, messageId,
+            intent, explicitUserAction, payloadJson, status, extractorVersion,
+            idempotencyKey, createdAt, expiresAt, consumedAt, deletedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          observation.id,
+          targetSpace,
+          snapshot.thread.id,
+          observation.branchRootMessageId,
+          observation.branchVersionIndex,
+          observation.messageId,
+          observation.intent,
+          observation.explicitUserAction,
+          observation.payloadJson,
+          observation.status,
+          observation.extractorVersion,
+          observation.idempotencyKey,
+          observation.createdAt,
+          observation.expiresAt,
+          observation.consumedAt,
+          observation.deletedAt
+        );
+      }
+    }
   },
 
   async restoreMessageAttachmentDocumentLinks(
@@ -2437,6 +2590,7 @@ export const aiThreadRepository = {
           threadId
         );
       }
+      await deleteThreadV2MemoryData(db, threadId, thread?.space ?? null);
       await this.deleteUserProfilesBoundToThreads(db, [threadId]);
       const result = await db.runAsync('DELETE FROM ai_threads WHERE id = ?', threadId);
       deletedCount += result.changes;
@@ -3847,65 +4001,61 @@ export const aiThreadRepository = {
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', input.branchScopes);
     const fallbackVisibleBranchClause = buildVisibleBranchClause('candidate', input.branchScopes);
     const fallbackSearch = async () => {
-      const [currentRows, versionRows] = await Promise.all([
-        db.getAllAsync<AiMessageRecord>(
-          `SELECT candidate.*
-           FROM ai_messages candidate
-           WHERE candidate.threadId = ?
-             AND candidate.status = 'completed'
-             AND candidate.role <> 'system'
-             ${fallbackClause}
-             ${fallbackVisibleBranchClause.clause}
-             ${fallbackExcludeClause}
-           ORDER BY candidate.updatedAt DESC
-           LIMIT ?`,
-          input.threadId,
-          ...fallbackValues,
-          ...fallbackVisibleBranchClause.values,
-          ...excludeIds,
-          input.limit
-        ),
-        aiThreadRepository.searchVersionedCompletedMessages(db, {
-          branchScopes: input.branchScopes,
-          excludeIds,
-          ftsQuery,
-          limit: input.limit,
-          rawQuery: input.query,
-          threadId: input.threadId,
-        }),
-      ]);
+      const currentRows = await db.getAllAsync<AiMessageRecord>(
+        `SELECT candidate.*
+         FROM ai_messages candidate
+         WHERE candidate.threadId = ?
+           AND candidate.status = 'completed'
+           AND candidate.role <> 'system'
+           ${fallbackClause}
+           ${fallbackVisibleBranchClause.clause}
+           ${fallbackExcludeClause}
+         ORDER BY candidate.updatedAt DESC
+         LIMIT ?`,
+        input.threadId,
+        ...fallbackValues,
+        ...fallbackVisibleBranchClause.values,
+        ...excludeIds,
+        input.limit
+      );
+      const versionRows = await aiThreadRepository.searchVersionedCompletedMessages(db, {
+        branchScopes: input.branchScopes,
+        excludeIds,
+        ftsQuery,
+        limit: input.limit,
+        rawQuery: input.query,
+        threadId: input.threadId,
+      });
       const rows = mergeMessageSearchRows(currentRows, versionRows, input.limit);
       return materializeMessagesForBranchScopes(db, rows, input.branchScopes);
     };
     try {
-      const [currentRows, versionRows] = await Promise.all([
-        db.getAllAsync<AiMessageRecord>(
-          `SELECT ai_messages.*
-           FROM ai_message_fts
-           JOIN ai_messages ON ai_messages.id = ai_message_fts.id
-           WHERE ai_message_fts MATCH ?
-              AND ai_messages.threadId = ?
-              AND ai_messages.status = 'completed'
-              AND ai_messages.role <> 'system'
-              ${visibleBranchClause.clause}
-              ${excludeClause}
-            ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
-            LIMIT ?`,
-          ftsQuery,
-          input.threadId,
-          ...visibleBranchClause.values,
-          ...excludeIds,
-          input.limit
-        ),
-        aiThreadRepository.searchVersionedCompletedMessages(db, {
-          branchScopes: input.branchScopes,
-          excludeIds,
-          ftsQuery,
-          limit: input.limit,
-          rawQuery: input.query,
-          threadId: input.threadId,
-        }),
-      ]);
+      const currentRows = await db.getAllAsync<AiMessageRecord>(
+        `SELECT ai_messages.*
+         FROM ai_message_fts
+         JOIN ai_messages ON ai_messages.id = ai_message_fts.id
+         WHERE ai_message_fts MATCH ?
+            AND ai_messages.threadId = ?
+            AND ai_messages.status = 'completed'
+            AND ai_messages.role <> 'system'
+            ${visibleBranchClause.clause}
+            ${excludeClause}
+          ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
+          LIMIT ?`,
+        ftsQuery,
+        input.threadId,
+        ...visibleBranchClause.values,
+        ...excludeIds,
+        input.limit
+      );
+      const versionRows = await aiThreadRepository.searchVersionedCompletedMessages(db, {
+        branchScopes: input.branchScopes,
+        excludeIds,
+        ftsQuery,
+        limit: input.limit,
+        rawQuery: input.query,
+        threadId: input.threadId,
+      });
       const rows = mergeMessageSearchRows(currentRows, versionRows, input.limit);
       return rows.length > 0 ? materializeMessagesForBranchScopes(db, rows, input.branchScopes) : fallbackSearch();
     } catch {
@@ -5461,6 +5611,137 @@ export const aiThreadRepository = {
         memoryId,
         space
       );
+    }
+  },
+
+  async listRoleV2MemoryForSpaceMove(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    roleCardIds: string[]
+  ): Promise<RoleV2MemoryBundle> {
+    const uniqueRoleCardIds = Array.from(new Set(roleCardIds.filter(Boolean)));
+    if (uniqueRoleCardIds.length === 0 || !(await hasMemoryV2Table(db, 'memory_claims'))) {
+      return {
+        claims: [],
+        episodes: [],
+        events: [],
+        evidence: [],
+        feedback: [],
+        profiles: [],
+        relationalStates: [],
+      };
+    }
+    const placeholders = makeInClause(uniqueRoleCardIds);
+    const claims = await db.getAllAsync<MemoryClaimSnapshotRow>(
+      `SELECT * FROM memory_claims
+       WHERE space = ? AND scopeType = 'role' AND scopeId IN (${placeholders})
+       ORDER BY createdAt ASC, id ASC`,
+      space,
+      ...uniqueRoleCardIds
+    );
+    const deps = await exportV2ClaimDependencies(
+      db,
+      space,
+      claims.map((claim) => claim.id)
+    );
+    const aggregates = await exportV2AggregateMemoryForScopes(db, space, 'role', uniqueRoleCardIds);
+    return {
+      claims,
+      episodes: aggregates.episodes,
+      events: deps.events,
+      evidence: deps.evidence,
+      feedback: deps.feedback,
+      profiles: aggregates.profiles,
+      relationalStates: aggregates.relationalStates,
+    };
+  },
+
+  async findRoleV2ClaimsForSpaceMove(
+    db: SQLiteDatabase,
+    targetSpace: PixorySpace,
+    targetRoleCardIds: string[],
+    claimIds: string[]
+  ): Promise<{
+    claimsById: MemoryClaimSnapshotRow[];
+    activeCanonicalClaims: MemoryClaimSnapshotRow[];
+  }> {
+    if (!(await hasMemoryV2Table(db, 'memory_claims'))) {
+      return { claimsById: [], activeCanonicalClaims: [] };
+    }
+    const uniqueClaimIds = Array.from(new Set(claimIds.filter(Boolean)));
+    const claimsById =
+      uniqueClaimIds.length > 0
+        ? await db.getAllAsync<MemoryClaimSnapshotRow>(
+            `SELECT * FROM memory_claims WHERE id IN (${makeInClause(uniqueClaimIds)})`,
+            ...uniqueClaimIds
+          )
+        : [];
+    const uniqueRoleCardIds = Array.from(new Set(targetRoleCardIds.filter(Boolean)));
+    const activeCanonicalClaims =
+      uniqueRoleCardIds.length > 0
+        ? await db.getAllAsync<MemoryClaimSnapshotRow>(
+            `SELECT * FROM memory_claims
+             WHERE space = ? AND scopeType = 'role' AND scopeId IN (${makeInClause(uniqueRoleCardIds)})
+               AND status IN ('tentative', 'committed', 'confirmed', 'conflicted')
+               AND deletedAt IS NULL`,
+            targetSpace,
+            ...uniqueRoleCardIds
+          )
+        : [];
+    return { claimsById, activeCanonicalClaims };
+  },
+
+  async importRoleV2MemoryForSpaceMove(
+    db: SQLiteDatabase,
+    targetSpace: PixorySpace,
+    bundle: RoleV2MemoryBundle,
+    knownValidMessageIds?: Set<string>
+  ): Promise<void> {
+    if (
+      bundle.claims.length === 0 &&
+      bundle.episodes.length === 0 &&
+      bundle.profiles.length === 0 &&
+      bundle.relationalStates.length === 0
+    ) {
+      return;
+    }
+    await importV2MemoryGraph(db, {
+      targetSpace,
+      claims: bundle.claims,
+      episodes: bundle.episodes,
+      events: bundle.events,
+      evidence: bundle.evidence,
+      feedback: bundle.feedback,
+      profiles: bundle.profiles,
+      relationalStates: bundle.relationalStates,
+      knownValidMessageIds,
+    });
+  },
+
+  async deleteRoleV2MemoryForSpaceMove(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    claimIds: string[],
+    extraScopeCleanup?: { episodeIds?: string[]; profileIds?: string[]; relationalStateIds?: string[]; roleCardIds?: string[] }
+  ): Promise<void> {
+    if (claimIds.length > 0) {
+      await deleteV2ClaimsAndOrphanedArtifacts(db, space, claimIds);
+    }
+    for (const [table, ids] of [
+      ['memory_episodes', extraScopeCleanup?.episodeIds],
+      ['memory_profiles', extraScopeCleanup?.profileIds],
+      ['memory_relational_states', extraScopeCleanup?.relationalStateIds],
+    ] as const) {
+      if ((ids?.length ?? 0) > 0 && (await hasMemoryV2Table(db, table))) {
+        await db.runAsync(
+          `DELETE FROM ${table} WHERE space = ? AND id IN (${makeInClause(ids!)})`,
+          space,
+          ...ids!
+        );
+      }
+    }
+    for (const roleCardId of Array.from(new Set(extraScopeCleanup?.roleCardIds ?? []))) {
+      await deleteRoleV2MemoryData(db, space, roleCardId);
     }
   },
 

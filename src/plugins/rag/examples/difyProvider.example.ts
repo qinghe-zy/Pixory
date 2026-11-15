@@ -22,6 +22,11 @@ export interface DifyProviderConfig {
 export class DifyRagProvider implements IRagProvider {
   public readonly id = 'provider:dify';
   public readonly kind = 'provider' as const;
+  public readonly capabilities = {
+    isRemote: true,
+    supportsHybrid: true,
+    supportsMetadataFilter: false,
+  } as const;
 
   constructor(private config: DifyProviderConfig) {}
 

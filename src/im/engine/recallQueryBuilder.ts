@@ -18,6 +18,9 @@ const STOP_WORDS = new Set([
   '行', '好的呢', 'okk', 'ok', 'yes', 'no'
 ]);
 
+const SYSTEM_PLACEHOLDER_REGEX =
+  /^(?:scheduled_checkin|\[(?:STATUS|PING|HEARTBEAT|NUDGE|STAGE|PASS|NEXT_FOLLOWUP)[^\]]*\]|\[环境时间流逝提示)/i;
+
 /**
  * 提取文本中的潜在实体与名词关键词（轻量纯规则，0 模型开销）
  */
@@ -34,21 +37,39 @@ function extractSalientTokens(text: string): string[] {
  * 构建高召回率的复合检索查询词
  */
 export function buildEffectiveRecallQuery(options: BuildRecallQueryOptions): string {
-  const input = options.currentUserInput.trim();
-  const tokens = extractSalientTokens(input);
+  const rawInput = options.currentUserInput.trim();
+  const isSystemPlaceholder = !rawInput || SYSTEM_PLACEHOLDER_REGEX.test(rawInput);
+  const history = options.recentMessages || [];
+
+  if (isSystemPlaceholder) {
+    const userTokens: string[] = [];
+    for (let i = history.length - 1; i >= 0 && userTokens.length < 5; i--) {
+      const msg = history[i];
+      if (msg.role !== 'user' || msg.type !== 'text' || !msg.content) continue;
+      const salient = extractSalientTokens(msg.content);
+      for (const t of salient) {
+        if (!userTokens.includes(t)) {
+          userTokens.push(t);
+          if (userTokens.length >= 5) break;
+        }
+      }
+    }
+    return userTokens.join(' ').trim();
+  }
+
+  const tokens = extractSalientTokens(rawInput);
 
   // 如果当前输入本身具有实质内容（包含 2 个及以上实体词或长度超过 6 个字）
-  if (input.length > 6 && tokens.length > 0) {
-    return input;
+  if (rawInput.length > 6 && tokens.length > 0) {
+    return rawInput;
   }
 
   // 当前输入偏短（如“嗯”、“然后呢”），向后回溯最近 2 轮对话中的实体上下文
-  const history = options.recentMessages || [];
   const contextTokens: string[] = [...tokens];
 
   for (let i = history.length - 1; i >= 0 && contextTokens.length < 5; i--) {
     const msg = history[i];
-    if (msg.type !== 'text' || !msg.content) continue;
+    if (msg.role !== 'user' || msg.type !== 'text' || !msg.content) continue;
     const salient = extractSalientTokens(msg.content);
     for (const t of salient) {
       if (!contextTokens.includes(t)) {
@@ -59,11 +80,11 @@ export function buildEffectiveRecallQuery(options: BuildRecallQueryOptions): str
   }
 
   if (contextTokens.length === 0) {
-    return input;
+    return rawInput;
   }
 
   // 拼接合成检索词
-  return `${input} ${contextTokens.join(' ')}`.trim();
+  return `${rawInput} ${contextTokens.join(' ')}`.trim();
 }
 
 /**

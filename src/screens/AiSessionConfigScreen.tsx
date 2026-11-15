@@ -25,6 +25,10 @@ import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { RIGHT_DRAWER_WIDTH } from '../components/ai/AiPushScaleDrawerStage';
 import {
+  containsBinaryNullOrGarbledText,
+  resolveAttachmentKind,
+} from '../utils/attachmentKind';
+import {
   addThreadSessionManualModel,
   applyRoleCardToThread,
   clearThreadSessionModelOverride,
@@ -833,7 +837,15 @@ export function AiSessionConfigScreen({
         return;
       }
       const asset = pickerResult.assets[0];
+      if (
+        resolveAttachmentKind(asset.mimeType, asset.name, asset.uri, { includeSvg: true }) === 'image'
+      ) {
+        throw new Error('外部对话接回仅支持导出的 JSON 或文本记录文件，不支持图片或二进制文件。');
+      }
       const text = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
+      if (containsBinaryNullOrGarbledText(text)) {
+        throw new Error('外部对话接回仅支持导出的 JSON 或文本记录文件，不支持图片或二进制文件。');
+      }
       let importResult;
       try {
         importResult = await importThreadContinuity({

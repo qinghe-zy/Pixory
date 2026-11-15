@@ -26,7 +26,10 @@ export async function compileConversationCoverage(
   input: CompileConversationCoverageInput,
 ): Promise<CompiledConversationCoverage> {
   let result: CompiledConversationCoverage | undefined;
-  await db.withExclusiveTransactionAsync(async transaction => { result = await compileInTransaction(transaction, input); });
+  const runTx = db.withTransactionAsync as unknown as (task: (txn?: SQLiteDatabase) => Promise<void>) => Promise<void>;
+  await runTx.call(db, async (txn) => {
+    result = await compileInTransaction(txn ?? db, input);
+  });
   if (!result) throw new Error('Conversation planning transaction did not complete.');
   return result;
 }

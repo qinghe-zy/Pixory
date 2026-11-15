@@ -21,19 +21,25 @@ export async function loadDreamRuntimeNotice(
   db: SQLiteDatabase,
   input: { threadId: string; branchRouteHash: string; lineageVersion: number },
 ): Promise<DreamRuntimeNotice | null> {
-  const manual = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM companion_dream_seeds
-     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion = ?
+  const manual = await db.getFirstAsync<{ createdAt: string; id: string }>(
+    `SELECT id, createdAt FROM companion_dream_seeds
+     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion <= ?
        AND manual = 1 AND decision = 'awaiting_confirmation'
      ORDER BY createdAt DESC LIMIT 1`,
     input.threadId,
     input.branchRouteHash,
     input.lineageVersion,
   );
-  if (manual) return { seedId: manual.id, threadId: input.threadId, type: 'manual_confirmation' };
+  if (manual) {
+    const ageMs = Date.now() - new Date(manual.createdAt).getTime();
+    if (ageMs < 30 * 60 * 1000 && ageMs >= 0) {
+      return { seedId: manual.id, threadId: input.threadId, type: 'manual_confirmation' };
+    }
+  }
   const active = await db.getFirstAsync<{ id: string }>(
     `SELECT id FROM companion_dream_jobs
-     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion = ?
+     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion <= ?
+       AND phase = 'generating'
        AND cancelRequested = 0 AND status IN ('pending', 'running', 'retry')
      ORDER BY createdAt DESC LIMIT 1`,
     input.threadId,
@@ -43,7 +49,7 @@ export async function loadDreamRuntimeNotice(
   if (active) return { jobId: active.id, threadId: input.threadId, type: 'generating' };
   const dream = await db.getFirstAsync<{ id: string; jobId: string }>(
     `SELECT id, jobId FROM companion_dreams
-     WHERE sourceThreadId = ? AND sourceBranchRouteHash = ? AND lineageVersion = ?
+     WHERE sourceThreadId = ? AND sourceBranchRouteHash = ? AND lineageVersion <= ?
        AND status = 'active' AND viewedAt IS NULL
      ORDER BY displayAt DESC LIMIT 1`,
     input.threadId,
@@ -53,7 +59,8 @@ export async function loadDreamRuntimeNotice(
   if (dream) return { dreamId: dream.id, jobId: dream.jobId, threadId: input.threadId, type: 'completed' };
   const failed = await db.getFirstAsync<{ id: string }>(
     `SELECT id FROM companion_dream_jobs
-     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion = ?
+     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion <= ?
+       AND phase = 'generating'
        AND status IN ('failed', 'waiting_model')
      ORDER BY updatedAt DESC LIMIT 1`,
     input.threadId,

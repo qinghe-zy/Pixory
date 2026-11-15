@@ -10,6 +10,7 @@ export interface ActiveProviderConfig {
   apiKey: string | null;
   promptCacheEnabled: boolean;
   supportsThinking?: boolean;
+  didFallbackProvider?: boolean;
 }
 
 export interface MemoryModelConfig extends ActiveProviderConfig {
@@ -147,8 +148,9 @@ export async function getActiveProviderConfig(
     return null;
   }
 
-  // 5. 模型解析：优先使用传入的 preferredModelId，其次 defaultChatModelId，再其次查询该 Provider 支持 chat 的模型
-  let rawModelId = preferredModelId || chosenRow.defaultChatModelId;
+  // 5. 模型解析：仅当未发生跨 Provider 回退时采用传入的 preferredModelId；一旦切换至其他 Provider，必须重置为目标 Provider 自身默认模型
+  const didFallbackProvider = Boolean(preferredProviderId && chosenRow.id !== preferredProviderId);
+  let rawModelId = (!didFallbackProvider ? preferredModelId : null) || chosenRow.defaultChatModelId;
   let modelRow: { modelId: string; supportsThinking?: number } | null = null;
   if (!rawModelId) {
     modelRow = await db.getFirstAsync<{ modelId: string; supportsThinking?: number }>(
@@ -187,6 +189,7 @@ export async function getActiveProviderConfig(
     apiKey,
     promptCacheEnabled,
     supportsThinking,
+    didFallbackProvider,
   };
 }
 

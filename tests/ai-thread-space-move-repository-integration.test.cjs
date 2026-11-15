@@ -116,7 +116,7 @@ function createSchema(db) {
       modelTitleGeneratedAt TEXT, providerId TEXT, modelId TEXT, sessionBaseUrl TEXT,
       sessionApiKeyRef TEXT, modelSnapshotJson TEXT, roleCardId TEXT, roleSnapshotJson TEXT,
       roleInstructionWeight TEXT, replyPreference TEXT, contextHistoryRoundLimit INTEGER DEFAULT 30, thinkingDisabled INTEGER,
-      systemPrompt TEXT, materialRulesSnapshot TEXT, boundaryMode TEXT, summary TEXT,
+      systemPrompt TEXT, materialRulesSnapshot TEXT, pinnedLoreSnapshot TEXT, boundaryMode TEXT, summary TEXT,
       lastMessagePreview TEXT, currentBranchRootMessageId TEXT, currentBranchVersionIndex INTEGER,
       createdAt TEXT, updatedAt TEXT, archivedAt TEXT
     );

@@ -344,9 +344,19 @@ export async function runLocalFastExtraction(input: LocalFastExtractorInput): Pr
     }
   }
   const writtenClaimCount = await writeCandidates(input, candidates);
-  await runWithDatabaseSpace(input.space, (db) =>
-    consumeCurrentTurnObservation(db, { id: observation.id, space: input.space })
-  );
+  await runWithDatabaseSpace(input.space, async (db) => {
+    await consumeCurrentTurnObservation(db, { id: observation.id, space: input.space });
+    const pendingSameMessage = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM memory_current_turn_observations
+       WHERE space = ? AND threadId = ? AND messageId = ? AND status = 'pending'`,
+      input.space,
+      input.threadId,
+      input.messageId
+    ).catch(() => []);
+    for (const pending of pendingSameMessage) {
+      await consumeCurrentTurnObservation(db, { id: pending.id, space: input.space });
+    }
+  });
   return { candidates, observation, writtenClaimCount };
 }
 
@@ -359,8 +369,13 @@ export async function drainCurrentTurnMemory(input: {
   const pending = await runWithDatabaseSpace(input.space, (db) =>
     listPendingCurrentTurnObservations(db, { space: input.space, threadId: input.threadId })
   );
+  const sortedPending = [...pending].sort((left, right) => {
+    const leftPriority = (left.explicitUserAction || left.intent === 'forget' || left.intent === 'correction') ? 1 : 0;
+    const rightPriority = (right.explicitUserAction || right.intent === 'forget' || right.intent === 'correction') ? 1 : 0;
+    return rightPriority - leftPriority;
+  });
   let processed = 0;
-  for (const observation of pending) {
+  for (const observation of sortedPending) {
     if (Date.now() - startedAt >= (input.maxDurationMs ?? 20)) {
       break;
     }
@@ -375,10 +390,17 @@ export async function drainCurrentTurnMemory(input: {
       continue;
     }
     const payload = parseObservationPayload(observation);
+    const branchScopes = observation.branchRootMessageId && observation.branchVersionIndex != null
+      ? await runWithDatabaseSpace(input.space, (db) =>
+        aiThreadRepository.resolveBranchLineage(
+          db,
+          observation.branchRootMessageId!,
+          observation.branchVersionIndex!
+        )
+      )
+      : [];
     await runLocalFastExtraction({
-      branchScopes: observation.branchRootMessageId && observation.branchVersionIndex != null
-        ? [{ branchRootMessageId: observation.branchRootMessageId, branchVersionIndex: observation.branchVersionIndex }]
-        : [],
+      branchScopes,
       branchRootMessageId: observation.branchRootMessageId,
       branchVersionIndex: observation.branchVersionIndex,
       messageContent: message.content,
@@ -387,6 +409,9 @@ export async function drainCurrentTurnMemory(input: {
       space: input.space,
       threadId: input.threadId,
     });
+    await runWithDatabaseSpace(input.space, (db) =>
+      consumeCurrentTurnObservation(db, { id: observation.id, space: input.space })
+    );
     void payload;
     processed += 1;
   }

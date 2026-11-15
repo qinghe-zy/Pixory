@@ -1,6 +1,7 @@
 import type { IRagComponent } from './core/lifecycle';
 import type {
   ContextBudget,
+  IRagProviderCapabilities,
   IngestResult,
   PromptContextResult,
   RagDocument,
@@ -15,6 +16,8 @@ import type {
  */
 export interface IRagProvider extends IRagComponent {
   readonly kind: 'provider';
+  /** 安全与检索能力声明，用于空间隔离校验与策略路由 */
+  readonly capabilities?: IRagProviderCapabilities;
 
   /** 1. 知识库摄入：自动分块、向量化并索引 */
   ingest(document: RagDocument): Promise<IngestResult>;

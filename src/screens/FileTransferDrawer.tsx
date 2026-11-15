@@ -60,20 +60,18 @@ export const FileTransferDrawer = memo(function FileTransferDrawer({
     let isMounted = true;
     void runWithDatabaseSpace(space, async (db) => {
       try {
-        const [msgCountRow, imgCountRow, docCountRow] = await Promise.all([
-          db.getFirstAsync<{ count: number }>(
-            'SELECT COUNT(*) as count FROM ai_messages WHERE threadId = ?',
-            threadId
-          ),
-          db.getFirstAsync<{ count: number }>(
-            "SELECT COUNT(*) as count FROM ai_message_attachments WHERE threadId = ? AND kind = 'image'",
-            threadId
-          ),
-          db.getFirstAsync<{ count: number }>(
-            "SELECT COUNT(*) as count FROM ai_message_attachments WHERE threadId = ? AND kind = 'document'",
-            threadId
-          ),
-        ]);
+        const msgCountRow = await db.getFirstAsync<{ count: number }>(
+          'SELECT COUNT(*) as count FROM ai_messages WHERE threadId = ?',
+          threadId
+        );
+        const imgCountRow = await db.getFirstAsync<{ count: number }>(
+          "SELECT COUNT(*) as count FROM ai_message_attachments WHERE threadId = ? AND kind = 'image'",
+          threadId
+        );
+        const docCountRow = await db.getFirstAsync<{ count: number }>(
+          "SELECT COUNT(*) as count FROM ai_message_attachments WHERE threadId = ? AND kind = 'document'",
+          threadId
+        );
         if (isMounted) {
           setStats({
             totalMessages: msgCountRow?.count ?? 0,

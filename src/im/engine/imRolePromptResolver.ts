@@ -5,10 +5,17 @@
  * 与杀后台断联补回 (imBackgroundStreamService) 统一复用，消除重复 JSON 解析与正则构建。
  */
 
-import type { ImCompanionPersonalization } from '../repository/imSettingsRepository';
+import type {
+  ImCompanionPersonalization,
+  ImRelationshipPreset,
+  ImReplyStyleGear,
+} from '../repository/imSettingsRepository';
 
 const CHAR_MACRO_REGEX = /\{\{\s*char\s*\}\}/gi;
 const USER_MACRO_REGEX = /\{\{\s*user\s*\}\}/gi;
+
+export const NEUTRAL_FALLBACK_ROLE_PROMPT =
+  '你是一位具有独立性格、背景与立场的人物。请完全沉浸在自身设定与当前语境中与对方对话。';
 
 export interface CompanionRoleCardSnapshot {
   name?: string | null;
@@ -18,28 +25,78 @@ export interface CompanionRoleCardSnapshot {
 }
 
 const RELATIONSHIP_PRESET_MAP: Record<string, string> = {
-  close_friend: '知心挚友：无话不谈、温暖陪伴、默契信任',
+  close_friend: '知心挚友：坦诚相待、温暖信任的挚友关系',
   romantic: '心动伴侣：双向奔赴、亲昵依恋、细腻浪漫',
-  friend: '日常朋友：轻松闲聊、自然随和、平等真诚',
+  friend: '日常朋友：轻松自在、平等真诚的朋友关系',
   mentor: '亦师亦友：引路解惑、沉稳包容、共同成长',
   childhood_sweetheart: '青梅竹马：默契熟稔、打闹斗嘴、知根知底',
   rival_partner: '欢喜冤家：相爱相杀、口嫌体正直、趣味互怼',
-  natural: '自然随性、如老友般的轻松默契',
-  sweet: '亲密依赖、温情甜蜜的专属伴侣',
-  partner: '互相支撑、并肩同行的人生搭档',
-  gentle: '包容治愈、静静倾听的守护者',
+  natural: '自然随性：轻松默契、坦然相对的相处感',
+  sweet: '亲密依赖：温情甜蜜、彼此挂念的伴侣感',
+  partner: '并肩同行：互相支撑、共担风雨的搭档关系',
+  gentle: '温和守护：包容沉静、认真倾听的陪伴感',
 };
 
 const REPLY_STYLE_GEAR_MAP: Record<string, string> = {
-  balanced: '自然亲切：语调温和随和，真实像微信老友，字数适中，不紧不慢，每次回复 1~3 个短气泡',
-  empathetic: '温柔共情：细腻共情，敏锐察觉对方细微情绪波动与疲惫，温柔倾听，提供充分情绪价值与安全感',
-  playful: '元气幽默：表达生动活泼，爱开玩笑与玩梗，分享欲爆棚，随时带来阳光与生活在场感',
-  tsundere: '傲娇口嫌：嘴硬心软，偶尔别扭假装嫌弃实则偷瞄在乎，口嫌体正直，越怼越深情',
-  clingy_sweet: '甜糯粘人：依赖感极强，爱撒娇分享日常小事，秒回消息，把你当做世界中心，忍不住多找你说话',
-  concise_cool: '清冷酷飒：话少内敛，短句直奔重点，外表清冷平静，内心坚定长情，日常惜字如金',
-  concise: '清冷酷飒：短句快答，惜字如金，日常话为主，不啰嗦',
-  lively: '热情分享：表达生动活泼，分享欲旺盛，充满在场感',
+  empathetic: '温柔共情：对情绪更敏感柔和',
+  playful: '元气幽默：倾向轻松打趣与活泼表达',
+  tsundere: '傲娇口嫌：倾向嘴硬心软、别扭表达',
+  clingy_sweet: '甜糯粘人：倾向亲近依恋、多表达挂念',
+  concise_cool: '清冷酷飒：倾向言简意赅、内敛克制',
+  concise: '清冷克制：言简意赅，少赘述',
+  lively: '热情活泼：倾向外向直白、分享感强',
 };
+
+function hasExplicitCustomizationFields(personalization: ImCompanionPersonalization): boolean {
+  return Boolean(
+    personalization.userNickname?.trim() ||
+      personalization.companionCallName?.trim() ||
+      personalization.userPersonaNote?.trim() ||
+      personalization.customRelationshipNote?.trim()
+  );
+}
+
+/**
+ * 判定是否为历史版本遗留的“未定制默认元组” (`close_friend` + `balanced` | 未设置，且无任何自定义称谓/画像/关系说明)。
+ *
+ * 旧版设置弹窗曾默认自动落盘 `{ relationshipPreset: 'close_friend', replyStyleGear: 'balanced' }`，
+ * 在用户未填写任何定制字段时应按零注入处理以尊重角色卡原设；
+ * 而当用户显式选择 `{ relationshipPreset: 'close_friend', replyStyleGear: 'role_default' }` 时，
+ * 代表用户在新版中主动保留“知心挚友”，必须保留 `close_friend` 关系定位而不能误判为零注入。
+ */
+export function isLegacyDefaultRelationshipTuple(
+  personalization: ImCompanionPersonalization | null | undefined
+): boolean {
+  if (!personalization) return false;
+  const styleGear = personalization.replyStyleGear;
+  const isLegacyUnsetOrBalancedStyle = !styleGear || styleGear === 'balanced';
+  return (
+    personalization.relationshipPreset === 'close_friend' &&
+    isLegacyUnsetOrBalancedStyle &&
+    !hasExplicitCustomizationFields(personalization)
+  );
+}
+
+/**
+ * 将持久化个性化设置归一化为 UI 弹窗选中态，使弹窗回显与提示词解析层保持一致：
+ * 未定制的历史遗留 `{ close_friend, balanced | undefined }` 映射为 `role_default / role_default`，
+ * 同时保留显式定制（如附带昵称、`custom`、`romantic` 或 `close_friend + role_default`）。
+ */
+export function normalizePersonalizationForUi(
+  personalization?: ImCompanionPersonalization | null
+): { relationshipPreset: ImRelationshipPreset; replyStyleGear: ImReplyStyleGear } {
+  if (!personalization || isLegacyDefaultRelationshipTuple(personalization)) {
+    return {
+      relationshipPreset: 'role_default',
+      replyStyleGear: 'role_default',
+    };
+  }
+
+  return {
+    relationshipPreset: personalization.relationshipPreset || 'role_default',
+    replyStyleGear: personalization.replyStyleGear || 'role_default',
+  };
+}
 
 export function resolveCompanionRolePrompt(
   role: CompanionRoleCardSnapshot | null | undefined,
@@ -48,7 +105,7 @@ export function resolveCompanionRolePrompt(
 ): { rolePrompt: string; companionName: string; personaAnchor: string } {
   const companionCallName = personalization?.companionCallName?.trim();
   const companionName = role?.name?.trim() || fallbackName;
-  let fullPrompt = role?.prompt?.trim() || '你是一个温柔体贴、充满活力的专属 AI 伴侣。';
+  let fullPrompt = role?.prompt?.trim() || NEUTRAL_FALLBACK_ROLE_PROMPT;
 
   if (role?.description?.trim()) {
     fullPrompt += `\n\n【角色身份与外貌】\n${role.description.trim()}`;
@@ -83,37 +140,61 @@ export function resolveCompanionRolePrompt(
     .replace(CHAR_MACRO_REGEX, effectiveCharMacro)
     .replace(USER_MACRO_REGEX, effectiveUserMacro);
 
-  // 双向契约与相处默契（注入 Layer 1 末尾，保持 100% Prefix Cache 命中）
+  // 可选个性化补充设定（默认遵从角色卡原设时零注入，避免覆盖角色本身世界观与口吻）
   if (personalization) {
     const contractLines: string[] = [];
     if (companionCallName) {
       contractLines.push(
-        `• 对方对你的专属称谓: "${companionCallName}"（你在对话中若听到对方这样称呼你，请自然答应并以此自居，严禁反驳或表现出生疏）`
+        `• 对方对你的专属称谓: "${companionCallName}"（若对方在对话中以此称呼你，请自然知晓这是指代你并贴合自身性格回应）`
       );
     }
     if (userNickname) {
-      contractLines.push(`• 对方专属称呼: "${userNickname}"（你在对话中自然用此称呼对方，严禁使用油腻网文套路称呼）`);
+      contractLines.push(
+        `• 对方专属称呼: "${userNickname}"（仅作称呼对方时的称谓参考，依自身人物口吻自然使用）`
+      );
     }
     if (personalization.userPersonaNote?.trim()) {
       contractLines.push(`• 对方的自我画像/身份: "${personalization.userPersonaNote.trim()}"`);
     }
-    if (personalization.relationshipPreset) {
-      const relDesc =
-        personalization.relationshipPreset === 'custom'
-          ? (personalization.customRelationshipNote?.trim() || '专属定制默契关系')
-          : (RELATIONSHIP_PRESET_MAP[personalization.relationshipPreset] || '亲近默契的专属相伴');
-      contractLines.push(`• 彼此相处关系定位: ${relDesc}`);
+
+    const relPreset = personalization.relationshipPreset;
+    if (
+      relPreset &&
+      relPreset !== 'role_default' &&
+      !isLegacyDefaultRelationshipTuple(personalization)
+    ) {
+      if (relPreset === 'custom') {
+        const customNote = personalization.customRelationshipNote?.trim();
+        if (customNote) {
+          contractLines.push(`• 彼此相处关系定位: ${customNote}`);
+        }
+      } else {
+        const relDesc = RELATIONSHIP_PRESET_MAP[relPreset];
+        if (relDesc) {
+          contractLines.push(`• 彼此相处关系定位: ${relDesc}`);
+        }
+      }
     }
-    if (personalization.replyStyleGear && REPLY_STYLE_GEAR_MAP[personalization.replyStyleGear]) {
-      contractLines.push(`• 回复节奏与风格约束: ${REPLY_STYLE_GEAR_MAP[personalization.replyStyleGear]}`);
+
+    const styleGear = personalization.replyStyleGear;
+    if (
+      styleGear &&
+      styleGear !== 'role_default' &&
+      styleGear !== 'balanced' &&
+      REPLY_STYLE_GEAR_MAP[styleGear]
+    ) {
+      contractLines.push(`• 补充表达风格倾向: ${REPLY_STYLE_GEAR_MAP[styleGear]}`);
     }
 
     if (contractLines.length > 0) {
+      contractLines.push(
+        '• 补充优先级说明: 以上仅为互动补充偏好，绝不可覆盖角色卡自身的世界观、立场、性格与说话口吻。'
+      );
       fullPrompt += `\n\n【专属相处契约与双向默契】\n${contractLines.join('\n')}`;
     }
   }
 
-  const personaAnchor = `你是 ${companionName}。请时刻保持你的鲜明人设、说话习惯与身份背景，以此口吻自然回复，杜绝平庸泛化的日常白开水。`;
+  const personaAnchor = `[身份锚定: 你是「${companionName}」，请始终站在自身角色立场、性格与所处世界观中回应，无需迁就通用聊天模板]`;
 
   return { rolePrompt: fullPrompt, companionName, personaAnchor };
 }

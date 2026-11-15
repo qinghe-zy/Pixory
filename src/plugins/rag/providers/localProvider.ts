@@ -1,5 +1,6 @@
 import { PromptContextBuilder } from '../components/context/contextBuilder';
 import { HybridRrfSearcher, type IHybridSearcher } from '../components/searchers/hybridRrfSearcher';
+import { MarkdownTextSplitter } from '../components/splitters/markdownSplitter';
 import { RecursiveTextSplitter } from '../components/splitters/recursiveSplitter';
 import { MemoryRagStore } from '../components/stores/memoryStore';
 import type { IRagEmbedder } from '../components/embedders/types';
@@ -8,6 +9,7 @@ import type { IRagStore } from '../components/stores/types';
 import type { IRagProvider } from '../provider';
 import type {
   ContextBudget,
+  IRagProviderCapabilities,
   IngestResult,
   PromptContextResult,
   RagDocument,
@@ -32,6 +34,11 @@ export interface LocalHybridRagProviderOptions {
 export class LocalHybridRagProvider implements IRagProvider {
   public readonly id: string;
   public readonly kind = 'provider' as const;
+  public readonly capabilities: IRagProviderCapabilities = {
+    isRemote: false,
+    supportsHybrid: true,
+    supportsMetadataFilter: true,
+  };
 
   public readonly store: IRagStore;
   public readonly splitter: ITextSplitter;
@@ -64,8 +71,14 @@ export class LocalHybridRagProvider implements IRagProvider {
     // 1. 保存文档元数据
     await this.store.saveDocument(document);
 
-    // 2. 切分语义分块
-    const chunks = this.splitter.splitText(document.content, document.id);
+    // 2. 重摄入前清理旧切片与旧向量，防止文档变短后残留尾部陈旧切片
+    await this.store.deleteChunksByDocument(document.id);
+
+    // 3. 切分语义分块：若为 Markdown 结构文档则优先使用 MarkdownTextSplitter 保留标题与段落语义
+    const isMarkdown = document.metadata?.mime === 'text/markdown'
+      || (typeof document.title === 'string' && document.title.toLowerCase().endsWith('.md'));
+    const splitter = isMarkdown ? new MarkdownTextSplitter() : this.splitter;
+    const chunks = splitter.splitText(document.content, document.id);
     // 注入文档标题及元数据至切片中以备溯源
     for (const c of chunks) {
       c.metadata = {
@@ -75,7 +88,7 @@ export class LocalHybridRagProvider implements IRagProvider {
     }
     await this.store.saveChunks(chunks);
 
-    // 3. 向量化（如果配置了 Embedder）
+    // 4. 向量化（如果配置了 Embedder）；仅持久化非空且全为有限数值的合法向量
     let embeddedCount = 0;
     if (this.embedder && chunks.length > 0) {
       try {
@@ -85,16 +98,24 @@ export class LocalHybridRagProvider implements IRagProvider {
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
           const vector = vectors[i];
-          if (chunk && vector) {
+          if (
+            chunk
+            && Array.isArray(vector)
+            && vector.length > 0
+            && vector.every((value) => typeof value === 'number' && Number.isFinite(value))
+          ) {
             embeddings.push({
               chunkId: chunk.id,
               vector,
-              dimensions: this.embedder.dimensions,
+              dimensions: vector.length,
+              modelId: this.embedder.modelId,
             });
           }
         }
-        await this.store.saveEmbeddings(embeddings);
-        embeddedCount = embeddings.length;
+        if (embeddings.length > 0) {
+          await this.store.saveEmbeddings(embeddings);
+          embeddedCount = embeddings.length;
+        }
       } catch {
         // 向量化异常时安全降级，不阻塞文档成功摄入
       }

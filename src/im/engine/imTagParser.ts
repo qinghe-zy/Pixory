@@ -24,6 +24,18 @@ export interface ParsedPingTag {
   intent: string;
 }
 
+export interface ParsedMemoryRecallTag {
+  query: string;
+  rawTag: string;
+}
+
+export interface ParsedMemoryNoteTag {
+  op: 'SUPERSEDE' | 'UPDATE' | 'ADD';
+  targetHint: string;
+  newContent: string;
+  rawTag: string;
+}
+
 export interface ParsedStickerTag {
   emotion: string;
   rawTag: string;
@@ -70,11 +82,16 @@ const NUDGE_TAG_REGEX = /\[NUDGE(?::\s*([^\]]+))?\]/i;
 const STATUS_TAG_REGEX = /\[STATUS:\s*([^\]]+)\]/i;
 const HEARTBEAT_TAG_REGEX = /\[HEARTBEAT:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
 const PING_TAG_REGEX = /\[PING:\s*([^|\]]+)\|\s*([^\]]+)\]/i;
-export const STICKER_TAG_REGEX = /[\[【]\s*(?:STICKER|表情)\s*[:：]\s*([^\]】]{1,10}?)\s*[\]】]/i;
-export const VOICE_TAG_INLINE_COLON_REGEX = /[\[【]\s*(?:VOICE|语音)\s*[:：]\s*([^\]】]+?)\s*[\]】]/i;
+const MEMORY_RECALL_TAG_REGEX = /[\[【]\s*MEMORY_RECALL\s*[:：]\s*([^\]】\n]{1,80}?)\s*[\]】]/i;
+const MEMORY_NOTE_TAG_REGEX = /[\[【]\s*MEMORY_NOTE\s*[:：]\s*(SUPERSEDE|UPDATE|ADD)\s*\|\s*([^|\]】\n]{0,80}?)\s*\|\s*([^\]】\n]{1,180}?)\s*[\]】]/i;
+const MEMORY_NOTE_ADD_2PART_REGEX = /[\[【]\s*MEMORY_NOTE\s*[:：]\s*ADD\s*\|\s*([^|\]】\n]{2,180}?)\s*[\]】]/i;
+export const STICKER_TAG_REGEX = /[\[【]\s*(?:STICKER|表情)\s*[:：]\s*([^\]】]{1,40}?)\s*[\]】]/i;
+const INLINE_MULTIMODAL_ATOM_REGEX =
+  /[\[【]\s*(?:(STICKER|表情)\s*(?:[:：]([^\]】\n]{1,40})[\]】]|[\]】]\s*[:：]?\s*([^\s\[\]【】\n]{1,24}))|(VOICE|语音)\s*(?:[:：]((?:[^\[\]\]】]|\[[^\]\n]{1,60}\])+)[\]】]|[\]】]\s*[:：]?\s*([^\[\]【】]+)))/gi;
+export const VOICE_TAG_INLINE_COLON_REGEX = /[\[【]\s*(?:VOICE|语音)\s*[:：]((?:[^\[\]\]】]|\[[^\]\n]{1,60}\])+)[\]】]/i;
 export const VOICE_TAG_OUTSIDE_COLON_REGEX = /^[\[【]\s*(?:VOICE|语音)\s*[\]】]\s*[:：]?\s*([\s\S]+)$/i;
 export const EMBEDDED_VOICE_OUTSIDE_REGEX = /[\[【]\s*(?:VOICE|语音)\s*[\]】]\s*[:：]?\s*([^\[\]【】]+)/i;
-export const VOICE_TAG_REGEX = /[\[【]\s*(?:VOICE|语音)\s*(?:[:：]\s*([^\]】]+?)\s*[\]】]|[\]】]\s*[:：]?\s*([^\[\]【】]+))/i;
+export const VOICE_TAG_REGEX = /[\[【]\s*(?:VOICE|语音)\s*(?:[:：]((?:[^\[\]\]】]|\[[^\]\n]{1,60}\])+)[\]】]|[\]】]\s*[:：]?\s*([^\[\]【】]+))/i;
 const DOCUMENT_BLOCK_REGEX = /\[(?:DOCUMENT|DOC):\s*([^\]\n]+)\]([\s\S]*?)\[\/(?:DOCUMENT|DOC)\]/i;
 const DOCUMENT_INLINE_REGEX = /\[(?:DOCUMENT|DOC):\s*([^|\]\n]+)\|\s*([\s\S]+?)\]/i;
 const DOCUMENT_PATCH_BLOCK_REGEX = /\[(?:DOCUMENT_PATCH|DOC_PATCH):\s*([^|\]\n]+?)\s*\|\s*([^\]\n]+?)\]([\s\S]*?)\[\/(?:DOCUMENT_PATCH|DOC_PATCH)\]/i;
@@ -239,6 +256,64 @@ export function parseStickerTag(text: string): ParsedStickerTag | null {
   const emotion = match[1]?.trim();
   if (!emotion) return null;
   return { emotion, rawTag: match[0] };
+}
+
+export interface MultimodalAtom {
+  kind: 'text' | 'sticker' | 'voice';
+  payload: string;
+}
+
+/**
+ * 将包含内联贴纸与语音标签的复合语段按自然出现顺序无损解构为有序多模态原子序列
+ */
+export function tokenizeMultimodalSegment(rawText: string): MultimodalAtom[] {
+  if (!rawText || !rawText.trim()) {
+    return [];
+  }
+
+  const atoms: MultimodalAtom[] = [];
+  const regex = new RegExp(INLINE_MULTIMODAL_ATOM_REGEX.source, 'gi');
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(rawText)) !== null) {
+    if (match.index > lastIndex) {
+      const textSpan = rawText.slice(lastIndex, match.index).trim();
+      if (textSpan) {
+        atoms.push({ kind: 'text', payload: textSpan });
+      }
+    }
+
+    const matched = match[0];
+    if (match[1]) {
+      const extractedGroup = (match[2] || match[3] || '').trim();
+      const emotion = (parseStickerTag(matched)?.emotion || extractedGroup).trim();
+      if (emotion) {
+        atoms.push({ kind: 'sticker', payload: emotion });
+      }
+    } else if (match[4]) {
+      const voiceContent = (match[5] || match[6] || '').trim();
+      if (voiceContent) {
+        atoms.push({ kind: 'voice', payload: matched.trim() });
+      }
+    }
+
+    lastIndex = match.index + matched.length;
+  }
+
+  if (lastIndex === 0) {
+    const trimmed = rawText.trim();
+    return trimmed ? [{ kind: 'text', payload: trimmed }] : [];
+  }
+
+  if (lastIndex < rawText.length) {
+    const trailingSpan = rawText.slice(lastIndex).trim();
+    if (trailingSpan) {
+      atoms.push({ kind: 'text', payload: trailingSpan });
+    }
+  }
+
+  return atoms;
 }
 
 /**
@@ -460,4 +535,76 @@ export function validateHeartbeatConsistency(
   }
 
   return heartbeat;
+}
+
+/**
+ * 解析伴侣模型主动发起的无声二次记忆查询协议标签：[MEMORY_RECALL: 关键词]
+ * 采用定界字符类与输入长度上限防止 ReDoS
+ */
+export function parseMemoryRecallTag(text: string): ParsedMemoryRecallTag | null {
+  if (!text || typeof text !== 'string') return null;
+  const bounded = text.slice(-4000);
+  const match = bounded.match(MEMORY_RECALL_TAG_REGEX);
+  if (!match) return null;
+  const query = (match[1] || '').trim().slice(0, 80);
+  if (!query) return null;
+  return {
+    query,
+    rawTag: match[0],
+  };
+}
+
+/**
+ * 解析伴侣模型发回的记忆勘误/覆写协议标签：
+ * - [MEMORY_NOTE: SUPERSEDE | 旧事实线索 | 纠偏后新事实]
+ * - [MEMORY_NOTE: UPDATE | 目标线索 | 更新内容]
+ * - [MEMORY_NOTE: ADD | 标签或空 | 新增关键事实] 或 [MEMORY_NOTE: ADD | 新增关键事实]
+ */
+export function parseMemoryNoteTag(text: string): ParsedMemoryNoteTag | null {
+  if (!text || typeof text !== 'string') return null;
+  const bounded = text.slice(-4000);
+  const threePart = bounded.match(MEMORY_NOTE_TAG_REGEX);
+  if (threePart) {
+    const rawOp = (threePart[1] || '').toUpperCase();
+    const op = rawOp === 'SUPERSEDE' || rawOp === 'UPDATE' ? rawOp : 'ADD';
+    const targetHint = (threePart[2] || '').trim().slice(0, 80);
+    const newContent = (threePart[3] || '').trim().slice(0, 180);
+    if (!newContent) return null;
+    if ((op === 'SUPERSEDE' || op === 'UPDATE') && !targetHint) return null;
+    return {
+      op,
+      targetHint,
+      newContent,
+      rawTag: threePart[0],
+    };
+  }
+
+  const twoPart = bounded.match(MEMORY_NOTE_ADD_2PART_REGEX);
+  if (twoPart) {
+    const newContent = (twoPart[1] || '').trim().slice(0, 180);
+    if (!newContent) return null;
+    return {
+      op: 'ADD',
+      targetHint: '',
+      newContent,
+      rawTag: twoPart[0],
+    };
+  }
+
+  return null;
+}
+
+export function parseMemoryNoteTags(text: string): ParsedMemoryNoteTag[] {
+  if (!text || typeof text !== 'string') return [];
+  const results: ParsedMemoryNoteTag[] = [];
+  let cursor = text.slice(-6000);
+  for (let i = 0; i < 4; i += 1) {
+    const parsed = parseMemoryNoteTag(cursor);
+    if (!parsed) break;
+    results.push(parsed);
+    const idx = cursor.indexOf(parsed.rawTag);
+    if (idx === -1) break;
+    cursor = `${cursor.slice(0, idx)} ${cursor.slice(idx + parsed.rawTag.length)}`;
+  }
+  return results;
 }

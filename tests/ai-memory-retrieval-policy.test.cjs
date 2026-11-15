@@ -57,24 +57,24 @@ test('retrieval admission rejects unrelated high-importance memories without lex
   assert.equal(retrieval.shouldAdmitMemoryCandidate({ lexical: 0, semantic: 0.6 }, { embeddingAvailable: true }), true);
 });
 
-test('context compiler never allocates negative slots for small contexts', () => {
-  const compiler = loadTypeScriptModule(compilerPath);
-  for (const maxContextTokens of [1024, 2048, 4096, 8192, 32768]) {
-    const budget = compiler.allocateContextBudget(maxContextTokens);
-    for (const value of Object.values(budget)) {
-      assert.ok(value >= 0, `${maxContextTokens} produced ${value}`);
-    }
-    assert.ok(budget.C0 + budget.C1 + budget.C2 + budget.C3 + budget.C4 + budget.C5 + budget.C6 <= maxContextTokens);
+test('context budget never allocates non-positive budgets for small or invalid windows', () => {
+  const budgetMod = loadTypeScriptModule(path.join(root, 'src/ai/aiContextBudget.ts'));
+  assert.equal(budgetMod.getConservativeContextBudget(null), Math.floor(128_000 * 0.7));
+  for (const maxContextTokens of [1, 128, 1024, 2048, 4096, 8192, 32768]) {
+    const conservativeBudget = budgetMod.getConservativeContextBudget(maxContextTokens);
+    assert.ok(conservativeBudget >= 1, `${maxContextTokens} produced ${conservativeBudget}`);
+    assert.ok(conservativeBudget <= maxContextTokens, `${maxContextTokens} exceeded limit: ${conservativeBudget}`);
   }
 });
 
 test('chat memory path uses the new retrieval and usage-contract modules', () => {
   const retrieval = fs.readFileSync(retrievalPath, 'utf8');
   const compiler = fs.readFileSync(compilerPath, 'utf8');
-  const memoryService = fs.readFileSync(memoryServicePath, 'utf8');
+  const contextPlanService = fs.readFileSync(path.join(root, 'src/ai/memory/memoryContextPlanService.ts'), 'utf8');
   assert.match(retrieval, /retrieval-v1/);
   assert.match(compiler, /Memory Usage Prompt Contract|usage=|certainty/);
-  assert.match(memoryService, /memoryRetrievalService|retrieveMemoryClaims/);
+  assert.match(contextPlanService, /retrieveMemoryClaimsWithDiagnostics/);
+  assert.match(contextPlanService, /compileMemoryUsageContract/);
 });
 
 test('stable prompt memory is confirmed-only and honors current-turn exclusions', () => {

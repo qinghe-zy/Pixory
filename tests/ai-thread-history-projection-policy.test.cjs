@@ -41,7 +41,7 @@ function createHistorySchema(db) {
       providerId TEXT, modelId TEXT, sessionBaseUrl TEXT, sessionApiKeyRef TEXT, modelSnapshotJson TEXT,
       roleCardId TEXT, roleSnapshotJson TEXT, roleInstructionWeight TEXT, replyPreference TEXT,
       contextHistoryRoundLimit INTEGER, thinkingDisabled INTEGER, boundaryMode TEXT, systemPrompt TEXT,
-      materialRulesSnapshot TEXT, summary TEXT, lastMessagePreview TEXT, currentBranchRootMessageId TEXT,
+      materialRulesSnapshot TEXT, pinnedLoreSnapshot TEXT, summary TEXT, lastMessagePreview TEXT, currentBranchRootMessageId TEXT,
       currentBranchVersionIndex INTEGER, lineageVersion INTEGER, createdAt TEXT, updatedAt TEXT, archivedAt TEXT
     );
     CREATE TABLE ai_messages (

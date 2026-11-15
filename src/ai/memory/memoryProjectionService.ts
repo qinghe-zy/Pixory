@@ -322,6 +322,21 @@ export async function projectMemoryEvent(
     case 'claim_committed':
     case 'claim_confirmed':
     case 'claim_edited':
+      if (claim) {
+        await upsertClaim(db, claim);
+        await syncBoardProjection(db, claim);
+        if (typeof payload.supersedesClaimId === 'string') {
+          await updateClaimStatus(
+            db,
+            payload.supersedesClaimId,
+            'superseded',
+            'archive',
+            claim.id
+          );
+          await removeClaimPromptProjections(db, event.space, payload.supersedesClaimId);
+        }
+      }
+      break;
     case 'claim_restored':
     case 'claim_evidence_added':
     case 'claim_scope_changed':
@@ -332,16 +347,29 @@ export async function projectMemoryEvent(
         await syncBoardProjection(db, claim);
       }
       break;
-    case 'claim_superseded':
+    case 'claim_superseded': {
+      // editClaim emits claim_superseded before claim_edited so the active canonical
+      // unique index clears first; defer the FK target link if replacement isn't materialized yet.
+      const rawSupersededById = typeof payload.supersededByClaimId === 'string'
+        ? payload.supersededByClaimId
+        : null;
+      const replacementRow = rawSupersededById
+        ? await db.getFirstAsync<{ id: string }>(
+            'SELECT id FROM memory_claims WHERE space = ? AND id = ? LIMIT 1',
+            event.space,
+            rawSupersededById
+          )
+        : null;
       await updateClaimStatus(
         db,
         event.aggregateId,
         'superseded',
         'archive',
-        typeof payload.supersededByClaimId === 'string' ? payload.supersededByClaimId : null
+        replacementRow ? rawSupersededById : null
       );
       await removeClaimPromptProjections(db, event.space, event.aggregateId);
       break;
+    }
     case 'claim_staled':
       await updateClaimStatus(db, event.aggregateId, 'stale', 'archive');
       await refreshBoardProjectionForClaim(db, event.space, event.aggregateId);

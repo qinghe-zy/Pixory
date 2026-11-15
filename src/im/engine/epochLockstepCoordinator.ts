@@ -28,6 +28,7 @@ export interface LockstepWindowResult {
   activeSlotJson: string;
   activeSummaryJson: string;
   activeCoreFactsJson: string;
+  activeCatalogText?: string | null;
   windowMessages: ImMessage[];
   epochVersion: number;
   evictedUpToTurn: number;
@@ -51,9 +52,11 @@ export class EpochLockstepCoordinatorService {
       slotJson?: string;
       summaryJson?: string;
       coreFactsJson?: string;
+      catalogText?: string;
       l2Mutations?: any[];
     } | null>,
-    latestCoreFacts?: any[]
+    latestCoreFacts?: any[],
+    latestCatalogText?: string | null
   ): Promise<LockstepWindowResult> {
     const params = calculateEpochParameters(userConfiguredWindowN);
     let state = await imEpochRepository.getOrCreateState(space, threadId, roleCardId);
@@ -69,6 +72,16 @@ export class EpochLockstepCoordinatorService {
       state = await imEpochRepository.getOrCreateState(space, threadId, roleCardId);
     }
 
+    // 世代初始目录冻结机制：仅当 active_catalog_text 处于 NULL/未初始化态时一次性落盘，Epoch 内字节零漂移
+    if (
+      (state.active_catalog_text === null || state.active_catalog_text === undefined) &&
+      typeof latestCatalogText === 'string' &&
+      typeof imEpochRepository.updateActiveCatalogText === 'function'
+    ) {
+      await imEpochRepository.updateActiveCatalogText(space, threadId, latestCatalogText);
+      state = await imEpochRepository.getOrCreateState(space, threadId, roleCardId);
+    }
+
     const allTurns = groupMessagesIntoLogicalTurns(allVisibleMessages);
 
     if (allTurns.length === 0) {
@@ -76,6 +89,7 @@ export class EpochLockstepCoordinatorService {
         activeSlotJson: state.active_slot_json,
         activeSummaryJson: state.active_summary_json,
         activeCoreFactsJson: state.active_core_facts_json || '[]',
+        activeCatalogText: state.active_catalog_text ?? null,
         windowMessages: [],
         epochVersion: state.epoch_version,
         evictedUpToTurn: state.evicted_up_to_turn,
@@ -110,18 +124,23 @@ export class EpochLockstepCoordinatorService {
     if (activeTurns.length >= params.commitAt) {
       const targetNextAnchor = allTurns[anchorTurnIdx + params.stepTurns];
       const targetNextAnchorId = targetNextAnchor?.firstMessageId;
+      const stagedAnchorMatchesNextTurn = Boolean(
+        targetNextAnchor &&
+          state.staged_next_anchor_msg_id &&
+          targetNextAnchor.messages.some((m) => m.id === state.staged_next_anchor_msg_id)
+      );
+      const nextEvictedTurnIndex = Math.max(
+        state.evicted_up_to_turn,
+        anchorTurnIdx + params.stepTurns - 1
+      );
 
-      // 情况 A (就绪态)：阶段 1 预提炼产物已落盘且锚点严格对齐 -> 原子翻转 Zone 2 与 Zone 3
-      if (
-        targetNextAnchorId &&
-        state.staged_next_anchor_msg_id &&
-        state.staged_next_anchor_msg_id === targetNextAnchorId
-      ) {
+      // 情况 A (就绪态)：阶段 1 预提炼产物已落盘且锚点对齐目标切换回合（容忍同回合气泡删改） -> 原子翻转 Zone 2 与 Zone 3
+      if (targetNextAnchorId && stagedAnchorMatchesNextTurn) {
         state = await imEpochRepository.commitStagedEpochLockstep(
           space,
           threadId,
           roleCardId,
-          anchorTurnIdx + params.stepTurns - 1
+          nextEvictedTurnIndex
         );
         anchorTurnIdx += params.stepTurns;
         activeTurns = allTurns.slice(anchorTurnIdx);
@@ -130,7 +149,17 @@ export class EpochLockstepCoordinatorService {
       // 情况 B (手速超快弹性态)：在 elasticMax 水位以内，后台预提炼仍在途 -> 保持旧锚点不跳！
       else if (activeTurns.length <= params.elasticMax) {
         if (llmCompactor) {
-          this.triggerShadowPreCompaction(space, threadId, roleCardId, params, state, activeTurns, llmCompactor, latestCoreFacts);
+          this.triggerShadowPreCompaction(
+            space,
+            threadId,
+            roleCardId,
+            params,
+            state,
+            activeTurns,
+            llmCompactor,
+            latestCoreFacts,
+            latestCatalogText
+          );
         }
       }
       // 情况 C (网络/接口兜底态)：突破 elasticMax 安全上限，启动【零丢失本地启发式降级提取】后强制跃迁
@@ -140,6 +169,13 @@ export class EpochLockstepCoordinatorService {
           state.active_summary_json,
           evictingTurns.flatMap((t) => t.messages)
         );
+        const nextCoreFactsJson = Array.isArray(latestCoreFacts)
+          ? JSON.stringify(latestCoreFacts)
+          : state.active_core_facts_json;
+        const nextCatalogText =
+          typeof latestCatalogText === 'string'
+            ? latestCatalogText
+            : state.active_catalog_text ?? null;
 
         await imEpochRepository.saveStagedPreCompaction({
           space,
@@ -150,14 +186,15 @@ export class EpochLockstepCoordinatorService {
           evictEndMsgId: evictingTurns[evictingTurns.length - 1].lastMessageId,
           slotJson: state.active_slot_json,
           summaryJson: fallbackSummary,
-          coreFactsJson: state.active_core_facts_json,
+          coreFactsJson: nextCoreFactsJson,
+          catalogText: nextCatalogText,
         });
 
         state = await imEpochRepository.commitStagedEpochLockstep(
           space,
           threadId,
           roleCardId,
-          anchorTurnIdx + params.stepTurns - 1
+          nextEvictedTurnIndex
         );
         anchorTurnIdx += params.stepTurns;
         activeTurns = allTurns.slice(anchorTurnIdx);
@@ -167,13 +204,24 @@ export class EpochLockstepCoordinatorService {
 
     // 3. 检查阶段 1 PREFETCH 水位 (>= prefetchAt 轮)
     if (activeTurns.length >= params.prefetchAt && !state.staged_next_anchor_msg_id && llmCompactor) {
-      this.triggerShadowPreCompaction(space, threadId, roleCardId, params, state, activeTurns, llmCompactor, latestCoreFacts);
+      this.triggerShadowPreCompaction(
+        space,
+        threadId,
+        roleCardId,
+        params,
+        state,
+        activeTurns,
+        llmCompactor,
+        latestCoreFacts,
+        latestCatalogText
+      );
     }
 
     return {
       activeSlotJson: state.active_slot_json,
       activeSummaryJson: state.active_summary_json,
       activeCoreFactsJson: state.active_core_facts_json || '[]',
+      activeCatalogText: state.active_catalog_text ?? null,
       windowMessages: activeTurns.flatMap((t) => t.messages),
       epochVersion: state.epoch_version,
       evictedUpToTurn: state.evicted_up_to_turn,
@@ -190,7 +238,8 @@ export class EpochLockstepCoordinatorService {
     state: ImEpochStateRow,
     activeTurns: LogicalTurn[],
     llmCompactor: (evictingSlice: ImMessage[], prevSlot: string, prevSumm: string) => Promise<any>,
-    latestCoreFacts?: any[]
+    latestCoreFacts?: any[],
+    latestCatalogText?: string | null
   ) {
     if (activeTurns.length <= params.stepTurns) return;
 
@@ -214,11 +263,19 @@ export class EpochLockstepCoordinatorService {
         const result = await llmCompactor(evictingMessages, state.active_slot_json, state.active_summary_json);
         if (!result) return;
 
+        // 修复空核心事实无法清空旧冻结画像的问题：显式传入 [] 时允许以 '[]' 覆写，仅 undefined 时回退
         const stagedCoreFacts =
-          result.coreFactsJson ||
-          (Array.isArray(latestCoreFacts) && latestCoreFacts.length > 0
-            ? JSON.stringify(latestCoreFacts)
-            : state.active_core_facts_json);
+          result.coreFactsJson !== undefined
+            ? result.coreFactsJson
+            : Array.isArray(latestCoreFacts)
+              ? JSON.stringify(latestCoreFacts)
+              : state.active_core_facts_json;
+        const stagedCatalog =
+          result.catalogText !== undefined
+            ? result.catalogText
+            : typeof latestCatalogText === 'string'
+              ? latestCatalogText
+              : state.active_catalog_text ?? null;
 
         // 阶段 1：L1 槽位与摘要写入 staged_* 预备槽，绝不触碰活跃 Zone 2
         await imEpochRepository.saveStagedPreCompaction({
@@ -231,6 +288,7 @@ export class EpochLockstepCoordinatorService {
           slotJson: result.slotJson || state.active_slot_json,
           summaryJson: result.summaryJson || state.active_summary_json,
           coreFactsJson: stagedCoreFacts,
+          catalogText: stagedCatalog,
         });
       })
       .catch((err) => {

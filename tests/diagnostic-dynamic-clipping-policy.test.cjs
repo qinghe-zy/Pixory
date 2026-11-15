@@ -2,10 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-test('chat list uses guarded dynamic clipping instead of permanent Android false', () => {
+test('chat list keeps Android removeClippedSubviews permanently disabled to avoid Fabric image blank screens', () => {
   const source = fs.readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
-  assert.match(source, /clippingEnabled/);
-  assert.match(source, /setTimeout\([\s\S]*?setClippingEnabled\(true\)[^,]*,\s*1000\)/);
+  assert.match(source, /Platform\.OS === "android" \? false : undefined/);
   assert.match(source, /recordDiagnosticIncident/);
-  assert.doesNotMatch(source, /Platform\.OS === "android" \? false : undefined/);
+  assert.doesNotMatch(source, /setClippingEnabled\(/);
 });

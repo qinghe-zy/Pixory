@@ -104,7 +104,6 @@ export function detectSituationalDelay(userText: string): SituationalDelayResult
     return {
       delayMs: 45 * 60 * 1000,
       scenario: 'meeting',
-      suggestedHook: '开完会了吗？辛苦啦~',
     };
   }
 
@@ -113,7 +112,6 @@ export function detectSituationalDelay(userText: string): SituationalDelayResult
     return {
       delayMs: 30 * 60 * 1000,
       scenario: 'bath',
-      suggestedHook: '洗好吹干头发了吗~？',
     };
   }
 
@@ -122,7 +120,6 @@ export function detectSituationalDelay(userText: string): SituationalDelayResult
     return {
       delayMs: 40 * 60 * 1000,
       scenario: 'meal',
-      suggestedHook: '吃饱饱了吗？味道怎么样呀？',
     };
   }
 
@@ -131,7 +128,6 @@ export function detectSituationalDelay(userText: string): SituationalDelayResult
     return {
       delayMs: 60 * 60 * 1000,
       scenario: 'study',
-      suggestedHook: '学累了吗？记得喝口水休息下眼睛哦',
     };
   }
 
@@ -140,7 +136,6 @@ export function detectSituationalDelay(userText: string): SituationalDelayResult
     return {
       delayMs: 35 * 60 * 1000,
       scenario: 'commute',
-      suggestedHook: '顺利到达目的地了吗？注意安全呀',
     };
   }
 
@@ -149,7 +144,6 @@ export function detectSituationalDelay(userText: string): SituationalDelayResult
     return {
       delayMs: 90 * 60 * 1000,
       scenario: 'sleep',
-      suggestedHook: '睡醒了吗？感觉精力恢复了没~',
     };
   }
 
@@ -224,22 +218,22 @@ export function buildProactivePromptDirective(
 ): string {
   if (stage === 1) {
     return `[前台伴随情境 · Stage 1 (顺意延伸)]:
-对方在聊天界面停留，视线仍在屏幕前。请依你自身鲜明的角色设定、当下心境与彼此相处界限：
-1. 顺着刚才的话题或真实心声，由你自主决定随性发 1~2 个口语短句（用 [BR] 切分独立气泡，展现自然在场感）；
-2. 可以补充一句见解、顺带吐槽，或在末尾俏皮附带 [NUDGE: 动作部位] 轻轻拍拍对方；
-3. 句末可附带 [NEXT_FOLLOWUP: 30s]（或 45s/1m/pass）由你自主掌控下一轮观察；若你的性格偏向沉稳内敛或觉得本轮已圆满，可输出 [PASS] 保持舒适留白；绝不机械客套与连续查户口！`;
+对方在聊天界面停留，视线仍在屏幕前。请完全站在你自身角色设定、当下心境与彼此关系立场回应：
+1. 依据你的性格自主决定是否继续开口，若发言可用 [BR] 依自然表达节奏切分气泡；
+2. 可自然决定是否附带 [NUDGE: 动作部位] 互动；
+3. 句末可附带 [NEXT_FOLLOWUP: 30s]（或 45s/1m/pass）由你自主掌控后续观察节奏；若你的性格在此刻选择安静不扰，可直接输出 [PASS] 保持自然留白。`;
   }
 
   if (stage === 2) {
     return `[前台伴随情境 · Stage 2 (自然在场 · 微分享)]:
-对方在聊天界面停留，暂未有新的打字。请以符合你身份背景与说话习惯的方式自然切入：
-1. 以自身此刻的所见所感、身边小事或半截吐槽自然分享，用自我暴露留出接话口，严禁生硬提问或抛二选一选择题；
-2. 可自然附带当前真实状态 [STATUS: ...]；
-3. 若你的角色当前更适合沉思、忙碌或保持舒适沉默，可输出 [PASS] 体贴留白；若继续互动，用 [BR] 发送自然口语短气泡，句末可附带 [NEXT_FOLLOWUP: 1m]（或 pass）！`;
+对方在聊天界面停留，暂未有新的打字。请依你自身角色身份与说话习惯自主决定：
+1. 依据你的性格随性表达此刻状态、见闻或想法，可分享当下片段，用自我暴露留出接话口，形式长短不限；
+2. 可按需附带当前生活状态 [STATUS: ...]；
+3. 若按你的性格此刻不适合继续打扰，请直接输出 [PASS] 保持体贴留白；若继续交流，可用 [BR] 发送自然短气泡，句末可附带 [NEXT_FOLLOWUP: 1m]（或 pass）。`;
   }
 
   return `[前台伴随情境 · Stage 3 (体贴收束与后台衔接)]:
-对方在聊天界面停留了较长时间依然未输入。请展现契合你人设的体贴与分寸感：
-1. 输出一句符合你性格与彼此关系的自然收尾短句（不带施压感，如简短交代、安静守候或暂时道别）；
-2. 句末必须附带后台预约闹钟（如 [PING: +15m | 简要意图]），确保从前台伴随平滑过渡到后台长效守护，永不断绝！`;
+对方在聊天界面停留较长时间依然未输入。请展现契合你人设的交往分寸：
+1. 可依你的人设进行自然收尾交代（如简短说明、安静守候或暂时道别）；
+2. 句末可附带后台预约闹钟（如 [PING: +15m | 简要意图]），实现从前台伴随平滑过渡到后台长效守护。`;
 }

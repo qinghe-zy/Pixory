@@ -124,7 +124,7 @@ ${currentProfileText || '无'}
 ${recentConversation}`;
 }
 
-export function buildSummaryMergePrompt(summaries: string): string {
+export function buildSummaryMergePrompt(summaries: string, maxChars = 1200): string {
   return `你是一个对话记忆整合助手。
 
 你将收到多段时间上连续的对话摘要，这些摘要按时间顺序排列，最上面的最早。你的任务是将它们合并为一段连贯的记忆，供陪伴型AI读取。
@@ -154,7 +154,7 @@ export function buildSummaryMergePrompt(summaries: string): string {
 待跟进：[仍未有结果的事项，每条用"-"开头，没有则省略]
 
 【硬性约束】
-- 总字数不超过500字
+- 总字数不超过${maxChars}字
 - 不输出任何说明文字、前言、对合并过程的描述
 - 不评价、不推断，只做信息整合
 

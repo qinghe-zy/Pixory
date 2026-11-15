@@ -48,7 +48,7 @@ class DB {
   async runAsync(statement, ...params) { return this.db.prepare(statement).run(...params); }
   async getFirstAsync(statement, ...params) { return this.db.prepare(statement).get(...params) ?? null; }
   async getAllAsync(statement, ...params) { return this.db.prepare(statement).all(...params); }
-  async withExclusiveTransactionAsync(task) {
+  async withTransactionAsync(task) {
     this.db.exec('BEGIN');
     try {
       const result = await task(this);

@@ -132,7 +132,7 @@ test('useContinuousStreamPacingB and AiChatScreen integration contracts', () => 
     path.join(__dirname, '../src/screens/AiChatScreen.tsx'),
     'utf-8'
   );
-  assert.match(screenContent, /MESSAGE_LIST_ANCHOR_CONFIG = \{ minIndexForVisible: 0 \}/, 'FlatList anchor must use stable minIndexForVisible: 0');
+  assert.doesNotMatch(screenContent, /maintainVisibleContentPosition/, 'Android inverted FlatList must avoid maintainVisibleContentPosition blank-screen risk');
   assert.match(screenContent, /followLatestMessage\(false\)/, 'AiChatScreen return to latest must follow latest message');
   assert.match(screenContent, /markScrollGestureSettled\(\)/, 'AiChatScreen return to latest must settle scroll gesture');
   assert.doesNotMatch(screenContent, /handleStreamingBubbleHeightChange/, 'Auto-pause reading anchor must be reverted');

@@ -19,7 +19,7 @@ export interface PromptBudgetResult {
   trimmed: boolean;
 }
 
-export const DEFAULT_CONTEXT_WINDOW_TOKENS = 512_000;
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 
 function isCjkCodeUnit(code: number): boolean {
   return (

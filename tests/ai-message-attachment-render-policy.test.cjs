@@ -5,9 +5,12 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 
-test('AiMessageBubble renders documents with exact same 120x120 dimensions as images', () => {
+test('AiMessageBubble renders documents at 120x120 and images via proportional bounds', () => {
   const source = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
-  assert.match(source, /attachmentImageOuter:\s*\{[^}]*height:\s*120[^}]*width:\s*120/s);
+  assert.match(source, /ProportionalSecureImage/);
+  assert.match(source, /SINGLE_ATTACHMENT_IMAGE_BOUNDS/);
+  assert.match(source, /MULTI_ATTACHMENT_IMAGE_BOUNDS/);
+  assert.match(source, /attachmentImageOuter:\s*\{[^}]*overflow:\s*'hidden'/s);
   assert.match(source, /attachmentDocumentOuter:\s*\{[^}]*height:\s*120[^}]*width:\s*120/s);
   assert.match(source, /attachmentDocumentOuter:\s*\{[^}]*flexDirection:\s*'column'/s);
 });

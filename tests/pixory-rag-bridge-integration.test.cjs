@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const ts = require('typescript');
+const { DatabaseSync } = require('node:sqlite');
 
 const root = path.resolve(__dirname, '..');
 
@@ -112,58 +113,107 @@ test('Pixory RAG Bridge - 动态 Embedding 感知与免配降级测试', async (
 
 test('Pixory RAG Bridge - 聊天与文档全流程接入测试', async (t) => {
   // 构造模拟数据库环境
-  const inMemoryTables = {
-    docs: new Map(),
-    chunks: new Map(),
-    embeds: new Map(),
-  };
+  const nativeDb = new DatabaseSync(':memory:');
+  nativeDb.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE ai_documents (
+      id TEXT PRIMARY KEY NOT NULL,
+      space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+      ownerType TEXT NOT NULL CHECK (ownerType IN ('knowledge_base', 'ip', 'thread')),
+      ownerId TEXT NOT NULL,
+      sourceType TEXT NOT NULL,
+      title TEXT NOT NULL,
+      originalFilename TEXT,
+      localUri TEXT,
+      mimeType TEXT,
+      fileSize INTEGER,
+      parserStatus TEXT NOT NULL,
+      parserError TEXT,
+      metadataJson TEXT NOT NULL DEFAULT '{}',
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE ai_chunks (
+      id TEXT PRIMARY KEY NOT NULL,
+      documentId TEXT NOT NULL,
+      space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+      ownerType TEXT NOT NULL,
+      ownerId TEXT NOT NULL,
+      chunkIndex INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      normalizedText TEXT NOT NULL,
+      sourceLabel TEXT NOT NULL,
+      locatorJson TEXT NOT NULL DEFAULT '{}',
+      tokenEstimate INTEGER,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (documentId) REFERENCES ai_documents(id) ON DELETE CASCADE
+    );
+    CREATE TABLE ai_embeddings (
+      id TEXT PRIMARY KEY NOT NULL,
+      chunkId TEXT NOT NULL,
+      providerId TEXT NOT NULL,
+      modelId TEXT NOT NULL,
+      dimensions INTEGER NOT NULL,
+      vectorJson TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (chunkId) REFERENCES ai_chunks(id) ON DELETE CASCADE
+    );
+    CREATE TABLE ai_message_citations (
+      id TEXT PRIMARY KEY NOT NULL,
+      messageId TEXT NOT NULL,
+      sourceType TEXT NOT NULL,
+      sourceId TEXT NOT NULL,
+      label TEXT NOT NULL,
+      locatorJson TEXT NOT NULL DEFAULT '{}',
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX idx_ai_chunks_owner ON ai_chunks(space, ownerType, ownerId);
+    CREATE INDEX idx_ai_chunks_document_index ON ai_chunks(documentId, chunkIndex);
+    CREATE INDEX idx_ai_embeddings_chunk ON ai_embeddings(chunkId);
+  `);
 
   const fakeDb = {
-    async execAsync() {},
+    async execAsync(sql) {
+      nativeDb.exec(sql);
+    },
     async runAsync(sql, ...args) {
-      if (sql.includes('INSERT OR REPLACE INTO pixory_rag_normal_documents')) {
-        inMemoryTables.docs.set(args[0], {
-          id: args[0],
-          title: args[1],
-          content: args[2],
-          metadataJson: args[4],
-        });
-      } else if (sql.includes('INSERT OR REPLACE INTO pixory_rag_normal_chunks')) {
-        inMemoryTables.chunks.set(args[0], {
-          id: args[0],
-          documentId: args[1],
-          chunkIndex: args[2],
-          text: args[3],
-          normalizedText: args[4],
-          locatorJson: args[5],
-          metadataJson: args[7],
-        });
-      } else if (sql.includes('DELETE FROM pixory_rag_normal_documents WHERE id = ?')) {
-        inMemoryTables.docs.delete(args[0]);
-      } else if (sql.includes('DELETE FROM pixory_rag_normal_chunks WHERE documentId = ?')) {
-        for (const [id, c] of inMemoryTables.chunks.entries()) {
-          if (c.documentId === args[0]) inMemoryTables.chunks.delete(id);
-        }
-      }
-      return { changes: 1 };
+      const result = nativeDb.prepare(sql).run(...args);
+      return {
+        changes: Number(result.changes ?? 0),
+        lastInsertRowId: Number(result.lastInsertRowid ?? 0),
+      };
+    },
+    async getFirstAsync(sql, ...args) {
+      return nativeDb.prepare(sql).get(...args) ?? null;
     },
     async getAllAsync(sql, ...args) {
-      if (sql.includes('FROM pixory_rag_normal_chunks')) {
-        return Array.from(inMemoryTables.chunks.values());
+      return nativeDb.prepare(sql).all(...args);
+    },
+    async withTransactionAsync(task) {
+      nativeDb.exec('BEGIN IMMEDIATE');
+      try {
+        const result = await task();
+        nativeDb.exec('COMMIT');
+        return result;
+      } catch (error) {
+        nativeDb.exec('ROLLBACK');
+        throw error;
       }
-      if (sql.includes('FROM pixory_rag_normal_documents WHERE id = ?')) {
-        const found = inMemoryTables.docs.get(args[0]);
-        return found ? [found] : [];
-      }
-      if (sql.includes('FROM pixory_rag_normal_embeddings')) {
-        return [];
-      }
-      return [];
     },
   };
 
+  const repoMod = loadTsModule('src/database/repositories/aiKnowledgeRepository.ts', {
+    'expo-sqlite': {},
+    '../utils': {
+      createTimestamp: () => '2026-11-15T00:00:00.000Z',
+      normalizeOptionalText: (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined),
+    },
+  });
+
   const bridgeMocks = {
+    'expo-sqlite': {},
     '../../database': {
+      aiKnowledgeRepository: repoMod.aiKnowledgeRepository,
       runWithDatabaseSpace: async (space, fn) => fn(fakeDb),
     },
     './pixoryRagEmbedder': {
@@ -173,7 +223,7 @@ test('Pixory RAG Bridge - 聊天与文档全流程接入测试', async (t) => {
 
   const bridge = loadTsModule('src/ai/rag/pixoryRagBridge.ts', bridgeMocks);
 
-  await t.test('1. 文档系统同步至 RAG (syncDocumentToRag)', async () => {
+  await t.test('1. 文档系统同步至 RAG (syncDocumentToRag 直连核心表单一事实源)', async () => {
     await bridge.syncDocumentToRag('normal', {
       id: 'doc_ip_1',
       title: '赛博朋克设定集',
@@ -182,8 +232,10 @@ test('Pixory RAG Bridge - 聊天与文档全流程接入测试', async (t) => {
       ownerId: 'ip_101',
     });
 
-    assert.ok(inMemoryTables.docs.has('doc_ip_1'));
-    assert.ok(inMemoryTables.chunks.size >= 1);
+    const docRow = nativeDb.prepare('SELECT id FROM ai_documents WHERE id = ?').get('doc_ip_1');
+    const chunkCount = nativeDb.prepare('SELECT COUNT(*) AS count FROM ai_chunks WHERE documentId = ?').get('doc_ip_1');
+    assert.equal(docRow?.id, 'doc_ip_1');
+    assert.ok(Number(chunkCount.count) >= 1);
   });
 
   await t.test('2. 聊天检索命中 RAG (retrieveForThreadWithRag)', async () => {
@@ -199,7 +251,7 @@ test('Pixory RAG Bridge - 聊天与文档全流程接入测试', async (t) => {
     assert.equal(result.mode, 'keyword'); // 纯 BM25 模式
     assert.ok(result.snippets.length >= 1);
     assert.equal(result.snippets[0].sourceId, 'doc_ip_1');
-    assert.equal(result.snippets[0].label, '赛博朋克设定集');
+    assert.ok(result.snippets[0].label.startsWith('赛博朋克设定集'));
     assert.ok(result.snippets[0].text.includes('小唐人街'));
   });
 
@@ -229,7 +281,11 @@ test('Pixory RAG Bridge - 聊天与文档全流程接入测试', async (t) => {
 
   await t.test('5. 文档删除同步 (deleteDocumentFromRag)', async () => {
     await bridge.deleteDocumentFromRag('normal', 'doc_ip_1');
-    assert.equal(inMemoryTables.docs.has('doc_ip_1'), false);
-    assert.equal(inMemoryTables.chunks.size, 1); // 仅剩记忆切片
+    const docRow = nativeDb.prepare('SELECT id FROM ai_documents WHERE id = ?').get('doc_ip_1');
+    const docChunks = nativeDb.prepare('SELECT COUNT(*) AS count FROM ai_chunks WHERE documentId = ?').get('doc_ip_1');
+    const legacyMemoryChunks = nativeDb.prepare('SELECT COUNT(*) AS count FROM pixory_rag_normal_chunks').get();
+    assert.equal(docRow, undefined);
+    assert.equal(Number(docChunks.count), 0);
+    assert.equal(Number(legacyMemoryChunks.count), 1); // 仅剩废弃记忆兼容通道切片
   });
 });

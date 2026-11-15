@@ -118,6 +118,7 @@ export interface AiThreadRecord {
   boundaryMode: AiBoundaryMode;
   systemPrompt: string;
   materialRulesSnapshot: string | null;
+  pinnedLoreSnapshot: string | null;
   summary: string | null;
   lastMessagePreview: string | null;
   currentBranchRootMessageId: string | null;

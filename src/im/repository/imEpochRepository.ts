@@ -1,4 +1,4 @@
-import { initDatabase, type PixorySpace } from '../../database';
+import { initDatabase, withScopedTransaction, type PixorySpace } from '../../database';
 
 export interface ImEpochStateRow {
   thread_id: string;
@@ -9,11 +9,13 @@ export interface ImEpochStateRow {
   active_slot_json: string;
   active_summary_json: string;
   active_core_facts_json: string;
+  active_catalog_text: string | null;
   staged_next_anchor_msg_id: string | null;
   staged_evict_end_msg_id: string | null;
   staged_slot_json: string | null;
   staged_summary_json: string | null;
   staged_core_facts_json: string | null;
+  staged_catalog_text: string | null;
   last_telemetry_json?: string | null;
   evicted_up_to_turn: number;
   updated_at: number;
@@ -29,11 +31,13 @@ CREATE TABLE IF NOT EXISTS ai_im_epoch_states (
   active_slot_json TEXT DEFAULT '{}',
   active_summary_json TEXT DEFAULT '{}',
   active_core_facts_json TEXT DEFAULT '[]',
+  active_catalog_text TEXT DEFAULT NULL,
   staged_next_anchor_msg_id TEXT DEFAULT NULL,
   staged_evict_end_msg_id TEXT DEFAULT NULL,
   staged_slot_json TEXT DEFAULT NULL,
   staged_summary_json TEXT DEFAULT NULL,
   staged_core_facts_json TEXT DEFAULT NULL,
+  staged_catalog_text TEXT DEFAULT NULL,
   last_telemetry_json TEXT DEFAULT NULL,
   evicted_up_to_turn INTEGER DEFAULT -1,
   updated_at INTEGER NOT NULL,
@@ -51,6 +55,12 @@ async function ensureTableInitialized(db: any, space: string) {
     } catch {}
     try {
       await db.execAsync("ALTER TABLE ai_im_epoch_states ADD COLUMN staged_core_facts_json TEXT DEFAULT NULL;");
+    } catch {}
+    try {
+      await db.execAsync("ALTER TABLE ai_im_epoch_states ADD COLUMN active_catalog_text TEXT DEFAULT NULL;");
+    } catch {}
+    try {
+      await db.execAsync("ALTER TABLE ai_im_epoch_states ADD COLUMN staged_catalog_text TEXT DEFAULT NULL;");
     } catch {}
     try {
       await db.execAsync("ALTER TABLE ai_im_epoch_states ADD COLUMN last_telemetry_json TEXT DEFAULT NULL;");
@@ -82,10 +92,10 @@ export const imEpochRepository = {
     await db.runAsync(
       `INSERT INTO ai_im_epoch_states (
         thread_id, space, role_card_id, epoch_version,
-        active_anchor_msg_id, active_slot_json, active_summary_json, active_core_facts_json,
-        staged_next_anchor_msg_id, staged_evict_end_msg_id, staged_slot_json, staged_summary_json, staged_core_facts_json,
+        active_anchor_msg_id, active_slot_json, active_summary_json, active_core_facts_json, active_catalog_text,
+        staged_next_anchor_msg_id, staged_evict_end_msg_id, staged_slot_json, staged_summary_json, staged_core_facts_json, staged_catalog_text,
         evicted_up_to_turn, updated_at
-      ) VALUES (?, ?, ?, 1, NULL, '{}', '{}', '[]', NULL, NULL, NULL, NULL, NULL, -1, ?);`,
+      ) VALUES (?, ?, ?, 1, NULL, '{}', '{}', '[]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -1, ?);`,
       [threadId, space, roleCardId || 'default', now]
     );
 
@@ -98,11 +108,13 @@ export const imEpochRepository = {
       active_slot_json: '{}',
       active_summary_json: '{}',
       active_core_facts_json: '[]',
+      active_catalog_text: null,
       staged_next_anchor_msg_id: null,
       staged_evict_end_msg_id: null,
       staged_slot_json: null,
       staged_summary_json: null,
       staged_core_facts_json: null,
+      staged_catalog_text: null,
       evicted_up_to_turn: -1,
       updated_at: now,
     };
@@ -119,6 +131,7 @@ export const imEpochRepository = {
            staged_slot_json = NULL,
            staged_summary_json = NULL,
            staged_core_facts_json = NULL,
+           staged_catalog_text = NULL,
            updated_at = ?
        WHERE thread_id = ? AND space = ?;`,
       [anchorId, Date.now(), threadId, space]
@@ -137,6 +150,18 @@ export const imEpochRepository = {
     );
   },
 
+  async updateActiveCatalogText(space: PixorySpace, threadId: string, catalogText: string): Promise<void> {
+    const db = await initDatabase(space);
+    await ensureTableInitialized(db, space);
+    await db.runAsync(
+      `UPDATE ai_im_epoch_states
+       SET active_catalog_text = ?,
+           updated_at = ?
+       WHERE thread_id = ? AND space = ?;`,
+      [catalogText ?? '', Date.now(), threadId, space]
+    );
+  },
+
   /**
    * 阶段 1：预提炼结果落盘至 Staged 预备槽
    * 采用 (epoch_version, active_anchor_msg_id) 双重指纹乐观锁，严防异步任务在会话清空或跳锚后写脏数据
@@ -151,6 +176,7 @@ export const imEpochRepository = {
     slotJson: string;
     summaryJson: string;
     coreFactsJson?: string | null;
+    catalogText?: string | null;
   }): Promise<boolean> {
     const db = await initDatabase(params.space);
     await ensureTableInitialized(db, params.space);
@@ -161,6 +187,7 @@ export const imEpochRepository = {
            staged_slot_json = ?,
            staged_summary_json = ?,
            staged_core_facts_json = ?,
+           staged_catalog_text = ?,
            updated_at = ?
        WHERE thread_id = ? AND space = ?
          AND epoch_version = ?
@@ -174,6 +201,7 @@ export const imEpochRepository = {
         params.slotJson,
         params.summaryJson,
         params.coreFactsJson ?? null,
+        params.catalogText ?? null,
         Date.now(),
         params.threadId,
         params.space,
@@ -197,25 +225,35 @@ export const imEpochRepository = {
   ): Promise<ImEpochStateRow> {
     const db = await initDatabase(space);
     await ensureTableInitialized(db, space);
-    await db.withTransactionAsync(async () => {
-      await db.runAsync(
-        `UPDATE ai_im_epoch_states
+    const updateSql = `UPDATE ai_im_epoch_states
          SET active_anchor_msg_id = staged_next_anchor_msg_id,
              active_slot_json = COALESCE(staged_slot_json, active_slot_json),
              active_summary_json = COALESCE(staged_summary_json, active_summary_json),
              active_core_facts_json = COALESCE(staged_core_facts_json, active_core_facts_json),
+             active_catalog_text = COALESCE(staged_catalog_text, active_catalog_text),
              staged_next_anchor_msg_id = NULL,
              staged_evict_end_msg_id = NULL,
              staged_slot_json = NULL,
              staged_summary_json = NULL,
              staged_core_facts_json = NULL,
+             staged_catalog_text = NULL,
              evicted_up_to_turn = ?,
              epoch_version = epoch_version + 1,
              updated_at = ?
-         WHERE thread_id = ? AND space = ? AND staged_next_anchor_msg_id IS NOT NULL;`,
-        [evictedTurnIndex, Date.now(), threadId, space]
-      );
-    });
+         WHERE thread_id = ? AND space = ? AND staged_next_anchor_msg_id IS NOT NULL;`;
+    const updateParams = [evictedTurnIndex, Date.now(), threadId, space];
+
+    if (typeof withScopedTransaction === 'function') {
+      await withScopedTransaction(db, async (txDb) => {
+        await txDb.runAsync(updateSql, updateParams);
+      });
+    } else if (typeof db.withTransactionAsync === 'function') {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync(updateSql, updateParams);
+      });
+    } else {
+      await db.runAsync(updateSql, updateParams);
+    }
     return this.getOrCreateState(space, threadId, roleCardId);
   },
 
@@ -232,11 +270,13 @@ export const imEpochRepository = {
            active_slot_json = '{}',
            active_summary_json = '{}',
            active_core_facts_json = '[]',
+           active_catalog_text = NULL,
            staged_next_anchor_msg_id = NULL,
            staged_evict_end_msg_id = NULL,
            staged_slot_json = NULL,
            staged_summary_json = NULL,
            staged_core_facts_json = NULL,
+           staged_catalog_text = NULL,
            evicted_up_to_turn = -1,
            updated_at = ?
        WHERE thread_id = ? AND space = ?;`,
@@ -255,11 +295,13 @@ export const imEpochRepository = {
            active_slot_json = '{}',
            active_summary_json = '{}',
            active_core_facts_json = '[]',
+           active_catalog_text = NULL,
            staged_next_anchor_msg_id = NULL,
            staged_evict_end_msg_id = NULL,
            staged_slot_json = NULL,
            staged_summary_json = NULL,
            staged_core_facts_json = NULL,
+           staged_catalog_text = NULL,
            evicted_up_to_turn = -1,
            updated_at = ?
        WHERE thread_id = ? AND space = ?;`,
@@ -287,7 +329,7 @@ export const imEpochRepository = {
     );
 
     if (!exists) {
-      // 锚点被删除，自愈重置
+      // 锚点被删除，自愈重置（同步清空全部 staged_* 预备字段，防止残留 core facts 或目录）
       await db.runAsync(
         `UPDATE ai_im_epoch_states
          SET active_anchor_msg_id = NULL,
@@ -295,6 +337,8 @@ export const imEpochRepository = {
              staged_evict_end_msg_id = NULL,
              staged_slot_json = NULL,
              staged_summary_json = NULL,
+             staged_core_facts_json = NULL,
+             staged_catalog_text = NULL,
              epoch_version = epoch_version + 1,
              updated_at = ?
          WHERE thread_id = ? AND space = ?;`,

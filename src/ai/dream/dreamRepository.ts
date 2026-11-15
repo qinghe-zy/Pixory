@@ -152,9 +152,17 @@ export async function rebuildRoleRoundCounter(
   );
 }
 
-export async function findActiveDreamScene(db: SQLiteDatabase, input: { space: PixorySpace; roleCardId: string; threadId: string; branchRouteHash: string; lineageVersion: number }): Promise<DreamSceneRecord | null> {
-  const row = await db.getFirstAsync<Record<string, unknown>>(`SELECT * FROM companion_dream_scenes WHERE space = ? AND roleCardId = ? AND threadId = ? AND branchRouteHash = ? AND lineageVersion = ? AND status = 'active'`, input.space, input.roleCardId, input.threadId, input.branchRouteHash, input.lineageVersion);
-  return row ? mapScene(row) : null;
+export async function findActiveDreamScene(db: SQLiteDatabase, input: { space: PixorySpace; roleCardId: string; threadId: string; branchRouteHash: string; lineageVersion: number; now?: string }): Promise<DreamSceneRecord | null> {
+  const row = await db.getFirstAsync<Record<string, unknown>>(`SELECT * FROM companion_dream_scenes WHERE space = ? AND roleCardId = ? AND threadId = ? AND branchRouteHash = ? AND lineageVersion <= ? AND status = 'active' ORDER BY lineageVersion DESC, openedAt DESC LIMIT 1`, input.space, input.roleCardId, input.threadId, input.branchRouteHash, input.lineageVersion);
+  if (!row) return null;
+  const scene = mapScene(row);
+  const currentTime = input.now ? new Date(input.now).getTime() : Date.now();
+  const ageMs = currentTime - new Date(scene.updatedAt).getTime();
+  if (ageMs > 18 * 60 * 60 * 1000 && ageMs >= 0) {
+    await closeDreamScene(db, scene.id, input.now ?? new Date().toISOString());
+    return null;
+  }
+  return scene;
 }
 export async function findDreamScene(db: SQLiteDatabase, id: string): Promise<DreamSceneRecord | null> { const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM companion_dream_scenes WHERE id = ?', id); return row ? mapScene(row) : null; }
 
@@ -162,8 +170,8 @@ export async function upsertDreamScene(db: SQLiteDatabase, input: { space: Pixor
   const existing = await findActiveDreamScene(db, input);
   if (existing) {
     const evidence = [...new Set([...existing.evidenceMessageIds, ...input.evidenceMessageIds])].slice(-20);
-    await db.runAsync('UPDATE companion_dream_scenes SET semanticState = ?, evidenceMessageIdsJson = ?, sourceSnapshotHash = ?, updatedAt = ? WHERE id = ?', input.state, JSON.stringify(evidence), input.sourceSnapshotHash, input.now, existing.id);
-    return { ...existing, evidenceMessageIds: evidence, semanticState: input.state, sourceSnapshotHash: input.sourceSnapshotHash, updatedAt: input.now };
+    await db.runAsync('UPDATE companion_dream_scenes SET semanticState = ?, evidenceMessageIdsJson = ?, sourceSnapshotHash = ?, lineageVersion = ?, updatedAt = ? WHERE id = ?', input.state, JSON.stringify(evidence), input.sourceSnapshotHash, input.lineageVersion, input.now, existing.id);
+    return { ...existing, evidenceMessageIds: evidence, lineageVersion: input.lineageVersion, semanticState: input.state, sourceSnapshotHash: input.sourceSnapshotHash, updatedAt: input.now };
   }
   const id = `dscene_${hashCompanionText([input.space, input.roleCardId, input.threadId, input.branchRouteHash, input.lineageVersion, input.now].join('\u001F')).slice(0, 32)}`;
   await db.runAsync(`INSERT INTO companion_dream_scenes (id, space, roleCardId, threadId, branchRouteHash, lineageVersion, semanticState, participantsJson, evidenceMessageIdsJson, sourceSnapshotHash, status, openedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 'active', ?, ?)`, id, input.space, input.roleCardId, input.threadId, input.branchRouteHash, input.lineageVersion, input.state, JSON.stringify(input.evidenceMessageIds.slice(-20)), input.sourceSnapshotHash, input.now, input.now);

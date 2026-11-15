@@ -83,7 +83,7 @@ function parseTokenUsage(rawUsage: any): LlmTokenUsage | undefined {
   };
 }
 
-function parseSseLine(line: string): { delta: string | null; reasoning?: string | null; usage?: LlmTokenUsage; isDone?: boolean; finishReason?: string | null } {
+export function parseSseLine(line: string): { delta: string | null; reasoning?: string | null; usage?: LlmTokenUsage; isDone?: boolean; finishReason?: string | null } {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) return { delta: null };
   const payload = trimmed.slice(5).trim();
@@ -111,6 +111,13 @@ function parseSseLine(line: string): { delta: string | null; reasoning?: string 
 
     if (typeof openAiDelta === 'string') {
       delta = openAiDelta;
+    } else if (
+      json.type === 'content_block_delta' &&
+      typeof json.delta?.thinking === 'string' &&
+      json.delta.thinking.length > 0
+    ) {
+      // Anthropic thinking_delta
+      reasoning = json.delta.thinking;
     } else if (json.type === 'content_block_delta' && json.delta?.text) {
       // Anthropic delta
       delta = json.delta.text;
@@ -332,12 +339,104 @@ async function fetchWithOneShotRetry(
 
 export const REASONING_MODEL_REGEX =
   /r1|reasoner|reasoning|thinking|qwq|o1|o3|deepseek-v4|gpt-5|gemini-2\.5|claude-sonnet-4\.5|claude-haiku-4\.5/i;
+const O4_MODEL_REGEX = /(?:^|[/-])o4(?:-|$)/i;
 
-export function isReasoningModelTarget(modelId: string | null | undefined, supportsThinking?: boolean): boolean {
-  return Boolean(supportsThinking) || REASONING_MODEL_REGEX.test(modelId || '');
+export function isNativeReasoningModelId(
+  modelId?: string | null,
+  supportsThinking?: boolean
+): boolean {
+  return (
+    Boolean(supportsThinking) ||
+    REASONING_MODEL_REGEX.test(modelId || '') ||
+    O4_MODEL_REGEX.test(modelId || '')
+  );
 }
 
-export const isReasoningModel = isReasoningModelTarget;
+export const isReasoningModelTarget = isNativeReasoningModelId;
+export const isReasoningModel = isNativeReasoningModelId;
+
+export function clampThinkingBudgetTokens(budgetTokens?: number): number | undefined {
+  if (typeof budgetTokens !== 'number' || !Number.isFinite(budgetTokens)) {
+    return undefined;
+  }
+  return Math.min(2048, Math.max(1024, Math.round(budgetTokens)));
+}
+
+function supportsOpenAiReasoningEffort(modelId?: string | null): boolean {
+  const normalized = (modelId || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (/^(?:o1-mini|o1-preview)\b/.test(normalized) || /-chat\b/.test(normalized)) {
+    return false;
+  }
+  return /^(?:o1|o3|o4|gpt-5)(?:-|$)/.test(normalized);
+}
+
+function isKnownHybridDeepSeekEndpoint(baseUrl: string, modelId?: string | null): boolean {
+  try {
+    const raw = baseUrl.trim();
+    const url = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      (host === 'api.deepseek.com' || host.endsWith('.deepseek.com')) &&
+      /^deepseek-v\d+/i.test(modelId || '')
+    );
+  } catch {
+    return false;
+  }
+}
+
+interface SseStreamYieldState {
+  inReasoning: boolean;
+  streamedReasoningChars: number;
+  reasoningCapReached: boolean;
+  reasoningSoftCapChars: number;
+}
+
+function collectSseLineOutputs(
+  delta: string | null,
+  reasoning: string | null | undefined,
+  state: SseStreamYieldState
+): string[] {
+  const outputs: string[] = [];
+  if (reasoning && !state.reasoningCapReached) {
+    if (!state.inReasoning) {
+      state.inReasoning = true;
+      outputs.push('<think>');
+    }
+    const remaining = state.reasoningSoftCapChars - state.streamedReasoningChars;
+    if (remaining <= 0) {
+      state.reasoningCapReached = true;
+      state.inReasoning = false;
+      outputs.push('</think>');
+    } else if (reasoning.length <= remaining) {
+      state.streamedReasoningChars += reasoning.length;
+      outputs.push(reasoning);
+    } else {
+      const clipped = reasoning.slice(0, remaining);
+      if (clipped.length > 0) {
+        state.streamedReasoningChars += clipped.length;
+        outputs.push(clipped);
+      }
+      state.reasoningCapReached = true;
+      state.inReasoning = false;
+      outputs.push('</think>');
+    }
+  }
+  if (delta) {
+    let cleanDelta = delta;
+    if (state.inReasoning) {
+      state.inReasoning = false;
+      outputs.push('</think>');
+      if (/^<think>/i.test(cleanDelta)) {
+        cleanDelta = cleanDelta.replace(/^<think>/i, '');
+      }
+    }
+    if (cleanDelta.length > 0) {
+      outputs.push(cleanDelta);
+    }
+  }
+  return outputs;
+}
 
 export class LlmStreamClient implements ILlmStreamClient {
   async *streamText(
@@ -362,15 +461,22 @@ export class LlmStreamClient implements ILlmStreamClient {
       }
     }
 
-    const isReasoningModel = isReasoningModelTarget(options.modelId, options.supportsThinking);
-    const isOpenAiOSeries = /^(?:o1|o3)(?:-|$)/i.test(options.modelId || '');
+    const isReasoningModel = isNativeReasoningModelId(options.modelId, options.supportsThinking);
+    const isOpenAiOSeries = /^(?:o1|o3|o4)(?:-|$)/i.test(options.modelId || '');
     const defaultBudget = isReasoningModel ? 8192 : 4096;
     const tokenBudget = options.maxTokens ?? defaultBudget;
+    const clampedThinkingBudget = clampThinkingBudgetTokens(options.thinkingBudgetTokens);
     const supportsStreamOptions = /api\.openai\.com|api\.deepseek\.com/i.test(baseUrl);
+    const isGeminiThinkingModel = /gemini-(?:2\.5|3)|gemini-(?:flash|pro)-latest/i.test(options.modelId || '');
+    const isGeminiEndpoint = options.protocol === 'gemini' || /generativelanguage\.googleapis\.com/i.test(baseUrl);
 
     let bodyObj: any;
     if (options.protocol === 'anthropic') {
       const normalized = normalizeMessagesForTransport(messages, 'anthropic');
+      const anthropicThinkingEnabled = clampedThinkingBudget !== undefined;
+      const anthropicMaxTokens = anthropicThinkingEnabled
+        ? Math.max(tokenBudget, clampedThinkingBudget + 4096)
+        : tokenBudget;
       bodyObj = {
         model: options.modelId,
         ...(normalized.anthropicSystem && normalized.anthropicSystem.length > 0
@@ -378,19 +484,60 @@ export class LlmStreamClient implements ILlmStreamClient {
           : {}),
         messages: normalized.anthropicMessages,
         stream: true,
-        max_tokens: tokenBudget,
-        ...(isReasoningModel ? {} : { temperature: options.temperature ?? 0.7 }),
+        max_tokens: anthropicMaxTokens,
+        ...(anthropicThinkingEnabled
+          ? { thinking: { type: 'enabled', budget_tokens: clampedThinkingBudget } }
+          : isReasoningModel
+            ? {}
+            : { temperature: options.temperature ?? 0.7 }),
       };
     } else {
       const normalized = normalizeMessagesForTransport(messages, options.protocol);
+      const effectiveTokenBudget =
+        clampedThinkingBudget !== undefined && isReasoningModel
+          ? Math.max(tokenBudget, clampedThinkingBudget + 4096)
+          : tokenBudget;
       bodyObj = {
         model: options.modelId,
         messages: normalized.normalizedMessages,
         stream: true,
         ...(supportsStreamOptions ? { stream_options: { include_usage: true } } : {}),
         ...(isReasoningModel ? {} : { temperature: options.temperature ?? 0.7 }),
-        ...(isOpenAiOSeries ? { max_completion_tokens: tokenBudget } : { max_tokens: tokenBudget }),
+        ...(isOpenAiOSeries
+          ? { max_completion_tokens: effectiveTokenBudget }
+          : { max_tokens: effectiveTokenBudget }),
       };
+
+      if (
+        options.companionFastThinking &&
+        options.protocol !== 'gemini' &&
+        supportsOpenAiReasoningEffort(options.modelId)
+      ) {
+        bodyObj.reasoning_effort = 'low';
+      }
+
+      if (isGeminiThinkingModel || isGeminiEndpoint) {
+        const geminiBudget =
+          clampedThinkingBudget !== undefined
+            ? clampedThinkingBudget
+            : options.companionFastThinking && !isReasoningModel && isGeminiThinkingModel
+              ? (/gemini-2\.5-pro/i.test(options.modelId || '') ? 128 : 0)
+              : undefined;
+        if (geminiBudget !== undefined) {
+          bodyObj.reasoning_effort = geminiBudget === 0 ? 'none' : 'low';
+          if (isGeminiEndpoint && isGeminiThinkingModel) {
+            bodyObj.google = { thinking_config: { thinking_budget: geminiBudget } };
+          }
+        }
+      }
+
+      if (
+        options.companionFastThinking &&
+        !isReasoningModel &&
+        isKnownHybridDeepSeekEndpoint(baseUrl, options.modelId)
+      ) {
+        bodyObj.thinking = { type: 'disabled' };
+      }
     }
 
     const response = await fetchWithOneShotRetry(
@@ -419,7 +566,17 @@ export class LlmStreamClient implements ILlmStreamClient {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let inReasoning = false;
+    const hasReasoningSoftCap = Boolean(
+      options.companionFastThinking || options.thinkingBudgetTokens !== undefined
+    );
+    const streamState: SseStreamYieldState = {
+      inReasoning: false,
+      streamedReasoningChars: 0,
+      reasoningCapReached: false,
+      reasoningSoftCapChars: hasReasoningSoftCap
+        ? Math.max(4096, (clampedThinkingBudget ?? 1536) * 4)
+        : Infinity,
+    };
     let sawAnyContent = false;
     let sawDone = false;
 
@@ -471,26 +628,10 @@ export class LlmStreamClient implements ILlmStreamClient {
           if (usage && options.onUsage) {
             options.onUsage(usage);
           }
-          if (reasoning) {
+          if (reasoning || delta) {
             sawAnyContent = true;
-            if (!inReasoning) {
-              inReasoning = true;
-              yield '<think>';
-            }
-            yield reasoning;
-          }
-          if (delta) {
-            sawAnyContent = true;
-            let cleanDelta = delta;
-            if (inReasoning) {
-              inReasoning = false;
-              yield '</think>';
-              if (/^<think>/i.test(cleanDelta)) {
-                cleanDelta = cleanDelta.replace(/^<think>/i, '');
-              }
-            }
-            if (cleanDelta.length > 0) {
-              yield cleanDelta;
+            for (const chunk of collectSseLineOutputs(delta, reasoning, streamState)) {
+              yield chunk;
             }
           }
           if (sawDone) break;
@@ -505,30 +646,16 @@ export class LlmStreamClient implements ILlmStreamClient {
         if (usage && options.onUsage) {
           options.onUsage(usage);
         }
-        if (reasoning) {
-          if (!inReasoning) {
-            inReasoning = true;
-            yield '<think>';
-          }
-          yield reasoning;
-        }
-        if (delta) {
-          let cleanDelta = delta;
-          if (inReasoning) {
-            inReasoning = false;
-            yield '</think>';
-            if (/^<think>/i.test(cleanDelta)) {
-              cleanDelta = cleanDelta.replace(/^<think>/i, '');
-            }
-          }
-          if (cleanDelta.length > 0) {
-            yield cleanDelta;
+        if (reasoning || delta) {
+          sawAnyContent = true;
+          for (const chunk of collectSseLineOutputs(delta, reasoning, streamState)) {
+            yield chunk;
           }
         }
       }
 
-      if (inReasoning) {
-        inReasoning = false;
+      if (streamState.inReasoning) {
+        streamState.inReasoning = false;
         yield '</think>';
       }
     } finally {
@@ -558,8 +685,8 @@ export class LlmStreamClient implements ILlmStreamClient {
       }
     }
 
-    const isReasoningModel = isReasoningModelTarget(options.modelId, options.supportsThinking);
-    const isOpenAiOSeries = /^(?:o1|o3)(?:-|$)/i.test(options.modelId || '');
+    const isReasoningModel = isNativeReasoningModelId(options.modelId, options.supportsThinking);
+    const isOpenAiOSeries = /^(?:o1|o3|o4)(?:-|$)/i.test(options.modelId || '');
     const defaultBudget = isReasoningModel ? 8192 : 4096;
     const tokenBudget = options.maxTokens ?? defaultBudget;
 

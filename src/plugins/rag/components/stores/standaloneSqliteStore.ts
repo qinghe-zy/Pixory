@@ -5,7 +5,11 @@ export interface ISqliteDatabaseConnection {
   execAsync?(sql: string): Promise<void>;
   runAsync?(sql: string, ...args: unknown[]): Promise<{ changes: number }>;
   getAllAsync?<T>(sql: string, ...args: unknown[]): Promise<T[]>;
+  withTransactionAsync?: (task: () => Promise<void>) => Promise<void>;
+  runInTransaction?<T>(task: (conn: ISqliteDatabaseConnection) => Promise<T>): Promise<T>;
 }
+
+const SQLITE_IN_CLAUSE_BATCH_SIZE = 400;
 
 export interface SqliteStoreOptions {
   tablePrefix?: string;
@@ -75,12 +79,51 @@ export class StandaloneSqliteStore implements IRagStore {
         modelId TEXT,
         FOREIGN KEY (chunkId) REFERENCES ${chunkTable}(id) ON DELETE CASCADE
       );
+
+      CREATE INDEX IF NOT EXISTS idx_${this.prefix}_chunks_doc
+        ON ${chunkTable}(documentId, chunkIndex);
     `;
 
     if (typeof this.db.execAsync === 'function') {
       await this.db.execAsync(ddl);
     }
     this.initialized = true;
+  }
+
+  private async withWriteTransaction<T>(task: (conn: ISqliteDatabaseConnection) => Promise<T>): Promise<T> {
+    if (typeof this.db.runInTransaction === 'function') {
+      return this.db.runInTransaction(task);
+    }
+    if (typeof this.db.withTransactionAsync === 'function') {
+      let result!: T;
+      await this.db.withTransactionAsync(async () => {
+        result = await task(this.db);
+      });
+      return result;
+    }
+    if (typeof this.db.execAsync === 'function') {
+      await this.db.execAsync('BEGIN IMMEDIATE');
+      try {
+        const result = await task(this.db);
+        await this.db.execAsync('COMMIT');
+        return result;
+      } catch (error) {
+        await this.db.execAsync('ROLLBACK').catch(() => {});
+        throw error;
+      }
+    }
+    return task(this.db);
+  }
+
+  private async deleteChunksOnConnection(conn: ISqliteDatabaseConnection, documentId: string): Promise<void> {
+    if (typeof conn.runAsync !== 'function') return;
+    const chunkTable = `${this.prefix}_chunks`;
+    const embedTable = `${this.prefix}_embeddings`;
+    await conn.runAsync(
+      `DELETE FROM ${embedTable} WHERE chunkId IN (SELECT id FROM ${chunkTable} WHERE documentId = ?)`,
+      documentId
+    );
+    await conn.runAsync(`DELETE FROM ${chunkTable} WHERE documentId = ?`, documentId);
   }
 
   public async saveDocument(doc: RagDocument): Promise<void> {
@@ -155,20 +198,25 @@ export class StandaloneSqliteStore implements IRagStore {
   public async deleteDocument(id: string): Promise<boolean> {
     await this.init();
     const docTable = `${this.prefix}_documents`;
-    if (typeof this.db.runAsync === 'function') {
-      const res = await this.db.runAsync(`DELETE FROM ${docTable} WHERE id = ?`, id);
-      await this.deleteChunksByDocument(id);
-      return typeof res?.changes === 'number' ? res.changes > 0 : true;
+    if (typeof this.db.runAsync !== 'function') {
+      return false;
     }
-    return false;
+    return this.withWriteTransaction(async (conn) => {
+      if (typeof conn.runAsync !== 'function') return false;
+      await this.deleteChunksOnConnection(conn, id);
+      const res = await conn.runAsync(`DELETE FROM ${docTable} WHERE id = ?`, id);
+      return typeof res?.changes === 'number' ? res.changes > 0 : true;
+    });
   }
 
   public async saveChunks(chunks: RagChunk[]): Promise<void> {
     await this.init();
+    if (chunks.length === 0 || typeof this.db.runAsync !== 'function') return;
     const chunkTable = `${this.prefix}_chunks`;
-    if (typeof this.db.runAsync === 'function') {
+    await this.withWriteTransaction(async (conn) => {
+      if (typeof conn.runAsync !== 'function') return;
       for (const c of chunks) {
-        await this.db.runAsync(
+        await conn.runAsync(
           `INSERT OR REPLACE INTO ${chunkTable} (id, documentId, chunkIndex, text, normalizedText, locatorJson, tokenEstimate, metadataJson)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           c.id,
@@ -181,7 +229,7 @@ export class StandaloneSqliteStore implements IRagStore {
           JSON.stringify(c.metadata ?? {})
         );
       }
-    }
+    });
   }
 
   public async getChunksByDocument(documentId: string): Promise<RagChunk[]> {
@@ -234,46 +282,57 @@ export class StandaloneSqliteStore implements IRagStore {
 
   public async deleteChunksByDocument(documentId: string): Promise<void> {
     await this.init();
-    const chunkTable = `${this.prefix}_chunks`;
-    const embedTable = `${this.prefix}_embeddings`;
     if (typeof this.db.runAsync === 'function') {
-      await this.db.runAsync(
-        `DELETE FROM ${embedTable} WHERE chunkId IN (SELECT id FROM ${chunkTable} WHERE documentId = ?)`,
-        documentId
-      );
-      await this.db.runAsync(`DELETE FROM ${chunkTable} WHERE documentId = ?`, documentId);
+      await this.withWriteTransaction((conn) => this.deleteChunksOnConnection(conn, documentId));
     }
   }
 
   public async saveEmbeddings(embeddings: RagEmbeddingRecord[]): Promise<void> {
     await this.init();
+    const valid = embeddings.filter((e) => Array.isArray(e.vector) && e.vector.length > 0);
+    if (valid.length === 0 || typeof this.db.runAsync !== 'function') return;
     const embedTable = `${this.prefix}_embeddings`;
-    if (typeof this.db.runAsync === 'function') {
-      for (const e of embeddings) {
-        await this.db.runAsync(
+    await this.withWriteTransaction(async (conn) => {
+      if (typeof conn.runAsync !== 'function') return;
+      for (const e of valid) {
+        await conn.runAsync(
           `INSERT OR REPLACE INTO ${embedTable} (chunkId, vectorJson, dimensions, modelId) VALUES (?, ?, ?, ?)`,
           e.chunkId,
           JSON.stringify(e.vector),
-          e.dimensions,
+          e.dimensions > 0 ? e.dimensions : e.vector.length,
           e.modelId ?? 'default'
         );
       }
-    }
+    });
   }
 
-  public async getEmbeddings(chunkIds?: string[]): Promise<RagEmbeddingRecord[]> {
+  public async getEmbeddings(chunkIds?: string[], modelId?: string): Promise<RagEmbeddingRecord[]> {
     await this.init();
     const embedTable = `${this.prefix}_embeddings`;
     if (typeof this.db.getAllAsync === 'function') {
-      let rows: any[] = [];
+      const rows: any[] = [];
+      const modelClause = modelId ? ' WHERE modelId = ?' : '';
+      const modelParams = modelId ? [modelId] : [];
       if (!chunkIds || chunkIds.length === 0) {
-        rows = await this.db.getAllAsync<any>(`SELECT chunkId, vectorJson, dimensions, modelId FROM ${embedTable}`);
-      } else {
-        const placeholders = chunkIds.map(() => '?').join(', ');
-        rows = await this.db.getAllAsync<any>(
-          `SELECT chunkId, vectorJson, dimensions, modelId FROM ${embedTable} WHERE chunkId IN (${placeholders})`,
-          ...chunkIds
+        rows.push(
+          ...(await this.db.getAllAsync<any>(
+            `SELECT chunkId, vectorJson, dimensions, modelId FROM ${embedTable}${modelClause}`,
+            ...modelParams
+          ))
         );
+      } else {
+        for (let offset = 0; offset < chunkIds.length; offset += SQLITE_IN_CLAUSE_BATCH_SIZE) {
+          const batch = chunkIds.slice(offset, offset + SQLITE_IN_CLAUSE_BATCH_SIZE);
+          const placeholders = batch.map(() => '?').join(', ');
+          const whereClause = ` WHERE chunkId IN (${placeholders})${modelId ? ' AND modelId = ?' : ''}`;
+          rows.push(
+            ...(await this.db.getAllAsync<any>(
+              `SELECT chunkId, vectorJson, dimensions, modelId FROM ${embedTable}${whereClause}`,
+              ...batch,
+              ...modelParams
+            ))
+          );
+        }
       }
       return rows.map((r: any) => ({
         chunkId: r.chunkId,
@@ -288,10 +347,14 @@ export class StandaloneSqliteStore implements IRagStore {
   public async deleteEmbeddingsByChunkIds(chunkIds: string[]): Promise<void> {
     await this.init();
     const embedTable = `${this.prefix}_embeddings`;
-    if (chunkIds.length === 0) return;
-    if (typeof this.db.runAsync === 'function') {
-      const placeholders = chunkIds.map(() => '?').join(', ');
-      await this.db.runAsync(`DELETE FROM ${embedTable} WHERE chunkId IN (${placeholders})`, ...chunkIds);
-    }
+    if (chunkIds.length === 0 || typeof this.db.runAsync !== 'function') return;
+    await this.withWriteTransaction(async (conn) => {
+      if (typeof conn.runAsync !== 'function') return;
+      for (let offset = 0; offset < chunkIds.length; offset += SQLITE_IN_CLAUSE_BATCH_SIZE) {
+        const batch = chunkIds.slice(offset, offset + SQLITE_IN_CLAUSE_BATCH_SIZE);
+        const placeholders = batch.map(() => '?').join(', ');
+        await conn.runAsync(`DELETE FROM ${embedTable} WHERE chunkId IN (${placeholders})`, ...batch);
+      }
+    });
   }
 }

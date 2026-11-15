@@ -34,7 +34,7 @@ test('AI prompt assembly separates stable memory prefix from dynamic memory cont
   const content = promptBuilder();
 
   assert.match(chatService, /buildStableMemoryPrefix/);
-  assert.match(chatService, /retrieveDynamicMemoryContext/);
+  assert.match(chatService, /compileMemoryContextPlan/);
   assert.match(chatService, /stableMemoryPrefix/);
   assert.match(chatService, /dynamicMemoryContext/);
   assert.match(content, /stableMemoryPrefix/);

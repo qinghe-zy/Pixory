@@ -192,7 +192,8 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     usedFallback: false,
     usedRemote: false,
   };
-  let allowRemoteModel = input.space !== 'personal' || input.allowRemoteModelForPersonal === true;
+  const baseAllowRemoteModel = input.space !== 'personal' || input.allowRemoteModelForPersonal === true;
+  let allowRemoteModel = baseAllowRemoteModel;
   let reversibleImportSessionId: string | null = null;
   let rollbackState: 'available' | 'locked' | 'rolled_back' | null = null;
   const runStep = async (step: Promise<MemoryMaintenanceStepResult>) => {
@@ -290,6 +291,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     }));
   }
 
+  allowRemoteModel = baseAllowRemoteModel;
   await runStep(maybeMergeSummarySegments(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
   assertMemoryMaintenanceActive(input);
   await recordMaintenanceResult(input.space, input.threadId, accumulator);

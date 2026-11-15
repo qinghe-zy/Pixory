@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import { openDatabaseAsync, deleteDatabaseAsync } from 'expo-sqlite';
 import type { PixorySpace } from '../../database/db';
+import { serializeSqliteDatabase } from '../../database/sqliteSerialization';
 import { parseCsvLine } from './tableSchemaParser';
 
 export async function runInTempTable<T>(params: {
@@ -9,9 +10,15 @@ export async function runInTempTable<T>(params: {
   columns: string[];
   querySql: string;
 }): Promise<T[]> {
+  if (params.columns.length === 0) {
+    throw new Error('Temporary table schema must include at least one column.');
+  }
+  if (params.columns.length > 900) {
+    throw new Error('Temporary table schema exceeds SQLite variable limit.');
+  }
   // 使用完全独立的临时隔离沙盒数据库实例，彻底与业务数据库（pixory.sqlite / pixory_personal.sqlite）物理隔离
   const sandboxDbName = `_doc_sandbox_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.db`;
-  const db = await openDatabaseAsync(sandboxDbName);
+  const db = serializeSqliteDatabase(await openDatabaseAsync(sandboxDbName));
 
   const colDefs = params.columns
     .map((c) => `"${c.replace(/"/g, '""')}" TEXT`)
@@ -67,9 +74,13 @@ export async function runInTempTable<T>(params: {
     // 4. 彻底关闭并销毁临时沙盒数据库
     try {
       await db.closeAsync();
-    } catch {}
+    } catch (error) {
+      console.warn('[DocQuery] Failed to close temporary sandbox database:', error);
+    }
     try {
       await deleteDatabaseAsync(sandboxDbName);
-    } catch {}
+    } catch (error) {
+      console.warn('[DocQuery] Failed to delete temporary sandbox database:', error);
+    }
   }
 }

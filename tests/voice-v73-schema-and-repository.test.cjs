@@ -12,7 +12,7 @@ test('Voice V73 schema definition and database migration verification', async (t
   const dbContent = fs.readFileSync(dbPath, 'utf8');
 
   await t.test('schema.ts defines DATABASE_VERSION >= 73 and MIGRATION_STATEMENTS_V73', () => {
-    assert.match(schemaContent, /export const DATABASE_VERSION = 73;/);
+    assert.match(schemaContent, /export const DATABASE_VERSION = (?:7[3-9]|[8-9]\d);/);
     assert.match(schemaContent, /export const MIGRATION_STATEMENTS_V73/);
     assert.match(schemaContent, /CREATE TABLE IF NOT EXISTS voice_presets/);
     assert.match(schemaContent, /CREATE TABLE IF NOT EXISTS voice_bindings/);

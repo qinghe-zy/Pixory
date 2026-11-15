@@ -8,8 +8,10 @@ import {
 } from '../services/fileStorageService';
 import { runWithDatabaseSpace, type PixorySpace } from '../database/db';
 import { aiKnowledgeRepository } from '../database/repositories/aiKnowledgeRepository';
+import { invalidateOwnerRagCache } from './rag/pixoryRagBridge';
 
-export const SHORT_LORE_DIRECT_INJECT_LIMIT = 2500; // ≤ 2500 字符直接常驻 stable_role 前缀缓存
+export const SHORT_LORE_DIRECT_INJECT_LIMIT = 2500; // ≤ 2500 字符单篇直接常驻 stable_role 前缀缓存
+export const SHORT_LORE_TOTAL_LIMIT = 4500; // 累计常驻设定字符上限，防止挤占模型上下文稳定窗口
 
 function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
@@ -112,25 +114,34 @@ export async function pinDocumentToKnowledgeBase(params: {
       [kbId, params.documentId, params.space]
     );
 
-    // 3. 短设定注入提示词稳定区（Prefix Cache 优化，带防重检查）
+    // 3. 短设定注入提示词稳定区（Prefix Cache 优化，独立 pinnedLoreSnapshot 列，带防重与总字数检查）
     let injectedToStableRules = false;
     const loreTag = `【常驻设定资料：《${document.title}》】`;
     if (params.threadId) {
       try {
-        const threadRow = await db.getFirstAsync<{ materialRulesSnapshot: string | null }>(
-          `SELECT materialRulesSnapshot FROM ai_threads WHERE id = ? AND space = ?`,
+        const threadRow = await db.getFirstAsync<{ pinnedLoreSnapshot: string | null }>(
+          `SELECT pinnedLoreSnapshot FROM ai_threads WHERE id = ? AND space = ?`,
           [params.threadId, params.space]
         );
-        const currentRules = threadRow?.materialRulesSnapshot ?? '';
-        if (!currentRules.includes(loreTag)) {
+        const currentLore = threadRow?.pinnedLoreSnapshot ?? '';
+        if (!currentLore.includes(loreTag)) {
           const chunks = await aiKnowledgeRepository.listChunksByDocumentId(db, params.documentId);
-          const fullText = chunks.map((c) => c.text).join('\n\n');
-          if (fullText.length <= SHORT_LORE_DIRECT_INJECT_LIMIT && fullText.trim().length > 0) {
+          const fullText = chunks.map((c) => c.text).join('\n\n').trim();
+          const incomingLength = fullText.length;
+          const currentTotalLength = currentLore.length;
+
+          // 单篇 <= 2500 且累计 <= 4500
+          if (
+            incomingLength <= SHORT_LORE_DIRECT_INJECT_LIMIT &&
+            incomingLength > 0 &&
+            currentTotalLength + incomingLength <= SHORT_LORE_TOTAL_LIMIT
+          ) {
+            const entryText = `\n\n${loreTag}\n${fullText}`;
             await db.runAsync(
               `UPDATE ai_threads
-               SET materialRulesSnapshot = COALESCE(materialRulesSnapshot, '') || ?
+               SET pinnedLoreSnapshot = COALESCE(pinnedLoreSnapshot, '') || ?
                WHERE id = ? AND space = ?`,
-              [`\n\n${loreTag}\n${fullText}`, params.threadId, params.space]
+              [entryText, params.threadId, params.space]
             );
             injectedToStableRules = true;
           }
@@ -139,6 +150,12 @@ export async function pinDocumentToKnowledgeBase(params: {
         // 稳定规则注入容错
       }
     }
+
+    // 4. 清理 RAG 所有者缓存，确保下次检索立即加载最新归属
+    if (params.threadId) {
+      invalidateOwnerRagCache(params.space, 'thread', params.threadId);
+    }
+    invalidateOwnerRagCache(params.space, 'knowledge_base', kbId);
 
     return {
       documentId: params.documentId,
@@ -192,26 +209,32 @@ export async function unpinDocumentFromKnowledgeBase(params: {
       [params.threadId, params.documentId, params.space]
     );
 
-    // 4. 清理 Thread 的常驻设定规则快照
+    // 4. 清理 Thread 的常驻设定规则快照（独立 pinnedLoreSnapshot 列）
     if (params.threadId) {
       try {
         const loreTag = `【常驻设定资料：《${document.title}》】`;
-        const threadRow = await db.getFirstAsync<{ materialRulesSnapshot: string | null }>(
-          `SELECT materialRulesSnapshot FROM ai_threads WHERE id = ? AND space = ?`,
+        const threadRow = await db.getFirstAsync<{ pinnedLoreSnapshot: string | null }>(
+          `SELECT pinnedLoreSnapshot FROM ai_threads WHERE id = ? AND space = ?`,
           [params.threadId, params.space]
         );
-        if (threadRow?.materialRulesSnapshot && threadRow.materialRulesSnapshot.includes(loreTag)) {
+        if (threadRow?.pinnedLoreSnapshot && threadRow.pinnedLoreSnapshot.includes(loreTag)) {
           const escapedTag = loreTag.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
           const lorePattern = new RegExp(`(?:\\r?\\n){0,2}${escapedTag}[\\s\\S]*?(?=(?:\\r?\\n){2}【常驻设定资料：|$)`, 'g');
-          const cleanedRules = threadRow.materialRulesSnapshot.replace(lorePattern, '').trim();
+          const cleanedLore = threadRow.pinnedLoreSnapshot.replace(lorePattern, '').trim();
           await db.runAsync(
-            `UPDATE ai_threads SET materialRulesSnapshot = ? WHERE id = ? AND space = ?`,
-            [cleanedRules || null, params.threadId, params.space]
+            `UPDATE ai_threads SET pinnedLoreSnapshot = ? WHERE id = ? AND space = ?`,
+            [cleanedLore || null, params.threadId, params.space]
           );
         }
       } catch {
         // 规则回滚容错
       }
+    }
+
+    // 5. 清理对应 RAG 缓存
+    invalidateOwnerRagCache(params.space, 'thread', params.threadId);
+    if (document.ownerType === 'knowledge_base' && document.ownerId) {
+      invalidateOwnerRagCache(params.space, 'knowledge_base', document.ownerId);
     }
   });
 }

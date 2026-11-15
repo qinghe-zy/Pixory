@@ -92,12 +92,14 @@ export interface MemoryRecallCandidate {
   tier: CompanionMemoryTier;
   category: string;
   score: number;
-  matchedChannel: 'trigger' | 'fts' | 'entity' | 'temporal';
+  matchedChannel: 'trigger' | 'fts' | 'entity' | 'temporal' | 'graph_ppr';
   decayFactor?: number;
   baseRelevance?: number;
   clarity?: 'clear' | 'fuzzy';
   entities?: string[];
   triggerKeywords?: string[];
+  viaEntity?: string;
+  graphHop?: 1 | 2;
 }
 
 export interface ScoredMemoryResult {

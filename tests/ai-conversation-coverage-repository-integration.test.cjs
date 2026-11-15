@@ -84,7 +84,7 @@ class AsyncDatabase {
     this.db.close();
   }
 
-  async withExclusiveTransactionAsync(task) {
+  async withTransactionAsync(task) {
     this.db.exec('BEGIN');
     try { await task(this); this.db.exec('COMMIT'); }
     catch (error) { this.db.exec('ROLLBACK'); throw error; }
@@ -172,8 +172,8 @@ for (const [failedTable, delayedTable] of [
         }
       };
     }
-    const transaction = db.withExclusiveTransactionAsync.bind(db);
-    db.withExclusiveTransactionAsync = async task => {
+    const transaction = db.withTransactionAsync.bind(db);
+    db.withTransactionAsync = async task => {
       try { return await transaction(task); }
       finally {
         pendingAtClose = pendingReads;

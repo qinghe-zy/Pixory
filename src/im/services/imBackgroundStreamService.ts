@@ -10,19 +10,22 @@
  */
 
 import { initDatabase, type PixorySpace } from '../../database';
-import { streamClient } from '../../core/llm-transport/streamClient';
+import { streamClient, isNativeReasoningModelId } from '../../core/llm-transport/streamClient';
 import { getActiveProviderConfig } from '../../core/llm-transport/secureApiKey';
 import type { CompanionMemoryRecord, MemoryRecallCandidate } from '../../core/memory/memoryTypes';
 import {
   getVisibleImMessages,
   getContextMessagesFromAnchor,
+  peekThreadPendingDiaryHook,
+  ackThreadPendingDiaryHook,
   consumeThreadPendingDiaryHook,
   insertImMessage,
   updateThreadLivingState,
   savePendingPing,
   revealPendingMessages,
 } from '../repository/imThreadRepository';
-import { buildChatPayload } from '../engine/imContextBuilder';
+import type { ImCompanionPersonalization } from '../repository/imSettingsRepository';
+import { buildChatPayload, computeMidEpochDeltaFacts } from '../engine/imContextBuilder';
 import { parseStatusTag, parsePingTag, parseVoiceTag } from '../engine/imTagParser';
 import { stripMetaTags } from '../engine/tagAwareStreamParser';
 import { sanitizeCompanionBubble } from '../engine/humanizeOutputGate';
@@ -163,6 +166,26 @@ interface ThreadRecoveryRow {
   im_settings_json?: string | null;
 }
 
+function parseRecoveryThreadSettings(imSettingsJson?: string | null): {
+  voiceReplyEnabled: boolean;
+  personalization: ImCompanionPersonalization | null;
+} {
+  let voiceReplyEnabled = true;
+  let personalization: ImCompanionPersonalization | null = null;
+  if (imSettingsJson) {
+    try {
+      const parsed = JSON.parse(imSettingsJson);
+      if (typeof parsed?.voiceReplyEnabled === 'boolean') {
+        voiceReplyEnabled = parsed.voiceReplyEnabled;
+      }
+      if (parsed?.personalization && typeof parsed.personalization === 'object') {
+        personalization = parsed.personalization as ImCompanionPersonalization;
+      }
+    } catch {}
+  }
+  return { voiceReplyEnabled, personalization };
+}
+
 /**
  * 补偿生成因系统强杀进程而中断的用户消息回复
  */
@@ -197,15 +220,7 @@ export async function recoverInterruptedUserReply(
   );
   if (!thread) return false;
 
-  let voiceReplyEnabled = true;
-  if (thread.im_settings_json) {
-    try {
-      const parsed = JSON.parse(thread.im_settings_json);
-      if (typeof parsed?.voiceReplyEnabled === 'boolean') {
-        voiceReplyEnabled = parsed.voiceReplyEnabled;
-      }
-    } catch {}
-  }
+  const { voiceReplyEnabled, personalization } = parseRecoveryThreadSettings(thread.im_settings_json);
 
   const windowN = thread.context_window_n || 20;
   let anchorMessageId: string | undefined;
@@ -286,7 +301,11 @@ export async function recoverInterruptedUserReply(
       [thread.roleCardId]
     );
   }
-  const { rolePrompt, companionName, personaAnchor } = resolveCompanionRolePrompt(roleRow);
+  const { rolePrompt, companionName, personaAnchor } = resolveCompanionRolePrompt(
+    roleRow,
+    '伴侣',
+    personalization
+  );
 
   let livingState: ImCompanionLivingState | undefined;
   if (thread.living_state_json) {
@@ -295,38 +314,123 @@ export async function recoverInterruptedUserReply(
     } catch {}
   }
 
+  const recoveryModelId = thread.modelId || providerConfig.modelId;
+  const isNativeReasoningModel =
+    typeof isNativeReasoningModelId === 'function'
+      ? isNativeReasoningModelId(recoveryModelId, providerConfig.supportsThinking)
+      : Boolean(providerConfig.supportsThinking);
+
   let l1Slots: CompanionMemoryRecord[] = [];
   let l1Summary: CompanionMemoryRecord | null = null;
   let coreFacts: CompanionMemoryRecord[] = [];
+  let allL2Memories: CompanionMemoryRecord[] = [];
   let recalledMemories: MemoryRecallCandidate[] = [];
+  let epochCatalogText = '';
+  let activeArcNotice: string | null = null;
+  let epochCoreFactsJson: string | undefined;
+  let midEpochDeltaFacts: CompanionMemoryRecord[] = [];
+  let evictedUpToTurn = -1;
+  let invokeMemoryModel = true;
   let pendingDiaryHook: string | null = null;
+  let usedPeekDiaryHook = false;
 
   try {
     const diaryHookPromise =
-      typeof consumeThreadPendingDiaryHook === 'function'
-        ? consumeThreadPendingDiaryHook(space, threadId).catch(() => null)
-        : Promise.resolve(null);
+      typeof peekThreadPendingDiaryHook === 'function'
+        ? (() => {
+            usedPeekDiaryHook = true;
+            return peekThreadPendingDiaryHook(space, threadId).catch(() => null);
+          })()
+        : typeof consumeThreadPendingDiaryHook === 'function'
+          ? consumeThreadPendingDiaryHook(space, threadId).catch(() => null)
+          : Promise.resolve(null);
 
     if (thread.roleCardId) {
-      const [{ memoryRepository, extractImmediateFactsFromUserText }, { retrieveRelevantMemories }] = await Promise.all([
-        import('../../core/memory/memoryRepository'),
-        import('../../core/memory/zeroVectorRetriever'),
+      const [
+        { prepareTurnMemoryContext },
+        { epochLockstepCoordinator },
+        { createImEpochShadowCompactor, syncCommittedEpochL1ToMemoryRepository },
+        budgetControllerMod,
+      ] = await Promise.all([
+        import('../engine/memoryTurnCoordinator'),
+        import('../engine/epochLockstepCoordinator'),
+        import('../engine/epochCompactionRunner'),
+        import('../engine/imTokenBudgetController').catch(() => null),
       ]);
-      if (extractImmediateFactsFromUserText(combinedUserInput).length > 0) {
-        await memoryRepository.harvestImmediateUserFacts(thread.roleCardId, space, combinedUserInput).catch(() => 0);
-      }
-      const [slots, summaries, facts, recalled, diaryHook] = await Promise.all([
-        memoryRepository.listMemories(thread.roleCardId, space, 'L1_SLOT'),
-        memoryRepository.listMemories(thread.roleCardId, space, 'L1_SUMMARY'),
-        memoryRepository.listCoreProfileFacts(thread.roleCardId, space, 8),
-        retrieveRelevantMemories(thread.roleCardId, space, combinedUserInput, 3),
+
+      const [preparedTurn, diaryHook] = await Promise.all([
+        prepareTurnMemoryContext({
+          space,
+          threadId,
+          roleCardId: thread.roleCardId,
+          userInput: combinedUserInput,
+          recentMessages: historyMessages,
+          recallLimit: 4,
+          nowMs: now,
+        }),
         diaryHookPromise,
       ]);
-      l1Slots = slots;
-      l1Summary = summaries[0] ?? null;
-      coreFacts = facts;
-      recalledMemories = recalled;
+
+      l1Slots = preparedTurn.slots;
+      l1Summary = preparedTurn.l1Summary;
+      coreFacts = preparedTurn.coreFacts;
+      allL2Memories = preparedTurn.allL2Memories;
+      recalledMemories = preparedTurn.recalled;
+      epochCatalogText = preparedTurn.epochCatalogText;
+      activeArcNotice = preparedTurn.activeArcNotice;
+      invokeMemoryModel = preparedTurn.intentProfile.invokeMemoryModel;
       pendingDiaryHook = diaryHook;
+
+      const effectiveModelId = thread.modelId || providerConfig.modelId;
+      const effectiveProviderId = thread.providerId || providerConfig.providerId;
+      const shadowCompactor = createImEpochShadowCompactor({
+        space,
+        roleCardId: thread.roleCardId,
+        rolePrompt,
+        slots: l1Slots,
+        l1Summary,
+        coreFacts,
+        windowN,
+        provider: providerConfig,
+        effectiveProviderId,
+        effectiveModelId,
+        voiceReplyEnabled,
+        isNativeReasoningModel,
+      });
+
+      const latestCatalogText =
+        typeof budgetControllerMod?.buildTopicIndexCatalog === 'function'
+          ? budgetControllerMod.buildTopicIndexCatalog(
+              allL2Memories,
+              coreFacts,
+              preparedTurn.budgets?.layer2CatalogMaxTokens
+            )
+          : preparedTurn.epochCatalogText;
+
+      const lockstep = await epochLockstepCoordinator.evaluateAndAssemble(
+        space,
+        threadId,
+        thread.roleCardId,
+        windowN,
+        historyMessages,
+        shadowCompactor,
+        coreFacts,
+        latestCatalogText
+      );
+
+      epochSlotJson = lockstep.activeSlotJson;
+      epochSummaryJson = lockstep.activeSummaryJson;
+      epochCoreFactsJson = lockstep.activeCoreFactsJson;
+      if (typeof lockstep.activeCatalogText === 'string') {
+        epochCatalogText = lockstep.activeCatalogText;
+      }
+      evictedUpToTurn = lockstep.evictedUpToTurn;
+      anchorMessageId = lockstep.activeAnchorMessageId || anchorMessageId;
+      midEpochDeltaFacts = computeMidEpochDeltaFacts(coreFacts, lockstep.activeCoreFactsJson);
+
+      if (lockstep.didStepEpoch) {
+        await syncCommittedEpochL1ToMemoryRepository(space, threadId, thread.roleCardId);
+      }
     } else {
       pendingDiaryHook = await diaryHookPromise;
     }
@@ -339,8 +443,15 @@ export async function recoverInterruptedUserReply(
       l1Slots,
       l1Summary,
       coreFacts,
+      allL2Memories,
+      epochCatalogText,
+      activeArcNotice,
       epochSlotJson,
       epochSummaryJson,
+      epochCoreFactsJson,
+      midEpochDeltaFacts,
+      milestones: personalization?.milestones,
+      evictedUpToTurn,
       recalledMemories,
       pendingDiaryHook,
       historyMessages,
@@ -350,6 +461,7 @@ export async function recoverInterruptedUserReply(
       anchorMessageId,
       personaAnchor,
       voiceReplyEnabled,
+      isNativeReasoningModel,
     },
     combinedUserInput
   );
@@ -362,9 +474,13 @@ export async function recoverInterruptedUserReply(
   try {
     const stream = streamClient.streamText(payload, {
       providerId: providerConfig.providerId,
-      modelId: thread.modelId || providerConfig.modelId,
+      modelId: recoveryModelId,
       baseUrl: providerConfig.baseUrl,
       apiKey: providerConfig.apiKey,
+      protocol: providerConfig.protocol,
+      supportsThinking: providerConfig.supportsThinking,
+      companionFastThinking: true,
+      thinkingBudgetTokens: isNativeReasoningModel ? 1536 : undefined,
       abortSignal: abortCtrl.signal,
     });
     for await (const chunk of stream) {
@@ -443,6 +559,40 @@ export async function recoverInterruptedUserReply(
       createdAt: new Date(msgTime).toISOString(),
     };
     await insertImMessage(space, msg);
+  }
+
+  if (usedPeekDiaryHook && pendingDiaryHook && typeof ackThreadPendingDiaryHook === 'function') {
+    await ackThreadPendingDiaryHook(space, threadId).catch(() => {});
+  }
+
+  if (thread.roleCardId) {
+    try {
+      const { settlePostReplyMemorySignals } = await import('../engine/memoryTurnCoordinator');
+      await settlePostReplyMemorySignals({
+        space,
+        threadId,
+        roleCardId: thread.roleCardId,
+        recalled: recalledMemories,
+        fullRawResponse,
+        alreadyExecutedRecallRound: true,
+      });
+    } catch {}
+
+    if (invokeMemoryModel) {
+      try {
+        const { MemoryExtractionBatcher } = await import('../../core/memory/memoryExtractionBatcher');
+        MemoryExtractionBatcher.shared.enqueue({
+          space,
+          roleCardId: thread.roleCardId,
+          threadId,
+          chatProviderId: providerConfig.providerId,
+          chatModelId: thread.modelId || providerConfig.modelId,
+          userMessage: combinedUserInput,
+          assistantMessage: fullRawResponse,
+          existingFacts: coreFacts,
+        });
+      } catch {}
+    }
   }
 
   const stillOpen =

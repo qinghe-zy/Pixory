@@ -51,19 +51,68 @@ export function buildFileTransferMessagePreview(
   return first.name ? `[文档] ${first.name}` : '[文档]';
 }
 
-function isManagedThreadAttachmentUri(space: PixorySpace, uri: string): boolean {
-  if (!uri || uri.includes('..')) {
+export function toFileTransferUserErrorMessage(error: unknown, fallback: string): string {
+  const rawMessage = error instanceof Error ? error.message.trim() : '';
+  if (!rawMessage) {
+    return fallback;
+  }
+  if (/database is locked|finalizeAsync|SQLITE_BUSY|cannot rollback/i.test(rawMessage)) {
+    return '本地数据库繁忙，已暂停并保护当前状态，请稍后重试';
+  }
+  const hasInternalLeak =
+    /[\\/]|\b(?:SQLITE|Error|Exception|stack|TypeError)\b|(?:file|content|http|https):\/\/|pixory_personal|documentDirectory/i.test(
+      rawMessage,
+    );
+  if (hasInternalLeak) {
+    return fallback;
+  }
+  const isSafeUserValidation =
+    /^(?:需要相册权限才能上传图片。|每次最多添加 \d+ 个附件。|.{1,120}超过单文件 \d+ MB 限制。|附件总大小不能超过 \d+ MB。|未授权目录，已取消保存。)$/.test(
+      rawMessage,
+    );
+  return isSafeUserValidation ? rawMessage : fallback;
+}
+
+export function isManagedThreadAttachmentUri(space: PixorySpace, uri: string): boolean {
+  if (!uri || /[\x00-\x1f\\?#]/.test(uri)) {
     return false;
   }
   const threadDocsPrefix = `${getAiDocumentsDir(space)}thread_${FILE_TRANSFER_THREAD_ID}/`;
-  return uri.startsWith(threadDocsPrefix);
+  if (!uri.startsWith(threadDocsPrefix)) {
+    return false;
+  }
+  const rawRelativePath = uri.slice(threadDocsPrefix.length);
+  if (!rawRelativePath || rawRelativePath.endsWith('/')) {
+    return false;
+  }
+  const segments = rawRelativePath.split('/');
+  return segments.every((segment) => {
+    if (!segment) {
+      return false;
+    }
+    let decodedSegment: string;
+    try {
+      decodedSegment = decodeURIComponent(segment);
+    } catch {
+      return false;
+    }
+    return (
+      segment !== '.' &&
+      segment !== '..' &&
+      decodedSegment !== '.' &&
+      decodedSegment !== '..' &&
+      !decodedSegment.includes('/') &&
+      !decodedSegment.includes('\\') &&
+      !/[\x00-\x1f?#]/.test(decodedSegment)
+    );
+  });
 }
 
 async function refreshFileTransferLastPreviewInDatabase(
   db: Parameters<typeof aiThreadRepository.listMessages>[0],
 ): Promise<void> {
-  const remainingMessages = await aiThreadRepository.listMessages(db, FILE_TRANSFER_THREAD_ID);
-  const lastMessage = remainingMessages[remainingMessages.length - 1];
+  const latestMessages = await aiThreadRepository.listMessages(db, FILE_TRANSFER_THREAD_ID, 1);
+  const lastMessage = latestMessages[latestMessages.length - 1];
   let attachments: AiMessageAttachmentRecord[] = [];
   if (lastMessage) {
     attachments = await aiThreadRepository.listMessageAttachments(db, lastMessage.id);
@@ -153,42 +202,45 @@ export async function sendFileTransferMessage(
   };
 
   try {
-    persistedResult = await runWithDatabaseSpace(space, (db) =>
-      runWithTransactionRetry(db, async (txn) => {
-        const message = await aiThreadRepository.createMessage(txn, {
-          id: input.messageId,
-          threadId: FILE_TRANSFER_THREAD_ID,
-          branchRootMessageId: null,
-          branchVersionIndex: null,
-          role: 'user',
-          status: 'completed',
-          content: input.content,
-          createdAt: input.createdAt,
-          completedAt: input.createdAt,
-        });
-
-        const createdAttachments: AiMessageAttachmentRecord[] = [];
-        for (const item of copiedAttachments) {
-          const record = await aiThreadRepository.createMessageAttachment(txn, {
-            id: item.recordId,
-            messageId: input.messageId,
+    persistedResult = await runWithDatabaseSpace(
+      space,
+      (db) =>
+        runWithTransactionRetry(db, async (txn) => {
+          const message = await aiThreadRepository.createMessage(txn, {
+            id: input.messageId,
             threadId: FILE_TRANSFER_THREAD_ID,
-            kind: item.attachment.kind,
-            name: item.attachment.name,
-            localUri: item.localUri,
-            mimeType: item.attachment.mimeType ?? undefined,
-            fileSize: item.attachment.size ?? undefined,
+            branchRootMessageId: null,
+            branchVersionIndex: null,
+            role: 'user',
+            status: 'completed',
+            content: input.content,
+            createdAt: input.createdAt,
+            completedAt: input.createdAt,
           });
-          createdAttachments.push(record);
-        }
 
-        const previewText = buildFileTransferMessagePreview(input.content, createdAttachments);
-        await aiThreadRepository.updateThread(txn, FILE_TRANSFER_THREAD_ID, {
-          lastMessagePreview: previewText,
-        });
+          const createdAttachments: AiMessageAttachmentRecord[] = [];
+          for (const item of copiedAttachments) {
+            const record = await aiThreadRepository.createMessageAttachment(txn, {
+              id: item.recordId,
+              messageId: input.messageId,
+              threadId: FILE_TRANSFER_THREAD_ID,
+              kind: item.attachment.kind,
+              name: item.attachment.name,
+              localUri: item.localUri,
+              mimeType: item.attachment.mimeType ?? undefined,
+              fileSize: item.attachment.size ?? undefined,
+            });
+            createdAttachments.push(record);
+          }
 
-        return { message, attachments: createdAttachments };
-      }),
+          const previewText = buildFileTransferMessagePreview(input.content, createdAttachments);
+          await aiThreadRepository.updateThread(txn, FILE_TRANSFER_THREAD_ID, {
+            lastMessagePreview: previewText,
+          });
+
+          return { message, attachments: createdAttachments };
+        }),
+      0,
     );
   } catch (error) {
     await cleanupDeletedMaterialFiles(copiedAttachments.map((item) => item.localUri));
@@ -210,17 +262,20 @@ export async function updateFileTransferMessageText(
   messageId: string,
   content: string,
 ): Promise<void> {
-  await runWithDatabaseSpace(space, (db) =>
-    runWithTransactionRetry(db, async (txn) => {
-      const existing = await aiThreadRepository.findMessageById(txn, messageId);
-      if (!existing || existing.threadId !== FILE_TRANSFER_THREAD_ID) {
-        return;
-      }
-      await aiThreadRepository.updateMessage(txn, messageId, {
-        content,
-      });
-      await refreshFileTransferLastPreviewInDatabase(txn);
-    }),
+  await runWithDatabaseSpace(
+    space,
+    (db) =>
+      runWithTransactionRetry(db, async (txn) => {
+        const existing = await aiThreadRepository.findMessageById(txn, messageId);
+        if (!existing || existing.threadId !== FILE_TRANSFER_THREAD_ID) {
+          return;
+        }
+        await aiThreadRepository.updateMessage(txn, messageId, {
+          content,
+        });
+        await refreshFileTransferLastPreviewInDatabase(txn);
+      }),
+    0,
   );
 }
 
@@ -233,29 +288,32 @@ export async function deleteFileTransferMessages(
     return;
   }
   const managedFileUris: string[] = [];
-  await runWithDatabaseSpace(space, (db) =>
-    runWithTransactionRetry(db, async (txn) => {
-      const ownedIds: string[] = [];
-      for (const messageId of uniqueIds) {
-        const existing = await aiThreadRepository.findMessageById(txn, messageId);
-        if (existing?.threadId === FILE_TRANSFER_THREAD_ID) {
-          ownedIds.push(messageId);
-        }
-      }
-      if (ownedIds.length === 0) {
-        return;
-      }
-      const attachmentsMap = await aiThreadRepository.listAttachmentsForMessages(txn, ownedIds);
-      for (const attachments of Object.values(attachmentsMap)) {
-        for (const attachment of attachments) {
-          if (attachment.localUri && isManagedThreadAttachmentUri(space, attachment.localUri)) {
-            managedFileUris.push(attachment.localUri);
+  await runWithDatabaseSpace(
+    space,
+    (db) =>
+      runWithTransactionRetry(db, async (txn) => {
+        const ownedIds: string[] = [];
+        for (const messageId of uniqueIds) {
+          const existing = await aiThreadRepository.findMessageById(txn, messageId);
+          if (existing?.threadId === FILE_TRANSFER_THREAD_ID) {
+            ownedIds.push(messageId);
           }
         }
-      }
-      await aiThreadRepository.deleteMessagesByIds(txn, ownedIds);
-      await refreshFileTransferLastPreviewInDatabase(txn);
-    }),
+        if (ownedIds.length === 0) {
+          return;
+        }
+        const attachmentsMap = await aiThreadRepository.listAttachmentsForMessages(txn, ownedIds);
+        for (const attachments of Object.values(attachmentsMap)) {
+          for (const attachment of attachments) {
+            if (attachment.localUri && isManagedThreadAttachmentUri(space, attachment.localUri)) {
+              managedFileUris.push(attachment.localUri);
+            }
+          }
+        }
+        await aiThreadRepository.deleteMessagesByIds(txn, ownedIds);
+        await refreshFileTransferLastPreviewInDatabase(txn);
+      }),
+    0,
   );
   await cleanupDeletedMaterialFiles(managedFileUris);
 }

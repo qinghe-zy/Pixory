@@ -2,6 +2,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { markInterruptedGenerationJobs } from '../ai/generation/aiGenerationRepository';
 import { registerDatabaseSpace } from './databaseSpaceRegistry';
+import { serializeSqliteDatabase } from './sqliteSerialization';
 
 import {
   DATABASE_NAME,
@@ -82,8 +83,11 @@ import {
   MIGRATION_STATEMENTS_V71,
   MIGRATION_STATEMENTS_V72,
   MIGRATION_STATEMENTS_V73,
+  MIGRATION_STATEMENTS_V74,
+  MIGRATION_STATEMENTS_V75,
   PERSONAL_DATABASE_NAME,
 } from './schema';
+export { rebuildAiMemoryFtsIndex } from './aiMemoryFts';
 
 export type PixorySpace = 'normal' | 'personal';
 
@@ -107,10 +111,16 @@ function getDatabaseNameForSpace(space: PixorySpace): string {
 
 async function openPixoryDatabase(space: PixorySpace = 'normal'): Promise<SQLiteDatabase> {
   if (!databasePromises[space]) {
-    databasePromises[space] = openDatabaseAsync(getDatabaseNameForSpace(space)).then((database) => {
-      registerDatabaseSpace(database, space);
-      return database;
-    });
+    databasePromises[space] = openDatabaseAsync(getDatabaseNameForSpace(space))
+      .then((database) => {
+        const serialized = serializeSqliteDatabase(database);
+        registerDatabaseSpace(serialized, space);
+        return serialized;
+      })
+      .catch((error) => {
+        databasePromises[space] = undefined;
+        throw error;
+      });
   }
 
   return databasePromises[space];
@@ -338,7 +348,23 @@ async function ensureMemoryAggregateSchema(db: SQLiteDatabase): Promise<void> {
   }
 }
 
-async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> {
+function isBenignSchemaAlterError(error: unknown): boolean {
+  const message = String((error as { message?: unknown })?.message || '').toLowerCase();
+  return message.includes('duplicate column name') || message.includes('already exists');
+}
+
+async function execSchemaMigrationStatement(db: SQLiteDatabase, sql: string, context: string): Promise<void> {
+  try {
+    await db.execAsync(sql);
+  } catch (error) {
+    if (!isBenignSchemaAlterError(error)) {
+      console.warn(`[DB] ${context} failed:`, error);
+      throw error;
+    }
+  }
+}
+
+export async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> {
   // Step A: 新装库保底建表（包含最新 5 种 Tier）
   if (!(await hasTable(db, 'ai_companion_memories'))) {
     await db.execAsync(MIGRATION_STATEMENTS_V68);
@@ -352,14 +378,22 @@ async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> 
     { name: 'source_mode', type: "TEXT DEFAULT 'im'" },
   ];
   for (const col of memoryCols) {
-    try {
-      await db.execAsync(`ALTER TABLE ai_companion_memories ADD COLUMN ${col.name} ${col.type};`);
-    } catch {}
+    await execSchemaMigrationStatement(
+      db,
+      `ALTER TABLE ai_companion_memories ADD COLUMN ${col.name} ${col.type};`,
+      `ensureAiCompanionMemorySchema.addColumn(${col.name})`,
+    );
   }
-  try {
-    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_expires ON ai_companion_memories(expires_at);');
-    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_deleted ON ai_companion_memories(deleted_at);');
-  } catch {}
+  await execSchemaMigrationStatement(
+    db,
+    'CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_expires ON ai_companion_memories(expires_at);',
+    'ensureAiCompanionMemorySchema.indexExpires',
+  );
+  await execSchemaMigrationStatement(
+    db,
+    'CREATE INDEX IF NOT EXISTS idx_ai_companion_memories_deleted ON ai_companion_memories(deleted_at);',
+    'ensureAiCompanionMemorySchema.indexDeleted',
+  );
 
   // Step C: 检查 CHECK 约束，若旧约束未包含 L2_FACT 则执行无损重建迁移
   try {
@@ -397,27 +431,27 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
     { name: 'im_hidden_from_list', type: 'INTEGER DEFAULT 0' },
   ];
   for (const col of columns) {
-    try {
-      await db.execAsync(`ALTER TABLE ai_threads ADD COLUMN ${col.name} ${col.type};`);
-    } catch {
-      // 容错：列已存在时静默跳过
-    }
+    await execSchemaMigrationStatement(
+      db,
+      `ALTER TABLE ai_threads ADD COLUMN ${col.name} ${col.type};`,
+      `ensureImThreadSettingsSchema.addColumn(${col.name})`,
+    );
   }
-  try {
-    await db.execAsync("ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';");
-  } catch {
-    // 容错：列已存在时静默跳过
-  }
-  try {
-    await db.execAsync("CREATE INDEX IF NOT EXISTS idx_ai_threads_pending_ping ON ai_threads(pending_ping_at);");
-  } catch {
-    // 容错：静默跳过
-  }
-  try {
-    await db.execAsync("CREATE INDEX IF NOT EXISTS idx_ai_threads_im_folded ON ai_threads(space, im_is_folded, im_hidden_from_list);");
-  } catch {
-    // 容错：静默跳过
-  }
+  await execSchemaMigrationStatement(
+    db,
+    "ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';",
+    'ensureImThreadSettingsSchema.deliveryStatus',
+  );
+  await execSchemaMigrationStatement(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_ai_threads_pending_ping ON ai_threads(pending_ping_at);",
+    'ensureImThreadSettingsSchema.indexPendingPing',
+  );
+  await execSchemaMigrationStatement(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_ai_threads_im_folded ON ai_threads(space, im_is_folded, im_hidden_from_list);",
+    'ensureImThreadSettingsSchema.indexImFolded',
+  );
 }
 
 export async function ensureAgentVfsSchema(db: SQLiteDatabase): Promise<void> {
@@ -824,6 +858,18 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V73);
     }
 
+    if (currentVersion < 74) {
+      await database.execAsync(MIGRATION_STATEMENTS_V74);
+    }
+
+    if (currentVersion < 75) {
+      try {
+        await database.execAsync(MIGRATION_STATEMENTS_V75);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
+    }
+
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
     await ensureAiMemoryLineageSchema(database);
@@ -872,20 +918,29 @@ export async function runWithDatabaseSpace<T>(
   maxRetries = 5,
 ): Promise<T> {
   const db = await getDatabase(space);
+  return runWithSqliteRetry(() => task(db), maxRetries);
+}
+
+function isSqliteLockError(error: unknown): boolean {
+  const message = String((error as { message?: unknown })?.message || '');
+  return (
+    message.includes('database is locked') ||
+    message.includes('database is busy') ||
+    message.includes('cannot start a transaction') ||
+    message.includes('cannot rollback') ||
+    message.includes('SQLITE_BUSY') ||
+    message.includes('SQLITE_LOCKED')
+  );
+}
+
+async function runWithSqliteRetry<T>(operation: () => Promise<T>, maxRetries: number): Promise<T> {
   let attempt = 0;
   while (true) {
     try {
-      return await task(db);
-    } catch (error: any) {
+      return await operation();
+    } catch (error: unknown) {
       attempt += 1;
-      const message = String(error?.message || '');
-      const isLockError =
-        message.includes('database is locked') ||
-        message.includes('cannot rollback') ||
-        message.includes('finalizeAsync') ||
-        message.includes('SQLITE_BUSY') ||
-        message.includes('SQLITE_LOCKED');
-      if (isLockError && attempt <= maxRetries) {
+      if (isSqliteLockError(error) && attempt <= maxRetries) {
         const jitter = Math.floor(Math.random() * 25);
         const backoffMs = Math.min(800, 50 * Math.pow(2, attempt - 1)) + jitter;
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
@@ -901,38 +956,16 @@ export async function runWithTransactionRetry<T>(
   fn: (txn: SQLiteDatabase) => Promise<T>,
   maxRetries = 5,
 ): Promise<T> {
-  let attempt = 0;
-  while (true) {
-    try {
-      let result: T;
-      if (typeof db.withExclusiveTransactionAsync === 'function') {
-        await db.withExclusiveTransactionAsync(async (txn: unknown) => {
-          result = await fn(txn as SQLiteDatabase);
-        });
-      } else {
-        await db.withTransactionAsync(async () => {
-          result = await fn(db);
-        });
-      }
-      return result!;
-    } catch (error: any) {
-      attempt += 1;
-      const message = String(error?.message || '');
-      const isLockError =
-        message.includes('database is locked') ||
-        message.includes('cannot rollback') ||
-        message.includes('finalizeAsync') ||
-        message.includes('SQLITE_BUSY') ||
-        message.includes('SQLITE_LOCKED');
-      if (isLockError && attempt <= maxRetries) {
-        const jitter = Math.floor(Math.random() * 25);
-        const backoffMs = Math.min(800, 50 * Math.pow(2, attempt - 1)) + jitter;
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        continue;
-      }
-      throw error;
-    }
-  }
+  return runWithSqliteRetry(async () => {
+    let result: T;
+    const runTx = db.withTransactionAsync as unknown as (
+      task: (txn?: SQLiteDatabase) => Promise<void>,
+    ) => Promise<void>;
+    await runTx.call(db, async (txn) => {
+      result = await fn(txn ?? db);
+    });
+    return result!;
+  }, maxRetries);
 }
 
 export async function checkpointDatabase(space: PixorySpace): Promise<void> {

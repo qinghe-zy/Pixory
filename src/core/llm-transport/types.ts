@@ -37,6 +37,8 @@ export interface LlmTransportOptions {
   maxTokens?: number;
   abortSignal?: AbortSignal;
   supportsThinking?: boolean;
+  companionFastThinking?: boolean;
+  thinkingBudgetTokens?: number;
   onUsage?: (usage: LlmTokenUsage) => void;
   onFinishReason?: (finishReason: string) => void;
 }

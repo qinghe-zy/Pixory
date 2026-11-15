@@ -3,6 +3,7 @@ import { voiceRepository } from '../../database/repositories/voiceRepository';
 import type { ImMessage } from '../types';
 
 export type ImRelationshipPreset =
+  | 'role_default'
   | 'close_friend'
   | 'romantic'
   | 'friend'
@@ -16,6 +17,7 @@ export type ImRelationshipPreset =
   | 'custom';
 
 export type ImReplyStyleGear =
+  | 'role_default'
   | 'balanced'
   | 'empathetic'
   | 'playful'

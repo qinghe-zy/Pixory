@@ -12,6 +12,7 @@ import {
   importBatchRepository,
   ipRepository,
   runWithDatabaseSpace,
+  runWithTransactionRetry,
   settingsRepository,
   tagRepository,
   type PixorySpace,
@@ -236,22 +237,18 @@ function sanitizeExportDataForManifest(exportData: ExportData, files: ManagedBac
 }
 
 async function buildExportData(db: SQLiteDatabase, ipId?: number): Promise<ExportData> {
-  const [ips, groups, tags, images] = await Promise.all([
-    ipRepository.findAllIncludingDeleted(db),
-    groupRepository.findAll(db),
-    tagRepository.findAll(db),
-    imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' }),
-  ]);
+  const ips = await ipRepository.findAllIncludingDeleted(db);
+  const groups = await groupRepository.findAll(db);
+  const tags = await tagRepository.findAll(db);
+  const images = await imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' });
   const filteredIps = ipId != null ? ips.filter((ip) => ip.id === ipId) : ips;
   const filteredIpIds = new Set(filteredIps.map((ip) => ip.id));
   const filteredGroups = groups.filter((group) => filteredIpIds.has(group.ipId));
   const filteredImages = images.filter((image) => filteredIpIds.has(image.ipId));
   const imageIds = filteredImages.map((image) => image.id);
-  const [groupIdsByImageId, tagNamesByImageId, importBatches] = await Promise.all([
-    imageRepository.findGroupIdsByImageIds(db, imageIds),
-    tagRepository.findNamesByImageIds(db, imageIds),
-    importBatchRepository.findByIpIds(db, filteredIps.map((ip) => ip.id)),
-  ]);
+  const groupIdsByImageId = await imageRepository.findGroupIdsByImageIds(db, imageIds);
+  const tagNamesByImageId = await tagRepository.findNamesByImageIds(db, imageIds);
+  const importBatches = await importBatchRepository.findByIpIds(db, filteredIps.map((ip) => ip.id));
   const imagesWithRelations = filteredImages.map((image) => ({
     ...image,
     groupIds: groupIdsByImageId.get(image.id) ?? [],
@@ -787,7 +784,7 @@ export async function importPlainBackupPackage({
       stagedDestinationUris.push(...stagedManagedAi.stagedDestinationUris);
     }
 
-    await runWithDatabaseSpace(space, async (db) => db.withTransactionAsync(async () => {
+    await runWithDatabaseSpace(space, (db) => runWithTransactionRetry(db, async (txn) => {
       const exportData = manifest.exportData;
       const ipIdMap = new Map<number, number>();
       const groupIdMap = new Map<number, number>();
@@ -796,7 +793,7 @@ export async function importPlainBackupPackage({
 
       for (const ip of exportData?.ips ?? []) {
         assertPersonalTaskActive(taskToken);
-        const resolvedIp = await resolveImportedIp(db, ip, ipNameConflictStrategy);
+        const resolvedIp = await resolveImportedIp(txn, ip, ipNameConflictStrategy);
         ipIdMap.set(ip.id, resolvedIp.ipId);
         if (resolvedIp.created) {
           importedIpCount += 1;
@@ -807,8 +804,8 @@ export async function importPlainBackupPackage({
         assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(group.ipId);
         if (!nextIpId) continue;
-        const existingGroup = await groupRepository.findByIpIdAndName(db, nextIpId, group.name);
-        const resolvedGroup = existingGroup ?? (await groupRepository.create(db, {
+        const existingGroup = await groupRepository.findByIpIdAndName(txn, nextIpId, group.name);
+        const resolvedGroup = existingGroup ?? (await groupRepository.create(txn, {
           ipId: nextIpId,
           name: group.name,
           type: group.type,
@@ -823,7 +820,7 @@ export async function importPlainBackupPackage({
         assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(batch.ipId);
         if (!nextIpId) continue;
-        const createdBatch = await importBatchRepository.create(db, {
+        const createdBatch = await importBatchRepository.create(txn, {
           ipId: nextIpId,
           name: batch.name,
           templateKey: batch.templateKey,
@@ -857,7 +854,7 @@ export async function importPlainBackupPackage({
           ...(copied.coverDestinationUri ? [copied.coverDestinationUri] : [])
         );
 
-        const createdImage = await imageRepository.create(db, {
+        const createdImage = await imageRepository.create(txn, {
           mediaType: image.mediaType ?? 'image',
           ipId: nextIpId,
           importBatchId: image.importBatchId != null ? importBatchIdMap.get(image.importBatchId) ?? null : null,
@@ -883,11 +880,11 @@ export async function importPlainBackupPackage({
         imageIdMap.set(image.id, createdImage.id);
         const tagIds = [];
         for (const tagName of image.tagNames) {
-          const existingTag = await tagRepository.findByName(db, tagName);
-          const tag = existingTag ?? (await tagRepository.create(db, { name: tagName }));
+          const existingTag = await tagRepository.findByName(txn, tagName);
+          const tag = existingTag ?? (await tagRepository.create(txn, { name: tagName }));
           tagIds.push(tag.id);
         }
-        await tagRepository.replaceImageTags(db, createdImage.id, tagIds);
+        await tagRepository.replaceImageTags(txn, createdImage.id, tagIds);
         importedImageCount += 1;
       }
 
@@ -895,7 +892,7 @@ export async function importPlainBackupPackage({
         assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(ip.id);
         if (!nextIpId) continue;
-        await ipRepository.update(db, nextIpId, {
+        await ipRepository.update(txn, nextIpId, {
           coverImageAssetId: ip.coverImageAssetId != null ? imageIdMap.get(ip.coverImageAssetId) ?? null : null,
           coverBlurEnabled: ip.coverBlurEnabled,
           coverBlurRadius: ip.coverBlurRadius,
@@ -906,7 +903,7 @@ export async function importPlainBackupPackage({
         assertPersonalTaskActive(taskToken);
         const nextGroupId = groupIdMap.get(group.id);
         if (!nextGroupId) continue;
-        await groupRepository.update(db, nextGroupId, {
+        await groupRepository.update(txn, nextGroupId, {
           coverImageAssetId: group.coverImageAssetId != null ? imageIdMap.get(group.coverImageAssetId) ?? null : null,
         });
       }
@@ -917,7 +914,7 @@ export async function importPlainBackupPackage({
         if (!nextBatchId) continue;
         for (const item of exportData?.importBatchItemsByBatchId[String(batch.id)] ?? []) {
           assertPersonalTaskActive(taskToken);
-          await importBatchRepository.createItem(db, {
+          await importBatchRepository.createItem(txn, {
             importBatchId: nextBatchId,
             sourcePath: item.sourcePath,
             originalFilename: item.originalFilename,
@@ -926,14 +923,14 @@ export async function importPlainBackupPackage({
             reason: item.reason,
           });
         }
-        await importBatchRepository.complete(db, nextBatchId, batch.successCount, batch.failedCount);
+        await importBatchRepository.complete(txn, nextBatchId, batch.successCount, batch.failedCount);
       }
 
       if (manifest.type !== 'ip' && manifest.manifestVersion === 2 && stagedManagedAi) {
         const mergeReport = await mergeManagedDatabaseRecords({
           assertActive: () => assertPersonalTaskActive(taskToken),
           sourceDatabaseUri: resolveManagedBackupPath(backupDir, manifest.databaseRelativePath ?? ''),
-          targetDb: db,
+          targetDb: txn,
           space,
           ipIdMap,
           imageIdMap,

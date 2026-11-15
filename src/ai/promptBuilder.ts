@@ -257,6 +257,99 @@ function compileDynamicSegments(
     .join('\n\n');
 }
 
+const STRUCTURED_COMPANION_PROFILE_MARKERS = [
+  '[关于这个用户]',
+  '[全局画像]',
+  '[当前 IP 画像]',
+  '[本会话画像',
+] as const;
+
+export function splitCompanionMemoryPrefix(prefix: string | null | undefined): {
+  stableProfilePrefix: string;
+  dynamicRelationshipObservation: string;
+} {
+  const trimmed = prefix?.trim() ?? '';
+  if (!trimmed) {
+    return { stableProfilePrefix: '', dynamicRelationshipObservation: '' };
+  }
+  const hasStructuredProfile = STRUCTURED_COMPANION_PROFILE_MARKERS.some((marker) =>
+    trimmed.includes(marker)
+  );
+  if (!hasStructuredProfile) {
+    return {
+      stableProfilePrefix: '',
+      dynamicRelationshipObservation: trimmed,
+    };
+  }
+  const relationMarkerIndex = trimmed.search(/(?:^|\n{2,})\[相关记忆\]/);
+  if (relationMarkerIndex < 0) {
+    return {
+      stableProfilePrefix: trimmed,
+      dynamicRelationshipObservation: '',
+    };
+  }
+  return {
+    stableProfilePrefix: trimmed.slice(0, relationMarkerIndex).trim(),
+    dynamicRelationshipObservation: trimmed.slice(relationMarkerIndex).trim(),
+  };
+}
+
+function combineStableMemorySnapshot(
+  stableMemoryPrefix?: string | null,
+  companionMemoryPrefix?: string | null
+): string {
+  const { stableProfilePrefix } = splitCompanionMemoryPrefix(companionMemoryPrefix);
+  return [stableMemoryPrefix?.trim(), stableProfilePrefix].filter(Boolean).join('\n\n');
+}
+
+function pruneTruncatedDynamicMemory(originalText: string, trimmedText: string): string {
+  const trimNotice = '\n[已因模型上下文窗口裁剪]';
+  const rawPrefix = trimmedText.endsWith(trimNotice)
+    ? trimmedText.slice(0, -trimNotice.length)
+    : trimmedText;
+  const keptLength = rawPrefix.length;
+  if (keptLength <= 0 || !trimmedText.trim()) {
+    return '';
+  }
+
+  if (originalText.includes('[/MEMORY]')) {
+    const firstBlockStart = originalText.indexOf('[MEMORY]');
+    const header = firstBlockStart > 0 ? originalText.slice(0, firstBlockStart).trim() : '';
+    const completeBlocks: string[] = [];
+    let cursor = firstBlockStart >= 0 ? firstBlockStart : 0;
+    while (cursor < keptLength) {
+      const startIdx = originalText.indexOf('[MEMORY]', cursor);
+      if (startIdx < 0 || startIdx >= keptLength) break;
+      const closeIdx = originalText.indexOf('[/MEMORY]', startIdx);
+      if (closeIdx < 0) break;
+      const blockEnd = closeIdx + '[/MEMORY]'.length;
+      if (blockEnd > keptLength) break;
+      completeBlocks.push(originalText.slice(startIdx, blockEnd).trim());
+      cursor = blockEnd;
+    }
+    if (completeBlocks.length === 0) {
+      return '';
+    }
+    return [header, ...completeBlocks].filter(Boolean).join('\n\n');
+  }
+
+  const lines = rawPrefix.split('\n');
+  const nextChar = originalText[keptLength];
+  if (keptLength < originalText.length && nextChar && nextChar !== '\n' && lines.length > 1) {
+    lines.pop();
+  }
+  const pruned = lines.join('\n').trimEnd();
+  if (!pruned || /^相关记忆[：:]$/.test(pruned.trim())) {
+    return '';
+  }
+  return pruned;
+}
+
+export function extractReplayableUserTurnContent(prompt: BuiltPrompt): string {
+  const currentTurnLayer = prompt.promptLayers.find((layer) => layer.name === 'current_user_message');
+  return currentTurnLayer ? currentTurnLayer.text.trim() : prompt.user;
+}
+
 function compileUserObservation(input: {
   companionMemoryPrefix?: string | null;
   userProfile?: string | null;
@@ -265,8 +358,10 @@ function compileUserObservation(input: {
   return [
     (() => {
       const dynamicObservations = compileDynamicSegments(input.dynamicSegments, 'user_observation');
-      const companionPrefix = input.companionMemoryPrefix?.trim();
-      return companionPrefix && !dynamicObservations.includes(companionPrefix) ? companionPrefix : '';
+      const { dynamicRelationshipObservation } = splitCompanionMemoryPrefix(input.companionMemoryPrefix);
+      return dynamicRelationshipObservation && !dynamicObservations.includes(dynamicRelationshipObservation)
+        ? dynamicRelationshipObservation
+        : '';
     })(),
     input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
     compileDynamicSegments(input.dynamicSegments, 'user_observation'),
@@ -385,7 +480,8 @@ export function fitBuiltPromptToContextBudget(input: {
   const promptLayers = input.prompt.promptLayers.map((layer) => ({
     ...layer,
     text: layer.name === 'dynamic_memory' && textByName.get(layer.name) !== layer.text
-      ? '' : textByName.get(layer.name) ?? layer.text,
+      ? pruneTruncatedDynamicMemory(layer.text, textByName.get(layer.name) ?? '')
+      : textByName.get(layer.name) ?? layer.text,
   }));
   return {
     ...buildPromptFromLayers({
@@ -414,6 +510,7 @@ export function buildNormalChatPrompt(input: {
   roleCardContext?: AiRolePromptContext | null;
   rolePrompt?: string | null;
   materialSnippets?: Array<{ refId: string; label: string; text: string }>;
+  pinnedLoreSnapshot?: string | null;
   attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
@@ -433,9 +530,9 @@ export function buildNormalChatPrompt(input: {
       frameReplyPreference(input.replyPreference),
       input.rolePrompt,
     ].filter(Boolean).join('\n\n'), input.roleInstructionWeight), true, AI_PROMPT_LAYER_VERSIONS.role),
-    block('stable_material_rules', '', true),
+    block('stable_material_rules', input.pinnedLoreSnapshot?.trim() ? `常驻设定：\n${input.pinnedLoreSnapshot.trim()}` : '', true),
     block('stable_tool_definitions', '', true),
-    block('memory_snapshot', input.stableMemoryPrefix, true),
+    block('memory_snapshot', combineStableMemorySnapshot(input.stableMemoryPrefix, input.companionMemoryPrefix), true),
     block('summary_archive', stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '', true),
 
 
@@ -483,6 +580,7 @@ export function buildMaterialBoundPrompt(input: {
   materialRules?: string;
   contextSummary: string;
   snippets: Array<{ refId: string; label: string; text: string }>;
+  pinnedLoreSnapshot?: string | null;
   attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
@@ -504,9 +602,13 @@ export function buildMaterialBoundPrompt(input: {
       buildStructuredRoleCardPrompt(resolvedRoleContext),
       frameReplyPreference(input.replyPreference),
     ].filter(Boolean).join('\n\n'), input.roleInstructionWeight), true, AI_PROMPT_LAYER_VERSIONS.role),
-    block('stable_material_rules', ['资料规则：', materialRules].join('\n'), true),
+    block('stable_material_rules', [
+      '资料规则：',
+      materialRules,
+      input.pinnedLoreSnapshot?.trim() ? `常驻设定：\n${input.pinnedLoreSnapshot.trim()}` : '',
+    ].filter(Boolean).join('\n\n'), true),
     block('stable_tool_definitions', '', true),
-    block('memory_snapshot', input.stableMemoryPrefix, true),
+    block('memory_snapshot', combineStableMemorySnapshot(input.stableMemoryPrefix, input.companionMemoryPrefix), true),
     block('summary_archive', stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '', true),
 
 

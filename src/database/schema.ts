@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 73;
+export const DATABASE_VERSION = 75;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -413,6 +413,7 @@ CREATE TABLE IF NOT EXISTS ai_threads (
   thinkingDisabled INTEGER NOT NULL DEFAULT 0,
   systemPrompt TEXT NOT NULL DEFAULT '',
   materialRulesSnapshot TEXT,
+  pinnedLoreSnapshot TEXT,
   boundaryMode TEXT NOT NULL DEFAULT 'free' CHECK (boundaryMode IN ('free', 'prefer_material', 'strict_material')),
   summary TEXT,
   lastMessagePreview TEXT,
@@ -2299,6 +2300,30 @@ ALTER TABLE ips ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_ips_is_pinned ON ips(isPinned);
 `;
 
+export const REBUILD_AI_MEMORY_FTS_V1_SQL = `
+INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
+SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
+FROM ai_memories
+WHERE status = 'active' AND supersededByMemoryId IS NULL;
+`;
+
+export const REBUILD_AI_MEMORY_FTS_V2_SQL = `
+INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
+SELECT id,
+       space,
+       scopeType,
+       scopeId,
+       valueDisplay,
+       valueNormalized,
+       json_object('predicate', predicate, 'lane', lane, 'status', status),
+       updatedAt
+FROM memory_claims
+WHERE deletedAt IS NULL
+  AND status NOT IN ('deleted', 'suppressed', 'superseded')
+  AND supersededByClaimId IS NULL
+  AND id NOT IN (SELECT id FROM ai_memory_fts);
+`;
+
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
 UPDATE ai_memories
 SET status = 'stale',
@@ -2311,10 +2336,8 @@ WHERE scope = 'global'
   AND status = 'active';
 
 DELETE FROM ai_memory_fts;
-INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
-SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
-FROM ai_memories
-WHERE status = 'active' AND supersededByMemoryId IS NULL;
+${REBUILD_AI_MEMORY_FTS_V1_SQL}
+${REBUILD_AI_MEMORY_FTS_V2_SQL}
 `;
 
 export const MIGRATION_STATEMENTS_V65 = `
@@ -2589,4 +2612,14 @@ CREATE TABLE IF NOT EXISTS voice_audio_cache (
 
 CREATE INDEX IF NOT EXISTS idx_voice_cache_last_used ON voice_audio_cache(last_used_at);
 CREATE INDEX IF NOT EXISTS idx_voice_bindings_preset ON voice_bindings(preset_id);
+`;
+
+export const MIGRATION_STATEMENTS_V74 = `
+DELETE FROM ai_memory_fts;
+${REBUILD_AI_MEMORY_FTS_V1_SQL}
+${REBUILD_AI_MEMORY_FTS_V2_SQL}
+`;
+
+export const MIGRATION_STATEMENTS_V75 = `
+ALTER TABLE ai_threads ADD COLUMN pinnedLoreSnapshot TEXT;
 `;

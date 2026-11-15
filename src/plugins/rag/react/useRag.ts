@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ragHub } from '../instance';
+import type { RagHub } from '../core/hub';
 import type {
   ContextBudget,
   IngestResult,
@@ -15,6 +16,7 @@ export interface UseRagSearchOptions extends RagSearchOptions {
   debounceMs?: number;
   initialQuery?: string;
   budget?: ContextBudget;
+  hub?: RagHub;
 }
 
 export interface UseRagSearchResult {
@@ -78,20 +80,23 @@ export function useRagSearch(options: UseRagSearchOptions = {}): UseRagSearchRes
       setError(null);
 
       try {
-        const snippets = await ragHub.search(q, {
+        const targetHub = options.hub ?? ragHub;
+        const snippets = await targetHub.search(q, {
           topK: options.topK ?? 5,
           mode: options.mode ?? 'hybrid',
           filter: options.filter,
           minScore: options.minScore,
+          minCosineSimilarity: options.minCosineSimilarity,
           vectorWeight: options.vectorWeight,
           keywordWeight: options.keywordWeight,
           timeoutMs: options.timeoutMs,
+          queryVector: options.queryVector,
         });
 
         // 仅在当前请求依然是最新的且组件未卸载时才应用状态
         if (isMountedRef.current && requestId === latestRequestId.current) {
           setData(snippets);
-          setContext(ragHub.buildContext(snippets, options.budget));
+          setContext(targetHub.buildContext(snippets, options.budget));
           setHasSearched(true);
           setIsLoading(false);
         }
@@ -107,13 +112,16 @@ export function useRagSearch(options: UseRagSearchOptions = {}): UseRagSearchRes
       }
     },
     [
+      options.hub,
       options.topK,
       options.mode,
       options.filter,
       options.minScore,
+      options.minCosineSimilarity,
       options.vectorWeight,
       options.keywordWeight,
       options.timeoutMs,
+      options.queryVector,
       options.budget,
     ]
   );
@@ -176,14 +184,26 @@ export interface UseRagIngestResult {
   reset: () => void;
 }
 
+export interface UseRagIngestOptions {
+  hub?: RagHub;
+}
+
 /**
  * 知识库摄入 Hook，提供可观测的加载、成功与错误重试状态
  */
-export function useRagIngest(): UseRagIngestResult {
+export function useRagIngest(options: UseRagIngestOptions = {}): UseRagIngestResult {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [lastResult, setLastResult] = useState<IngestResult | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const ingest = useCallback(async (doc: RagDocument): Promise<IngestResult | null> => {
     setIsLoading(true);
@@ -191,25 +211,32 @@ export function useRagIngest(): UseRagIngestResult {
     setIsSuccess(false);
 
     try {
-      const result = await ragHub.ingest(doc);
-      setIsLoading(false);
-      setIsSuccess(true);
-      setLastResult(result);
+      const targetHub = options.hub ?? ragHub;
+      const result = await targetHub.ingest(doc);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        setIsSuccess(true);
+        setLastResult(result);
+      }
       return result;
     } catch (err) {
       const formattedError = err instanceof Error ? err : new Error(String(err));
-      setError(formattedError);
-      setIsLoading(false);
-      setIsSuccess(false);
+      if (isMountedRef.current) {
+        setError(formattedError);
+        setIsLoading(false);
+        setIsSuccess(false);
+      }
       return null;
     }
-  }, []);
+  }, [options.hub]);
 
   const reset = useCallback(() => {
-    setIsLoading(false);
-    setIsSuccess(false);
-    setError(null);
-    setLastResult(null);
+    if (isMountedRef.current) {
+      setIsLoading(false);
+      setIsSuccess(false);
+      setError(null);
+      setLastResult(null);
+    }
   }, []);
 
   return {

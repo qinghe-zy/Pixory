@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { radius, rhythm, spacing, typography } from '../../design/tokens';
+import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
 interface AiChatErrorBannerProps {
@@ -12,11 +12,16 @@ interface AiChatErrorBannerProps {
 
 export function AiChatErrorBanner({ message, onDismiss, onRetry }: AiChatErrorBannerProps) {
   return (
-    <View style={styles.wrap}>
-      <Ionicons color={aiLightColors.primaryActive} name="alert-circle-outline" size={16} />
+    <View accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.wrap}>
+      <Ionicons color={aiLightColors.primaryActive} name="alert-circle-outline" size={metrics.iconSizeSm} />
       <Text style={styles.text}>{message}</Text>
       {onRetry ? (
-        <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
+        <Pressable
+          accessibilityLabel="重试"
+          accessibilityRole="button"
+          onPress={onRetry}
+          style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+        >
           <Text style={styles.retryText}>重试</Text>
         </Pressable>
       ) : null}
@@ -24,11 +29,10 @@ export function AiChatErrorBanner({ message, onDismiss, onRetry }: AiChatErrorBa
         <Pressable
           accessibilityLabel="关闭提示"
           accessibilityRole="button"
-          hitSlop={spacing[2]}
           onPress={onDismiss}
           style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}
         >
-          <Ionicons color={aiLightColors.muted} name="close" size={16} />
+          <Ionicons color={aiLightColors.muted} name="close" size={metrics.iconSizeSm} />
         </Pressable>
       ) : null}
     </View>
@@ -45,7 +49,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    padding: spacing[3],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1.5],
   },
   text: {
     ...typography.textStyles.caption,
@@ -53,16 +58,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   retry: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: metrics.minTouchSize,
+    minWidth: metrics.minTouchSize,
     paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
   },
   retryText: {
     ...typography.textStyles.caption,
     color: aiLightColors.primaryActive,
-    fontWeight: '700',
+    fontWeight: typography.weight.semibold,
   },
   dismiss: {
-    padding: spacing[1],
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: metrics.minTouchSize,
+    minWidth: metrics.minTouchSize,
   },
   pressed: {
     opacity: 0.78,

@@ -18,6 +18,6 @@ export interface IRagStore extends IRagComponent {
 
   // 向量操作
   saveEmbeddings(embeddings: RagEmbeddingRecord[]): Promise<void>;
-  getEmbeddings(chunkIds?: string[]): Promise<RagEmbeddingRecord[]>;
+  getEmbeddings(chunkIds?: string[], modelId?: string): Promise<RagEmbeddingRecord[]>;
   deleteEmbeddingsByChunkIds(chunkIds: string[]): Promise<void>;
 }

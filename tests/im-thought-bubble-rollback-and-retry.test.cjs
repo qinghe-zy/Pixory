@@ -420,4 +420,77 @@ test('IM Thought Bubble Protection & Emergency Flush Verification', async (t) =>
     assert.strictEqual(inFlightThought, null);
     assert.strictEqual(messages.length, 1, '内存中生长的临时思考气泡也必须被安全过滤清理');
   });
+
+  await t.test('21. Async drain finale runs before Zero-Dialogue Guard, zero-dialogue revokes orphan thought, and legacy sticker tail hack is removed', () => {
+    const sessionCode = fs.readFileSync(path.resolve(__dirname, '../src/im/hooks/useImChatSession.ts'), 'utf8');
+    const bgCode = fs.readFileSync(path.resolve(__dirname, '../src/im/services/imBackgroundStreamService.ts'), 'utf8');
+
+    // 1. Async drain finale order inside consumeStreamIntoBubbles & before Zero-Dialogue Guard
+    const drainIdx = sessionCode.indexOf('const remaining = activeParser.flush();');
+    const waitDrainIdx = sessionCode.indexOf('await dispatcher.waitForPendingDispatches();', drainIdx);
+    const guardIdx = sessionCode.indexOf('Zero-Dialogue Guard');
+    const guardCheckIdx = sessionCode.indexOf(
+      'if (!lastDispatchedMsg && dispatcher.getDispatchedCountInBurst() === 0)',
+      guardIdx
+    );
+    assert.ok(drainIdx > 0 && waitDrainIdx > drainIdx, 'consumeStreamIntoBubbles must flush and await waitForPendingDispatches');
+    assert.ok(guardIdx > waitDrainIdx && guardCheckIdx > guardIdx, 'Zero-Dialogue Guard must check !lastDispatchedMsg && getDispatchedCountInBurst() === 0 after async drain');
+
+    // 2. Zero-Dialogue Guard must revoke orphan thought via discardIncompleteCurrentAttemptOnError (never finalizeThoughtOnError)
+    const guardBlock = sessionCode.slice(guardCheckIdx, guardCheckIdx + 420);
+    assert.ok(guardBlock.includes('discardIncompleteCurrentAttemptOnError'), 'Zero-Dialogue Guard must revoke orphan thought');
+    assert.ok(!guardBlock.includes('finalizeThoughtOnError'), 'Zero-Dialogue Guard must NEVER finalize orphan thought');
+
+    // 3. Transport optimization flags wired consistently in session hook and background recovery
+    assert.ok(sessionCode.includes('isNativeReasoningModelId'), 'useImChatSession must use isNativeReasoningModelId');
+    assert.ok(sessionCode.includes('companionFastThinking: true'), 'useImChatSession must enable companionFastThinking');
+    assert.ok(
+      sessionCode.includes('thinkingBudgetTokens: isNativeReasoningModel ? 1536 : undefined'),
+      'useImChatSession must pass 1536 thinkingBudgetTokens for native reasoning models'
+    );
+    assert.ok(bgCode.includes('isNativeReasoningModelId'), 'imBackgroundStreamService must use isNativeReasoningModelId');
+    assert.ok(bgCode.includes('companionFastThinking: true'), 'imBackgroundStreamService must enable companionFastThinking');
+    assert.ok(
+      bgCode.includes('thinkingBudgetTokens: isNativeReasoningModel ? 1536 : undefined'),
+      'imBackgroundStreamService must pass 1536 thinkingBudgetTokens for native reasoning models'
+    );
+
+    // 4. Legacy post-stream single-sticker workaround removed from triggerAiResponse
+    assert.ok(
+      !sessionCode.includes('const stickerTag = parseStickerTag(fullRawResponse)'),
+      'triggerAiResponse must remove legacy post-stream parseStickerTag(fullRawResponse) dispatch'
+    );
+  });
+
+  await t.test('22. streamClient parseSseLine captures Anthropic thinking_delta & clampThinkingBudgetTokens clamps [1024, 2048]', () => {
+    const { parseSseLine, clampThinkingBudgetTokens, isNativeReasoningModelId } = loadModule(
+      '../src/core/llm-transport/streamClient.ts'
+    );
+
+    // 1. Anthropic thinking_delta capture
+    const anthropicThinkingLine = 'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"思考过程细节"}}';
+    const parsedThinking = parseSseLine(anthropicThinkingLine);
+    assert.strictEqual(parsedThinking.reasoning, '思考过程细节');
+    assert.strictEqual(parsedThinking.delta, null);
+
+    // 2. Anthropic text delta
+    const anthropicTextLine = 'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"正式回复文本"}}';
+    const parsedText = parseSseLine(anthropicTextLine);
+    assert.strictEqual(parsedText.delta, '正式回复文本');
+    assert.strictEqual(parsedText.reasoning, null);
+
+    // 3. clampThinkingBudgetTokens range enforcement
+    assert.strictEqual(clampThinkingBudgetTokens(undefined), undefined);
+    assert.strictEqual(clampThinkingBudgetTokens(NaN), undefined);
+    assert.strictEqual(clampThinkingBudgetTokens(200), 1024, 'clamped to min 1024');
+    assert.strictEqual(clampThinkingBudgetTokens(1536), 1536, 'preserves valid mid range');
+    assert.strictEqual(clampThinkingBudgetTokens(8000), 2048, 'clamped to max 2048');
+
+    // 4. isNativeReasoningModelId detection
+    assert.strictEqual(isNativeReasoningModelId('deepseek-reasoner'), true);
+    assert.strictEqual(isNativeReasoningModelId('o3-mini'), true);
+    assert.strictEqual(isNativeReasoningModelId('claude-3-7-sonnet-20250219', true), true);
+    assert.strictEqual(isNativeReasoningModelId('gpt-4o'), false);
+    assert.strictEqual(isNativeReasoningModelId('gpt-4o', false), false);
+  });
 });

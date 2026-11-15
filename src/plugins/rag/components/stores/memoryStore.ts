@@ -87,18 +87,16 @@ export class MemoryRagStore implements IRagStore {
     }
   }
 
-  public async getEmbeddings(chunkIds?: string[]): Promise<RagEmbeddingRecord[]> {
+  public async getEmbeddings(chunkIds?: string[], modelId?: string): Promise<RagEmbeddingRecord[]> {
+    let all = Array.from(this.embeddings.values());
+    if (modelId) {
+      all = all.filter((e) => e.modelId === modelId);
+    }
     if (!chunkIds || chunkIds.length === 0) {
-      return Array.from(this.embeddings.values());
+      return all;
     }
-    const result: RagEmbeddingRecord[] = [];
-    for (const id of chunkIds) {
-      const found = this.embeddings.get(id);
-      if (found) {
-        result.push(found);
-      }
-    }
-    return result;
+    const chunkIdSet = new Set(chunkIds);
+    return all.filter((e) => chunkIdSet.has(e.chunkId));
   }
 
   public async deleteEmbeddingsByChunkIds(chunkIds: string[]): Promise<void> {

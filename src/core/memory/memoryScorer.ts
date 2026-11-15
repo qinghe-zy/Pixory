@@ -1,9 +1,42 @@
 import type { CompanionMemoryRecord, MemoryRecallCandidate } from './memoryTypes';
+import type { PprEntityScore } from './memoryEntityGraphService';
+
+function resolveEntityGraphResolver():
+  | ((mem: CompanionMemoryRecord) => Array<{ label: string; norm: string }>)
+  | null {
+  try {
+    // 延迟按需解析，确保 Node 24 原生 require() 加载此纯打分模块时不会因无扩展名 ESM 导入报错
+    const mod = require('./memoryEntityGraphService');
+    if (mod && typeof mod.resolveMemoryGraphEntities === 'function') {
+      return mod.resolveMemoryGraphEntities;
+    }
+  } catch {}
+  return null;
+}
 
 export const TEMPORAL_KEYWORDS = [
   '今天', '明天', '后天', '大后天', '昨晚', '刚才', '待会', '周末', '下周', '这周',
   '早上', '中午', '下午', '晚上', '夜里', '答辩', '考试', '出差', '约会', '生日', '纪念日', '月底', '下个月'
 ];
+
+/**
+ * 计算两个文本片段的 2-gram Jaccard 相似度 (0~1.0)
+ */
+export function compute2GramJaccardSimilarity(textA: string, textB: string): number {
+  if (!textA || !textB) return 0;
+  const setA = new Set<string>();
+  const setB = new Set<string>();
+  for (let i = 0; i < textA.length - 1; i++) setA.add(textA.slice(i, i + 2));
+  for (let i = 0; i < textB.length - 1; i++) setB.add(textB.slice(i, i + 2));
+  if (setA.size === 0 || setB.size === 0) return 0;
+
+  let intersection = 0;
+  for (const gram of setA) {
+    if (setB.has(gram)) intersection++;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
 
 const NON_WORD_REGEX = /[^\p{L}\p{N}\s]+/gu;
 const CN_STOP_CHARS_REGEX = /[的了呢啊吗吧呀哦嗯哈唔噢哎喂我你他她它是在有就都也很去把被让给和与跟对向往从到得着过]+/g;
@@ -101,7 +134,8 @@ export function scoreCompanionMemory(
   userInput: string,
   now: number = Date.now(),
   ftsMatchedIds: Set<string> = new Set(),
-  precomputedTerms?: string[]
+  precomputedTerms?: string[],
+  pprEntityScores?: Map<string, PprEntityScore>
 ): MemoryRecallCandidate | null {
   const lowerInput = userInput.toLowerCase();
   const lowerContent = memory.content.toLowerCase();
@@ -149,9 +183,37 @@ export function scoreCompanionMemory(
     memory.content.includes('计划');
   const iTemporal = hasTemporalWord && isPendingOrEvent ? 1.0 : 0;
 
+  // 通道 5: 实体共现图 Personalized PageRank 1~2 跳潜伏召回 (零向量隐喻/关联推理)
+  let bestPpr: PprEntityScore | null = null;
+  if (pprEntityScores && pprEntityScores.size > 0) {
+    const resolver = resolveEntityGraphResolver();
+    const resolvedEntities = resolver ? resolver(memory) : [];
+    for (const { norm } of resolvedEntities) {
+      const candidatePpr = pprEntityScores.get(norm);
+      if (
+        candidatePpr &&
+        Number.isFinite(candidatePpr.score) &&
+        candidatePpr.score >= 0.15 &&
+        (!bestPpr || candidatePpr.score > bestPpr.score)
+      ) {
+        bestPpr = candidatePpr;
+      }
+    }
+  }
+  const iGraphPpr = bestPpr
+    ? bestPpr.hop === 1
+      ? Math.min(1.0, 0.55 + 0.45 * bestPpr.score)
+      : Math.min(0.85, 0.45 + 0.40 * bestPpr.score)
+    : 0;
+
   // 基础多通道归一化打分：结合强命中通道与加权求和，杜绝单一有效通道被数学稀释
-  const maxChannel = Math.max(iTrigger, iFts, iEntity, iTemporal);
-  const weightedSum = 0.35 * iTrigger + 0.35 * iFts + 0.15 * iEntity + 0.15 * iTemporal;
+  const maxChannel = Math.max(iTrigger, iFts, iEntity, iTemporal, iGraphPpr);
+  const weightedSum =
+    0.30 * iTrigger +
+    0.30 * iFts +
+    0.13 * iEntity +
+    0.12 * iTemporal +
+    0.15 * iGraphPpr;
   const baseChannelScore = 0.6 * maxChannel + 0.4 * weightedSum;
 
   if (baseChannelScore <= 0) {
@@ -178,14 +240,16 @@ export function scoreCompanionMemory(
   const finalScore = baseChannelScore * timeDecay * importanceFactor * confidenceFactor * hitCountFactor * pinnedFactor;
 
   let matchedChannel: MemoryRecallCandidate['matchedChannel'] = 'trigger';
-  if (iTrigger >= iFts && iTrigger >= iEntity && iTrigger >= iTemporal && iTrigger > 0) {
+  if (iTrigger >= iFts && iTrigger >= iEntity && iTrigger >= iTemporal && iTrigger >= iGraphPpr && iTrigger > 0) {
     matchedChannel = 'trigger';
-  } else if (iFts >= iTrigger && iFts >= iEntity && iFts >= iTemporal && iFts > 0) {
+  } else if (iFts >= iTrigger && iFts >= iEntity && iFts >= iTemporal && iFts >= iGraphPpr && iFts > 0) {
     matchedChannel = 'fts';
-  } else if (iEntity > 0) {
+  } else if (iEntity >= iTemporal && iEntity >= iGraphPpr && iEntity > 0) {
     matchedChannel = 'entity';
-  } else if (iTemporal > 0) {
+  } else if (iTemporal >= iGraphPpr && iTemporal > 0) {
     matchedChannel = 'temporal';
+  } else if (iGraphPpr > 0) {
+    matchedChannel = 'graph_ppr';
   }
 
   return {
@@ -200,5 +264,6 @@ export function scoreCompanionMemory(
     clarity: timeDecay >= 0.65 ? 'clear' : 'fuzzy',
     entities: memory.entities,
     triggerKeywords: memory.triggerKeywords,
+    ...(bestPpr ? { viaEntity: bestPpr.viaEntity, graphHop: bestPpr.hop } : {}),
   };
 }

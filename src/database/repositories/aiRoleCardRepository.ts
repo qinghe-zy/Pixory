@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { AiBoundaryMode, AiRoleCardRecord, AiRoleCardSourceType } from '../../ai/types';
 import type { PixorySpace } from '../db';
 import { createTimestamp } from '../utils';
+import { deleteRoleV2MemoryData } from './memoryV2SpaceMoveHelper';
 
 type AiRoleCardRow = Omit<
   AiRoleCardRecord,
@@ -299,6 +300,7 @@ export const aiRoleCardRepository = {
         space,
         roleCardId
       );
+      await deleteRoleV2MemoryData(db, space, roleCardId);
       await db.runAsync(
         `DELETE FROM companion_projection_snapshots
          WHERE space = ? AND roleCardId = ? AND scopeType = 'role_base'`,

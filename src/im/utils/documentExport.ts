@@ -28,6 +28,53 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+const SHARE_TEMP_ROOT_DIR = `${FileSystem.cacheDirectory ?? ''}pixory_share/`;
+const SHARE_TEMP_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+function resolveSafeExportExtension(doc: DocumentExportTarget): string {
+  const rawTitleExt = doc.title?.includes('.') ? doc.title.split('.').pop() : undefined;
+  const cleanTitleExt = rawTitleExt?.split(/[?#]/)[0]?.trim().toLowerCase() ?? '';
+  if (/^[a-z0-9]{1,16}$/.test(cleanTitleExt)) {
+    return cleanTitleExt;
+  }
+  const cleanUri = doc.uri ? doc.uri.split(/[?#]/)[0] : '';
+  const rawUriExt = cleanUri.includes('.') ? cleanUri.split('.').pop() : undefined;
+  const cleanUriExt = rawUriExt?.trim().toLowerCase() ?? '';
+  if (/^[a-z0-9]{1,16}$/.test(cleanUriExt)) {
+    return cleanUriExt;
+  }
+  return 'txt';
+}
+
+async function cleanupStaleShareTempDirs(): Promise<void> {
+  if (!FileSystem.cacheDirectory) {
+    return;
+  }
+  try {
+    const info = await FileSystem.getInfoAsync(SHARE_TEMP_ROOT_DIR);
+    if (!info.exists || !info.isDirectory) {
+      return;
+    }
+    const entries = await FileSystem.readDirectoryAsync(SHARE_TEMP_ROOT_DIR);
+    const cutoffMs = Date.now() - SHARE_TEMP_RETENTION_MS;
+    await Promise.allSettled(
+      entries.map(async (entry) => {
+        if (!/^\d+$/.test(entry)) {
+          return;
+        }
+        const entryUri = `${SHARE_TEMP_ROOT_DIR}${entry}/`;
+        const entryInfo = await FileSystem.getInfoAsync(entryUri);
+        const mtimeMs = entryInfo.exists && entryInfo.modificationTime ? entryInfo.modificationTime * 1000 : Number(entry);
+        if (mtimeMs < cutoffMs) {
+          await FileSystem.deleteAsync(entryUri, { idempotent: true });
+        }
+      }),
+    );
+  } catch {
+    // Non-blocking cleanup for transient share cache folders.
+  }
+}
+
 /**
  * 导出文档到系统分享面板。
  * 零拷贝优先：若存在本地物理文件 (doc.uri)，优先原生直接复制流转，保持 100% 原版样式且零内存开销；
@@ -35,12 +82,13 @@ function bytesToBase64(bytes: Uint8Array): string {
  */
 export async function exportDocumentToShare(doc: DocumentExportTarget): Promise<void> {
   const title = doc.title || '文档';
-  const ext = (doc.title?.includes('.') ? doc.title.split('.').pop() : (doc.uri?.includes('.') ? doc.uri.split('.').pop() : 'txt'))?.toLowerCase() ?? 'txt';
+  const ext = resolveSafeExportExtension(doc);
 
   try {
     const cleanBaseTitle = title.replace(/\.[a-zA-Z0-9]+$/, '');
     const safeName = cleanBaseTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_') || 'document';
     const shareFolder = `${FileSystem.cacheDirectory}pixory_share/${Date.now()}/`;
+    await cleanupStaleShareTempDirs();
     await FileSystem.makeDirectoryAsync(shareFolder, { intermediates: true }).catch(() => {});
     const tempPath = `${shareFolder}${safeName}.${ext}`;
 

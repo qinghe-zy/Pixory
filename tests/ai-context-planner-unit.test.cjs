@@ -44,8 +44,8 @@ test('prewarm uses growth and observed queue time, with a two-round cold start r
   assert.equal(shouldPrewarmContext({ ...cold, recentMaintenanceMs: [90_000], recentRoundIntervalMs: [30_000] }), true);
 });
 
-test('unknown model capacity uses a conservative 16k estimate and reserves output', () => {
-  assert.equal(requestInputBudget({}).inputBudgetTokens, 11200);
+test('unknown model capacity uses a unified 128k default window and reserves output', () => {
+  assert.equal(requestInputBudget({}).inputBudgetTokens, 89600);
   assert.equal(requestInputBudget({}).capacityEstimated, true);
   assert.equal(requestInputBudget({ modelContextWindowTokens: 4096, outputReserveTokens: 3000 }).inputBudgetTokens, 1096);
 });
@@ -92,7 +92,7 @@ test('images reserve vision tokens without counting encoded bytes as text', () =
 });
 
 test('all compiled provider shapes are validated including schema and cache-block text', () => {
-  const oversized = '信息'.repeat(20_000);
+  const oversized = '信息'.repeat(60_000);
   for (const body of [
     { messages: [{ role: 'user', content: oversized }] },
     { system: [{ type: 'text', text: oversized, cache_control: { type: 'ephemeral' } }], messages: [] },

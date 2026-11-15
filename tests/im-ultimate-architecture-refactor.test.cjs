@@ -64,7 +64,10 @@ test('1. DB Self-Healing & V68 CHECK Constraint Invariant', () => {
 
   assert.ok(schemaCode.includes("'L2_FACT'"), 'Schema must include L2_FACT in ai_companion_memories CHECK');
   assert.ok(schemaCode.includes("'L2_EPISODE'"), 'Schema must include L2_EPISODE in ai_companion_memories CHECK');
-  assert.ok(schemaCode.includes('DATABASE_VERSION = 73'), 'Database version must remain 73');
+  assert.ok(
+    Number(schemaCode.match(/DATABASE_VERSION\s*=\s*(\d+)/)?.[1] ?? 0) >= 73,
+    'Database version must be >= 73'
+  );
 
   const dbPath = path.resolve(__dirname, '../src/database/db.ts');
   const dbCode = fs.readFileSync(dbPath, 'utf8');
@@ -220,7 +223,7 @@ test('7. sanitizeThoughtForUi Clause-level Sanitization & Figure 1 Proof', () =>
   // 流式空值保护
   assert.equal(sanitizeThoughtForUi('', { isFinal: false }), '');
   assert.equal(sanitizeThoughtForUi('系统提示按照指令', { isFinal: false }), '');
-  assert.ok(sanitizeThoughtForUi('系统提示按照指令', { isFinal: true }).includes('看着屏幕'));
+  assert.equal(sanitizeThoughtForUi('系统提示按照指令', { isFinal: true }), '');
 });
 
 // 8. 轻量文学神态与动作保留 (图二竞品同款拟真感)

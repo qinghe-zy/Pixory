@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
-import { saveRecentMemoryCaptures, type MemoryCaptureNoticeItem } from './aiMemoryService';
+import { mapV1ClaimToLegacyMemory, saveRecentMemoryCaptures, type MemoryCaptureNoticeItem } from './aiMemoryService';
 import {
   buildMemoryReconciliationPrompt,
   normalizeMemoryContentForReconciliation,
@@ -14,8 +14,9 @@ import {
 import { emptyMaintenanceStepResult, type MemoryMaintenanceStepResult } from './aiMemorySummaryService';
 import type { AiThreadRecord } from './types';
 import { MemoryFacade } from './memory/memoryFacade';
+import { retrieveMemoryClaims } from './memory/memoryRetrievalService';
+import type { MemoryClaimInput } from './memory/memoryTypes';
 
-const SUMMARY_DECISION_LIMIT = 8;
 const MEMORY_MODEL_CONTEXT_LIMIT = 18;
 
 interface MemoryCandidate {
@@ -150,29 +151,75 @@ function buildMemoryModelPrompt(messages: AiMessageRecord[], candidateMemories: 
   ].join('\n\n');
 }
 
-function buildThreadSummaryFromMessages(messages: AiMessageRecord[]): { summary: string; decisions: string; openQuestions: string; lastMessageId: string | null } {
-  const completed = messages.filter((message) => message.status === 'completed' && message.role !== 'system');
-  const recent = completed.slice(-16);
-  const summary = recent
-    .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 120)}`)
-    .join('\n')
-    .slice(0, 1200);
-  const decisions = completed
-    .filter((message) => /决定|确认|确定|同意|以后|默认|记住|纠正|更正/.test(message.content))
-    .slice(-SUMMARY_DECISION_LIMIT)
-    .map((message) => `- ${truncateForPrompt(message.content, 140)}`)
-    .join('\n');
-  const openQuestions = completed
-    .filter((message) => message.role === 'user' && /[?？]|怎么|如何|是否|能不能/.test(message.content))
-    .slice(-5)
-    .map((message) => `- ${truncateForPrompt(message.content, 120)}`)
-    .join('\n');
-  return {
-    decisions,
-    lastMessageId: completed.length ? completed[completed.length - 1].id : null,
-    openQuestions,
-    summary,
+function mapCandidateTypeToClaimSpec(type: AiMemoryRecord['type']): Pick<MemoryClaimInput, 'kind' | 'predicate' | 'speechMode' | 'stability'> {
+  if (type === 'preference') {
+    return { kind: 'state', predicate: 'preference.general', speechMode: 'asserted', stability: 'long' };
+  }
+  if (type === 'instruction') {
+    return { kind: 'state', predicate: 'preference.communication', speechMode: 'asserted', stability: 'long' };
+  }
+  if (type === 'decision') {
+    return { kind: 'state', predicate: 'decision', speechMode: 'asserted', stability: 'long' };
+  }
+  if (type === 'task') {
+    return { kind: 'task', predicate: 'task', speechMode: 'asserted', stability: 'short' };
+  }
+  if (type === 'correction') {
+    return { kind: 'state', predicate: 'fact.identity', speechMode: 'corrected', stability: 'long' };
+  }
+  return { kind: 'state', predicate: 'fact.identity', speechMode: 'asserted', stability: 'long' };
+}
+
+async function resolveMaintenanceTargetClaimId(
+  space: PixorySpace,
+  rawTargetId: string | null | undefined
+): Promise<string | null> {
+  if (!rawTargetId) {
+    return null;
+  }
+  if (rawTargetId.startsWith('mclaim_')) {
+    return rawTargetId;
+  }
+  const legacyV2Id = `mclaim_legacy_${rawTargetId}`;
+  const existing = await runWithDatabaseSpace(space, (db) =>
+    db.getFirstAsync<{ id: string }>(
+      'SELECT id FROM memory_claims WHERE space = ? AND id = ? AND deletedAt IS NULL LIMIT 1',
+      space,
+      legacyV2Id
+    )
+  );
+  return existing?.id ?? null;
+}
+
+function buildMaintenanceSearchQueries(
+  userMessage: string,
+  localCandidates: MemoryCandidate[]
+): string[] {
+  const queries: string[] = [];
+  const seen = new Set<string>();
+  const addQuery = (text: string) => {
+    const trimmed = text.replace(/\s+/g, ' ').trim();
+    if (trimmed.length >= 2 && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      queries.push(trimmed);
+    }
   };
+  for (const clause of userMessage.split(/[。！？!?；;\n，,]+/u)) {
+    if (queries.length >= 4) {
+      break;
+    }
+    addQuery(clause);
+  }
+  for (const candidate of localCandidates) {
+    if (queries.length >= 5) {
+      break;
+    }
+    addQuery(candidate.content);
+  }
+  if (queries.length === 0) {
+    addQuery(userMessage);
+  }
+  return queries;
 }
 
 function stepResult(error: string | null, usedRemote: boolean, usedFallback: boolean, providerId: string | null, modelId: string | null): MemoryMaintenanceStepResult {
@@ -258,18 +305,56 @@ export async function captureDeepMemoryForExchange(input: {
     const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80, input.branchScopes);
     const localCandidates = extractMemoryCandidates(input.userMessage.content, input.thread);
     const candidateQuery = [input.userMessage.content, ...localCandidates.map((candidate) => candidate.content)].join('\n');
-    const relatedMemories = await aiThreadRepository.searchActiveMemoryFts(db, {
-      branchScopes: input.branchScopes,
-      boundIpId: input.thread.boundIpId,
-      boundKnowledgeBaseId: input.thread.boundKnowledgeBaseId,
-      limit: 8,
-      query: candidateQuery,
-      roleCardId: input.thread.roleCardId,
-      space: input.space,
-      threadId: input.thread.id,
-    });
+    const maintenanceQueries = buildMaintenanceSearchQueries(input.userMessage.content, localCandidates);
+    const relatedMemories: AiMemoryRecord[] = [];
+    const seenIds = new Set<string>();
+    for (const subQuery of maintenanceQueries) {
+      if (relatedMemories.length >= 8) {
+        break;
+      }
+      const v2Retrieved = await retrieveMemoryClaims(db, {
+        branchScopes: input.branchScopes,
+        embeddingAvailable: false,
+        limit: 8,
+        query: subQuery,
+        space: input.space,
+        thread: input.thread,
+      }).catch(() => []);
+      for (const item of v2Retrieved) {
+        const mapped = mapV1ClaimToLegacyMemory(item.claim);
+        if (seenIds.has(mapped.id)) {
+          continue;
+        }
+        seenIds.add(mapped.id);
+        relatedMemories.push(mapped);
+        if (relatedMemories.length >= 8) {
+          break;
+        }
+      }
+    }
+    if (relatedMemories.length < 8) {
+      const legacyMemories = await aiThreadRepository.searchActiveMemoryFts(db, {
+        branchScopes: input.branchScopes,
+        boundIpId: input.thread.boundIpId,
+        boundKnowledgeBaseId: input.thread.boundKnowledgeBaseId,
+        limit: 8,
+        query: candidateQuery,
+        roleCardId: input.thread.roleCardId,
+        space: input.space,
+        threadId: input.thread.id,
+      });
+      for (const legacy of legacyMemories) {
+        if (relatedMemories.length >= 8) {
+          break;
+        }
+        if (seenIds.has(legacy.id) || seenIds.has(`mclaim_legacy_${legacy.id}`)) {
+          continue;
+        }
+        seenIds.add(legacy.id);
+        relatedMemories.push(legacy);
+      }
+    }
     return {
-      fallbackSummary: buildThreadSummaryFromMessages(messages),
       localCandidates,
       messages,
       relatedMemories: relatedMemories.slice(0, 8),
@@ -321,32 +406,22 @@ export async function captureDeepMemoryForExchange(input: {
       continue;
     }
     seenCandidates.add(dedupeKey);
-    const predicate = candidate.type === 'preference'
-      ? 'preference.general'
-      : candidate.type === 'instruction'
-        ? 'preference.communication'
-        : candidate.type === 'decision'
-          ? 'decision'
-          : candidate.type === 'task'
-            ? 'task'
-            : candidate.type === 'correction'
-              ? 'fact.identity'
-              : 'fact.identity';
+    const claimSpec = mapCandidateTypeToClaimSpec(candidate.type);
     try {
       const claim = await MemoryFacade.createClaim({
         confidenceBand: candidate.confidence >= 0.9 ? 'high' : candidate.confidence >= 0.6 ? 'medium' : 'low',
         confidenceRaw: candidate.confidence,
         importance: Math.max(0, Math.min(100, candidate.importance * 20)),
-        kind: candidate.type === 'task' ? 'task' : 'state',
+        kind: claimSpec.kind,
         lane: 'working',
-        predicate,
+        predicate: claimSpec.predicate,
         scopeId,
         scopeType: candidate.scope,
         sourceKind: 'message',
         sourceMessageId: input.userMessage.id,
         space: input.space,
-        speechMode: candidate.type === 'correction' ? 'corrected' : 'asserted',
-        stability: candidate.type === 'task' ? 'short' : 'long',
+        speechMode: claimSpec.speechMode,
+        stability: claimSpec.stability,
         valueDisplay: candidate.content,
         valueNormalized: normalized,
         extractorVersion: modelResult.text ? 'maintenance-model-v1' : 'maintenance-local-v1',
@@ -366,26 +441,88 @@ export async function captureDeepMemoryForExchange(input: {
       // A rejected/duplicate candidate never makes the maintenance pass fail.
     }
   }
+  const relatedById = new Map(prepared.relatedMemories.map((memory) => [memory.id, memory]));
   for (const operation of sanitized.accepted) {
-    if (operation.op === 'stale' && operation.targetMemoryId?.startsWith('mclaim_')) {
-      await MemoryFacade.staleClaim({
-        claimId: operation.targetMemoryId,
-        space: input.space,
-      }, {
-        commandId: `maintenance-v1:${input.assistantMessageId}:stale:${operation.targetMemoryId}`,
-        source: 'memory_maintenance_queue',
-      }).catch(() => undefined);
+    if (operation.op === 'add' || operation.op === 'keep') {
+      continue;
+    }
+    const targetClaimId = await resolveMaintenanceTargetClaimId(input.space, operation.targetMemoryId);
+    if (!targetClaimId) {
+      continue;
+    }
+    const targetMemory = operation.targetMemoryId ? relatedById.get(operation.targetMemoryId) : undefined;
+    if (operation.op === 'stale') {
+      try {
+        await MemoryFacade.staleClaim({
+          claimId: targetClaimId,
+          space: input.space,
+        }, {
+          commandId: `maintenance-v1:${input.assistantMessageId}:stale:${targetClaimId}`,
+          source: 'memory_maintenance_queue',
+        });
+        captures.push({
+          content: targetMemory?.content ?? operation.targetMemoryId ?? targetClaimId,
+          id: targetClaimId,
+          kind: 'staled',
+          sourceMessageId: input.userMessage.id,
+        });
+      } catch {
+        // Ignore stale failure on missing/manual-locked claim so the maintenance pass remains resilient.
+      }
+      continue;
+    }
+    if (operation.op === 'update' && operation.content) {
+      const effectiveScope = operation.scope ?? targetMemory?.scope ?? 'thread';
+      if (effectiveScope === 'global') {
+        continue;
+      }
+      const effectiveScopeId = scopeIdForMemoryCandidate(input.thread, { scope: effectiveScope });
+      if (!effectiveScopeId) {
+        continue;
+      }
+      const effectiveType = operation.type ?? targetMemory?.type ?? 'fact';
+      const claimSpec = mapCandidateTypeToClaimSpec(effectiveType);
+      const importanceLevel = operation.importance ?? 2;
+      try {
+        const updated = await MemoryFacade.editClaim({
+          claimId: targetClaimId,
+          patch: {
+            confidenceBand: operation.confidence >= 0.9 ? 'high' : operation.confidence >= 0.6 ? 'medium' : 'low',
+            confidenceRaw: operation.confidence,
+            importance: Math.max(0, Math.min(100, importanceLevel * 20)),
+            kind: claimSpec.kind,
+            predicate: claimSpec.predicate,
+            scopeId: effectiveScopeId,
+            scopeType: effectiveScope,
+            sourceKind: 'message',
+            sourceMessageId: input.userMessage.id,
+            space: input.space,
+            speechMode: claimSpec.speechMode,
+            stability: claimSpec.stability,
+            valueDisplay: operation.content,
+            valueNormalized: normalizeMemoryContent(operation.content),
+            extractorVersion: 'maintenance-model-v1',
+          },
+          space: input.space,
+        }, {
+          commandId: `maintenance-v1:${input.assistantMessageId}:update:${targetClaimId}`,
+          source: 'memory_maintenance_queue',
+        });
+        if (operation.confidence >= 0.75 && importanceLevel >= 2) {
+          captures.push({
+            content: updated.valueDisplay,
+            id: updated.id,
+            kind: 'updated',
+            sourceMessageId: input.userMessage.id,
+          });
+        }
+      } catch {
+        // Ignore update failure on missing/manual-locked claim so the maintenance pass remains resilient.
+      }
     }
   }
 
   await runWithDatabaseSpace(input.space, async (db) => {
-    await aiThreadRepository.upsertThreadSummary(db, {
-      decisions: modelUpdate?.decisions || prepared.fallbackSummary.decisions,
-      lastMessageId: prepared.fallbackSummary.lastMessageId,
-      openQuestions: modelUpdate?.openQuestions || prepared.fallbackSummary.openQuestions,
-      summary: modelUpdate?.summary || prepared.fallbackSummary.summary,
-      threadId: input.thread.id,
-    });
     await aiThreadRepository.updateThreadMemoryJob(db, {
       lastConsolidatedMessageId: input.assistantMessageId,
       lastMaintenanceError: modelResult.error ? `remote_failed_used_local_fallback: ${modelResult.error}` : null,

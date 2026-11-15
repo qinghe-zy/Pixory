@@ -310,14 +310,18 @@ test('imEpochRepository: optimistic lock with dual fingerprint rejects stale com
           active_anchor_msg_id: null,
           active_slot_json: '{}',
           active_summary_json: '{}',
+          active_core_facts_json: '[]',
+          active_catalog_text: null,
           staged_next_anchor_msg_id: null,
+          staged_catalog_text: null,
           updated_at: params[3],
         };
         return { changes: 1 };
       }
       if (sql.includes('staged_next_anchor_msg_id = ?')) {
-        const expectedVersion = params[8];
-        const expectedAnchor = params[9];
+        const hasCatalogBind = sql.includes('staged_catalog_text = ?');
+        const expectedVersion = hasCatalogBind ? params[9] : params[8];
+        const expectedAnchor = hasCatalogBind ? params[10] : params[9];
         if (expectedVersion !== epochRow.epoch_version) return { changes: 0 };
         if (expectedAnchor !== epochRow.active_anchor_msg_id && (expectedAnchor !== null || epochRow.active_anchor_msg_id !== null)) return { changes: 0 };
         epochRow.staged_next_anchor_msg_id = params[0];

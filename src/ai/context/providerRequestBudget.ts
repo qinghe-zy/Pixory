@@ -23,7 +23,7 @@ export interface RequestBudgetReceipt {
 
 export function requestInputBudget(policy: RequestBudgetPolicy): Omit<RequestBudgetReceipt, 'estimatedInputTokens' | 'fits'> {
   const known = Number.isFinite(policy.modelContextWindowTokens) && (policy.modelContextWindowTokens ?? 0) > 0;
-  const capacity = known ? Math.floor(policy.modelContextWindowTokens!) : Math.min(DEFAULT_CONTEXT_WINDOW_TOKENS, 16_000);
+  const capacity = known ? Math.floor(policy.modelContextWindowTokens!) : DEFAULT_CONTEXT_WINDOW_TOKENS;
   const outputReserveTokens = Math.max(1, Math.ceil(policy.outputReserveTokens ?? 2048));
   return {
     inputBudgetTokens: Math.max(0, Math.min(Math.floor(capacity * 0.7), capacity - outputReserveTokens)),

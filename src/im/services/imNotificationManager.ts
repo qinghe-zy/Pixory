@@ -187,7 +187,9 @@ export async function cancelProactivePingAlarm(threadId: string): Promise<boolea
  * - im_ping_${threadId}: 调起 executeWakeupGeneration 完成大模型后台生成并写入数据库
  */
 export async function handleImAlarmHeadless(jobId: string): Promise<void> {
+  // 隐私铁律：后台 Headless 闹钟仅允许处理 normal 空间，严禁接触 personal 空间数据库或发通知
   const space: PixorySpace = 'normal';
+  if ((space as string) === 'personal') return;
 
   if (jobId.startsWith('im_staged_')) {
     const threadId = jobId.replace('im_staged_', '').trim();
@@ -196,47 +198,39 @@ export async function handleImAlarmHeadless(jobId: string): Promise<void> {
     const now = Date.now();
 
     try {
-      const db = await initDatabase(space);
-      // 1. 查找是否存在该会话且已到期的 staged 消息
-      const stagedRows = await db.getAllAsync<{ id: string; content: string; visible_at: number }>(
-        `SELECT id, content, visible_at FROM ai_messages
-         WHERE threadId = ? AND delivery_status = 'staged' AND visible_at <= ?
-         ORDER BY visible_at ASC`,
-        [threadId, now]
-      );
+      const [{ getThreadLivingState, revealPendingMessages }, heartbeatModule] = await Promise.all([
+        import('../repository/imThreadRepository'),
+        import('../heartbeat/globalHeartbeatEngine').catch(() => null),
+      ]);
+      const heartbeatEngine = heartbeatModule?.GlobalHeartbeatEngine?.shared;
+      const isOpen =
+        typeof heartbeatEngine?.isThreadActivelyOpen === 'function'
+          ? heartbeatEngine.isThreadActivelyOpen(space, threadId)
+          : false;
 
-      if (stagedRows.length > 0) {
-        // 2. 将预埋消息晋升为已送达显影状态
-        await db.runAsync(
-          `UPDATE ai_messages
-           SET delivery_status = 'delivered', status = 'completed'
-           WHERE threadId = ? AND delivery_status = 'staged' AND visible_at <= ?`,
-          [threadId, now]
-        );
+      const livingState = await getThreadLivingState(space, threadId).catch(() => null);
+      const revealedCount = await revealPendingMessages(space, threadId, now, livingState, {
+        incrementUnread: !isOpen,
+      });
 
-        const lastRow = stagedRows[stagedRows.length - 1];
-        const cleanPreview = formatImPreviewText(lastRow.content, '').slice(0, 80);
+      if (revealedCount > 0) {
+        heartbeatEngine?.notifyListeners?.(threadId, space);
 
-        // 3. 递增未回复计数、未读红点计数并更新最后一条预览
-        await db.runAsync(
-          `UPDATE ai_threads
-           SET consecutive_unreplied_count = COALESCE(consecutive_unreplied_count, 0) + 1,
-               im_unread_count = COALESCE(im_unread_count, 0) + ?,
-               lastMessagePreview = ?,
-               updatedAt = ?
-           WHERE id = ?`,
-          [stagedRows.length, cleanPreview, new Date(now).toISOString(), threadId]
-        );
-
-        // 4. 发送系统通知（仅普通空间，严格遵守隐私规范与通知设置）
-        try {
-          const threadRow = await db.getFirstAsync<{ title?: string }>(
-            'SELECT title FROM ai_threads WHERE id = ?',
-            [threadId]
-          );
-          const companionTitle = threadRow?.title || '新消息';
-          await postCompanionNotificationSafely(space, threadId, companionTitle, cleanPreview);
-        } catch {}
+        if (!isOpen) {
+          try {
+            const db = await initDatabase(space);
+            const threadRow = await db.getFirstAsync<{ title?: string; lastMessagePreview?: string }>(
+              'SELECT title, lastMessagePreview FROM ai_threads WHERE id = ?',
+              [threadId]
+            );
+            const companionTitle = threadRow?.title || '新消息';
+            const cleanPreview = formatImPreviewText(
+              threadRow?.lastMessagePreview || '给你发送了一条新消息',
+              '给你发送了一条新消息'
+            ).slice(0, 80);
+            await postCompanionNotificationSafely(space, threadId, companionTitle, cleanPreview);
+          } catch {}
+        }
       }
     } catch {
       // 空间未初始化或不存在该线程，静默容错

@@ -69,7 +69,8 @@ export async function extractMemoryMutationsWithMemoryModel(
 1. 语态过滤（严禁提取气话与口嗨）：若用户处于情绪宣泄、赌气、反讽或开玩笑状态（如“气死我了明天就辞职去卖烤肠/天桥贴膜”），严禁提取为 L2_FACT 或 commitment，仅允许在 l1_slot_mutations 中记录 user_mood。
 2. 跨字面状态演进覆写：对比 <existing_l2_memories>，若用户最新表述推翻、修正或完成了某条旧记忆（即使字面用词完全不同，如“已签Offer下周去入职”推翻了“正在准备考研”），必须输出 op="SUPERSEDE" 并准确填写 targetId。
 3. 相对日期转换与时效归一化：相对日期（如“明天下午考高数”、“下周三出差”）必须换算为绝对日期 [YYYY-MM-DD]。短期一次性安排必须归为 L2_EPISODE。
-4. 严格过滤垃圾信息：严禁提取瞬态生理动作（洗澡/刷牙/上厕所/喝水/吃饱/犯困）与闲聊语气词。无长期价值信息时返回空数组。
+4. 双方关系动态与角色承诺记录：除用户自述事实外，同等关注双方关系互动动态、共同经历、以及角色自身作出的承诺与态度转变（如角色答应了陪用户做某事、双方确立的约定或称谓等），归为 L2_FACT 或 L2_EPISODE。
+5. 严格过滤垃圾信息：严禁提取瞬态生理动作（洗澡/刷牙/上厕所/喝水/吃饱/犯困）与闲聊语气词。无长期价值信息时返回空数组。
 </extraction_rules>
 
 【输出 JSON Schema】:
@@ -83,8 +84,8 @@ ${existingXml}
 </existing_l2_memories>
 
 【本轮对话】:
-【用户本人自述】: ${userMessage.trim()}
-【伴侣回复(仅作语境参考)】: ${(params.assistantMessage || '').trim() || '无'}`;
+【用户发言】: ${userMessage.trim()}
+【角色回复】: ${(params.assistantMessage || '').trim() || '无'}`;
 
   const messages: LlmTransportMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -133,14 +134,19 @@ ${existingXml}
       }));
 
     if (mutations.length > 0 || l1Slots.length > 0) {
-      await memoryRepository.applyCompaction(roleCardId, space, {
-        l1_slot_mutations: l1Slots.map((s: any) => ({
-          op: s.op === 'DELETE' ? ('DELETE' as const) : s.op === 'ADD' ? ('ADD' as const) : ('UPDATE' as const),
-          slot: s.slot || 'user_mood',
-          value: s.value || '',
-        })),
-        l2_memory_mutations: mutations,
-      });
+      await memoryRepository.applyCompaction(
+        roleCardId,
+        space,
+        {
+          l1_slot_mutations: l1Slots.map((s: any) => ({
+            op: s.op === 'DELETE' ? ('DELETE' as const) : s.op === 'ADD' ? ('ADD' as const) : ('UPDATE' as const),
+            slot: s.slot || 'user_mood',
+            value: s.value || '',
+          })),
+          l2_memory_mutations: mutations,
+        },
+        { skipL1: true }
+      );
       return mutations.length;
     }
   } catch {

@@ -166,10 +166,11 @@ async function loadProviderAndModel(space: PixorySpace, providerId: string, mode
   existingModel: AiProviderModelRecord | null;
   provider: AiProviderRecord;
 }> {
-  const [provider, existingModel] = await runWithDatabaseSpace(space, async (db) => Promise.all([
-    aiProviderRepository.findProviderById(db, providerId),
-    aiProviderRepository.findModel(db, providerId, modelId),
-  ]));
+  const { provider, existingModel } = await runWithDatabaseSpace(space, async (db) => {
+    const foundProvider = await aiProviderRepository.findProviderById(db, providerId);
+    const foundModel = await aiProviderRepository.findModel(db, providerId, modelId);
+    return { provider: foundProvider, existingModel: foundModel };
+  });
   if (!provider) {
     throw new Error('AI provider is not configured.');
   }
@@ -219,6 +220,7 @@ async function saveProviderApiKeyAndTimestamp(providerId: string, apiKey: string
   if (space && previousApiKey !== apiKey.trim()) {
     await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderKeyUpdatedAt(db, providerId, createTimestamp()));
   }
+  invalidateRagEngineCache(space);
 }
 
 export async function saveProviderApiKey(providerId: string, apiKey: string, space?: PixorySpace): Promise<void> {
@@ -366,10 +368,11 @@ export async function saveManualEmbeddingModel(space: PixorySpace, providerId: s
 }
 
 export async function deleteProviderModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {
-  const [provider, model] = await runWithDatabaseSpace(space, async (db) => Promise.all([
-    aiProviderRepository.findProviderById(db, providerId),
-    aiProviderRepository.findModel(db, providerId, modelId),
-  ]));
+  const { provider, model } = await runWithDatabaseSpace(space, async (db) => {
+    const foundProvider = await aiProviderRepository.findProviderById(db, providerId);
+    const foundModel = await aiProviderRepository.findModel(db, providerId, modelId);
+    return { provider: foundProvider, model: foundModel };
+  });
   if (!provider || !model) {
     throw new Error('模型不存在或已被删除。');
   }

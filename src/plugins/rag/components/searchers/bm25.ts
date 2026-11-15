@@ -5,6 +5,12 @@ export interface Bm25ScoredResult {
   score: number;
 }
 
+const CJK_STOP_CHARS = new Set([
+  '的', '了', '在', '是', '有', '和', '与', '我', '你', '他', '她', '它',
+  '这', '那', '也', '都', '就', '还', '吗', '呢', '吧', '啊', '着', '过',
+  '得', '把', '被', '给', '从', '到', '向',
+]);
+
 /**
  * 轻量工业级 BM25 全文检索评分器 (Okapi BM25 Scorer)
  * 纯 TypeScript 实现，支持中英文分词与 2-gram 滑窗匹配，免去外部数据库 FTS 依赖。
@@ -16,12 +22,14 @@ export class Bm25Scorer {
   private docLengths = new Map<string, number>();
   private avgDocLength = 0;
   private idfMap = new Map<string, number>();
+  private chunks: RagChunk[];
 
-  constructor(private chunks: RagChunk[]) {
+  constructor(chunks: RagChunk[]) {
+    this.chunks = chunks;
     this.buildIndex();
   }
 
-  /** 分词器：支持英文词汇与中文单字/二元分词 (2-gram) */
+  /** 分词器：支持英文词汇与中文单字/二元分词 (2-gram)，过滤单字高频虚词 */
   public static tokenize(text: string): string[] {
     const normalized = text.toLowerCase();
     const tokens: string[] = [];
@@ -40,10 +48,12 @@ export class Bm25Scorer {
         }
         // 中文字符 (CJK)
         if (/[\u4e00-\u9fa5]/.test(char)) {
-          tokens.push(char);
+          if (!CJK_STOP_CHARS.has(char)) {
+            tokens.push(char);
+          }
           const nextChar = normalized[i + 1] ?? '';
           if (/[\u4e00-\u9fa5]/.test(nextChar)) {
-            tokens.push(char + nextChar); // 2-gram 语义增强
+            tokens.push(char + nextChar); // 2-gram 语义增强（保留双字搭配）
           }
         }
       }
@@ -86,27 +96,35 @@ export class Bm25Scorer {
       return [];
     }
 
+    // 统计 Query 内部各词频并去重，对重复词项采用饱和权重防膨胀
+    const queryTermCounts = new Map<string, number>();
+    for (const t of queryTokens) {
+      queryTermCounts.set(t, (queryTermCounts.get(t) ?? 0) + 1);
+    }
+
     const results: Bm25ScoredResult[] = [];
 
     for (const chunk of this.chunks) {
       const tokens = this.docTokens.get(chunk.id) ?? [];
       const docLen = this.docLengths.get(chunk.id) ?? 1;
 
-      // 统计词频 TF
+      // 统计文档词频 TF
       const tfMap = new Map<string, number>();
       for (const t of tokens) {
         tfMap.set(t, (tfMap.get(t) ?? 0) + 1);
       }
 
       let score = 0;
-      for (const qToken of queryTokens) {
+      for (const [qToken, qtf] of queryTermCounts.entries()) {
         const tf = tfMap.get(qToken) ?? 0;
         if (tf === 0) continue;
 
         const idf = this.idfMap.get(qToken) ?? 0;
         const numerator = tf * (this.k1 + 1);
         const denominator = tf + this.k1 * (1 - this.b + this.b * (docLen / this.avgDocLength));
-        score += idf * (numerator / denominator);
+        // 标准 Okapi BM25 query term saturation:
+        const qWeight = ((this.k1 + 1) * qtf) / (qtf + this.k1);
+        score += idf * (numerator / denominator) * qWeight;
       }
 
       if (score > 0) {

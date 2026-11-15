@@ -115,6 +115,45 @@ function scopeAllowed(claim: MemoryClaimRecord, thread: AiThreadRecord, branchSc
   return claim.scopeType === 'global';
 }
 
+export function buildAllowedScopeSqlClause(
+  thread: Pick<AiThreadRecord, 'id' | 'roleCardId' | 'boundIpId' | 'boundKnowledgeBaseId'> | AiThreadRecord,
+  branchScopes: AiBranchScope[] = [],
+  scopeColumn: 'scopeType' | 'scope' = 'scopeType'
+): { sql: string; params: (string | number)[] } {
+  const clauses: string[] = [`${scopeColumn} = 'global'`];
+  const params: (string | number)[] = [];
+
+  clauses.push(`(${scopeColumn} = 'thread' AND scopeId = ?)`);
+  params.push(thread.id);
+
+  if (thread.roleCardId) {
+    clauses.push(`(${scopeColumn} = 'role' AND scopeId = ?)`);
+    params.push(thread.roleCardId);
+  }
+
+  if (thread.boundIpId != null) {
+    clauses.push(`(${scopeColumn} = 'ip' AND scopeId = ?)`);
+    params.push(String(thread.boundIpId));
+  }
+
+  if (thread.boundKnowledgeBaseId) {
+    clauses.push(`(${scopeColumn} = 'knowledge_base' AND scopeId = ?)`);
+    params.push(thread.boundKnowledgeBaseId);
+  }
+
+  if (branchScopes.length > 0) {
+    const branchIds = [...new Set(branchScopes.map((scope) => `${scope.branchRootMessageId}:${scope.branchVersionIndex}`))];
+    const placeholders = branchIds.map(() => '?').join(', ');
+    clauses.push(`(${scopeColumn} = 'branch' AND scopeId IN (${placeholders}))`);
+    params.push(...branchIds);
+  }
+
+  return {
+    sql: `(${clauses.join(' OR ')})`,
+    params,
+  };
+}
+
 export async function resolveMemoryIntentTargetClaimIds(
   db: SQLiteDatabase,
   input: {
@@ -130,12 +169,15 @@ export async function resolveMemoryIntentTargetClaimIds(
   ) {
     return [];
   }
+  const scopeClause = buildAllowedScopeSqlClause(input.thread, input.branchScopes, 'scopeType');
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM memory_claims
      WHERE space = ? AND status NOT IN ('deleted', 'suppressed', 'superseded', 'stale')
+       AND ${scopeClause.sql}
      ORDER BY updatedAt DESC
      LIMIT 64`,
-    input.thread.space
+    input.thread.space,
+    ...scopeClause.params
   );
   const claims = rows.map(mapClaimRow).filter((claim) => scopeAllowed(claim, input.thread, input.branchScopes));
   const deictic = /(?:这个|这件事|刚才|上条|那件事)/u.test(input.observation.targetText);
@@ -279,15 +321,18 @@ export async function retrieveMemoryClaimsWithDiagnostics(
     return { candidateClaimIds: [], omittedClaimIds: [], selected: [] };
   }
   const terms = queryTerms(input.query);
+  const ftsScopeClause = buildAllowedScopeSqlClause(input.thread, input.branchScopes, 'scope');
+  const claimsScopeClause = buildAllowedScopeSqlClause(input.thread, input.branchScopes, 'scopeType');
   let ftsIds: string[] = [];
   if (terms.length > 0) {
     const ftsQuery = terms.map((term) => `"${term.replace(/"/gu, ' ')}"*`).join(' OR ');
     ftsIds = (await db.getAllAsync<{ id: string }>(
       `SELECT id FROM ai_memory_fts
-       WHERE ai_memory_fts MATCH ? AND space = ?
+       WHERE ai_memory_fts MATCH ? AND space = ? AND ${ftsScopeClause.sql}
        LIMIT ?`,
       ftsQuery,
       input.space,
+      ...ftsScopeClause.params,
       MEMORY_RETRIEVAL_MAX_CANDIDATES * 3
     ).catch(() => [])).map((row) => row.id);
   }
@@ -305,9 +350,11 @@ export async function retrieveMemoryClaimsWithDiagnostics(
       `SELECT * FROM memory_claims
        WHERE space = ? AND status NOT IN ('deleted', 'suppressed', 'superseded')
          ${input.includeStale ? '' : `AND status <> 'stale'`}
+         AND ${claimsScopeClause.sql}
        ORDER BY importance DESC, updatedAt DESC
        LIMIT ?`,
       input.space,
+      ...claimsScopeClause.params,
       MEMORY_RETRIEVAL_MAX_CANDIDATES * 3
     );
   const embeddingAvailable = input.embeddingAvailable ?? false;
@@ -446,6 +493,7 @@ export function formatMemoryUsageBlock(item: RetrievedMemoryClaim): string {
 }
 
 export const MemoryRetrievalService = {
+  buildAllowedScopeSqlClause,
   formatMemoryUsageBlock,
   retrieveMemoryClaims,
   retrieveMemoryClaimsWithDiagnostics,

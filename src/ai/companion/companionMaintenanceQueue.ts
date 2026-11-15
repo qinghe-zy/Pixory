@@ -33,11 +33,9 @@ async function scheduleNextReadyPass(input: {
 }): Promise<void> {
   const now = new Date().toISOString();
   const hasMore = await runWithDatabaseSpace(input.space, async (db) => {
-    const [companion, dreams, thoughts] = await Promise.all([
-      listReadyCompanionRuntimeJobs(db, { limit: 1, now, space: input.space }),
-      dreamRepository.listReadyJobs(db, { limit: 1, now, space: input.space }),
-      thoughtRepository.listReadyJobs(db, { limit: 1, now, space: input.space }),
-    ]);
+    const companion = await listReadyCompanionRuntimeJobs(db, { limit: 1, now, space: input.space });
+    const dreams = await dreamRepository.listReadyJobs(db, { limit: 1, now, space: input.space });
+    const thoughts = await thoughtRepository.listReadyJobs(db, { limit: 1, now, space: input.space });
     return companion.length + dreams.length + thoughts.length > 0;
   });
   if (hasMore) {
@@ -66,11 +64,12 @@ export async function runCompanionMaintenancePass(input: {
     assertRuntimeActive(input.space, runtimeEpoch);
     // A maintenance pass deliberately performs at most one optional model call.
     // This keeps enrichment sparse even if several local observations queue while offline.
-    const [jobs, dreamJobs, thoughtJobs] = await runWithDatabaseSpace(input.space, async (db) => Promise.all([
-      listReadyCompanionRuntimeJobs(db, { limit: 1, now, space: input.space }),
-      dreamRepository.listReadyJobs(db, { limit: 1, now, space: input.space }),
-      thoughtRepository.listReadyJobs(db, { limit: 1, now, space: input.space }),
-    ]));
+    const [jobs, dreamJobs, thoughtJobs] = await runWithDatabaseSpace(input.space, async (db) => {
+      const nextJobs = await listReadyCompanionRuntimeJobs(db, { limit: 1, now, space: input.space });
+      const nextDreamJobs = await dreamRepository.listReadyJobs(db, { limit: 1, now, space: input.space });
+      const nextThoughtJobs = await thoughtRepository.listReadyJobs(db, { limit: 1, now, space: input.space });
+      return [nextJobs, nextDreamJobs, nextThoughtJobs] as const;
+    });
     assertRuntimeActive(input.space, runtimeEpoch);
     const candidate = [
       ...jobs.map((job) => ({ createdAt: job.createdAt, kind: 'companion' as const, job })),

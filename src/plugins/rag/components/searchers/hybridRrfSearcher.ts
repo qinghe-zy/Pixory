@@ -17,11 +17,20 @@ export interface IHybridSearcher extends IRagComponent {
 }
 
 const RRF_CONSTANT = 60; // 工业界通用平滑常数
+export const DEFAULT_MIN_COSINE_SIMILARITY = 0.25;
+const BM25_SATURATION_K = 1.2;
+
+function saturateBm25Score(rawScore: number): number {
+  if (!Number.isFinite(rawScore) || rawScore <= 0) {
+    return 0;
+  }
+  return rawScore / (rawScore + BM25_SATURATION_K);
+}
 
 /**
  * 工业级双轨混合检索器 (Hybrid RRF Searcher)
- * 采用倒数排名融合 (Reciprocal Rank Fusion)，无量纲合并向量距离与 BM25 词频打分，
- * 并支持毫秒级超时检测与无感降级。
+ * 采用归一化倒数排名融合 (Normalized Reciprocal Rank Fusion)，输出严格落于 [0, 1]，
+ * 支持向量维度/模型一致性校验、最小余弦门限，以及毫秒级超时降级。
  */
 export class HybridRrfSearcher implements IHybridSearcher {
   public readonly id = 'searcher:hybrid-rrf';
@@ -41,46 +50,60 @@ export class HybridRrfSearcher implements IHybridSearcher {
     const topK = options?.topK ?? 5;
     const mode = options?.mode ?? 'hybrid';
     const timeoutMs = options?.timeoutMs ?? 2000;
+    const minScore = options?.minScore ?? 0;
+    const minCosineSimilarity = options?.minCosineSimilarity ?? DEFAULT_MIN_COSINE_SIMILARITY;
 
-    // 1. BM25 关键词检索 (纯本地内存，微秒级)
+    // 1. BM25 关键词检索 (纯本地内存，微秒级)并归一化至 [0, 1)
     const bm25Scorer = new Bm25Scorer(chunks);
-    const keywordRanked = bm25Scorer.score(query);
+    const keywordRanked = bm25Scorer.score(query).map((item) => ({
+      chunk: item.chunk,
+      score: saturateBm25Score(item.score),
+    }));
 
     // 如果指定仅关键词检索或没有向量模型，直接返回
     if (mode === 'keyword' || !embedder) {
-      const minScore = options?.minScore ?? 0;
       const filtered = keywordRanked.filter((item) => item.score >= minScore).slice(0, topK);
-      return this.formatSnippets(
-        filtered.map((item) => ({ chunk: item.chunk, score: item.score })),
-        'keyword'
-      );
+      return this.formatSnippets(filtered, 'keyword');
     }
 
-    // 2. 向量语义检索 (带超时控制与降级)
+    // 2. 向量语义检索 (带维度/模型校验、最小余弦门限、超时控制与降级)
     let vectorRanked: Array<{ chunk: RagChunk; score: number }> = [];
     try {
-      vectorRanked = await this.performVectorSearch(query, chunks, store, embedder, timeoutMs);
+      vectorRanked = await this.performVectorSearch(
+        query,
+        chunks,
+        store,
+        embedder,
+        timeoutMs,
+        minCosineSimilarity,
+        options?.queryVector
+      );
     } catch {
       // 向量计算异常或超时，自动无感降级为关键词检索
-      const minScore = options?.minScore ?? 0;
       const filtered = keywordRanked.filter((item) => item.score >= minScore).slice(0, topK);
-      return this.formatSnippets(
-        filtered.map((item) => ({ chunk: item.chunk, score: item.score })),
-        'keyword'
-      );
+      return this.formatSnippets(filtered, 'keyword');
     }
 
-    // 如果指定仅向量检索
-    if (mode === 'vector') {
-      const minScore = options?.minScore ?? 0;
+    // 如果指定仅向量检索，或混合检索仅有向量命中而无关键词命中，直接保留真实相似度分数（不虚高膨胀）
+    if (mode === 'vector' || (vectorRanked.length > 0 && keywordRanked.length === 0)) {
       const filtered = vectorRanked.filter((item) => item.score >= minScore).slice(0, topK);
       return this.formatSnippets(filtered, 'vector');
     }
 
-    // 3. RRF 倒数排名融合 (Hybrid Mode)
+    // 仅关键词命中且无有效向量召回时，直接返回饱和归一化后的 BM25 结果
+    if (vectorRanked.length === 0) {
+      const filtered = keywordRanked.filter((item) => item.score >= minScore).slice(0, topK);
+      return this.formatSnippets(filtered, 'keyword');
+    }
+
+    // 3. 归一化 RRF 倒数排名融合 (Hybrid Mode，严格归一化至 [0, 1])
     const rrfScores = new Map<string, { chunk: RagChunk; score: number; hits: number }>();
-    const vectorWeight = options?.vectorWeight ?? 1.0;
-    const keywordWeight = options?.keywordWeight ?? 1.0;
+    const vectorWeight = Math.max(0, options?.vectorWeight ?? 1.0);
+    const keywordWeight = Math.max(0, options?.keywordWeight ?? 1.0);
+    const maxPossibleRrf = (vectorWeight + keywordWeight) / (RRF_CONSTANT + 1);
+    if (maxPossibleRrf <= 0) {
+      return [];
+    }
 
     // 注入向量排名
     vectorRanked.forEach((item, index) => {
@@ -108,9 +131,13 @@ export class HybridRrfSearcher implements IHybridSearcher {
       }
     });
 
-    const sortedMerged = Array.from(rrfScores.values()).sort((a, b) => b.score - a.score);
+    const sortedMerged = Array.from(rrfScores.values())
+      .map((item) => ({
+        ...item,
+        score: Math.min(1, item.score / maxPossibleRrf),
+      }))
+      .sort((a, b) => b.score - a.score);
 
-    const minScore = options?.minScore ?? 0;
     const filtered = sortedMerged.filter((item) => item.score >= minScore).slice(0, topK);
 
     return filtered.map((item) => ({
@@ -130,26 +157,53 @@ export class HybridRrfSearcher implements IHybridSearcher {
     chunks: RagChunk[],
     store: IRagStore,
     embedder: IRagEmbedder,
-    timeoutMs: number
+    timeoutMs: number,
+    minCosineSimilarity: number,
+    precomputedQueryVector?: number[]
   ): Promise<Array<{ chunk: RagChunk; score: number }>> {
     const chunkIds = chunks.map((c) => c.id);
-    const [embeddings, queryVector] = await Promise.all([
-      store.getEmbeddings(chunkIds),
-      this.withTimeout(embedder.embedQuery(query), timeoutMs),
-    ]);
+    // 先检查本地是否存在可用向量，避免无向量知识库触发无意义的外发 Query Embedding 请求
+    const rawEmbeddings = await store.getEmbeddings(chunkIds);
+    const expectedModelId = embedder.modelId;
+    const validEmbeddings = rawEmbeddings.filter((emb) => {
+      if (!Array.isArray(emb.vector) || emb.vector.length === 0) {
+        return false;
+      }
+      if (emb.dimensions && emb.dimensions !== emb.vector.length) {
+        return false;
+      }
+      if (
+        expectedModelId
+        && emb.modelId
+        && emb.modelId !== 'default'
+        && emb.modelId !== expectedModelId
+      ) {
+        return false;
+      }
+      return true;
+    });
+    if (validEmbeddings.length === 0) {
+      return [];
+    }
 
-    if (!queryVector || queryVector.length === 0 || embeddings.length === 0) {
+    const queryVector = Array.isArray(precomputedQueryVector) && precomputedQueryVector.length > 0
+      ? precomputedQueryVector
+      : await this.withTimeout(embedder.embedQuery(query), timeoutMs);
+    if (!Array.isArray(queryVector) || queryVector.length === 0) {
       return [];
     }
 
     const chunkMap = new Map(chunks.map((c) => [c.id, c]));
     const results: Array<{ chunk: RagChunk; score: number }> = [];
 
-    for (const emb of embeddings) {
+    for (const emb of validEmbeddings) {
+      if (emb.vector.length !== queryVector.length) {
+        continue;
+      }
       const chunk = chunkMap.get(emb.chunkId);
       if (!chunk) continue;
       const sim = cosineSimilarity(queryVector, emb.vector);
-      if (sim > 0) {
+      if (sim >= minCosineSimilarity) {
         results.push({ chunk, score: sim });
       }
     }

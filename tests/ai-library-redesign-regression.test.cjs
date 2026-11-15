@@ -147,7 +147,8 @@ test('reader uses original text or markdown localUri as the primary body', () =>
 
   assert.match(readerBody, /document\.sourceType === 'txt' \|\| document\.sourceType === 'markdown'/);
   assert.match(readerBody, /FileSystem\.readAsStringAsync\(document\.localUri/);
-  assertOccursBefore(readerBody, 'FileSystem.readAsStringAsync(document.localUri', "chunks.map((chunk) => chunk.text).join");
+  assert.match(readerBody, /chunks[\s\S]{0,160}\.map\(\(chunk\) => chunk\.text\)[\s\S]{0,160}\.join\('\\n\\n'\)/);
+  assertOccursBefore(readerBody, 'FileSystem.readAsStringAsync(document.localUri', 'cleanChunkText');
 });
 
 test('global material library is truly global and resolves thread owners by id, not recent limit', () => {

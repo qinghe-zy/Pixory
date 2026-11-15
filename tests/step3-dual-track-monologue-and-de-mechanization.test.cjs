@@ -87,9 +87,9 @@ test('IM Step 3: sanitizeThoughtForUi 流式静默与完结兜底状态机', () 
   const streamingClean = sanitizeThoughtForUi(purelySystemCoT, { isFinal: false });
   assert.equal(streamingClean, '', '流式未结束被全部滤空时应静默');
 
-  // 2. 完结阶段 (isFinal = true)：全部被滤空时优雅展示角色第一人称心理留白
+  // 2. 完结阶段 (isFinal = true)：全部被滤空时静默返回空串，绝不填充硬编码占位文本
   const finalClean = sanitizeThoughtForUi(purelySystemCoT, { isFinal: true });
-  assert.equal(finalClean, '（看着屏幕，心里悄悄盘算着要怎么跟你说……）');
+  assert.equal(finalClean, '');
 });
 
 test('IM Step 3: sanitizeCompanionBubble 支持轻量文学神态描写保留 (竞品同款拟真感)', () => {
@@ -161,8 +161,8 @@ test('IM Step 3: 真实截图英文元指令 (The intent was... persona:...) 100
   assert.doesNotMatch(cleaned, /mild dry complaint/i);
   assert.doesNotMatch(cleaned, /新一天清晨轻声早安问候/);
 
-  // 2. 全部为英文规划时，优雅转换为第一人称潜意识心声留白供用户赏读
-  assert.equal(cleaned, '（看着屏幕，心里悄悄盘算着要怎么跟你说……）');
+  // 2. 全部为英文规划时，完结态返回空串，绝不泄露英文元规划或伪造占位文本
+  assert.equal(cleaned, '');
 });
 
 test('IM Step 3: 中英文系统词与角色心声混杂时，精准剥离指令并保留角色心声', () => {

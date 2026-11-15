@@ -1,4 +1,4 @@
-import { initDatabase, type PixorySpace } from '../../database/index';
+import { initDatabase, withScopedTransaction, type PixorySpace } from '../../database/index';
 import type {
   CompanionMemoryRecord,
   CompanionMemoryTier,
@@ -9,6 +9,15 @@ import {
   shouldAdmitToLongTermMemory,
   calculateMemorySimilarity,
 } from './memorySieveGatekeeper';
+import { extractLightEntitiesFromText } from './memoryEntityGraphService';
+import {
+  inspectAndHealMemoryGraphHealth,
+  type MemoryGraphHealthReport,
+} from './memoryMetabolismService';
+import {
+  invalidateRoleMemoryPrefetch,
+  registerMemoryPrefetchDataSource,
+} from './memoryPrefetchService';
 
 interface RawMemoryRow {
   id: string;
@@ -186,7 +195,94 @@ export function extractSmartTriggerKeywords(text: string): string[] {
   return Array.from(ngrams);
 }
 
+function invalidatePrefetchSafely(space: PixorySpace, roleCardId?: string | null): void {
+  if (!roleCardId || typeof invalidateRoleMemoryPrefetch !== 'function') return;
+  invalidateRoleMemoryPrefetch(space, roleCardId);
+}
+
+function extractEntitiesSafely(content: string, triggers: string[]): string[] {
+  return typeof extractLightEntitiesFromText === 'function'
+    ? extractLightEntitiesFromText(content, triggers)
+    : [];
+}
+
+async function syncMemoryFtsIndex(
+  db: Awaited<ReturnType<typeof initDatabase>>,
+  id: string,
+  tier: string | null | undefined,
+  content: string,
+  triggerKeywords: string[] | undefined
+): Promise<void> {
+  await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+  // L1 状态槽位与滚动摘要只通过结构化前缀/槽位注入，不写入 L2 全文检索索引，避免挤压 FTS5 LIMIT 10 召回槽
+  if (tier === 'L1_SLOT' || tier === 'L1_SUMMARY') return;
+  await db.runAsync(
+    'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
+    id,
+    content,
+    (triggerKeywords || []).join(' ')
+  );
+}
+
+export function buildCompanionL1SlotId(
+  roleCardId: string,
+  space: PixorySpace,
+  slotKey: string
+): string {
+  return `slot_${roleCardId}_${space}_${slotKey}`;
+}
+
+export function buildLegacyCompanionL1SlotId(roleCardId: string, slotKey: string): string {
+  return `slot_${roleCardId}_${slotKey}`;
+}
+
+type CompanionMemoryDb = Awaited<ReturnType<typeof initDatabase>>;
+
+export interface MemoryWriteOptions {
+  alreadySieved?: boolean;
+  skipPrefetchInvalidation?: boolean;
+  db?: CompanionMemoryDb;
+}
+
+async function runInMemoryWriteTx(
+  db: CompanionMemoryDb,
+  task: (txDb: CompanionMemoryDb) => Promise<void>
+): Promise<void> {
+  if (typeof withScopedTransaction === 'function') {
+    await withScopedTransaction(db as any, async (txDb) => task(txDb as any));
+    return;
+  }
+  if (typeof (db as any).withTransactionAsync === 'function') {
+    await (db as any).withTransactionAsync(async () => task(db));
+    return;
+  }
+  await task(db);
+}
+
+async function listMemoriesWithDb(
+  db: CompanionMemoryDb,
+  roleCardId: string,
+  space: PixorySpace,
+  tier?: CompanionMemoryTier
+): Promise<CompanionMemoryRecord[]> {
+  const now = Date.now();
+  let query =
+    'SELECT * FROM ai_companion_memories WHERE role_card_id = ? AND space = ? AND deleted_at IS NULL AND superseded_by IS NULL AND (expires_at IS NULL OR expires_at > ?)';
+  const params: any[] = [roleCardId, space, now];
+  if (tier === 'L2_EPISODIC') {
+    query += " AND tier IN ('L2_EPISODIC', 'L2_FACT', 'L2_EPISODE')";
+  } else if (tier) {
+    query += ' AND tier = ?';
+    params.push(tier);
+  }
+  query += ' ORDER BY is_pinned DESC, importance DESC, last_accessed_at DESC';
+  const rows = await db.getAllAsync<RawMemoryRow>(query, ...params);
+  return rows.map(mapRow);
+}
+
 export const memoryRepository = {
+  buildCompanionL1SlotId,
+
   async listCoreProfileFacts(
     roleCardId: string,
     space: PixorySpace,
@@ -241,25 +337,13 @@ export const memoryRepository = {
     tier?: CompanionMemoryTier
   ): Promise<CompanionMemoryRecord[]> {
     const db = await initDatabase(space);
-    const now = Date.now();
-    let query =
-      'SELECT * FROM ai_companion_memories WHERE role_card_id = ? AND space = ? AND deleted_at IS NULL AND superseded_by IS NULL AND (expires_at IS NULL OR expires_at > ?)';
-    const params: any[] = [roleCardId, space, now];
-    if (tier === 'L2_EPISODIC') {
-      query += " AND tier IN ('L2_EPISODIC', 'L2_FACT', 'L2_EPISODE')";
-    } else if (tier) {
-      query += ' AND tier = ?';
-      params.push(tier);
-    }
-    query += ' ORDER BY is_pinned DESC, importance DESC, last_accessed_at DESC';
-    const rows = await db.getAllAsync<RawMemoryRow>(query, ...params);
-    return rows.map(mapRow);
+    return listMemoriesWithDb(db, roleCardId, space, tier);
   },
 
   async saveMemory(
     memory: CompanionMemoryRecord,
     space: PixorySpace,
-    options?: { alreadySieved?: boolean }
+    options?: MemoryWriteOptions
   ): Promise<void> {
     const isL2 =
       memory.tier === 'L2_FACT' ||
@@ -288,60 +372,94 @@ export const memoryRepository = {
       };
     }
 
-    const db = await initDatabase(space);
     const triggersJson = JSON.stringify(recordToSave.triggerKeywords || []);
     const entitiesJson = JSON.stringify(recordToSave.entities || []);
-    await db.runAsync(
-      `INSERT INTO ai_companion_memories 
-       (id, role_card_id, space, tier, category, content, trigger_keywords, entities, importance, hit_count, is_pinned, created_at, last_accessed_at, source_mode, expires_at, superseded_by, deleted_at, confidence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         category = excluded.category,
-         content = excluded.content,
-         trigger_keywords = excluded.trigger_keywords,
-         entities = excluded.entities,
-         importance = excluded.importance,
-         hit_count = excluded.hit_count,
-         is_pinned = excluded.is_pinned,
-         last_accessed_at = excluded.last_accessed_at,
-         expires_at = excluded.expires_at,
-         superseded_by = excluded.superseded_by,
-         deleted_at = excluded.deleted_at,
-         confidence = excluded.confidence;`,
-      recordToSave.id,
-      recordToSave.roleCardId,
-      space,
-      recordToSave.tier,
-      recordToSave.category,
-      recordToSave.content,
-      triggersJson,
-      entitiesJson,
-      recordToSave.importance,
-      recordToSave.hitCount,
-      recordToSave.isPinned ? 1 : 0,
-      recordToSave.createdAt,
-      recordToSave.lastAccessedAt,
-      recordToSave.sourceMode,
-      recordToSave.expiresAt ?? null,
-      recordToSave.supersededBy ?? null,
-      recordToSave.deletedAt ?? null,
-      recordToSave.confidence ?? 0.85
-    );
+    const writeOps = async (targetDb: CompanionMemoryDb) => {
+      await targetDb.runAsync(
+        `INSERT INTO ai_companion_memories
+         (id, role_card_id, space, tier, category, content, trigger_keywords, entities, importance, hit_count, is_pinned, created_at, last_accessed_at, source_mode, expires_at, superseded_by, deleted_at, confidence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           category = excluded.category,
+           content = excluded.content,
+           trigger_keywords = excluded.trigger_keywords,
+           entities = excluded.entities,
+           importance = excluded.importance,
+           hit_count = excluded.hit_count,
+           is_pinned = excluded.is_pinned,
+           last_accessed_at = excluded.last_accessed_at,
+           expires_at = excluded.expires_at,
+           superseded_by = excluded.superseded_by,
+           deleted_at = excluded.deleted_at,
+           confidence = excluded.confidence;`,
+        recordToSave.id,
+        recordToSave.roleCardId,
+        space,
+        recordToSave.tier,
+        recordToSave.category,
+        recordToSave.content,
+        triggersJson,
+        entitiesJson,
+        recordToSave.importance,
+        recordToSave.hitCount,
+        recordToSave.isPinned ? 1 : 0,
+        recordToSave.createdAt,
+        recordToSave.lastAccessedAt,
+        recordToSave.sourceMode,
+        recordToSave.expiresAt ?? null,
+        recordToSave.supersededBy ?? null,
+        recordToSave.deletedAt ?? null,
+        recordToSave.confidence ?? 0.85
+      );
 
-    // 同步 FTS 索引
-    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', recordToSave.id);
-    await db.runAsync(
-      'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
-      recordToSave.id,
-      recordToSave.content,
-      (recordToSave.triggerKeywords || []).join(' ')
-    );
+      // 同步 FTS 索引
+      await syncMemoryFtsIndex(
+        targetDb,
+        recordToSave.id,
+        recordToSave.tier,
+        recordToSave.content,
+        recordToSave.triggerKeywords
+      );
+    };
+
+    if (options?.db) {
+      await writeOps(options.db);
+    } else {
+      const db = await initDatabase(space);
+      await runInMemoryWriteTx(db, writeOps);
+    }
+
+    if (!options?.skipPrefetchInvalidation) {
+      invalidatePrefetchSafely(space, recordToSave.roleCardId);
+    }
   },
 
-  async deleteMemory(id: string, space: PixorySpace): Promise<void> {
-    const db = await initDatabase(space);
-    await db.runAsync('DELETE FROM ai_companion_memories WHERE id = ?', id);
-    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+  async deleteMemory(
+    id: string,
+    space: PixorySpace,
+    options?: Pick<MemoryWriteOptions, 'skipPrefetchInvalidation' | 'db'>
+  ): Promise<void> {
+    let existingRoleId: string | undefined;
+    const deleteOps = async (targetDb: CompanionMemoryDb) => {
+      const existing = await targetDb.getFirstAsync<{ role_card_id: string }>(
+        'SELECT role_card_id FROM ai_companion_memories WHERE id = ?',
+        id
+      );
+      existingRoleId = existing?.role_card_id;
+      await targetDb.runAsync('DELETE FROM ai_companion_memories WHERE id = ?', id);
+      await targetDb.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+    };
+
+    if (options?.db) {
+      await deleteOps(options.db);
+    } else {
+      const db = await initDatabase(space);
+      await runInMemoryWriteTx(db, deleteOps);
+    }
+
+    if (!options?.skipPrefetchInvalidation) {
+      invalidatePrefetchSafely(space, existingRoleId);
+    }
   },
 
   async recordHits(ids: string[], space: PixorySpace): Promise<void> {
@@ -361,296 +479,327 @@ export const memoryRepository = {
     roleCardId: string,
     space: PixorySpace,
     compaction: FourDCompactionResult,
-    options?: { skipL1?: boolean }
+    options?: { skipL1?: boolean; skipPrefetchInvalidation?: boolean; db?: CompanionMemoryDb }
   ): Promise<void> {
-    const db = await initDatabase(space);
+    const db = options?.db ?? (await initDatabase(space));
     const now = Date.now();
 
-    // 1. 更新 L1 剧情连续性摘要 (仅当未指定 skipL1 且传入时更新)
-    if (!options?.skipL1 && compaction.episodic_continuity) {
-      const summaryId = `summary_${roleCardId}_${space}`;
-      const summaryContent = JSON.stringify(compaction.episodic_continuity);
-      await this.saveMemory(
-        {
-          id: summaryId,
-          roleCardId,
+    const runCompaction = async (txDb: CompanionMemoryDb) => {
+      // 1. 更新 L1 剧情连续性摘要 (仅当未指定 skipL1 且传入时更新)
+      if (!options?.skipL1 && compaction.episodic_continuity) {
+        const summaryId = `summary_${roleCardId}_${space}`;
+        const summaryContent = JSON.stringify(compaction.episodic_continuity);
+        await this.saveMemory(
+          {
+            id: summaryId,
+            roleCardId,
+            space,
+            tier: 'L1_SUMMARY',
+            category: 'continuity_summary',
+            content: summaryContent,
+            triggerKeywords: [],
+            entities: [],
+            importance: 10,
+            hitCount: 0,
+            isPinned: true,
+            createdAt: now,
+            lastAccessedAt: now,
+            sourceMode: 'im',
+          },
           space,
-          tier: 'L1_SUMMARY',
-          category: 'continuity_summary',
-          content: summaryContent,
-          triggerKeywords: [],
-          entities: [],
-          importance: 10,
-          hitCount: 0,
-          isPinned: true,
-          createdAt: now,
-          lastAccessedAt: now,
-          sourceMode: 'im',
-        },
-        space
-      );
-    }
+          { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+        );
+      }
 
-    // 2. 变更 L1 画像槽位 (仅当未指定 skipL1 时执行)
-    if (!options?.skipL1) {
-      for (const slot of compaction.l1_slot_mutations || []) {
-        const slotId = `slot_${roleCardId}_${slot.slot}`;
-        if (slot.op === 'DELETE') {
-          await this.deleteMemory(slotId, space);
-        } else {
-          await this.saveMemory(
-            {
-              id: slotId,
-              roleCardId,
+      // 2. 变更 L1 画像槽位 (仅当未指定 skipL1 时执行，统一使用含 space 的规范槽位 ID 并清理历史无 space 遗留键)
+      if (!options?.skipL1) {
+        for (const slot of compaction.l1_slot_mutations || []) {
+          const slotId = buildCompanionL1SlotId(roleCardId, space, slot.slot);
+          const legacySlotId = buildLegacyCompanionL1SlotId(roleCardId, slot.slot);
+          if (slot.op === 'DELETE') {
+            await this.deleteMemory(slotId, space, { skipPrefetchInvalidation: true, db: txDb });
+          } else {
+            await this.saveMemory(
+              {
+                id: slotId,
+                roleCardId,
+                space,
+                tier: 'L1_SLOT',
+                category: slot.slot,
+                content: slot.value,
+                triggerKeywords: [],
+                entities: [],
+                importance: 8,
+                hitCount: 0,
+                isPinned: true,
+                createdAt: now,
+                lastAccessedAt: now,
+                sourceMode: 'im',
+              },
               space,
-              tier: 'L1_SLOT',
-              category: slot.slot,
-              content: slot.value,
-              triggerKeywords: [],
-              entities: [],
-              importance: 8,
-              hitCount: 0,
-              isPinned: true,
-              createdAt: now,
-              lastAccessedAt: now,
-              sourceMode: 'im',
-            },
-            space
-          );
+              { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+            );
+          }
+          if (legacySlotId !== slotId) {
+            await txDb.runAsync(
+              'DELETE FROM ai_companion_memories WHERE id = ? AND role_card_id = ? AND space = ?',
+              legacySlotId,
+              roleCardId,
+              space
+            );
+            await txDb.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', legacySlotId);
+          }
         }
       }
-    }
 
-    // 3. 变更 L2 长期记忆（分流为 L2_FACT 原子设定 与 L2_EPISODE 情节事件，并排重裂变）
-    const existingL2 = await this.listMemories(roleCardId, space, 'L2_EPISODIC');
+      // 3. 变更 L2 长期记忆（分流为 L2_FACT 原子设定 与 L2_EPISODE 情节事件，并排重裂变）
+      const existingL2 = await listMemoriesWithDb(txDb, roleCardId, space, 'L2_EPISODIC');
 
-    for (const l2 of compaction.l2_memory_mutations || []) {
-      if (l2.op === 'ADD') {
-        // 门禁检查：过滤瞬态生理动作、闲聊垫话与临时物流垃圾记忆
-        const admission = shouldAdmitToLongTermMemory({
-          content: l2.content,
-          tier: l2.tier,
-          category: l2.category,
-          entities: l2.entities,
-          importance: l2.importance,
-        });
-
-        if (!admission.admit) {
-          // 拒绝垃圾记忆入库，避免污染长期画像
-          continue;
-        }
-
-        const effectiveContent = admission.sanitizedContent || l2.content;
-        const triggers = l2.expanded_triggers || [];
-        const entities = l2.entities || [];
-        const rawTier = l2.tier;
-
-        // 启发式判定: 事实设定 (L2_FACT) vs 剧情事件 (L2_EPISODE)
-        const isFact =
-          rawTier === 'L2_FACT' ||
-          (rawTier !== 'L2_EPISODE' &&
-            Boolean(
-              l2.category?.includes('fact') ||
-              l2.category?.includes('preference') ||
-              l2.category?.includes('setting') ||
-              l2.category?.includes('profile') ||
-              /^(用户|伴侣|TA)(养了|喜欢|讨厌|是|有|对.*过敏|习惯)/.test(effectiveContent)
-            ));
-        const effectiveCategory = l2.category || (isFact ? 'fact_attribute' : 'episodic_event');
-
-        if (isFact) {
-          // L2_FACT: 仅当具有共同实体且 (同类别 或 触发词重叠度 >= 0.6) 或 语义相似度 >= 0.75 时才做 UPDATE 归并
-          const matched = existingL2.find((ex) => {
-            if (ex.tier !== 'L2_FACT' && ex.tier !== 'L2_EPISODIC') return false;
-
-            if (calculateMemorySimilarity(ex.content, effectiveContent) >= 0.75) {
-              return true;
-            }
-
-            const hasCommonEntity =
-              entities.length > 0 && ex.entities.some((e) => entities.includes(e));
-            if (!hasCommonEntity) return false;
-
-            if (ex.category && ex.category === effectiveCategory) return true;
-
-            if (triggers.length > 0 && ex.triggerKeywords.length > 0) {
-              const setA = new Set(triggers.map((t) => t.toLowerCase()));
-              const setB = new Set(ex.triggerKeywords.map((t) => t.toLowerCase()));
-              let common = 0;
-              for (const t of setA) {
-                if (setB.has(t)) common += 1;
-              }
-              const union = new Set([...setA, ...setB]).size;
-              return union > 0 && common / union >= 0.6;
-            }
-            return false;
-          });
-
-          if (matched) {
-            const mergedTriggers = [...new Set([...matched.triggerKeywords, ...triggers])];
-            const mergedEntities = [...new Set([...matched.entities, ...entities])];
-            await this.saveMemory(
-              {
-                ...matched,
-                content: effectiveContent,
-                triggerKeywords: mergedTriggers,
-                entities: mergedEntities,
-                importance: Math.max(matched.importance, l2.importance ?? 5),
-                lastAccessedAt: now,
-                expiresAt: admission.expiresAt !== undefined ? admission.expiresAt : matched.expiresAt,
-              },
-              space,
-              { alreadySieved: true }
-            );
-          } else {
-            const memId = `mem_fact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            await this.saveMemory(
-              {
-                id: memId,
-                roleCardId,
-                space,
-                tier: 'L2_FACT',
-                category: effectiveCategory,
-                content: effectiveContent,
-                triggerKeywords: triggers,
-                entities,
-                importance: l2.importance ?? 6,
-                hitCount: 0,
-                isPinned: false,
-                createdAt: now,
-                lastAccessedAt: now,
-                sourceMode: 'im',
-                expiresAt: admission.expiresAt ?? null,
-                confidence: l2.confidence ?? 0.85,
-              },
-              space,
-              { alreadySieved: true }
-            );
-          }
-        } else {
-          // L2_EPISODE: 剧情经历，保留完整历史脉络！严禁因实体相同覆盖历史！
-          // 仅当与已有情节内容高度重复 (语义相似度 >= 0.8) 时做幂等合并，其余一律追加 (APPEND)
-          const duplicateEpisode = existingL2.find((ex) => {
-            if (ex.tier !== 'L2_EPISODE') return false;
-            if (ex.content === effectiveContent) return true;
-            return calculateMemorySimilarity(ex.content, effectiveContent) >= 0.8;
-          });
-
-          if (duplicateEpisode) {
-            const mergedTriggers = [...new Set([...duplicateEpisode.triggerKeywords, ...triggers])];
-            const mergedEntities = [...new Set([...duplicateEpisode.entities, ...entities])];
-            await this.saveMemory(
-              {
-                ...duplicateEpisode,
-                triggerKeywords: mergedTriggers,
-                entities: mergedEntities,
-                importance: Math.max(duplicateEpisode.importance, l2.importance ?? 5),
-                lastAccessedAt: now,
-                expiresAt: admission.expiresAt !== undefined ? admission.expiresAt : duplicateEpisode.expiresAt,
-              },
-              space,
-              { alreadySieved: true }
-            );
-          } else {
-            const memId = `mem_ep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            await this.saveMemory(
-              {
-                id: memId,
-                roleCardId,
-                space,
-                tier: 'L2_EPISODE',
-                category: effectiveCategory,
-                content: effectiveContent,
-                triggerKeywords: triggers,
-                entities,
-                importance: l2.importance ?? 5,
-                hitCount: 0,
-                isPinned: false,
-                createdAt: now,
-                lastAccessedAt: now,
-                sourceMode: 'im',
-                expiresAt: admission.expiresAt ?? null,
-                confidence: l2.confidence ?? 0.85,
-              },
-              space,
-              { alreadySieved: true }
-            );
-          }
-        }
-      } else if (l2.op === 'UPDATE') {
-        // 更新已有记忆：根据 targetId 或相似度 >= 0.65 匹配
-        const target = l2.targetId
-          ? existingL2.find((m) => m.id === l2.targetId)
-          : existingL2.find(
-              (m) =>
-                (m.tier === 'L2_FACT' || m.tier === 'L2_EPISODIC') &&
-                calculateMemorySimilarity(m.content, l2.content) >= 0.65
-            );
-        if (target) {
+      for (const l2 of compaction.l2_memory_mutations || []) {
+        if (l2.op === 'ADD') {
+          // 门禁检查：过滤瞬态生理动作、闲聊垫话与临时物流垃圾记忆
           const admission = shouldAdmitToLongTermMemory({
             content: l2.content,
-            tier: target.tier,
-            category: l2.category || target.category,
-            entities: l2.entities || target.entities,
-            importance: l2.importance ?? target.importance,
+            tier: l2.tier,
+            category: l2.category,
+            entities: l2.entities,
+            importance: l2.importance,
           });
-          if (admission.admit) {
-            await this.saveMemory(
-              {
-                ...target,
-                content: admission.sanitizedContent || l2.content,
-                triggerKeywords: [
-                  ...new Set([...target.triggerKeywords, ...(l2.expanded_triggers || [])]),
-                ],
-                entities: [...new Set([...target.entities, ...(l2.entities || [])])],
-                importance: Math.max(target.importance, l2.importance ?? 5),
-                lastAccessedAt: now,
-                expiresAt:
-                  admission.expiresAt !== undefined ? admission.expiresAt : target.expiresAt,
-              },
-              space,
-              { alreadySieved: true }
-            );
+
+          if (!admission.admit) {
+            // 拒绝垃圾记忆入库，避免污染长期画像
+            continue;
+          }
+
+          const effectiveContent = admission.sanitizedContent || l2.content;
+          const triggers = l2.expanded_triggers || [];
+          const entities = l2.entities || [];
+          const rawTier = l2.tier;
+
+          // 启发式判定: 事实设定 (L2_FACT) vs 剧情事件 (L2_EPISODE)
+          const isFact =
+            rawTier === 'L2_FACT' ||
+            (rawTier !== 'L2_EPISODE' &&
+              Boolean(
+                l2.category?.includes('fact') ||
+                l2.category?.includes('preference') ||
+                l2.category?.includes('setting') ||
+                l2.category?.includes('profile') ||
+                /^(用户|伴侣|TA)(养了|喜欢|讨厌|是|有|对.*过敏|习惯)/.test(effectiveContent)
+              ));
+          const effectiveCategory = l2.category || (isFact ? 'fact_attribute' : 'episodic_event');
+
+          if (isFact) {
+            // L2_FACT: 仅当具有共同实体且 (同类别 或 触发词重叠度 >= 0.6) 或 语义相似度 >= 0.75 时才做 UPDATE 归并
+            const matched = existingL2.find((ex) => {
+              if (ex.tier !== 'L2_FACT' && ex.tier !== 'L2_EPISODIC') return false;
+
+              if (calculateMemorySimilarity(ex.content, effectiveContent) >= 0.75) {
+                return true;
+              }
+
+              const hasCommonEntity =
+                entities.length > 0 && ex.entities.some((e) => entities.includes(e));
+              if (!hasCommonEntity) return false;
+
+              if (ex.category && ex.category === effectiveCategory) return true;
+
+              if (triggers.length > 0 && ex.triggerKeywords.length > 0) {
+                const setA = new Set(triggers.map((t) => t.toLowerCase()));
+                const setB = new Set(ex.triggerKeywords.map((t) => t.toLowerCase()));
+                let common = 0;
+                for (const t of setA) {
+                  if (setB.has(t)) common += 1;
+                }
+                const union = new Set([...setA, ...setB]).size;
+                return union > 0 && common / union >= 0.6;
+              }
+              return false;
+            });
+
+            if (matched) {
+              const mergedTriggers = [...new Set([...matched.triggerKeywords, ...triggers])];
+              const mergedEntities = [...new Set([...matched.entities, ...entities])];
+              await this.saveMemory(
+                {
+                  ...matched,
+                  content: effectiveContent,
+                  triggerKeywords: mergedTriggers,
+                  entities: mergedEntities,
+                  importance: Math.max(matched.importance, l2.importance ?? 5),
+                  lastAccessedAt: now,
+                  expiresAt: admission.expiresAt !== undefined ? admission.expiresAt : matched.expiresAt,
+                },
+                space,
+                { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+              );
+            } else {
+              const memId = `mem_fact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+              await this.saveMemory(
+                {
+                  id: memId,
+                  roleCardId,
+                  space,
+                  tier: 'L2_FACT',
+                  category: effectiveCategory,
+                  content: effectiveContent,
+                  triggerKeywords: triggers,
+                  entities,
+                  importance: l2.importance ?? 6,
+                  hitCount: 0,
+                  isPinned: false,
+                  createdAt: now,
+                  lastAccessedAt: now,
+                  sourceMode: 'im',
+                  expiresAt: admission.expiresAt ?? null,
+                  confidence: l2.confidence ?? 0.85,
+                },
+                space,
+                { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+              );
+            }
+          } else {
+            // L2_EPISODE: 剧情经历，保留完整历史脉络！严禁因实体相同覆盖历史！
+            // 仅当与已有情节内容高度重复 (语义相似度 >= 0.8) 时做幂等合并，其余一律追加 (APPEND)
+            const duplicateEpisode = existingL2.find((ex) => {
+              if (ex.tier !== 'L2_EPISODE') return false;
+              if (ex.content === effectiveContent) return true;
+              return calculateMemorySimilarity(ex.content, effectiveContent) >= 0.8;
+            });
+
+            if (duplicateEpisode) {
+              const mergedTriggers = [...new Set([...duplicateEpisode.triggerKeywords, ...triggers])];
+              const mergedEntities = [...new Set([...duplicateEpisode.entities, ...entities])];
+              await this.saveMemory(
+                {
+                  ...duplicateEpisode,
+                  triggerKeywords: mergedTriggers,
+                  entities: mergedEntities,
+                  importance: Math.max(duplicateEpisode.importance, l2.importance ?? 5),
+                  lastAccessedAt: now,
+                  expiresAt: admission.expiresAt !== undefined ? admission.expiresAt : duplicateEpisode.expiresAt,
+                },
+                space,
+                { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+              );
+            } else {
+              const memId = `mem_ep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+              await this.saveMemory(
+                {
+                  id: memId,
+                  roleCardId,
+                  space,
+                  tier: 'L2_EPISODE',
+                  category: effectiveCategory,
+                  content: effectiveContent,
+                  triggerKeywords: triggers,
+                  entities,
+                  importance: l2.importance ?? 5,
+                  hitCount: 0,
+                  isPinned: false,
+                  createdAt: now,
+                  lastAccessedAt: now,
+                  sourceMode: 'im',
+                  expiresAt: admission.expiresAt ?? null,
+                  confidence: l2.confidence ?? 0.85,
+                },
+                space,
+                { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+              );
+            }
+          }
+        } else if (l2.op === 'UPDATE') {
+          // 更新已有记忆：根据 targetId 或相似度 >= 0.65 匹配
+          const target = l2.targetId
+            ? existingL2.find((m) => m.id === l2.targetId)
+            : existingL2.find(
+                (m) =>
+                  (m.tier === 'L2_FACT' || m.tier === 'L2_EPISODIC') &&
+                  calculateMemorySimilarity(m.content, l2.content) >= 0.65
+              );
+          if (target) {
+            const admission = shouldAdmitToLongTermMemory({
+              content: l2.content,
+              tier: target.tier,
+              category: l2.category || target.category,
+              entities: l2.entities || target.entities,
+              importance: l2.importance ?? target.importance,
+            });
+            if (admission.admit) {
+              await this.saveMemory(
+                {
+                  ...target,
+                  content: admission.sanitizedContent || l2.content,
+                  triggerKeywords: [
+                    ...new Set([...target.triggerKeywords, ...(l2.expanded_triggers || [])]),
+                  ],
+                  entities: [...new Set([...target.entities, ...(l2.entities || [])])],
+                  importance: Math.max(target.importance, l2.importance ?? 5),
+                  lastAccessedAt: now,
+                  expiresAt:
+                    admission.expiresAt !== undefined ? admission.expiresAt : target.expiresAt,
+                },
+                space,
+                { alreadySieved: true, skipPrefetchInvalidation: true, db: txDb }
+              );
+            }
+          }
+        } else if (l2.op === 'SUPERSEDE') {
+          // 偏好演进替代：将旧记忆标记为 superseded_by 并插入新记忆
+          const admission = shouldAdmitToLongTermMemory({
+            content: l2.content,
+            tier: l2.tier,
+            category: l2.category,
+            entities: l2.entities,
+            importance: l2.importance,
+          });
+          if (!admission.admit) continue;
+
+          const effectiveContent = admission.sanitizedContent || l2.content;
+          const newMemId = `mem_fact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const newRecord: CompanionMemoryRecord = {
+            id: newMemId,
+            roleCardId,
+            space,
+            tier: l2.tier || 'L2_FACT',
+            category: l2.category || 'user_preference',
+            content: effectiveContent,
+            triggerKeywords: l2.expanded_triggers || [],
+            entities: l2.entities || [],
+            importance: l2.importance ?? 7,
+            hitCount: 0,
+            isPinned: false,
+            createdAt: now,
+            lastAccessedAt: now,
+            sourceMode: 'im',
+            expiresAt: admission.expiresAt ?? null,
+            confidence: l2.confidence ?? 0.9,
+          };
+
+          if (l2.targetId) {
+            await this.supersedeMemory(space, l2.targetId, newRecord, {
+              skipPrefetchInvalidation: true,
+              db: txDb,
+            });
+          } else {
+            await this.saveMemory(newRecord, space, {
+              alreadySieved: true,
+              skipPrefetchInvalidation: true,
+              db: txDb,
+            });
           }
         }
-      } else if (l2.op === 'SUPERSEDE') {
-        // 偏好演进替代：将旧记忆标记为 superseded_by 并插入新记忆
-        const admission = shouldAdmitToLongTermMemory({
-          content: l2.content,
-          tier: l2.tier,
-          category: l2.category,
-          entities: l2.entities,
-          importance: l2.importance,
-        });
-        if (!admission.admit) continue;
-
-        const effectiveContent = admission.sanitizedContent || l2.content;
-        const newMemId = `mem_fact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const newRecord: CompanionMemoryRecord = {
-          id: newMemId,
-          roleCardId,
-          space,
-          tier: l2.tier || 'L2_FACT',
-          category: l2.category || 'user_preference',
-          content: effectiveContent,
-          triggerKeywords: l2.expanded_triggers || [],
-          entities: l2.entities || [],
-          importance: l2.importance ?? 7,
-          hitCount: 0,
-          isPinned: false,
-          createdAt: now,
-          lastAccessedAt: now,
-          sourceMode: 'im',
-          expiresAt: admission.expiresAt ?? null,
-          confidence: l2.confidence ?? 0.9,
-        };
-
-        if (l2.targetId) {
-          await this.supersedeMemory(space, l2.targetId, newRecord);
-        } else {
-          await this.saveMemory(newRecord, space, { alreadySieved: true });
-        }
       }
+    };
+
+    if (options?.db) {
+      await runCompaction(options.db);
+    } else {
+      await runInMemoryWriteTx(db, runCompaction);
+    }
+
+    if (!options?.skipPrefetchInvalidation) {
+      invalidatePrefetchSafely(space, roleCardId);
     }
   },
 
@@ -700,6 +849,7 @@ export const memoryRepository = {
     const tier = item.tier || 'L2_FACT';
     const category = item.category || 'user_custom';
     const smartTriggers = extractSmartTriggerKeywords(item.content);
+    const lightEntities = extractEntitiesSafely(item.content, smartTriggers);
     const record: CompanionMemoryRecord = {
       id: memId,
       roleCardId,
@@ -708,7 +858,7 @@ export const memoryRepository = {
       category,
       content: item.content.trim(),
       triggerKeywords: smartTriggers,
-      entities: [],
+      entities: lightEntities,
       importance: 8,
       hitCount: 0,
       isPinned: Boolean(item.isPinned),
@@ -725,28 +875,51 @@ export const memoryRepository = {
   async updateMemoryContent(
     space: PixorySpace,
     id: string,
-    newContent: string
+    newContent: string,
+    options?: Pick<MemoryWriteOptions, 'skipPrefetchInvalidation' | 'db'>
   ): Promise<void> {
-    const db = await initDatabase(space);
-    const now = Date.now();
     const cleanContent = newContent.trim();
-    const smartTriggers = extractSmartTriggerKeywords(cleanContent);
-    const triggersJson = JSON.stringify(smartTriggers);
+    const now = Date.now();
+    let existingRoleId: string | undefined;
 
-    await db.runAsync(
-      'UPDATE ai_companion_memories SET content = ?, trigger_keywords = ?, last_accessed_at = ? WHERE id = ?',
-      cleanContent,
-      triggersJson,
-      now,
-      id
-    );
-    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
-    await db.runAsync(
-      'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
-      id,
-      cleanContent,
-      smartTriggers.join(' ')
-    );
+    const updateOps = async (targetDb: CompanionMemoryDb) => {
+      const existing = await targetDb.getFirstAsync<{
+        role_card_id: string;
+        tier: string;
+        entities: string | null;
+      }>(
+        'SELECT role_card_id, tier, entities FROM ai_companion_memories WHERE id = ?',
+        id
+      );
+      existingRoleId = existing?.role_card_id;
+      const isSlot = existing?.tier === 'L1_SLOT' || existing?.tier === 'L1_SUMMARY';
+      const smartTriggers = isSlot ? [] : extractSmartTriggerKeywords(cleanContent);
+      const triggersJson = JSON.stringify(smartTriggers);
+      const entitiesJson = isSlot
+        ? existing?.entities || '[]'
+        : JSON.stringify(extractEntitiesSafely(cleanContent, smartTriggers));
+
+      await targetDb.runAsync(
+        'UPDATE ai_companion_memories SET content = ?, trigger_keywords = ?, entities = ?, last_accessed_at = ? WHERE id = ?',
+        cleanContent,
+        triggersJson,
+        entitiesJson,
+        now,
+        id
+      );
+      await syncMemoryFtsIndex(targetDb, id, existing?.tier, cleanContent, smartTriggers);
+    };
+
+    if (options?.db) {
+      await updateOps(options.db);
+    } else {
+      const db = await initDatabase(space);
+      await runInMemoryWriteTx(db, updateOps);
+    }
+
+    if (!options?.skipPrefetchInvalidation) {
+      invalidatePrefetchSafely(space, existingRoleId);
+    }
   },
 
   async togglePinMemory(
@@ -754,8 +927,8 @@ export const memoryRepository = {
     id: string
   ): Promise<boolean> {
     const db = await initDatabase(space);
-    const row = await db.getFirstAsync<{ is_pinned: number }>(
-      'SELECT is_pinned FROM ai_companion_memories WHERE id = ?',
+    const row = await db.getFirstAsync<{ is_pinned: number; role_card_id: string }>(
+      'SELECT is_pinned, role_card_id FROM ai_companion_memories WHERE id = ?',
       id
     );
     const nextState = row?.is_pinned ? 0 : 1;
@@ -765,6 +938,7 @@ export const memoryRepository = {
       Date.now(),
       id
     );
+    invalidatePrefetchSafely(space, row?.role_card_id);
     return nextState === 1;
   },
 
@@ -773,12 +947,17 @@ export const memoryRepository = {
     id: string
   ): Promise<void> {
     const db = await initDatabase(space);
+    const row = await db.getFirstAsync<{ role_card_id: string }>(
+      'SELECT role_card_id FROM ai_companion_memories WHERE id = ?',
+      id
+    );
     await db.runAsync(
       'UPDATE ai_companion_memories SET deleted_at = ? WHERE id = ?',
       Date.now(),
       id
     );
     await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
+    invalidatePrefetchSafely(space, row?.role_card_id);
   },
 
   async restoreSoftDeletedMemory(
@@ -796,31 +975,42 @@ export const memoryRepository = {
     );
     if (row) {
       const mem = mapRow(row);
-      await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', id);
-      await db.runAsync(
-        'INSERT INTO ai_companion_memories_fts (memory_id, content, trigger_keywords) VALUES (?, ?, ?)',
-        mem.id,
-        mem.content,
-        (mem.triggerKeywords || []).join(' ')
-      );
+      await syncMemoryFtsIndex(db, mem.id, mem.tier, mem.content, mem.triggerKeywords);
+      invalidatePrefetchSafely(space, mem.roleCardId);
     }
   },
 
   async supersedeMemory(
     space: PixorySpace,
     oldId: string,
-    newRecord: CompanionMemoryRecord
+    newRecord: CompanionMemoryRecord,
+    options?: Pick<MemoryWriteOptions, 'skipPrefetchInvalidation' | 'db'>
   ): Promise<void> {
-    const db = await initDatabase(space);
-    await this.saveMemory(newRecord, space);
-    const now = Date.now();
-    await db.runAsync(
-      'UPDATE ai_companion_memories SET superseded_by = ?, deleted_at = COALESCE(deleted_at, ?) WHERE id = ?',
-      newRecord.id,
-      now,
-      oldId
-    );
-    await db.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', oldId);
+    const supersedeOps = async (targetDb: CompanionMemoryDb) => {
+      await this.saveMemory(newRecord, space, {
+        skipPrefetchInvalidation: true,
+        db: targetDb,
+      });
+      const now = Date.now();
+      await targetDb.runAsync(
+        'UPDATE ai_companion_memories SET superseded_by = ?, deleted_at = COALESCE(deleted_at, ?) WHERE id = ?',
+        newRecord.id,
+        now,
+        oldId
+      );
+      await targetDb.runAsync('DELETE FROM ai_companion_memories_fts WHERE memory_id = ?', oldId);
+    };
+
+    if (options?.db) {
+      await supersedeOps(options.db);
+    } else {
+      const db = await initDatabase(space);
+      await runInMemoryWriteTx(db, supersedeOps);
+    }
+
+    if (!options?.skipPrefetchInvalidation) {
+      invalidatePrefetchSafely(space, newRecord.roleCardId);
+    }
   },
 
   /**
@@ -862,6 +1052,7 @@ export const memoryRepository = {
       }
     });
 
+    invalidatePrefetchSafely(space, roleCardId);
     return ids.length;
   },
 
@@ -930,10 +1121,12 @@ export const memoryRepository = {
     const verifiedIds: string[] = [];
 
     for (const cand of candidates) {
-      const entityHit = cand.category?.includes('profile') ||
-        (cand as any).entities?.some((e: string) => e && lowerReply.includes(e.toLowerCase()));
+      // 严禁按 profile category 自动放行：必须真正在回复正文中回显实体/触发词/核心片段才累计 hit_count
+      const entityHit = cand.entities?.some(
+        (e: string) => e && lowerReply.includes(e.toLowerCase())
+      );
       // 触发词命中
-      const triggerHit = (cand as any).triggerKeywords?.some(
+      const triggerHit = cand.triggerKeywords?.some(
         (t: string) => t && t.length >= 2 && lowerReply.includes(t.toLowerCase())
       );
       // 或者候选内容的核心片段出现在回复中
@@ -950,4 +1143,163 @@ export const memoryRepository = {
     }
     return verifiedIds;
   },
+
+  /**
+   * 落盘模型主动发起的 [MEMORY_NOTE: SUPERSEDE|UPDATE|ADD | 目标线索 | 新事实] 标签：
+   * 严格经过 Gatekeeper 安全准入校验后方可执行，拒绝幻觉/瞬态/提示词注入绕过门禁直接入库。
+   */
+  async applyExplicitMemoryNoteTag(params: {
+    roleCardId: string;
+    space: PixorySpace;
+    op: 'SUPERSEDE' | 'UPDATE' | 'ADD';
+    targetHint: string;
+    newContent: string;
+  }): Promise<{ applied: boolean; reason?: string; affectedId?: string }> {
+    const { roleCardId, space, op, targetHint, newContent } = params;
+    if (!roleCardId || !newContent || !newContent.trim()) {
+      return { applied: false, reason: 'empty_input' };
+    }
+
+    const smartTriggers = extractSmartTriggerKeywords(newContent);
+    const lightEntities = extractEntitiesSafely(newContent, smartTriggers);
+
+    const admission = shouldAdmitToLongTermMemory({
+      content: newContent,
+      tier: 'L2_FACT',
+      category: 'user_preference',
+      entities: lightEntities,
+      importance: 8,
+    });
+    if (!admission.admit) {
+      return { applied: false, reason: 'gatekeeper_rejected' };
+    }
+
+    const effectiveContent = (admission.sanitizedContent || newContent).trim();
+    const now = Date.now();
+    const existingL2 = await this.listMemories(roleCardId, space, 'L2_EPISODIC');
+
+    if (op === 'SUPERSEDE' || op === 'UPDATE') {
+      const normHint = (targetHint || '').trim().toLowerCase();
+      let bestTarget: CompanionMemoryRecord | null = null;
+      let bestScore = 0;
+
+      for (const mem of existingL2) {
+        let score = calculateMemorySimilarity(mem.content, normHint || effectiveContent);
+        const lowerMem = mem.content.toLowerCase();
+        if (normHint && lowerMem.includes(normHint)) {
+          score += 0.6;
+        } else if (normHint) {
+          const hintTokens = extractSmartTriggerKeywords(normHint);
+          let tokenHits = 0;
+          for (const tk of hintTokens) {
+            if (lowerMem.includes(tk.toLowerCase())) tokenHits += 1;
+          }
+          if (hintTokens.length > 0 && tokenHits > 0) {
+            score += Math.min(0.5, tokenHits * 0.2);
+          }
+        }
+        if (score > bestScore && score >= 0.25) {
+          bestScore = score;
+          bestTarget = mem;
+        }
+      }
+
+      if (bestTarget && op === 'SUPERSEDE') {
+        const newId = `mem_note_${now}_${Math.random().toString(36).slice(2, 7)}`;
+        const newRecord: CompanionMemoryRecord = {
+          id: newId,
+          roleCardId,
+          space,
+          tier: 'L2_FACT',
+          category: bestTarget.category || 'user_preference',
+          content: effectiveContent,
+          triggerKeywords: smartTriggers,
+          entities: lightEntities,
+          importance: Math.max(bestTarget.importance, 8),
+          hitCount: 0,
+          isPinned: bestTarget.isPinned,
+          createdAt: now,
+          lastAccessedAt: now,
+          sourceMode: 'model_note',
+          expiresAt: admission.expiresAt ?? null,
+          confidence: 0.95,
+        };
+        await this.supersedeMemory(space, bestTarget.id, newRecord);
+        return { applied: true, affectedId: newId };
+      }
+
+      if (bestTarget && op === 'UPDATE') {
+        const mergedTriggers = Array.from(
+          new Set([...bestTarget.triggerKeywords, ...smartTriggers])
+        ).slice(0, 16);
+        const mergedEntities = Array.from(
+          new Set([...bestTarget.entities, ...lightEntities])
+        ).slice(0, 12);
+        await this.saveMemory(
+          {
+            ...bestTarget,
+            content: effectiveContent,
+            triggerKeywords: mergedTriggers,
+            entities: mergedEntities,
+            lastAccessedAt: now,
+            expiresAt:
+              admission.expiresAt !== undefined ? admission.expiresAt : bestTarget.expiresAt,
+          },
+          space,
+          { alreadySieved: true }
+        );
+        return { applied: true, affectedId: bestTarget.id };
+      }
+    }
+
+    // ADD 或未找到精确可覆盖旧条时的安全降级 ADD（带高相似度去重）
+    const existingDup = existingL2.find(
+      (m) => calculateMemorySimilarity(m.content, effectiveContent) >= 0.78
+    );
+    if (existingDup) {
+      await this.recordHits([existingDup.id], space);
+      return { applied: true, affectedId: existingDup.id };
+    }
+
+    const newId = `mem_note_${now}_${Math.random().toString(36).slice(2, 7)}`;
+    await this.saveMemory(
+      {
+        id: newId,
+        roleCardId,
+        space,
+        tier: 'L2_FACT',
+        category: 'user_preference',
+        content: effectiveContent,
+        triggerKeywords: smartTriggers,
+        entities: lightEntities,
+        importance: 8,
+        hitCount: 0,
+        isPinned: false,
+        createdAt: now,
+        lastAccessedAt: now,
+        sourceMode: 'model_note',
+        expiresAt: admission.expiresAt ?? null,
+        confidence: 0.92,
+      },
+      space,
+      { alreadySieved: true }
+    );
+    return { applied: true, affectedId: newId };
+  },
+
+  /**
+   * 图谱健康巡检与一键整理编译入口（供设置模态框 Telemetry UI 与测试直连）
+   */
+  async runMemoryHealthAndCompile(
+    roleCardId: string,
+    space: PixorySpace,
+    options: { applyHealing?: boolean } = { applyHealing: true }
+  ): Promise<MemoryGraphHealthReport> {
+    const db = await initDatabase(space);
+    return inspectAndHealMemoryGraphHealth(db, roleCardId, space, Date.now(), options);
+  },
 };
+
+if (typeof registerMemoryPrefetchDataSource === 'function') {
+  registerMemoryPrefetchDataSource(memoryRepository);
+}

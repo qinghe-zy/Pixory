@@ -56,7 +56,49 @@ function getStorageRootDir(space: PixorySpace = 'normal'): string {
   return normalizeDirectoryUri(`${getDocumentDirectoryOrThrow()}${rootName}`);
 }
 
+function hasTraversalSegment(value: string): boolean {
+  let decoded = value;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    return true;
+  }
+  return (
+    value.includes('\0') ||
+    decoded.includes('\0') ||
+    /(?:^|[\\/])\.\.(?:[\\/]|$)/.test(value) ||
+    /(?:^|[\\/])\.\.(?:[\\/]|$)/.test(decoded)
+  );
+}
+
 function joinPath(baseDir: string, childName: string): string {
+  if (!childName || /[\x00-\x1f\\?#]/.test(childName) || childName.startsWith('/')) {
+    throw new Error('Invalid storage path segment.');
+  }
+  const normalizedChild = childName.endsWith('/') ? childName.slice(0, -1) : childName;
+  const segments = normalizedChild.split('/');
+  for (const segment of segments) {
+    if (!segment) {
+      throw new Error('Invalid storage path segment.');
+    }
+    let decodedSegment: string;
+    try {
+      decodedSegment = decodeURIComponent(segment);
+    } catch {
+      throw new Error('Invalid storage path segment.');
+    }
+    if (
+      segment === '.' ||
+      segment === '..' ||
+      decodedSegment === '.' ||
+      decodedSegment === '..' ||
+      decodedSegment.includes('/') ||
+      decodedSegment.includes('\\') ||
+      /[\x00-\x1f?#]/.test(decodedSegment)
+    ) {
+      throw new Error('Invalid storage path segment.');
+    }
+  }
   return `${normalizeDirectoryUri(baseDir)}${childName}`;
 }
 
@@ -108,6 +150,9 @@ async function ensureDirectoryExists(directoryUri: string): Promise<void> {
 }
 
 async function ensureSourceFileExists(sourceUri: string): Promise<void> {
+  if (isAndroidContentUri(sourceUri)) {
+    return;
+  }
   const fileInfo = await FileSystem.getInfoAsync(sourceUri);
 
   if (!fileInfo.exists || fileInfo.isDirectory) {
@@ -195,19 +240,45 @@ export function generateInternalFilename(originalFilename: string): string {
   return `${safeStem}_${timestamp}_${randomSuffix}${safeExtension}`;
 }
 
-export async function copyOriginalToAppStorage(
+function isDisallowedCopySourceUri(sourceUri: string): boolean {
+  const trimmed = sourceUri.trim();
+  const schemeMatch = /^([a-z][a-z0-9+.-]+):/i.exec(trimmed);
+  if (!schemeMatch) {
+    return true;
+  }
+  const scheme = schemeMatch[1].toLowerCase();
+  if (scheme === 'content' || scheme === 'ph' || scheme === 'assets-library' || scheme === 'android.resource') {
+    return trimmed.includes('\0');
+  }
+  if (scheme === 'file') {
+    return hasTraversalSegment(trimmed);
+  }
+  return true;
+}
+
+function assertSafeCopyUris(sourceUri: string, destinationUri: string): void {
+  if (!sourceUri.trim() || !destinationUri.trim()) {
+    throw new Error('Source or destination file URI is empty.');
+  }
+  if (isDisallowedCopySourceUri(sourceUri)) {
+    throw new Error('Unsupported or unsafe source file URI.');
+  }
+  const destSchemeMatch = /^([a-z][a-z0-9+.-]+):/i.exec(destinationUri.trim());
+  const destScheme = destSchemeMatch?.[1].toLowerCase();
+  if (destScheme !== 'file' || hasTraversalSegment(destinationUri)) {
+    throw new Error('Unsafe destination file URI.');
+  }
+}
+
+async function copyFileWithContentUriFallback(
   sourceUri: string,
-  ipId: number,
-  internalFilename: string,
-  space: PixorySpace = 'normal'
-): Promise<string> {
-  await ensureAppDirectories(space);
-  await ensureSourceFileExists(sourceUri);
+  destinationUri: string,
+  contextLabel: string
+): Promise<void> {
+  assertSafeCopyUris(sourceUri, destinationUri);
+  const existingDestInfo = await FileSystem.getInfoAsync?.(destinationUri).catch(() => null);
+  const destPreExisted = Boolean(existingDestInfo?.exists);
 
-  const ipOriginalsDir = buildIpScopedDir(getOriginalsDir(space), ipId);
-  await ensureDirectoryExists(ipOriginalsDir);
-
-  const destinationUri = joinPath(ipOriginalsDir, internalFilename);
   try {
     await FileSystem.copyAsync({
       from: sourceUri,
@@ -215,20 +286,52 @@ export async function copyOriginalToAppStorage(
     });
   } catch (error) {
     if (!isAndroidContentUri(sourceUri)) {
+      if (!destPreExisted) {
+        await FileSystem.deleteAsync?.(destinationUri, { idempotent: true }).catch(() => undefined);
+      }
       throw error;
     }
 
-    console.warn('Pixory original copyAsync failed for content URI, retrying with native stream copy.', {
+    console.warn(`Pixory ${contextLabel} copyAsync failed for content URI, retrying with native stream copy.`, {
       error: error instanceof Error ? error.message : 'unknown copy error',
     });
 
-    await copyContentUriWithNativeStream(sourceUri, destinationUri);
+    try {
+      await copyContentUriWithNativeStream(sourceUri, destinationUri);
+    } catch (nativeError) {
+      if (!destPreExisted) {
+        await FileSystem.deleteAsync?.(destinationUri, { idempotent: true }).catch(() => undefined);
+      }
+      throw nativeError;
+    }
   }
+}
+
+export async function copyOriginalToAppStorage(
+  sourceUri: string,
+  ipId: number,
+  internalFilename: string,
+  space: PixorySpace = 'normal'
+): Promise<string> {
+  if (isDisallowedCopySourceUri(sourceUri)) {
+    throw new Error('Unsupported or unsafe source file URI.');
+  }
+  await ensureAppDirectories(space);
+  await ensureSourceFileExists(sourceUri);
+
+  const ipOriginalsDir = buildIpScopedDir(getOriginalsDir(space), ipId);
+  await ensureDirectoryExists(ipOriginalsDir);
+
+  const destinationUri = joinPath(ipOriginalsDir, internalFilename);
+  await copyFileWithContentUriFallback(sourceUri, destinationUri, 'original');
 
   return destinationUri;
 }
 
 export async function copyProfileAvatarToAppStorage(sourceUri: string): Promise<string> {
+  if (isDisallowedCopySourceUri(sourceUri)) {
+    throw new Error('Unsupported or unsafe source file URI.');
+  }
   await ensureAppDirectories();
   await ensureSourceFileExists(sourceUri);
 
@@ -239,27 +342,15 @@ export async function copyProfileAvatarToAppStorage(sourceUri: string): Promise<
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const destinationUri = joinPath(profileDir, `profile_avatar_${timestamp}${extension}`);
 
-  try {
-    await FileSystem.copyAsync({
-      from: sourceUri,
-      to: destinationUri,
-    });
-  } catch (error) {
-    if (!isAndroidContentUri(sourceUri)) {
-      throw error;
-    }
-
-    console.warn('Pixory avatar copyAsync failed for content URI, retrying with native stream copy.', {
-      error: error instanceof Error ? error.message : 'unknown copy error',
-    });
-
-    await copyContentUriWithNativeStream(sourceUri, destinationUri);
-  }
+  await copyFileWithContentUriFallback(sourceUri, destinationUri, 'avatar');
 
   return destinationUri;
 }
 
 export async function copyAiRoleAvatarToAppStorage(sourceUri: string, space: PixorySpace = 'normal'): Promise<string> {
+  if (isDisallowedCopySourceUri(sourceUri)) {
+    throw new Error('Unsupported or unsafe source file URI.');
+  }
   await ensureAppDirectories(space);
   await ensureSourceFileExists(sourceUri);
 
@@ -270,22 +361,7 @@ export async function copyAiRoleAvatarToAppStorage(sourceUri: string, space: Pix
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const destinationUri = joinPath(avatarDir, `role_avatar_${timestamp}${extension}`);
 
-  try {
-    await FileSystem.copyAsync({
-      from: sourceUri,
-      to: destinationUri,
-    });
-  } catch (error) {
-    if (!isAndroidContentUri(sourceUri)) {
-      throw error;
-    }
-
-    console.warn('Pixory role avatar copyAsync failed for content URI, retrying with native stream copy.', {
-      error: error instanceof Error ? error.message : 'unknown copy error',
-    });
-
-    await copyContentUriWithNativeStream(sourceUri, destinationUri);
-  }
+  await copyFileWithContentUriFallback(sourceUri, destinationUri, 'role avatar');
 
   return destinationUri;
 }
@@ -331,7 +407,7 @@ export async function writeBase64File(fileUri: string, contents: string): Promis
 }
 
 export async function copyLocalFile(sourceUri: string, destinationUri: string): Promise<void> {
-  await FileSystem.copyAsync({ from: sourceUri, to: destinationUri });
+  await copyFileWithContentUriFallback(sourceUri, destinationUri, 'local file');
 }
 
 export async function runFileStorageDevelopmentCheck(): Promise<FileStorageDevelopmentCheckResult> {

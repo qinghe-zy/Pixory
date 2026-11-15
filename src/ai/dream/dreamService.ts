@@ -43,7 +43,7 @@ export async function registerCompanionDreamRound(db: SQLiteDatabase, input: {
   if (!registered.inserted) return { jobId: null, seed: null };
   const combinedText = `${input.userMessage.content}\n${input.assistantMessage.content}`;
   const detected = detectDreamIntent(combinedText);
-  const active = await dreamRepository.findActiveScene(db, { branchRouteHash: input.branchRouteHash, lineageVersion: input.thread.lineageVersion ?? 0, roleCardId: input.thread.roleCardId, space: input.space, threadId: input.thread.id });
+  const active = await dreamRepository.findActiveScene(db, { branchRouteHash: input.branchRouteHash, lineageVersion: input.thread.lineageVersion ?? 0, now: input.now, roleCardId: input.thread.roleCardId, space: input.space, threadId: input.thread.id });
   if (detected.closing) { if (active) await dreamRepository.closeScene(db, active.id, input.now); return { jobId: null, seed: null }; }
   if (!detected.candidate) return { jobId: null, seed: null };
   const source = snapshot(input.recentMessages, [input.userMessage.id, input.assistantMessage.id]);
@@ -51,12 +51,16 @@ export async function registerCompanionDreamRound(db: SQLiteDatabase, input: {
   if (await dreamRepository.findSeedForScene(db, scene.id)) return { jobId: null, seed: null };
   const key = `dream-seed:${input.space}:${input.thread.roleCardId}:${scene.id}`; const roll = deterministicDreamRoll(key);
   // A clear sleep-quality/product topic has a proven zero trigger probability, so it never spends a classifier call.
-  const provenUpperBound = detected.intent === 'sleep_topic' ? 0 : undefined;
+  // Weak signals (bedtime_signal and past_dream_report) have a proven 0.1 trigger probability upper bound.
+  const provenUpperBound = detected.intent === 'sleep_topic'
+    ? 0
+    : (detected.intent === 'bedtime_signal' || detected.intent === 'past_dream_report')
+      ? 0.1
+      : undefined;
   const decision = !dreamFrequencyAllowed(registered.counter) ? 'frequency_blocked' : shouldPrepruneDream(roll, false, provenUpperBound) ? 'prepruned' : 'classifying';
   const seed = await dreamRepository.createSeed(db, { branchRouteHash: input.branchRouteHash, decision, idempotencyKey: key, lineageVersion: input.thread.lineageVersion ?? 0, manual: false, policyVersion: DREAM_POLICY_VERSION, roleCardId: input.thread.roleCardId, roleSnapshotJson: input.thread.roleSnapshotJson, roll, sceneId: scene.id, sourceMessageIds: source.ids, sourceMessageVersionHashes: source.hashes, sourceSnapshotHash: source.hash, space: input.space, threadId: input.thread.id, now: input.now });
   if (decision !== 'classifying') return { jobId: null, seed };
   const job = await dreamRepository.createJob(db, { now: input.now, phase: 'classifying', seed });
-  emitDreamRuntimeNotice({ jobId: job.id, threadId: input.thread.id, type: 'generating' });
   return { jobId: job.id, seed };
 }
 
@@ -68,7 +72,17 @@ export async function detectAndCreateManualDreamRequest(input: { space: PixorySp
     const source = snapshot([...input.recentMessages, message], [message.id]);
     let scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: thread.lineageVersion ?? 0, now, roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
     const existing = await dreamRepository.findSeedForScene(db, scene.id);
-    if (existing?.manual) return existing;
+    if (existing?.manual) {
+      if (existing.decision === 'awaiting_confirmation') {
+        const ageMs = Date.now() - new Date(existing.createdAt).getTime();
+        if (ageMs < 30 * 60 * 1000 && ageMs >= 0) return existing;
+        await dreamRepository.updateSeed(db, { decision: 'cancelled', id: existing.id, now });
+        await dreamRepository.closeScene(db, scene.id, now);
+        scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: thread.lineageVersion ?? 0, now: new Date(new Date(now).getTime() + 1).toISOString(), roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
+      } else {
+        return existing;
+      }
+    }
     if (existing) {
       await dreamRepository.closeScene(db, scene.id, now);
       scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: thread.lineageVersion ?? 0, now: new Date(new Date(now).getTime() + 1).toISOString(), roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });

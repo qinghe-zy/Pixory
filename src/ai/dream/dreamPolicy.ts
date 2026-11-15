@@ -76,7 +76,8 @@ export const DREAM_GENERATION_JSON_SCHEMA: Record<string, unknown> = {
 };
 
 const closingPattern = /(?:醒(?:来|了)|睁开.{0,4}眼|梦醒|天亮|起床|离开.{0,3}梦境|结束.{0,3}(?:睡眠|梦境)|wake(?:s|n|d)?\s*up|open(?:ed|s)?\s+(?:my|your|their)\s+eyes?)/iu;
-const manualPattern = /(?:(?:生成|做|写|给我|让我|想看|看看).{0,8}(?:一个|一场|这次|角色的)?梦(?:境)?|(?:梦境|做梦).{0,8}(?:生成|制作|卡片)|(?:make|generate|write|show)\s+(?:me\s+)?(?:a\s+)?dream(?:\s+card)?)/iu;
+const manualExclusionPattern = /(?:白日梦|做梦去|别做梦|做梦都|梦想|梦话|做个好梦|做好梦)/iu;
+const manualPattern = /(?:(?:生成|制作|记录|写).{0,6}(?:一个|一场|这次|张|篇|你的|角色的)?梦境(?:卡片)?|(?:想看|看看|展示).{0,6}(?:你的|角色的)?梦境(?:卡片)?|(?:梦境|做梦).{0,6}(?:卡片|记录|生成|制作)|(?:make|generate|write|show)\s+(?:me\s+)?(?:a\s+)?dream(?:\s+card)?)/iu;
 const pastDreamPattern = /(?:(?:昨晚|刚才|之前|曾经|早上).{0,16}(?:梦见|梦到|做了.{0,3}梦)|(?:做了个梦|梦到过)|(?:last\s+night|earlier|yesterday).{0,24}(?:dream(?:ed|t)?|nightmare))/iu;
 const activeDreamPattern = /(?:梦里|梦中|正在做梦|梦见|梦到|噩梦|幻境|半梦半醒|坠入.{0,4}梦|进入.{0,4}梦境|in\s+(?:a|the|my|your|our)\s+dream|dreaming\s+now|nightmare)/iu;
 const sharedSleepPattern = /(?:(?:我们|一起|抱着|陪着|相拥|怀里).{0,14}(?:睡|入眠|入睡|闭上眼)|(?:睡|入眠|入睡).{0,14}(?:一起|我们|相拥|怀里)|(?:we|together|in\s+your\s+arms).{0,24}(?:fall\s+asleep|sleep))/iu;
@@ -88,7 +89,9 @@ const roleplayPattern = /(?:\*[^*]{1,120}\*|（[^）]{1,120}）|\([^)]{1,120}\))
 const sleepTopicPattern = /(?:睡眠|失眠|睡不着|睡眠质量|助眠|dream\s+feature|sleep\s+(?:quality|tracking|advice))/iu;
 
 export function detectManualDreamRequest(text: string): boolean {
-  return manualPattern.test(text.normalize('NFKC'));
+  const value = text.normalize('NFKC');
+  if (manualExclusionPattern.test(value)) return false;
+  return manualPattern.test(value);
 }
 
 export function detectDreamIntent(text: string): {

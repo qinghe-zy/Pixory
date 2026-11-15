@@ -336,7 +336,7 @@ export function buildConversationCoveragePlan(input: CoveragePlannerInput): Comp
   let summaryTokens = 0;
   for (const item of [...selected].reverse()) {
     const tokens = estimatePromptTokens(formatStableSummaries([item]));
-    if (summaryTokens + tokens > (input.summaryTokenBudget ?? Infinity)) continue;
+    if (summaryTokens + tokens > (input.summaryTokenBudget ?? Infinity)) break;
     injected.unshift(item); summaryTokens += tokens;
   }
   const injectedIds = new Set(injected.map(item => item.segment.id));

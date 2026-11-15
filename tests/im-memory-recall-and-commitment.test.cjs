@@ -53,6 +53,29 @@ test('buildEffectiveRecallQuery: 长实体文本保持原生', () => {
   assert.equal(query, '周末想去国家博物馆看三星堆文物特展');
 });
 
+test('buildEffectiveRecallQuery: 系统占位词与唤醒场景仅回溯真实用户消息', () => {
+  const recentMessages = [
+    { id: '1', role: 'user', content: '我最近在学水彩风景画', type: 'text' },
+    { id: '2', role: 'assistant', content: '水彩画很有意境呢，今天画了什么呀？', type: 'text' },
+  ];
+  // 1. 系统 scheduled_checkin 触发：忽略占位词，回溯用户发言
+  const query = buildEffectiveRecallQuery({
+    currentUserInput: 'scheduled_checkin',
+    recentMessages,
+  });
+  assert.ok(query.includes('水彩') || query.includes('风景画'), `应提取用户发言实体，当前为: ${query}`);
+  assert.doesNotMatch(query, /scheduled_checkin/i);
+
+  // 2. 空输入且无任何用户发言：返回空串
+  const emptyQuery = buildEffectiveRecallQuery({
+    currentUserInput: '',
+    recentMessages: [
+      { id: '3', role: 'assistant', content: '在忙什么呢？', type: 'text' },
+    ],
+  });
+  assert.equal(emptyQuery, '');
+});
+
 test('filterCooldownRecalledMemories: 优先展示未冷却的新记忆', () => {
   const memories = [
     { id: 'm1', content: '记忆1' },

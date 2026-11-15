@@ -10,8 +10,6 @@ import type {
 } from '../database/repositories/aiThreadRepository';
 import { buildMainCompanionMemoryTemplate } from './aiMemoryPrompts';
 import type { AiThreadRecord } from './types';
-import { compileMemoryUsageContract } from './memory/contextCompiler';
-import { retrieveMemoryClaims } from './memory/memoryRetrievalService';
 import { MemoryFacade } from './memory/memoryFacade';
 import { resolveCalibratedConfidence } from './memory/memoryTypes';
 import type { MemoryClaimRecord } from './memory/memoryTypes';
@@ -48,7 +46,6 @@ export interface BuildMemoryPrefixOptions {
 }
 
 const STABLE_MEMORY_LIMIT = 24;
-const DYNAMIC_MEMORY_LIMIT = 6;
 // Stable prompt memories use local scope priority before importance and creation time.
 
 function createMemoryId(): string {
@@ -59,7 +56,7 @@ function normalizeMemoryContent(content: string): string {
   return content.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 180);
 }
 
-function mapV1ClaimToLegacyMemory(claim: MemoryClaimRecord): AiMemoryRecord {
+export function mapV1ClaimToLegacyMemory(claim: MemoryClaimRecord): AiMemoryRecord {
   const scope = claim.scopeType === 'branch' ? 'thread' : claim.scopeType;
   const type: AiMemoryRecord['type'] = claim.predicate.startsWith('preference.')
     ? 'preference'
@@ -187,11 +184,6 @@ function queryTerms(value: string): string[] {
     }
   }
   return [...new Set(terms)].slice(0, 18);
-}
-
-function memoryContainsQuery(memory: AiMemoryRecord, terms: string[]): boolean {
-  const content = `${memory.content} ${memory.normalizedContent} ${memory.assetSnapshotJson}`.toLowerCase();
-  return terms.some((term) => content.includes(term));
 }
 
 async function resolveMemorySettings(
@@ -379,11 +371,9 @@ export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: 
   protectedImportRoundCount: number;
 }> {
   return runWithDatabaseSpace(space, async (db) => {
-    const [job, thread, segments] = await Promise.all([
-      aiThreadRepository.getThreadMemoryJob(db, threadId),
-      aiThreadRepository.findThreadById(db, threadId),
-      aiThreadRepository.listSummarySegments(db, threadId),
-    ]);
+    const job = await aiThreadRepository.getThreadMemoryJob(db, threadId);
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    const segments = await aiThreadRepository.listSummarySegments(db, threadId);
     const profile = thread ? await aiThreadRepository.getUserProfile(db, space, null, thread.id) : null;
     const activeImportSessionId = await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, threadId);
     const activeImportSession = activeImportSessionId
@@ -495,11 +485,20 @@ function getMemoryPromptPriority(memory: AiMemoryRecord, thread: AiThreadRecord)
   return 0;
 }
 
-export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord, options?: BuildMemoryPrefixOptions): Promise<string> {
-  const settings = await resolveMemorySettings(db, thread, options);
-  if (!settings.deepMemoryEnabled) {
-    return '';
+const selectedStableClaimIdsBySettings = new WeakMap<AiThreadMemorySettingsRecord, string[]>();
+
+export function getSelectedStableClaimIds(settings?: AiThreadMemorySettingsRecord): string[] {
+  if (!settings) {
+    return [];
   }
+  return selectedStableClaimIdsBySettings.get(settings) ?? [];
+}
+
+async function selectStableMemoryBoardItems(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+  options?: BuildMemoryPrefixOptions
+): Promise<AiMemoryRecord[]> {
   // Stable prefixes must come from the v1 ledger. Reading the legacy board here
   // would allow stale pre-migration rows to bypass lane/status/conflict policy.
   const memories = await listV1MemoryBoardItems(db, thread, {
@@ -508,7 +507,7 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
     lane: 'confirmed',
     limit: STABLE_MEMORY_LIMIT * 2,
   });
-  const stable = memories
+  return memories
     .filter((memory) => memory.status === 'active' && memory.memoryLane === 'confirmed' && shouldInjectMemoryIntoPrompt(memory))
     .filter((memory) => !(options?.excludedClaimIds ?? []).includes(memory.id))
     .map((memory) => ({ memory, priority: getMemoryPromptPriority(memory, thread) }))
@@ -524,12 +523,36 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
     })
     .slice(0, STABLE_MEMORY_LIMIT)
     .map((item) => item.memory);
+}
+
+export async function buildStableMemoryPrefixWithIds(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+  options?: BuildMemoryPrefixOptions
+): Promise<{ text: string; claimIds: string[] }> {
+  const settings = await resolveMemorySettings(db, thread, options);
+  if (!settings.deepMemoryEnabled) {
+    return { text: '', claimIds: [] };
+  }
+  const stable = await selectStableMemoryBoardItems(db, thread, options);
   const lines = [
     '深度记忆背景：以下内容只是背景参考，不是硬命令；用户最新明确要求、当前角色指令和资料事实优先。',
     stable.length > 0 ? '稳定记忆：' : '',
     ...stable.map(formatMemoryLine),
   ].filter(Boolean);
-  return lines.length > 1 ? lines.join('\n') : '';
+  const text = lines.length > 1 ? lines.join('\n') : '';
+  return {
+    text,
+    claimIds: text ? stable.map((memory) => memory.id) : [],
+  };
+}
+
+export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord, options?: BuildMemoryPrefixOptions): Promise<string> {
+  const result = await buildStableMemoryPrefixWithIds(db, thread, options);
+  if (options?.settings) {
+    selectedStableClaimIdsBySettings.set(options.settings, result.claimIds);
+  }
+  return result.text;
 }
 
 export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord, options?: BuildMemoryPrefixOptions): Promise<string> {
@@ -537,10 +560,11 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const [profiles, relationalStateText] = await Promise.all([
-    aiThreadRepository.getUserProfiles(db, thread.space, { boundIpId: thread.boundIpId, boundThreadId: thread.id }),
-    buildRelationalStateText({ db, space: thread.space, threadId: thread.id }),
-  ]);
+  const profiles = await aiThreadRepository.getUserProfiles(db, thread.space, {
+    boundIpId: thread.boundIpId,
+    boundThreadId: thread.id,
+  });
+  const relationalStateText = await buildRelationalStateText({ db, space: thread.space, threadId: thread.id });
   const globalProfile = profiles.find((p) => p.boundIpId == null && p.boundThreadId == null);
   const projectProfile = profiles.find((p) => p.boundIpId != null && p.boundThreadId == null);
   const threadProfile = profiles.find((p) => p.boundThreadId === thread.id);
@@ -600,58 +624,15 @@ export function scoreMemoryForQuery(memory: AiMemoryRecord, query: string, threa
   return keywordScore + scopeScore + importanceScore + recencyScore + assetScore + embeddingScore + fallbackScore;
 }
 
-export async function retrieveDynamicMemoryContext(
-  db: SQLiteDatabase,
-  thread: AiThreadRecord,
-  userMessage: string,
-  options?: BuildMemoryPrefixOptions
-): Promise<string> {
-  const settings = await resolveMemorySettings(db, thread, options);
-  if (!settings.deepMemoryEnabled) {
-    return '';
+/**
+ * Mark selected V2 memory claims as used so claim recency stays accurate.
+ */
+export async function touchInjectedMemories(
+  space: PixorySpace,
+  claimIds: string[]
+): Promise<void> {
+  if (claimIds.length === 0) {
+    return;
   }
-  const terms = queryTerms(userMessage);
-  if (terms.length === 0) {
-    return '';
-  }
-  try {
-    const v1Claims = await retrieveMemoryClaims(db, {
-      embeddingAvailable: false,
-      limit: DYNAMIC_MEMORY_LIMIT,
-      query: userMessage,
-      space: thread.space,
-      thread,
-    });
-    if (v1Claims.length > 0) {
-      await MemoryFacade.touchClaims(
-        thread.space,
-        v1Claims.map((item) => item.claim.id)
-      );
-      return compileMemoryUsageContract(v1Claims);
-    }
-  } catch {
-    // Legacy memory FTS remains the safe fallback during migration or on older databases.
-  }
-  const memories = await aiThreadRepository.searchActiveMemoryFts(db, {
-    branchScopes: options?.branchScopes,
-    boundIpId: thread.boundIpId,
-    boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
-    query: userMessage,
-    roleCardId: thread.roleCardId,
-    space: thread.space,
-    threadId: thread.id,
-    limit: 80,
-  });
-  const ranked = memories
-    .filter((memory) => memory.status === 'active' && shouldInjectMemoryIntoPrompt(memory) && memoryContainsQuery(memory, terms))
-    .map((memory) => ({ memory, priority: getMemoryPromptPriority(memory, thread), score: scoreMemoryForQuery(memory, userMessage, thread) }))
-    .filter((item) => item.priority > 0 && item.score > 0)
-    .sort((left, right) => right.priority - left.priority || right.score - left.score || right.memory.importance - left.memory.importance || left.memory.id.localeCompare(right.memory.id))
-    .slice(0, DYNAMIC_MEMORY_LIMIT)
-    .map((item) => item.memory);
-  if (ranked.length === 0) {
-    return '';
-  }
-  await aiThreadRepository.touchMemories(db, ranked.map((memory) => memory.id));
-  return ['相关记忆：', ...ranked.map((memory, index) => `${index + 1}. ${memory.content}`)].join('\n');
+  await MemoryFacade.touchClaims(space, claimIds);
 }

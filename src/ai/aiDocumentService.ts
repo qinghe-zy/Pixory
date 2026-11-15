@@ -45,7 +45,11 @@ import { parsePdfText } from './documentParsers/pdfParser';
 import { parsePlainText, type ParsedDocumentText } from './documentParsers/textParser';
 import { parsePptx } from './documentParsers/pptxParser';
 import { generateMissingEmbeddingsForDocument, getEmbeddingProviderForSpace } from './aiEmbeddingService';
-import { syncDocumentToRag, deleteDocumentFromRag } from './rag/pixoryRagBridge';
+import { syncDocumentToRag, deleteDocumentFromRag, invalidateOwnerRagCache } from './rag/pixoryRagBridge';
+import {
+  containsBinaryNullOrGarbledText,
+  resolveAttachmentKind,
+} from '../utils/attachmentKind';
 
 export const MAX_CHUNK_CHARS = 1200;
 export const CHUNK_OVERLAP_CHARS = 160;
@@ -319,6 +323,14 @@ async function parseDocumentText(document: AiDocumentRecord, space: PixorySpace)
     throw new Error('文档没有可读取的本地文件。');
   }
 
+  if (
+    resolveAttachmentKind(document.mimeType, document.originalFilename, document.localUri, {
+      includeSvg: false,
+    }) === 'image'
+  ) {
+    return { metadata: { parser: 'binary-guard' }, text: '' };
+  }
+
   if (document.sourceType === 'pdf') {
     return parsePdfText({ fileUri: document.localUri });
   }
@@ -334,6 +346,9 @@ async function parseDocumentText(document: AiDocumentRecord, space: PixorySpace)
   const content = await FileSystem.readAsStringAsync(document.localUri, {
     encoding: FileSystem.EncodingType.UTF8,
   });
+  if (containsBinaryNullOrGarbledText(content)) {
+    return { metadata: { parser: 'binary-guard' }, text: '' };
+  }
   if (document.sourceType === 'markdown') {
     return parseMarkdownText(content);
   }
@@ -599,6 +614,7 @@ export async function parseAndChunkDocument(input: ParseAndChunkDocumentInput): 
 
     // 异步同步至独立 RAG 插件索引 (非阻塞，安全捕获)
     if (chunks.length > 0) {
+      invalidateOwnerRagCache(input.space, document.ownerType, document.ownerId);
       syncDocumentToRag(input.space, {
         id: input.documentId,
         title: document.title,
@@ -747,11 +763,9 @@ export async function listGlobalMaterialGroupPage(input: {
       }
       return rows;
     };
-    const [threads, knowledgeBases, ips] = await Promise.all([
-      aiThreadRepository.findThreadsByIds(db, input.space, threadOwnerIds),
-      loadKnowledgeBasesById(),
-      loadIpsById(),
-    ]);
+    const threads = await aiThreadRepository.findThreadsByIds(db, input.space, threadOwnerIds);
+    const knowledgeBases = await loadKnowledgeBasesById();
+    const ips = await loadIpsById();
     const threadById = new Map(threads.map((thread) => [thread.id, thread]));
     const knowledgeBaseById = new Map(knowledgeBases.map((knowledgeBase) => [knowledgeBase.id, knowledgeBase]));
     const ipById = new Map(ips.map((ip) => [String(ip.id), ip]));
@@ -900,11 +914,13 @@ export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise
   const deletedFileUris: string[] = [];
   return runWithDatabaseSpace(input.space, async (db) => {
     let count = 0;
+    let ownerInfo: { ownerType: AiDocumentOwnerType; ownerId: string } | null = null;
     await db.withTransactionAsync(async () => {
       const document = await aiKnowledgeRepository.findDocumentById(db, input.documentId);
       if (!document || document.space !== input.space) {
         return;
       }
+      ownerInfo = { ownerType: document.ownerType, ownerId: document.ownerId };
       const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
       count += result.deleted;
       if (result.fileUri) {
@@ -912,6 +928,10 @@ export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise
       }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+    if (ownerInfo) {
+      const owner = ownerInfo as { ownerType: AiDocumentOwnerType; ownerId: string };
+      invalidateOwnerRagCache(input.space, owner.ownerType, owner.ownerId);
+    }
     deleteDocumentFromRag(input.space, input.documentId).catch(() => {});
     return count;
   });
@@ -925,10 +945,15 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
   return runWithDatabaseSpace(input.space, async (db) => {
     let count = 0;
     const deletedFileUris: string[] = [];
+    const touchedOwners = new Map<string, { ownerType: AiDocumentOwnerType; ownerId: string }>();
     await db.withTransactionAsync(async () => {
       for (const documentId of uniqueIds) {
         const document = await aiKnowledgeRepository.findDocumentById(db, documentId);
         if (document && document.space === input.space) {
+          touchedOwners.set(`${document.ownerType}:${document.ownerId}`, {
+            ownerType: document.ownerType,
+            ownerId: document.ownerId,
+          });
           const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
           count += result.deleted;
           if (result.fileUri) {
@@ -938,6 +963,9 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
       }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+    for (const owner of touchedOwners.values()) {
+      invalidateOwnerRagCache(input.space, owner.ownerType, owner.ownerId);
+    }
     for (const id of uniqueIds) {
       deleteDocumentFromRag(input.space, id).catch(() => {});
     }
@@ -972,6 +1000,9 @@ export async function removeMaterialsByOwner(input: RemoveMaterialsByOwnerInput)
     return count;
   };
   const cleanupRag = () => {
+    for (const ownerId of ownerIds) {
+      invalidateOwnerRagCache(input.space, input.ownerType, ownerId);
+    }
     for (const docId of deletedDocIds) {
       deleteDocumentFromRag(input.space, docId).catch(() => {});
     }
@@ -1051,6 +1082,22 @@ export async function moveThreadOwnedMaterialsBetweenSpaces(input: MoveThreadOwn
         }
       });
     });
+    for (const threadId of threadIds) {
+      invalidateOwnerRagCache(input.targetSpace, 'thread', threadId);
+    }
+    for (const payload of copiedPayloads) {
+      const content = payload.chunks.map((c) => c.text).join('\n\n');
+      if (content.trim()) {
+        syncDocumentToRag(input.targetSpace, {
+          id: payload.document.id,
+          title: payload.document.title,
+          content,
+          ownerType: payload.document.ownerType,
+          ownerId: payload.document.ownerId,
+          version: payload.document.updatedAt,
+        }).catch(() => {});
+      }
+    }
   } catch (error) {
     await cleanupDeletedMaterialFiles(copiedTargetFileUris);
     throw error;
@@ -1082,23 +1129,38 @@ export async function readDocumentForReader(input: ParseAndChunkDocumentInput): 
       throw new Error('未找到要阅读的 AI 文档。');
     }
     const chunks = await aiKnowledgeRepository.listChunksByDocumentId(db, input.documentId);
-    if (document.localUri && (document.sourceType === 'txt' || document.sourceType === 'markdown' || document.sourceType === 'manual_text' || document.sourceType === 'ip_generated')) {
+    const isImageDoc = resolveAttachmentKind(
+      document.mimeType,
+      document.originalFilename,
+      document.localUri,
+      { includeSvg: false },
+    ) === 'image';
+    if (!isImageDoc && document.localUri && (document.sourceType === 'txt' || document.sourceType === 'markdown' || document.sourceType === 'manual_text' || document.sourceType === 'ip_generated')) {
       try {
-        return {
-          document,
-          chunks,
-          text: await FileSystem.readAsStringAsync(document.localUri, {
-            encoding: FileSystem.EncodingType.UTF8,
-          }),
-        };
+        const rawText = await FileSystem.readAsStringAsync(document.localUri, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        if (!containsBinaryNullOrGarbledText(rawText)) {
+          return {
+            document,
+            chunks,
+            text: rawText,
+          };
+        }
       } catch {
         // Fall back to retrieval chunks if the app-private readable file is missing.
       }
     }
+    const cleanChunkText = isImageDoc
+      ? ''
+      : chunks
+          .map((chunk) => chunk.text)
+          .filter((chunkText) => !containsBinaryNullOrGarbledText(chunkText))
+          .join('\n\n');
     return {
       document,
       chunks,
-      text: chunks.map((chunk) => chunk.text).join('\n\n'),
+      text: cleanChunkText,
     };
   });
 }

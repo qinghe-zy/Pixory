@@ -1,4 +1,4 @@
-import { initDatabase, type PixorySpace } from '../../database';
+import { initDatabase, withScopedTransaction, type PixorySpace } from '../../database';
 import type { ImMessage, ImThread, ImThreadListItem, ImCompanionLivingState } from '../types';
 import { isGoodnightMessage, shouldExpireGoodnightEnvelope } from '../heartbeat/imDndGuard';
 import { formatMessagePreview } from '../../utils/formatMessagePreview';
@@ -545,58 +545,188 @@ export async function clearImThreadHistory(space: PixorySpace, threadId: string)
   });
 }
 
-/**
- * 彻底重置 IM 会话全量状态（包含日记、专属记忆簿与顶栏状态）
- */
-export async function clearImThreadFullState(
+async function runPostPurgeCleanup(
   space: PixorySpace,
   threadId: string,
-  roleCardId?: string | null
+  roleCardId: string | null,
+  canCascadeRoleData: boolean
+): Promise<void> {
+  try {
+    const { abortActiveStream } = await import('../services/imBackgroundStreamService');
+    abortActiveStream(space, threadId);
+  } catch {}
+
+  try {
+    const { cancelStagedMessageAlarm, cancelProactivePingAlarm } = await import('../services/imNotificationManager');
+    await Promise.all([
+      cancelStagedMessageAlarm(threadId).catch(() => false),
+      cancelProactivePingAlarm(threadId).catch(() => false),
+    ]);
+  } catch {}
+
+  try {
+    const { MemoryExtractionBatcher, buildMemoryBatcherKey } = await import('../../core/memory/memoryExtractionBatcher');
+    MemoryExtractionBatcher.shared.clearKey(buildMemoryBatcherKey(space, undefined, threadId));
+    if (roleCardId && canCascadeRoleData) {
+      MemoryExtractionBatcher.shared.clearKey(buildMemoryBatcherKey(space, roleCardId, threadId));
+    }
+  } catch {}
+
+  if (roleCardId) {
+    try {
+      const { invalidateRoleMemoryPrefetch } = await import('../../core/memory/memoryPrefetchService');
+      invalidateRoleMemoryPrefetch(space, roleCardId);
+    } catch {}
+  }
+}
+
+async function purgeImThreadData(
+  space: PixorySpace,
+  threadId: string,
+  options: {
+    roleCardId?: string | null;
+    deleteThreadRow: boolean;
+    forceCascadeRoleData?: boolean;
+  }
 ): Promise<void> {
   const db = await initDatabase(space);
   const now = new Date().toISOString();
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(`DELETE FROM ai_messages WHERE threadId = ?;`, [threadId]);
+  let resolvedRoleCardId: string | null = options.roleCardId?.trim() || null;
+  let resolvedCanCascade = false;
+
+  await withScopedTransaction(db, async (txDb) => {
+    if (!resolvedRoleCardId) {
+      try {
+        const row = await txDb.getFirstAsync<{ roleCardId: string | null }>(
+          `SELECT roleCardId FROM ai_threads WHERE id = ? AND chat_mode = 'im' LIMIT 1;`,
+          [threadId]
+        );
+        resolvedRoleCardId = row?.roleCardId?.trim() || null;
+      } catch {
+        resolvedRoleCardId = null;
+      }
+    }
+
+    await txDb.runAsync(`DELETE FROM ai_messages WHERE threadId = ?;`, [threadId]);
+
     try {
-      await db.runAsync(
-        `DELETE FROM ai_companion_diaries WHERE thread_id = ? OR (role_card_id IS NOT NULL AND role_card_id = ?);`,
-        [threadId, roleCardId || '__none__']
+      await txDb.runAsync(
+        `DELETE FROM ai_im_epoch_states WHERE thread_id = ? AND space = ?;`,
+        [threadId, space]
       );
     } catch {
       // 容错表不存在
     }
-    if (roleCardId) {
-      try {
-        await db.runAsync(
-          `DELETE FROM ai_companion_memories_fts WHERE memory_id IN (SELECT id FROM ai_companion_memories WHERE role_card_id = ?);`,
-          [roleCardId]
-        );
-        await db.runAsync(`DELETE FROM ai_companion_memories WHERE role_card_id = ?;`, [roleCardId]);
-      } catch {
-        // 容错
+
+    try {
+      await txDb.runAsync(`DELETE FROM ai_companion_diaries WHERE thread_id = ?;`, [threadId]);
+    } catch {
+      // 容错表不存在
+    }
+
+    if (resolvedRoleCardId) {
+      let siblingCount = 0;
+      if (options.forceCascadeRoleData !== true) {
+        try {
+          const siblingRow = await txDb.getFirstAsync<{ cnt: number }>(
+            `SELECT COUNT(1) AS cnt FROM ai_threads WHERE space = ? AND chat_mode = 'im' AND roleCardId = ? AND id != ?;`,
+            [space, resolvedRoleCardId, threadId]
+          );
+          siblingCount = Number(siblingRow?.cnt ?? 0);
+        } catch {
+          siblingCount = 0;
+        }
+      }
+      resolvedCanCascade = options.forceCascadeRoleData === true || siblingCount === 0;
+
+      if (resolvedCanCascade) {
+        try {
+          await txDb.runAsync(
+            `DELETE FROM ai_companion_diaries WHERE role_card_id = ?;`,
+            [resolvedRoleCardId]
+          );
+        } catch {
+          // 容错表不存在
+        }
+
+        try {
+          await txDb.runAsync(
+            `DELETE FROM ai_companion_memories_fts WHERE memory_id IN (SELECT id FROM ai_companion_memories WHERE role_card_id = ? AND space = ?);`,
+            [resolvedRoleCardId, space]
+          );
+          await txDb.runAsync(
+            `DELETE FROM ai_companion_memories WHERE role_card_id = ? AND space = ?;`,
+            [resolvedRoleCardId, space]
+          );
+        } catch {
+          // 容错表不存在
+        }
       }
     }
-    await db.runAsync(
-      `UPDATE ai_threads
-       SET lastMessagePreview = NULL,
-           im_unread_count = 0,
-           consecutive_unreplied_count = 0,
-           living_state_json = NULL,
-           updatedAt = ?
-       WHERE id = ? AND chat_mode = 'im';`,
-      [now, threadId]
-    );
+
+    if (options.deleteThreadRow) {
+      await txDb.runAsync(`DELETE FROM ai_threads WHERE id = ? AND chat_mode = 'im';`, [threadId]);
+    } else {
+      try {
+        await txDb.runAsync(
+          `UPDATE ai_threads
+           SET lastMessagePreview = NULL,
+               im_unread_count = 0,
+               consecutive_unreplied_count = 0,
+               living_state_json = NULL,
+               pending_ping_at = NULL,
+               pending_ping_intent = NULL,
+               ping_retry_count = 0,
+               pending_diary_hook = NULL,
+               updatedAt = ?
+           WHERE id = ? AND chat_mode = 'im';`,
+          [now, threadId]
+        );
+      } catch {
+        await txDb.runAsync(
+          `UPDATE ai_threads
+           SET lastMessagePreview = NULL,
+               im_unread_count = 0,
+               consecutive_unreplied_count = 0,
+               living_state_json = NULL,
+               updatedAt = ?
+           WHERE id = ? AND chat_mode = 'im';`,
+          [now, threadId]
+        );
+      }
+    }
+  });
+
+  await runPostPurgeCleanup(space, threadId, resolvedRoleCardId, resolvedCanCascade);
+}
+
+/**
+ * 彻底重置 IM 会话全量状态（清理本会话消息/世代/日记，仅当无其他存活兄弟会话共享角色卡时级联清空角色记忆）
+ */
+export async function clearImThreadFullState(
+  space: PixorySpace,
+  threadId: string,
+  roleCardId?: string | null,
+  options?: { forceCascadeRoleData?: boolean }
+): Promise<void> {
+  await purgeImThreadData(space, threadId, {
+    roleCardId,
+    deleteThreadRow: false,
+    forceCascadeRoleData: options?.forceCascadeRoleData,
   });
 }
 
 /**
- * 彻底物理删除 IM 会话
+ * 彻底物理删除 IM 会话（含世代、本会话日记、闹钟与内存缓存，仅在无兄弟会话时级联删除专属记忆）
  */
-export async function deleteImThread(space: PixorySpace, threadId: string): Promise<void> {
-  const db = await initDatabase(space);
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(`DELETE FROM ai_messages WHERE threadId = ?;`, [threadId]);
-    await db.runAsync(`DELETE FROM ai_threads WHERE id = ? AND chat_mode = 'im';`, [threadId]);
+export async function deleteImThread(
+  space: PixorySpace,
+  threadId: string,
+  options?: { forceCascadeRoleData?: boolean }
+): Promise<void> {
+  await purgeImThreadData(space, threadId, {
+    deleteThreadRow: true,
+    forceCascadeRoleData: options?.forceCascadeRoleData,
   });
 }
 
@@ -684,13 +814,13 @@ export async function getContextMessagesFromAnchor(
         [threadId, anchorRow.rowid]
       );
       if (rows.length > 0) {
-        return rows.map(mapMessageRow);
+        return rows.map(mapMessageRow).filter((m) => m.type !== 'thought');
       }
     }
   }
 
   const descItems = await getVisibleImMessages(space, threadId, Math.max(fallbackLimit, 180));
-  return descItems.reverse();
+  return descItems.filter((m) => m.type !== 'thought').reverse();
 }
 
 /**
@@ -1005,14 +1135,14 @@ export async function revealPendingMessages(
     livingState?.activityLoad === 'sleeping' ||
     livingState?.deviceAccess === 'away';
 
-  await db.withTransactionAsync(async () => {
+  const runReveal = async (txDb: typeof db) => {
     for (const row of candidateRows) {
       const isStaged = row.delivery_status === 'staged';
 
       if (isStaged) {
         // 若用户在预埋心跳计划时间之后已经先发了新消息，则取消该旧预埋气泡
         if (latestUserTimeMs > row.visible_at) {
-          await db.runAsync(
+          await txDb.runAsync(
             `UPDATE ai_messages SET delivery_status = 'cancelled_by_user' WHERE id = ?;`,
             [row.id]
           );
@@ -1027,7 +1157,7 @@ export async function revealPendingMessages(
           nowMs
         );
         if (nowMs - row.visible_at > STAGED_STALE_TTL_MS || isGoodnightExpired) {
-          await db.runAsync(
+          await txDb.runAsync(
             `UPDATE ai_messages SET delivery_status = 'expired_ttl' WHERE id = ?;`,
             [row.id]
           );
@@ -1036,7 +1166,7 @@ export async function revealPendingMessages(
 
         // 2. 显影时二次生活状态守卫（仅当即时显影且角色熟睡时拦截；若杀后台延迟补显且当时未睡则正常恢复）
         if (isCompanionSleeping && nowMs - row.visible_at < 5 * 60 * 1000) {
-          await db.runAsync(
+          await txDb.runAsync(
             `UPDATE ai_messages SET delivery_status = 'cancelled_by_state' WHERE id = ?;`,
             [row.id]
           );
@@ -1048,14 +1178,14 @@ export async function revealPendingMessages(
       const createdMs = Date.parse(row.createdAt) || row.visible_at;
       const alignedMs = isStaged ? row.visible_at : Math.max(createdMs, row.visible_at);
       const alignedCreatedAt = new Date(alignedMs).toISOString();
-      await db.runAsync(
+      await txDb.runAsync(
         `UPDATE ai_messages SET delivery_status = 'delivered', status = 'completed', createdAt = ? WHERE id = ?;`,
         [alignedCreatedAt, row.id]
       );
 
       // 刷新会话最后一条消息预览（净化结构化 JSON 与控制标签，避免内部技术结构泄露）
       const cleanPreview = formatMessagePreview(row.content, '').slice(0, 80);
-      await db.runAsync(
+      await txDb.runAsync(
         `UPDATE ai_threads SET lastMessagePreview = ?, updatedAt = ? WHERE id = ?;`,
         [cleanPreview || null, alignedCreatedAt, threadId]
       );
@@ -1064,21 +1194,143 @@ export async function revealPendingMessages(
     }
 
     if (revealedStagedCount > 0) {
-      await db.runAsync(
+      await txDb.runAsync(
         `UPDATE ai_threads SET consecutive_unreplied_count = COALESCE(consecutive_unreplied_count, 0) + 1 WHERE id = ?;`,
         [threadId]
       );
     }
 
     if (options?.incrementUnread && revealedCount > 0) {
-      await db.runAsync(
+      await txDb.runAsync(
         `UPDATE ai_threads SET im_unread_count = COALESCE(im_unread_count, 0) + ? WHERE id = ?;`,
         [revealedCount, threadId]
       );
     }
-  });
+  };
+
+  if (typeof withScopedTransaction === 'function') {
+    await withScopedTransaction(db, runReveal);
+  } else if (typeof (db as { withTransactionAsync?: (fn: () => Promise<void>) => Promise<void> }).withTransactionAsync === 'function') {
+    await db.withTransactionAsync(async () => {
+      await runReveal(db);
+    });
+  } else {
+    await runReveal(db);
+  }
 
   return revealedCount;
+}
+
+export const revealDueStagedMessages = revealPendingMessages;
+
+/**
+ * 用户插话打断或流收口：将本轮尚未显影的 revealing 气泡强制顺推并钳位至 beforeTimestampMs 之前落盘显影，
+ * 保持严格的先后相对序且绝不越过打断消息时间点；同时物理清理未触发的 staged 心跳气泡。
+ */
+export async function flushRevealingAndCancelStagedBubbles(
+  space: PixorySpace,
+  threadId: string,
+  beforeTimestampMs: number = Date.now()
+): Promise<{ flushedCount: number; cancelledStagedCount: number }> {
+  const db = await initDatabase(space);
+  let flushedCount = 0;
+  let cancelledStagedCount = 0;
+
+  const runFlush = async (txDb: typeof db) => {
+    const revealingRows = await txDb.getAllAsync<RawMessageRow>(
+      `SELECT id, threadId, burst_group_id, role, content, status, delivery_status, visible_at, createdAt
+       FROM ai_messages
+       WHERE threadId = ? AND delivery_status = 'revealing'
+       ORDER BY (visible_at IS NULL) ASC, visible_at ASC, createdAt ASC, rowid ASC;`,
+      [threadId]
+    );
+
+    if (revealingRows.length > 0) {
+      let ceiling = beforeTimestampMs - 1;
+      const clampedTimestamps = new Array<number>(revealingRows.length);
+
+      for (let i = revealingRows.length - 1; i >= 0; i -= 1) {
+        const row = revealingRows[i];
+        const parsedCreated = Date.parse(row.createdAt);
+        const origMs =
+          typeof row.visible_at === 'number' && Number.isFinite(row.visible_at)
+            ? row.visible_at
+            : Number.isFinite(parsedCreated)
+              ? parsedCreated
+              : ceiling;
+        const clampedMs = Math.min(origMs, ceiling);
+        clampedTimestamps[i] = clampedMs;
+        ceiling = clampedMs - 1;
+      }
+
+      for (let i = 0; i < revealingRows.length; i += 1) {
+        const row = revealingRows[i];
+        const clampedMs = clampedTimestamps[i];
+        const clampedCreatedAt = new Date(clampedMs).toISOString();
+        await txDb.runAsync(
+          `UPDATE ai_messages
+           SET delivery_status = 'delivered', status = 'completed', visible_at = ?, createdAt = ?
+           WHERE id = ?;`,
+          [clampedMs, clampedCreatedAt, row.id]
+        );
+      }
+
+      flushedCount = revealingRows.length;
+
+      // 挑选最后一条非 thought、非空的规范消息预览，避免覆盖合法预览为 NULL 或 [思考过程]
+      let nextPreview: string | null = null;
+      for (let i = revealingRows.length - 1; i >= 0; i -= 1) {
+        const candidate = revealingRows[i];
+        const mapped = mapMessageRow(candidate);
+        if (mapped.type === 'thought') {
+          continue;
+        }
+        const formatted = formatMessagePreview(candidate.content, '').slice(0, 80).trim();
+        if (!formatted || formatted === '[思考过程]') {
+          continue;
+        }
+        nextPreview = formatted;
+        break;
+      }
+
+      const lastClampedIso = new Date(clampedTimestamps[revealingRows.length - 1]).toISOString();
+      if (nextPreview) {
+        await txDb.runAsync(
+          `UPDATE ai_threads
+           SET lastMessagePreview = CASE WHEN updatedAt IS NULL OR updatedAt < ? THEN ? ELSE lastMessagePreview END,
+               updatedAt = CASE WHEN updatedAt IS NULL OR updatedAt < ? THEN ? ELSE updatedAt END
+           WHERE id = ?;`,
+          [lastClampedIso, nextPreview, lastClampedIso, lastClampedIso, threadId]
+        );
+      } else {
+        await txDb.runAsync(
+          `UPDATE ai_threads
+           SET updatedAt = CASE WHEN updatedAt IS NULL OR updatedAt < ? THEN ? ELSE updatedAt END
+           WHERE id = ?;`,
+          [lastClampedIso, lastClampedIso, threadId]
+        );
+      }
+    }
+
+    const delRes = await txDb.runAsync(
+      `DELETE FROM ai_messages WHERE threadId = ? AND delivery_status = 'staged';`,
+      [threadId]
+    );
+    cancelledStagedCount = delRes.changes ?? 0;
+  };
+
+  const hasTx = typeof (db as { withTransactionAsync?: unknown }).withTransactionAsync === 'function';
+  if (hasTx && typeof withScopedTransaction === 'function') {
+    await withScopedTransaction(db, runFlush);
+  } else if (hasTx) {
+    await db.withTransactionAsync(async () => {
+      await runFlush(db);
+    });
+  } else {
+    await runFlush(db);
+  }
+
+  return { flushedCount, cancelledStagedCount };
 }
 
 /**

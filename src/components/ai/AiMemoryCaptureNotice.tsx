@@ -48,7 +48,12 @@ export function AiMemoryCaptureNotice({ count, items = [], onManage, onMarkInacc
   return (
     <View style={styles.container}>
       <View style={styles.wrap}>
-        <Pressable accessibilityRole="button" onPress={() => setExpanded((value) => !value)} style={styles.noticeTextButton}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={() => setExpanded((value) => !value)}
+          style={({ pressed }) => [styles.noticeTextButton, pressed && styles.pressed]}
+        >
           <Text numberOfLines={1} style={styles.text}>
             {summaryText ? `${headline}：${summaryText}${count > 1 ? ` +${count - 1}` : ''}` : `${headline} ${count} 条内容`}
           </Text>

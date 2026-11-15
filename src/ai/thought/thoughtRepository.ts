@@ -40,7 +40,9 @@ export async function permanentlyDeleteThoughts(db:SQLiteDatabase,ids:string[]):
   if(uniqueIds.length===0||uniqueIds.length!==ids.length)throw new Error('所选独白已发生变化，请刷新后重试。');
   const placeholders=uniqueIds.map(()=>'?').join(', ');
   let deletedCount=0;
-  await db.withExclusiveTransactionAsync(async(txn)=>{
+  const runTx = db.withTransactionAsync as unknown as (task: (txn?: SQLiteDatabase) => Promise<void>) => Promise<void>;
+  await runTx.call(db, async (maybeTxn) => {
+    const txn = maybeTxn ?? db;
     const selected=await txn.getAllAsync<{id:string}>(`SELECT id FROM companion_thoughts WHERE id IN (${placeholders})`,...uniqueIds);
     if(selected.length!==uniqueIds.length)throw new Error('所选独白已发生变化，请刷新后重试。');
     const deletion=await txn.runAsync(`DELETE FROM companion_thoughts WHERE id IN (${placeholders})`,...uniqueIds);

@@ -1,5 +1,12 @@
 import type { ContextBudget, PromptCitation, PromptContextResult, RagSnippet } from '../../types';
 
+function escapeContextDelimiters(value: string): string {
+  return value
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export class PromptContextBuilder {
   public static buildContext(snippets: RagSnippet[], budget?: ContextBudget): PromptContextResult {
     const maxChars = budget?.maxChars ?? 2500;
@@ -26,9 +33,12 @@ export class PromptContextBuilder {
       const refNumber = index + 1;
       const refId = `[${refNumber}]`;
 
-      const blockHeader = `${refId} 《${snippet.documentTitle}》`;
-      const blockBody = snippet.text.trim();
-      const blockFull = `${blockHeader}\n${blockBody}`;
+      const safeTitle = escapeContextDelimiters(snippet.documentTitle);
+      const safeBody = escapeContextDelimiters(snippet.text.trim());
+      const blockHeader = budget?.formatCitationHeader
+        ? budget.formatCitationHeader(snippet, refId)
+        : `${refId} 《${safeTitle}》`;
+      const blockFull = `${blockHeader}\n${safeBody}`;
 
       if (currentLength + blockFull.length > maxChars && formattedBlocks.length > 0) {
         // 预算已满，截断

@@ -21,6 +21,7 @@ import {
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { resolveAttachmentKind } from '../utils/attachmentKind';
 
 interface AiMaterialImportScreenProps {
   space: PixorySpace;
@@ -137,7 +138,20 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, initi
     if (result.canceled) {
       return { message: '已取消选择。', tone: 'info' };
     }
-    const assets = result.assets.map((asset) => ({
+    const nonImageAssets = result.assets.filter(
+      (asset) =>
+        resolveAttachmentKind(asset.mimeType, asset.name ?? 'material.txt', asset.uri, {
+          includeSvg: false,
+        }) !== 'image',
+    );
+    const skippedImageCount = result.assets.length - nonImageAssets.length;
+    if (nonImageAssets.length === 0) {
+      return {
+        message: '资料库当前仅支持文本/PDF/Word/PPT 文档，图片请在聊天中使用「上传图片」或在 IP 素材库管理。',
+        tone: 'warning',
+      };
+    }
+    const assets = nonImageAssets.map((asset) => ({
       fileName: asset.name ?? 'material.txt',
       fileSize: asset.size ?? null,
       mimeType: asset.mimeType ?? null,
@@ -155,6 +169,12 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, initi
           ownerType: 'knowledge_base',
           space,
         });
+    if (skippedImageCount > 0) {
+      return {
+        message: `已导入 ${documents.length} 份文档，已自动跳过 ${skippedImageCount} 张图片（图片请使用聊天图片或 IP 素材库）。`,
+        tone: 'warning',
+      };
+    }
     if (documents.length === 1) {
       return feedbackForDocument(documents[0], '已导入');
     }

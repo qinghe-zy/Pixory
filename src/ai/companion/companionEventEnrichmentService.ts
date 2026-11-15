@@ -117,11 +117,9 @@ export async function runCompanionEventEnrichmentJob(input: {
     await db.withTransactionAsync(async () => {
       input.assertActive?.();
       const commitAt = input.now ?? new Date().toISOString();
-      const [currentJob, currentThread, currentMessage] = await Promise.all([
-        findCompanionRuntimeJob(db, leased.id),
-        aiThreadRepository.findThreadById(db, leased.threadId),
-        aiThreadRepository.findMessageById(db, sourceMessageId),
-      ]);
+      const currentJob = await findCompanionRuntimeJob(db, leased.id);
+      const currentThread = await aiThreadRepository.findThreadById(db, leased.threadId);
+      const currentMessage = await aiThreadRepository.findMessageById(db, sourceMessageId);
       const guard = validateEnrichmentCommitGuard({
         commitAt,
         expectedMessageVersionHash: String(expectedVersionHash),

@@ -3,7 +3,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useImTheme } from '../../theme/ImThemeProvider';
 import type { BubbleRendererProps } from '../../registry/bubbleRegistry';
+import { useProportionalImageDimensions } from '../../../components/ProportionalSecureImage';
 import { SecureImage } from '../../../components/SecureImage';
+
+const IM_IMAGE_BOUNDS = {
+  fallbackHeight: 135,
+  fallbackWidth: 180,
+  maxAspectRatio: 2.2,
+  maxHeight: 280,
+  maxWidth: 220,
+  minAspectRatio: 0.45,
+  minHeight: 84,
+  minWidth: 96,
+} as const;
 
 /**
  * 微信级原生图片消息渲染器 (Authentic WeChat Image Bubble)
@@ -23,6 +35,7 @@ export function ImageBubbleRenderer({
   const theme = useImTheme();
   const isUser = message.role === 'user';
   const imageUri = message.imageUri;
+  const { dimensions, handleImageLoad } = useProportionalImageDimensions(imageUri, IM_IMAGE_BOUNDS);
   const lastAvatarTapRef = React.useRef(0);
 
   const handleAvatarPress = () => {
@@ -79,10 +92,24 @@ export function ImageBubbleRenderer({
           delayLongPress={260}
           onLongPress={handleLongPress}
           onPress={() => onPressMessage?.(message)}
-          style={({ pressed }) => [styles.imageCard, { borderRadius: theme.radii.bubbleRadius }, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.imageCard,
+            {
+              borderRadius: theme.radii.bubbleRadius,
+              height: dimensions.height,
+              width: dimensions.width,
+            },
+            pressed && styles.pressed,
+          ]}
         >
           {imageUri ? (
-            <SecureImage space={space} style={[styles.contentImage, { borderRadius: theme.radii.bubbleRadius }]} uri={imageUri} />
+            <SecureImage
+              contentFit="cover"
+              onLoad={handleImageLoad}
+              space={space}
+              style={[styles.contentImage, { borderRadius: theme.radii.bubbleRadius }]}
+              uri={imageUri}
+            />
           ) : (
             <View style={styles.fallbackBox}>
               <Text style={styles.fallbackText}>[图片已失效]</Text>
@@ -134,8 +161,6 @@ const styles = StyleSheet.create({
   companionDefaultAvatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
   imageWrap: { position: 'relative', overflow: 'hidden' },
   imageCard: {
-    width: 175,
-    height: 175,
     backgroundColor: '#E5E7EB',
     overflow: 'hidden',
     position: 'relative',

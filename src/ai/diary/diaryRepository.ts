@@ -299,7 +299,9 @@ export const diaryRepository = {
     const placeholders = uniqueIds.map(() => '?').join(', ');
     let deletedCount = 0;
     const removedDiaryIds: string[] = [];
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    const runTx = db.withTransactionAsync as unknown as (task: (txn?: SQLiteDatabase) => Promise<void>) => Promise<void>;
+    await runTx.call(db, async (maybeTxn) => {
+      const txn = maybeTxn ?? db;
       const selected = await txn.getAllAsync<{ id: string; diaryId: string }>(
         `SELECT id, diaryId FROM companion_diary_versions WHERE id IN (${placeholders})`,
         ...uniqueIds,
@@ -389,10 +391,10 @@ export const diaryRepository = {
     const now = createTimestamp();
     let version: RoleDiaryVersionRecord | null = null;
 
-    // Use withExclusiveTransactionAsync to get a dedicated connection, preventing
-    // "cannot rollback · no transaction is active" errors caused by concurrent
-    // withTransactionAsync calls (e.g. memory writes) racing on the shared connection.
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    // Run inside serialized single-connection transaction queue so PRAGMA busy_timeout and foreign_keys remain active.
+    const runTx = db.withTransactionAsync as unknown as (task: (txn?: SQLiteDatabase) => Promise<void>) => Promise<void>;
+    await runTx.call(db, async (maybeTxn) => {
+      const txn = maybeTxn ?? db;
       const existing = await txn.getFirstAsync<Pick<RoleDiaryRecord, 'currentVersionId'>>(
         'SELECT * FROM companion_diaries WHERE id = ?',
         id,

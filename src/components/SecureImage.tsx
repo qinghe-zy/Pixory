@@ -1,13 +1,19 @@
+import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageContentFit, type ImageProps, type ImageStyle } from 'expo-image';
-import type { StyleProp } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { PixorySpace } from '../database';
+import { colors, metrics } from '../design/tokens';
 
-interface SecureImageProps {
+export interface SecureImageProps {
   uri: string;
   space: PixorySpace;
+  accessibilityLabel?: string;
   blurRadius?: number;
   contentFit?: ImageContentFit;
+  onError?: ImageProps['onError'];
+  onLoad?: ImageProps['onLoad'];
   placeholder?: ImageProps['placeholder'];
   priority?: ImageProps['priority'];
   recyclingKey?: string;
@@ -18,28 +24,61 @@ interface SecureImageProps {
 export function SecureImage({
   uri,
   space,
+  accessibilityLabel,
   blurRadius,
   contentFit = 'cover',
+  onError,
+  onLoad,
   placeholder,
   priority,
   recyclingKey,
   style,
   transition,
 }: SecureImageProps) {
+  const [failedUri, setFailedUri] = React.useState<string | null>(null);
+  const trimmedUri = uri?.trim() ?? '';
+  const isFailed = !trimmedUri || failedUri === trimmedUri;
+
+  if (isFailed) {
+    return (
+      <View
+        accessibilityLabel={accessibilityLabel}
+        style={[styles.fallbackContainer, style as StyleProp<ViewStyle>]}
+      >
+        <Ionicons color={colors.text.secondary} name="image-outline" size={metrics.iconSizeMd} />
+      </View>
+    );
+  }
+
   return (
     <Image
+      accessibilityLabel={accessibilityLabel}
       blurRadius={blurRadius}
       cachePolicy={space === 'personal' ? 'memory' : 'disk'}
       contentFit={contentFit}
+      onError={(event) => {
+        setFailedUri(trimmedUri);
+        onError?.(event);
+      }}
+      onLoad={onLoad}
       placeholder={placeholder}
       priority={priority}
       recyclingKey={recyclingKey}
-      source={{ uri }}
+      source={{ uri: trimmedUri }}
       style={style}
       transition={transition}
     />
   );
 }
+
+const styles = StyleSheet.create({
+  fallbackContainer: {
+    alignItems: 'center',
+    backgroundColor: colors.background.soft,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+});
 
 export async function clearPersonalImageCache(): Promise<void> {
   const results = await Promise.allSettled([Image.clearMemoryCache()]);

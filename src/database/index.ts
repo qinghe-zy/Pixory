@@ -2,12 +2,21 @@ export {
   getDatabase,
   initDatabase,
   checkpointDatabase,
+  rebuildAiMemoryFtsIndex,
   resetDatabaseSpaceCache,
   runMigrations,
   runWithDatabaseSpace,
   runWithTransactionRetry,
   type PixorySpace,
 } from './db';
+export {
+  getSqliteSerializationDiagnostics,
+  isSerializedSqliteDatabase,
+  serializeSqliteDatabase,
+  withScopedTransaction,
+  type BareWriteAuditEntry,
+  type SqliteSerializationDiagnostics,
+} from './sqliteSerialization';
 export { DATABASE_NAME, PERSONAL_DATABASE_NAME, DATABASE_VERSION } from './schema';
 export { seedDevelopmentData } from './seed';
 export { groupRepository } from './repositories/groupRepository';

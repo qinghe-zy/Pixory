@@ -27,6 +27,7 @@ export class GlobalHeartbeatEngine {
   private openThreadCounts = new Map<string, number>();
   private personalSpaceUnlocked = false;
   private isScanning = false;
+  private pendingRescan = false;
 
   private constructor() {}
 
@@ -40,12 +41,13 @@ export class GlobalHeartbeatEngine {
     this.personalSpaceUnlocked = unlocked;
 
     if (!unlocked) {
+      this.pendingRescan = false;
       void this.suspendPersonalSpace();
       return;
     }
 
     if (!prev && unlocked) {
-      void this.scanAndReveal();
+      void this.scanAndReveal(true);
     }
   }
 
@@ -146,12 +148,17 @@ export class GlobalHeartbeatEngine {
 
   private handleAppStateChange = (nextState: AppStateStatus) => {
     if (nextState === 'active') {
-      void this.scanAndReveal();
+      void this.scanAndReveal(true);
     }
   };
 
-  async scanAndReveal(): Promise<void> {
-    if (this.isScanning) return;
+  async scanAndReveal(rescanIfBusy = false): Promise<void> {
+    if (this.isScanning) {
+      if (rescanIfBusy) {
+        this.pendingRescan = true;
+      }
+      return;
+    }
     this.isScanning = true;
 
     try {
@@ -221,6 +228,10 @@ export class GlobalHeartbeatEngine {
       }
     } finally {
       this.isScanning = false;
+      if (this.pendingRescan) {
+        this.pendingRescan = false;
+        void this.scanAndReveal(false);
+      }
     }
   }
 }

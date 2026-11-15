@@ -639,16 +639,27 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     runOnIo(promise, "PIXORY_COPY_FAILED") {
       val taskId = options?.getString("taskId")
       val source = Uri.parse(sourceUri)
+      val scheme = source.scheme?.lowercase(Locale.ROOT)
+      if (scheme != null && scheme != ContentResolver.SCHEME_CONTENT && scheme != ContentResolver.SCHEME_FILE && scheme != ContentResolver.SCHEME_ANDROID_RESOURCE) {
+        throw SecurityException("Unsupported source URI scheme.")
+      }
       val destination = fileFromUri(destinationUri)
       destination.parentFile?.mkdirs()
       val totalBytes = resolveSize(source)
       ensureEnoughSpace(destination, totalBytes)
       var copiedBytes = 0L
 
-      openInput(source).use { input ->
-        FileOutputStream(destination).use { output ->
-          copiedBytes = copyStream(input, output, taskId, totalBytes)
+      try {
+        openInput(source).use { input ->
+          FileOutputStream(destination).use { output ->
+            copiedBytes = copyStream(input, output, taskId, totalBytes)
+          }
         }
+      } catch (error: Exception) {
+        if (destination.exists()) {
+          destination.delete()
+        }
+        throw error
       }
 
       val result = Arguments.createMap()

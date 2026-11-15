@@ -125,25 +125,13 @@ export function planFallbackProactivePing(params: {
   }
 
   let delayMs = pacing.suggestedDelayMs;
-  let intent = '日常主动关心对方近况或自然分享此刻生活小事';
-  let hasSpecificIntent = false;
 
   // 若用户刚提到洗澡/开会/上课/睡觉等明确情境且为首轮未回，精准贴合情境时长
   if (params.consecutiveUnreplied === 0 && params.lastUserText) {
     const sit = detectSituationalDelay(params.lastUserText);
     if (sit) {
       delayMs = sit.delayMs;
-      hasSpecificIntent = true;
-      if (sit.scenario === 'bath') intent = '跟进对方洗完澡后的动向，依人设自然接话或关照';
-      else if (sit.scenario === 'meeting') intent = '跟进对方开完会/忙完手头事宜的进展，依据人设自然交谈';
-      else if (sit.scenario === 'study') intent = '跟进对方下课或自习结束后的动向，依人设自然交流';
-      else if (sit.scenario === 'meal') intent = '跟进对方吃完饭后的动向，自然分享或闲聊';
-      else if (sit.scenario === 'commute') intent = '跟进对方安全抵达目的地的动向，自然问询';
-      else if (sit.scenario === 'sleep') intent = '留意对方睡醒动向，依人设轻声问候';
     }
-  } else if (pacing.tier === 2) {
-    intent = '隔了几个小时温和分享一件生活小事，不给回复压力';
-    hasSpecificIntent = true;
   }
 
   // 根据伴侣个性化主动频次档位微调延时
@@ -172,17 +160,10 @@ export function planFallbackProactivePing(params: {
     const baseMorning = getNextMorning730(targetTimestamp, params.dndConfig);
     const jitterMs = ((targetTimestamp % 35) + 5) * 60 * 1000;
     targetTimestamp = baseMorning + jitterMs;
-    intent = '早安问候与新一天日常关心';
-    hasSpecificIntent = true;
-  }
-
-  // 若为 Tier 3 或未指定具体情境意图，依据最终 targetTimestamp 所在作息时段分配意图（消除时间自相矛盾）
-  if (!hasSpecificIntent || pacing.tier === 3) {
-    intent = resolveNaturalProactiveIntent(targetTimestamp, intent);
   }
 
   return {
     targetTimestamp,
-    intent,
+    intent: 'scheduled_checkin',
   };
 }

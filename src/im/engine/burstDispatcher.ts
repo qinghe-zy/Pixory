@@ -9,13 +9,20 @@ import {
 } from '../repository/imThreadRepository';
 import type { ImMessage } from '../types';
 import { calculateBubbleTypingDelay, DEFAULT_PACING_CONFIG, type ImPacingConfig } from '../config/pacingProfile';
-import { calculateHumanTypingDelay, type HumanTypingOptions } from '../config/humanTypingTimeline';
+import { calculateHumanTypingDelay } from '../config/humanTypingTimeline';
 import { sanitizeCompanionBubble } from './humanizeOutputGate';
 import { resolveSticker, resolveCompensationEmoji } from '../../components/emoji/StickerSemanticResolver';
 import { CasBlobStore } from '../../services/agent/vfs/casBlobStore';
 import { applyBatchSafely } from '../../services/sandbox/diff/fuzzyPatcher';
-import { parseVoiceTag, type ParsedVoiceTag, type ParsedDocumentPatchTag } from './imTagParser';
+import {
+  parseVoiceTag,
+  tokenizeMultimodalSegment,
+  type ParsedVoiceTag,
+  type ParsedDocumentPatchTag,
+} from './imTagParser';
 import { voiceService } from '../../voice/voiceService';
+
+const MAX_BURST_REVEAL_WINDOW_MS = 6000;
 
 export function getStickerCooldownThreshold(style?: string | null): number {
   if (!style) return 3;
@@ -34,11 +41,12 @@ const INLINE_STAGE_ACTION_REGEX = /[（\(]([^）\)]+)[）\)]/;
 export interface DispatchStickerOptions {
   personaStyle?: string | null;
   userTextLength?: number;
+  useHumanTimeline?: boolean;
 }
 
 export interface DispatchStickerResult {
   dispatched: boolean;
-  reason: 'cooldown_intercepted' | 'resolved_and_dispatched' | 'no_sticker_found';
+  reason: 'cooldown_intercepted' | 'resolved_and_dispatched' | 'no_sticker_found' | 'burst_cancelled';
   message?: ImMessage;
   compensationEmoji?: string;
   stickerName?: string;
@@ -165,6 +173,10 @@ export class BurstMessageDispatcher {
   private dispatchedCountInBurst: number = 0;
   private turnsSinceLastSticker: number = 999;
   private lastPrecedingAction: string | null = null;
+  private inFlightDispatches = new Set<Promise<unknown>>();
+  private pendingFallbackCompensationEmoji: string | null = null;
+  private dispatchQueue: Promise<void> = Promise.resolve();
+  private burstEpoch: number = 0;
 
   constructor(
     threadId: string,
@@ -176,59 +188,129 @@ export class BurstMessageDispatcher {
     this.config = config;
   }
 
-  beginBurst(): string {
+  private initBurstFieldsOnly(): string {
     this.currentBurstGroupId = `burst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     this.accumulatedDelay = 0;
     this.dispatchedCountInBurst = 0;
     this.lastPrecedingAction = null;
+    this.pendingFallbackCompensationEmoji = null;
     return this.currentBurstGroupId;
   }
 
+  private ensureActiveBurstGroup(): string {
+    return this.currentBurstGroupId || this.initBurstFieldsOnly();
+  }
+
+  beginBurst(): string {
+    this.burstEpoch += 1;
+    return this.initBurstFieldsOnly();
+  }
+
   cancelPendingBurst(): void {
+    this.burstEpoch += 1;
     this.currentBurstGroupId = null;
     this.accumulatedDelay = 0;
     this.dispatchedCountInBurst = 0;
     this.lastPrecedingAction = null;
+    this.pendingFallbackCompensationEmoji = null;
   }
 
-  async dispatchSentence(
-    text: string,
+  getDispatchedCountInBurst(): number {
+    return this.dispatchedCountInBurst;
+  }
+
+  async waitForPendingDispatches(): Promise<void> {
+    while (this.inFlightDispatches.size > 0) {
+      await Promise.allSettled([...this.inFlightDispatches]);
+    }
+  }
+
+  private trackDispatch<T>(fn: () => Promise<T>): Promise<T> {
+    const p = fn();
+    this.inFlightDispatches.add(p);
+    const cleanup = () => {
+      this.inFlightDispatches.delete(p);
+    };
+    p.then(cleanup, cleanup);
+    return p;
+  }
+
+  private enqueueDispatch<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.dispatchQueue.then(fn, fn);
+    this.dispatchQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return this.trackDispatch(() => run);
+  }
+
+  /**
+   * 限制单轮连发的总显影时间窗不超过 MAX_BURST_REVEAL_WINDOW_MS (6000ms)。
+   * 注：当首句命中忙碌态 (isOccupied) 产生约 ~5000ms 阅读延迟时，后续非首句气泡会快速贴近
+   * 6000ms 上限，从而自动触发 180~300ms 紧凑压缩，保证角色回应一旦开口便连贯落完。
+   */
+  private applyBurstWindowCap(
+    rawDelay: number,
+    _modality: 'text' | 'sticker' | 'voice' | 'document',
+    isFirst: boolean
+  ): number {
+    if (isFirst) {
+      return rawDelay;
+    }
+    if (
+      this.accumulatedDelay >= MAX_BURST_REVEAL_WINDOW_MS ||
+      this.accumulatedDelay + rawDelay > MAX_BURST_REVEAL_WINDOW_MS
+    ) {
+      return 180 + Math.min(120, Math.round(rawDelay * 0.1));
+    }
+    return rawDelay;
+  }
+
+  private async dispatchTextAtom(
+    rawText: string,
     ticker?: VisibilityTicker,
-    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean; voiceReplyEnabled?: boolean }
+    options?: {
+      isOccupied?: boolean;
+      userTextLength?: number;
+      useHumanTimeline?: boolean;
+      voiceReplyEnabled?: boolean;
+      personaStyle?: string | null;
+    },
+    internalOpts?: {
+      capturedEpoch?: number;
+      isFencedCodeBlock?: boolean;
+    }
   ): Promise<ImMessage | null> {
-    const voiceTag = parseVoiceTag(text);
-    if (voiceTag) {
-      const allowed = options?.voiceReplyEnabled ?? this.voiceReplyEnabled;
-      if (!allowed) {
-        // 会话关闭语音回复时，平滑退化为普通文字对白气泡发射
-        return this.dispatchSentence(voiceTag.text, ticker, options);
-      }
-      return this.dispatchVoice(voiceTag, ticker, options);
+    if (internalOpts?.capturedEpoch !== undefined && this.burstEpoch !== internalOpts.capturedEpoch) {
+      return null;
     }
 
-    const cleaned = sanitizeCompanionBubble(text, { preserveInlineStageActions: true });
-    const effectiveText = cleaned.trim();
+    const effectiveText = internalOpts?.isFencedCodeBlock
+      ? rawText.trim()
+      : sanitizeCompanionBubble(rawText).trim();
     if (!effectiveText) {
       return null;
     }
 
-    const stageMatch = effectiveText.match(INLINE_STAGE_ACTION_REGEX);
-    if (stageMatch) {
-      this.lastPrecedingAction = stageMatch[1].trim();
+    if (!internalOpts?.isFencedCodeBlock) {
+      const stageMatch = effectiveText.match(INLINE_STAGE_ACTION_REGEX);
+      if (stageMatch) {
+        this.lastPrecedingAction = stageMatch[1].trim();
+      }
     }
 
-    if (!this.currentBurstGroupId) {
-      this.beginBurst();
-    }
+    this.ensureActiveBurstGroup();
 
     const isFirst = this.dispatchedCountInBurst === 0;
-    const delay = options?.useHumanTimeline
+    const rawDelay = options?.useHumanTimeline
       ? calculateHumanTypingDelay(effectiveText, this.config, isFirst, {
           isOccupied: options.isOccupied,
           userTextLength: options.userTextLength,
           burstIndex: this.dispatchedCountInBurst,
+          modality: 'text',
         })
       : calculateBubbleTypingDelay(effectiveText, this.config, isFirst, options);
+    const delay = this.applyBurstWindowCap(rawDelay, 'text', isFirst);
     this.accumulatedDelay += delay;
     this.dispatchedCountInBurst += 1;
     const visibleAt = Date.now() + this.accumulatedDelay;
@@ -247,8 +329,166 @@ export class BurstMessageDispatcher {
     };
 
     await insertImMessage(this.space, message);
+    if (internalOpts?.capturedEpoch !== undefined && this.burstEpoch !== internalOpts.capturedEpoch) {
+      return null;
+    }
     ticker?.scheduleNextTick().catch(() => {});
     return message;
+  }
+
+  async dispatchSentence(
+    text: string,
+    ticker?: VisibilityTicker,
+    options?: {
+      isOccupied?: boolean;
+      userTextLength?: number;
+      useHumanTimeline?: boolean;
+      voiceReplyEnabled?: boolean;
+      personaStyle?: string | null;
+    }
+  ): Promise<ImMessage | null> {
+    const capturedEpoch = this.burstEpoch;
+    return this.enqueueDispatch(async () => {
+      if (this.burstEpoch !== capturedEpoch) {
+        return null;
+      }
+
+      const trimmedSegment = text.trim();
+      if (!trimmedSegment) {
+        return null;
+      }
+
+      // 代码围栏整块保护：跳过多模态解构与协议正文中途改写，作为单个文本气泡原样发射
+      if (trimmedSegment.startsWith('```') && trimmedSegment.endsWith('```')) {
+        const msg = await this.dispatchTextAtom(trimmedSegment, ticker, options, {
+          capturedEpoch,
+          isFencedCodeBlock: true,
+        });
+        if (this.burstEpoch !== capturedEpoch) {
+          return null;
+        }
+        if (msg) {
+          this.pendingFallbackCompensationEmoji = null;
+        }
+        return msg;
+      }
+
+      const atoms = tokenizeMultimodalSegment(text);
+      if (atoms.length === 0) {
+        return null;
+      }
+
+      let lastMessage: ImMessage | null = null;
+
+      for (let i = 0; i < atoms.length; i += 1) {
+        if (this.burstEpoch !== capturedEpoch) {
+          return null;
+        }
+
+        const atom = atoms[i];
+
+        if (atom.kind === 'text') {
+          const msg = await this.dispatchTextAtom(atom.payload, ticker, options, { capturedEpoch });
+          if (this.burstEpoch !== capturedEpoch) {
+            return null;
+          }
+          if (msg) {
+            this.pendingFallbackCompensationEmoji = null;
+            lastMessage = msg;
+          }
+          continue;
+        }
+
+        if (atom.kind === 'voice') {
+          const allowed = options?.voiceReplyEnabled ?? this.voiceReplyEnabled;
+          if (allowed) {
+            const msg = await this.dispatchVoiceInternal(atom.payload, ticker, options, capturedEpoch);
+            if (this.burstEpoch !== capturedEpoch) {
+              return null;
+            }
+            if (msg) {
+              this.pendingFallbackCompensationEmoji = null;
+              lastMessage = msg;
+            }
+          } else {
+            // 会话关闭语音回复时，平滑退化为普通文字对白气泡发射
+            const parsedVoice = parseVoiceTag(atom.payload);
+            const plainText = parsedVoice ? (parsedVoice.uiTranscript || parsedVoice.text || '').trim() : '';
+            if (!plainText) {
+              continue;
+            }
+            const msg = await this.dispatchTextAtom(plainText, ticker, options, { capturedEpoch });
+            if (this.burstEpoch !== capturedEpoch) {
+              return null;
+            }
+            if (msg) {
+              this.pendingFallbackCompensationEmoji = null;
+              lastMessage = msg;
+            }
+          }
+          continue;
+        }
+
+        if (atom.kind === 'sticker') {
+          const res = await this.dispatchStickerInternal(
+            atom.payload,
+            ticker,
+            {
+              personaStyle: options?.personaStyle,
+              userTextLength: options?.userTextLength,
+              useHumanTimeline: options?.useHumanTimeline,
+            },
+            capturedEpoch
+          );
+          if (this.burstEpoch !== capturedEpoch) {
+            return null;
+          }
+          if (res.dispatched && res.message) {
+            this.pendingFallbackCompensationEmoji = null;
+            lastMessage = res.message;
+          } else {
+            const hasOtherEffectiveModality = atoms
+              .slice(i + 1)
+              .some((nextAtom) => {
+                if (nextAtom.kind === 'voice') {
+                  const parsedVoice = parseVoiceTag(nextAtom.payload);
+                  return Boolean((parsedVoice?.uiTranscript || parsedVoice?.text || '').trim());
+                }
+                return nextAtom.kind === 'text' && sanitizeCompanionBubble(nextAtom.payload).trim().length > 0;
+              });
+            if (
+              this.dispatchedCountInBurst === 0 &&
+              !hasOtherEffectiveModality &&
+              !this.pendingFallbackCompensationEmoji
+            ) {
+              this.pendingFallbackCompensationEmoji =
+                res.compensationEmoji || resolveCompensationEmoji(atom.payload);
+            }
+          }
+        }
+      }
+
+      return lastMessage;
+    });
+  }
+
+  async flushPendingStickerCompensationIfEmpty(
+    ticker?: VisibilityTicker,
+    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
+  ): Promise<ImMessage | null> {
+    const capturedEpoch = this.burstEpoch;
+    return this.enqueueDispatch(async () => {
+      if (this.burstEpoch !== capturedEpoch) {
+        return null;
+      }
+      if (this.dispatchedCountInBurst === 0 && this.pendingFallbackCompensationEmoji) {
+        const fallbackEmoji = this.pendingFallbackCompensationEmoji;
+        this.pendingFallbackCompensationEmoji = null;
+        return this.dispatchTextAtom(fallbackEmoji, ticker, options, { capturedEpoch });
+      }
+      this.pendingFallbackCompensationEmoji = null;
+      return null;
+    });
   }
 
   async dispatchVoice(
@@ -256,6 +496,22 @@ export class BurstMessageDispatcher {
     ticker?: VisibilityTicker,
     options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean }
   ): Promise<ImMessage | null> {
+    const capturedEpoch = this.burstEpoch;
+    return this.enqueueDispatch(() =>
+      this.dispatchVoiceInternal(voiceInput, ticker, options, capturedEpoch)
+    );
+  }
+
+  private async dispatchVoiceInternal(
+    voiceInput: string | ParsedVoiceTag,
+    ticker?: VisibilityTicker,
+    options?: { isOccupied?: boolean; userTextLength?: number; useHumanTimeline?: boolean },
+    capturedEpoch?: number
+  ): Promise<ImMessage | null> {
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
+
     const voiceTag: ParsedVoiceTag = typeof voiceInput === 'string'
       ? (parseVoiceTag(voiceInput) || {
           text: sanitizeCompanionBubble(voiceInput, { preserveInlineStageActions: true }),
@@ -269,23 +525,24 @@ export class BurstMessageDispatcher {
     const effectiveText = (voiceTag.uiTranscript || voiceTag.text || '').trim();
     if (!effectiveText) return null;
 
-    if (!this.currentBurstGroupId) {
-      this.beginBurst();
-    }
+    this.ensureActiveBurstGroup();
 
     const inheritedStyle = voiceTag.styleDirective || this.lastPrecedingAction || undefined;
     const ttsScript = voiceTag.ttsScript || effectiveText;
 
     const isFirst = this.dispatchedCountInBurst === 0;
-    const delay = options?.useHumanTimeline
+    const rawDelay = options?.useHumanTimeline
       ? calculateHumanTypingDelay(effectiveText, this.config, isFirst, {
           isOccupied: options.isOccupied,
           userTextLength: options.userTextLength,
           burstIndex: this.dispatchedCountInBurst,
+          modality: 'voice',
         })
       : calculateBubbleTypingDelay(effectiveText, this.config, isFirst, options);
+    const delay = this.applyBurstWindowCap(rawDelay, 'voice', isFirst);
     this.accumulatedDelay += delay;
     this.dispatchedCountInBurst += 1;
+    this.pendingFallbackCompensationEmoji = null;
     const visibleAt = Date.now() + this.accumulatedDelay;
 
     const estDurationMs = Math.max(1000, Math.min(60000, Math.round(effectiveText.length * 240)));
@@ -311,6 +568,9 @@ export class BurstMessageDispatcher {
     };
 
     await insertImMessage(this.space, message);
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
     ticker?.scheduleNextTick().catch(() => {});
 
     // 后台异步预合成音频缓存，实现秒开播放，注入动态语气覆盖与发音脚本
@@ -373,28 +633,34 @@ export class BurstMessageDispatcher {
   }
 
   /**
-   * 分发大表情贴纸（严格实行尾部锚定 Tail-Anchor 与物理硬锁门禁）
+   * 分发大表情贴纸（支持自由混排与窗口压缩）
    */
   async dispatchSticker(
     emotionWord: string,
     ticker?: VisibilityTicker,
     options?: DispatchStickerOptions
   ): Promise<DispatchStickerResult> {
-    const threshold = getStickerCooldownThreshold(options?.personaStyle);
+    const capturedEpoch = this.burstEpoch;
+    return this.enqueueDispatch(() =>
+      this.dispatchStickerInternal(emotionWord, ticker, options, capturedEpoch)
+    );
+  }
 
-    // 处于冷却期拦截：且本轮已发出过文字台词
-    if (this.turnsSinceLastSticker < threshold && this.dispatchedCountInBurst > 0) {
-      this.turnsSinceLastSticker += 1;
-      const compensation = resolveCompensationEmoji(emotionWord);
+  private async dispatchStickerInternal(
+    emotionWord: string,
+    ticker?: VisibilityTicker,
+    options?: DispatchStickerOptions,
+    capturedEpoch?: number
+  ): Promise<DispatchStickerResult> {
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
       return {
         dispatched: false,
-        reason: 'cooldown_intercepted',
-        compensationEmoji: compensation,
+        reason: 'burst_cancelled',
         stickerName: emotionWord,
       };
     }
 
-    // 通过门禁：解析具体贴纸（支持内置与外部导入库）
+    // 解析具体贴纸（支持内置与外部导入库）
     const sticker = resolveSticker(emotionWord, { personaStyle: options?.personaStyle || undefined });
     if (!sticker) {
       this.turnsSinceLastSticker += 1;
@@ -407,13 +673,22 @@ export class BurstMessageDispatcher {
       };
     }
 
-    if (!this.currentBurstGroupId) {
-      this.beginBurst();
-    }
+    this.ensureActiveBurstGroup();
 
-    // 尾部锚定 (Tail-Anchor)：固定附加 250ms 节奏间隔
-    this.accumulatedDelay += 250;
+    const stickerBaseDelay = options?.useHumanTimeline
+      ? calculateHumanTypingDelay('', this.config, this.dispatchedCountInBurst === 0, {
+          modality: 'sticker',
+          burstIndex: this.dispatchedCountInBurst,
+        })
+      : 250;
+    const stickerDelay = this.applyBurstWindowCap(
+      stickerBaseDelay,
+      'sticker',
+      this.dispatchedCountInBurst === 0
+    );
+    this.accumulatedDelay += stickerDelay;
     this.dispatchedCountInBurst += 1;
+    this.pendingFallbackCompensationEmoji = null;
     const visibleAt = Date.now() + this.accumulatedDelay;
 
     const message: ImMessage = {
@@ -441,6 +716,13 @@ export class BurstMessageDispatcher {
     };
 
     await insertImMessage(this.space, message);
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return {
+        dispatched: false,
+        reason: 'burst_cancelled',
+        stickerName: sticker.name,
+      };
+    }
     ticker?.scheduleNextTick().catch(() => {});
 
     // 成功发送，冷却计数归零
@@ -460,15 +742,21 @@ export class BurstMessageDispatcher {
   async dispatchDocument(
     doc: { title: string; uri?: string; content: string; tocSkeleton?: Array<{ blockId: string; previewText: string }> },
     ticker?: VisibilityTicker
-  ): Promise<ImMessage> {
-    if (!this.currentBurstGroupId) {
-      this.beginBurst();
-    }
+  ): Promise<ImMessage | null> {
+    const capturedEpoch = this.burstEpoch;
+    return this.enqueueDispatch(() =>
+      this.dispatchDocumentInternal(doc, ticker, capturedEpoch)
+    );
+  }
 
-    // 文档卡片间隔 200ms 自然呈现
-    this.accumulatedDelay += 200;
-    this.dispatchedCountInBurst += 1;
-    const visibleAt = Date.now() + this.accumulatedDelay;
+  private async dispatchDocumentInternal(
+    doc: { title: string; uri?: string; content: string; tocSkeleton?: Array<{ blockId: string; previewText: string }> },
+    ticker?: VisibilityTicker,
+    capturedEpoch?: number
+  ): Promise<ImMessage | null> {
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
 
     let casHash: string | undefined;
     let casUri: string = doc.uri || doc.title;
@@ -483,6 +771,9 @@ export class BurstMessageDispatcher {
       } catch {
         // 容错保持原正文
       }
+      if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+        return null;
+      }
     }
 
     try {
@@ -493,6 +784,18 @@ export class BurstMessageDispatcher {
     } catch {
       // 容错静默
     }
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
+
+    this.ensureActiveBurstGroup();
+
+    // 文档卡片间隔 200ms 自然呈现（受窗口软上限保护）
+    const docDelay = this.applyBurstWindowCap(200, 'document', this.dispatchedCountInBurst === 0);
+    this.accumulatedDelay += docDelay;
+    this.dispatchedCountInBurst += 1;
+    this.pendingFallbackCompensationEmoji = null;
+    const visibleAt = Date.now() + this.accumulatedDelay;
 
     const message: ImMessage = {
       id: `msg_ai_doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -521,6 +824,9 @@ export class BurstMessageDispatcher {
     };
 
     await insertImMessage(this.space, message);
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
     ticker?.scheduleNextTick().catch(() => {});
     return message;
   }
@@ -531,14 +837,21 @@ export class BurstMessageDispatcher {
   async dispatchDocumentPatch(
     patch: ParsedDocumentPatchTag,
     ticker?: VisibilityTicker
-  ): Promise<ImMessage> {
-    if (!this.currentBurstGroupId) {
-      this.beginBurst();
-    }
+  ): Promise<ImMessage | null> {
+    const capturedEpoch = this.burstEpoch;
+    return this.enqueueDispatch(() =>
+      this.dispatchDocumentPatchInternal(patch, ticker, capturedEpoch)
+    );
+  }
 
-    this.accumulatedDelay += 200;
-    this.dispatchedCountInBurst += 1;
-    const visibleAt = Date.now() + this.accumulatedDelay;
+  private async dispatchDocumentPatchInternal(
+    patch: ParsedDocumentPatchTag,
+    ticker?: VisibilityTicker,
+    capturedEpoch?: number
+  ): Promise<ImMessage | null> {
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
 
     if (!patch.operations || patch.operations.length === 0) {
       throw new Error(`文档补丁解析失败: 未提取到有效的 SEARCH/REPLACE 差量操作块`);
@@ -551,6 +864,9 @@ export class BurstMessageDispatcher {
     try {
       const { initDatabase } = await import('../../database');
       const db = await initDatabase(this.space);
+      if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+        return null;
+      }
       const cleanBaseMsgId = (patch.baseMsgId || '').replace(/^['"]|['"]$/g, '').trim();
 
       // 1. 优先从当前空间查找底本消息
@@ -567,6 +883,9 @@ export class BurstMessageDispatcher {
            ORDER BY createdAt DESC LIMIT 1;`,
           [this.threadId, `%"title":"%${cleanBaseMsgId}%"%`]
         );
+      }
+      if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+        return null;
       }
 
       if (parentRow?.content) {
@@ -586,6 +905,10 @@ export class BurstMessageDispatcher {
         }
       }
     } catch {}
+
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
 
     // 采用 IndexPreservingFuzzyPatcher 执行容错补丁
     if (baseContent && patch.operations.length > 0) {
@@ -627,6 +950,9 @@ export class BurstMessageDispatcher {
       } catch {
         // 容错保持原正文
       }
+      if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+        return null;
+      }
     }
 
     let casHash: string | undefined;
@@ -636,6 +962,18 @@ export class BurstMessageDispatcher {
       casHash = putRes.blobHash;
       casUri = casStore.getBlobPath(putRes.blobHash, this.space);
     } catch {}
+
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
+
+    this.ensureActiveBurstGroup();
+
+    const docDelay = this.applyBurstWindowCap(200, 'document', this.dispatchedCountInBurst === 0);
+    this.accumulatedDelay += docDelay;
+    this.dispatchedCountInBurst += 1;
+    this.pendingFallbackCompensationEmoji = null;
+    const visibleAt = Date.now() + this.accumulatedDelay;
 
     const message: ImMessage = {
       id: `msg_ai_doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -665,6 +1003,9 @@ export class BurstMessageDispatcher {
     };
 
     await insertImMessage(this.space, message);
+    if (capturedEpoch !== undefined && this.burstEpoch !== capturedEpoch) {
+      return null;
+    }
     ticker?.scheduleNextTick().catch(() => {});
     return message;
   }

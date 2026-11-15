@@ -1,4 +1,5 @@
 import { runWithDatabaseSpace, type PixorySpace } from '../database';
+import type { AiMessageAttachmentRecord } from '../database/repositories/aiThreadRepository';
 import {
   type AiGenerationCreatedInfo,
   continueAssistantReply,
@@ -30,6 +31,11 @@ import { decideGenerationRecovery } from './generation/aiGenerationRecovery';
 
 export type AiGenerationSubscriber = {
   getStreamingVisibility?: () => StreamingVisibilityState;
+  onAttachmentsPersisted?: (payload: {
+    threadId: string;
+    userMessageId: string;
+    attachments: AiMessageAttachmentRecord[];
+  }) => void;
   onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
@@ -61,7 +67,7 @@ type GenerationStartTimingInput = {
 
 type StopGenerationReason = 'timeout' | 'user';
 
-type StartSendUserMessageInput = Omit<SendUserMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
+type StartSendUserMessageInput = Omit<SendUserMessageInput, 'signal' | 'onAttachmentsPersisted' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
 } & GenerationStartTimingInput;
 
@@ -77,7 +83,7 @@ type StartContinueAssistantReplyInput = Omit<ContinueAssistantReplyInput, 'signa
   subscriber?: AiGenerationSubscriber;
 } & GenerationStartTimingInput;
 
-type StartReplyToAssistantMessageInput = Omit<ReplyToAssistantMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
+type StartReplyToAssistantMessageInput = Omit<ReplyToAssistantMessageInput, 'signal' | 'onAttachmentsPersisted' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
 } & GenerationStartTimingInput;
 
@@ -135,6 +141,20 @@ function emitCreated(task: ActiveGenerationTask, ids: AiGenerationCreatedInfo) {
   task.thinkingExpected = ids.thinkingExpected ?? null;
   task.userMessageId = ids.userMessageId;
   task.subscribers.forEach((subscriber) => subscriber.onCreated?.(ids));
+}
+
+function emitAttachmentsPersisted(
+  task: ActiveGenerationTask,
+  payload: {
+    threadId: string;
+    userMessageId: string;
+    attachments: AiMessageAttachmentRecord[];
+  },
+) {
+  if (task.finished) {
+    return;
+  }
+  task.subscribers.forEach((subscriber) => subscriber.onAttachmentsPersisted?.(payload));
 }
 
 function emitMessagePatch(task: ActiveGenerationTask, patch: AiStreamingMessagePatch) {
@@ -220,6 +240,7 @@ function startSendUserMessage(input: StartSendUserMessageInput): ManagedTaskStar
   task.promise = sendUserMessage({
     ...request,
     getStreamingVisibility: () => getTaskStreamingVisibility(task),
+    onAttachmentsPersisted: (payload) => emitAttachmentsPersisted(task, payload),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
     onTimeout: () => {
@@ -312,6 +333,7 @@ function startReplyToAssistantMessage(input: StartReplyToAssistantMessageInput):
   task.promise = replyToAssistantMessage({
     ...request,
     getStreamingVisibility: () => getTaskStreamingVisibility(task),
+    onAttachmentsPersisted: (payload) => emitAttachmentsPersisted(task, payload),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
     onTimeout: () => {

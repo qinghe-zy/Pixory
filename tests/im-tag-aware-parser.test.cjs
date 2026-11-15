@@ -209,4 +209,160 @@ test('TagAwareStreamParser Streaming Slicing and Sanitization', async (t) => {
     assert.equal(flushed[1].includes('background: #fff;'), true);
     assert.equal(flushed[2], '快去看看效果！');
   });
+
+  await t.test('Does not mid-chunk slice outside-colon voice and preserves nested voice & document/code boundaries', () => {
+    // 1. Mid-stream chunked outside-colon voice waits for delimiter instead of cutting mid-tag
+    const p1 = new TagAwareStreamParser();
+    assert.deepEqual(p1.feed('[VOICE]: 今晚月色'), []);
+    assert.deepEqual(p1.feed('真美呀[BR]'), ['[VOICE]: 今晚月色真美呀']);
+    assert.deepEqual(p1.flush(), []);
+
+    // 2. Outside-colon voice stops cleanly before inline sticker
+    const p2 = new TagAwareStreamParser();
+    const out2 = [...p2.feed('[VOICE]: 你好呀 [STICKER: 抱抱]'), ...p2.flush()];
+    assert.deepEqual(out2, ['[VOICE]: 你好呀', '[STICKER: 抱抱]']);
+
+    // 3. Nested bracket inside [VOICE: ...] is preserved intact without truncating at inner "]"
+    const p3 = new TagAwareStreamParser();
+    const out3 = [...p3.feed('[VOICE: [语气: 撒娇] 晚安][BR]好梦'), ...p3.flush()];
+    assert.deepEqual(out3, ['[VOICE: [语气: 撒娇] 晚安]', '好梦']);
+
+    // 4. Paragraph before [VOICE: ...] survives stripMetaTags in flush without flattening voice to plain text
+    const p4 = new TagAwareStreamParser();
+    const out4 = [...p4.feed('你好\n\n[VOICE: 我发条语音]'), ...p4.flush()];
+    assert.deepEqual(out4, ['你好', '[VOICE: 我发条语音]']);
+
+    // 5. [DOCUMENT]...[/DOCUMENT] without callbacks never leaks inner [STICKER:]
+    const p5 = new TagAwareStreamParser();
+    const out5 = [
+      ...p5.feed('[DOCUMENT: a.md]foo[STICKER: '),
+      ...p5.feed('抱抱]bar[/DOCUMENT]'),
+      ...p5.flush(),
+    ];
+    assert.deepEqual(out5, []);
+
+    // 6. Fenced code block containing [STICKER:] stays a single intact code bubble
+    const p6 = new TagAwareStreamParser();
+    const codeSnippet = '```ts\nconst s = "[STICKER: 抱抱]";\n```';
+    const out6 = [...p6.feed(codeSnippet), ...p6.flush()];
+    assert.deepEqual(out6, [codeSnippet]);
+  });
+
+  await t.test('Idempotently merges consecutive <think> blocks without leaking 2nd block into dialogue', () => {
+    const {
+      TagAwareStreamParser: LoadedParser,
+    } = loadTs('../src/im/engine/tagAwareStreamParser.ts');
+
+    const progressEvents = [];
+    const completedThoughts = [];
+    const parser = new LoadedParser({
+      onThoughtProgress: (_chunk, full) => progressEvents.push(full),
+      onThoughtCompleted: (full) => completedThoughts.push(full),
+    });
+
+    const out1 = parser.feed('<think>原生思考片段A</think>');
+    const out2 = parser.feed('<think>模型补充片段B</think>晚安呀[BR]');
+    const flushed = parser.flush();
+
+    assert.deepEqual(out1, []);
+    assert.deepEqual(out2, ['晚安呀']);
+    assert.deepEqual(flushed, []);
+    assert.equal(completedThoughts[completedThoughts.length - 1], '原生思考片段A\n模型补充片段B');
+    assert.ok(
+      progressEvents.some((p) => p.includes('原生思考片段A\n')),
+      'progress events must merge with newline separator rather than resetting fullThoughtBuffer'
+    );
+  });
+
+  await t.test('3-level unclosed <think> rescue: Level 1 live protocol anchors & Level 2/3 flush boundaries', () => {
+    const {
+      TagAwareStreamParser: LoadedParser,
+      sanitizeThoughtForUi,
+      rescueUnclosedThinkingDialogue,
+    } = loadTs('../src/im/engine/tagAwareStreamParser.ts');
+
+    // 1. Live feed must NOT split multi-paragraph CoT containing (calm, direct) before </think>
+    const multiParaThoughts = [];
+    const pMulti = new LoadedParser({
+      onThoughtCompleted: (full) => multiParaThoughts.push(full),
+    });
+    assert.deepEqual(
+      pMulti.feed('<think>She wants to chat (calm, direct).\n\nLet me keep it brief.'),
+      []
+    );
+    assert.equal(pMulti.isThinking(), true);
+    assert.deepEqual(pMulti.feed('</think>晚上好呀[BR]'), ['晚上好呀']);
+    assert.deepEqual(pMulti.flush(), []);
+    assert.equal(multiParaThoughts[0], 'She wants to chat (calm, direct).\n\nLet me keep it brief.');
+
+    // 2. Priority 1 live rescue on [VOICE:...] and [STICKER:...] keeps multimodal tag in dialogue
+    const voiceThoughts = [];
+    const pVoice = new LoadedParser({
+      onThoughtCompleted: (full) => voiceThoughts.push(full),
+    });
+    const voiceFeed = pVoice.feed('<think>（轻声安慰他）。[VOICE: 3s | 别太累啦][BR]早点休息');
+    const voiceFlushed = pVoice.flush();
+    assert.deepEqual([...voiceFeed, ...voiceFlushed], ['[VOICE: 3s | 别太累啦]', '早点休息']);
+    assert.equal(voiceThoughts[0], '（轻声安慰他）。');
+
+    const stickerThoughts = [];
+    const pSticker = new LoadedParser({
+      onThoughtCompleted: (full) => stickerThoughts.push(full),
+    });
+    const stickerOut = [
+      ...pSticker.feed('<think>先发个贴纸哄哄他\n[STICKER: 抱抱]'),
+      ...pSticker.flush(),
+    ];
+    assert.deepEqual(stickerOut, ['[STICKER: 抱抱]']);
+    assert.equal(stickerThoughts[0], '先发个贴纸哄哄他');
+
+    // 3. Priority 2 in flush(): rescues non-meta paragraph after \n\n, rejects bare paren & meta-blacklist
+    const p2Thoughts = [];
+    const p2 = new LoadedParser({ onThoughtCompleted: (full) => p2Thoughts.push(full) });
+    assert.deepEqual(p2.feed('<think>先想想怎么回答\n\n好呀，我在呢'), []);
+    assert.deepEqual(p2.flush(), ['好呀，我在呢']);
+    assert.equal(p2Thoughts[0], '先想想怎么回答');
+
+    assert.equal(
+      rescueUnclosedThinkingDialogue('思考过程\n\n（纯括号内心）', { allowFlushHeuristics: true }),
+      null
+    );
+    assert.equal(
+      rescueUnclosedThinkingDialogue('思考过程\n\n(先别急着问)(忍一忍)', { allowFlushHeuristics: true }),
+      null
+    );
+    assert.deepEqual(
+      rescueUnclosedThinkingDialogue('<think>先想想怎么说\n\n今晚一起吃饭吗？', { allowFlushHeuristics: true }),
+      { thought: '先想想怎么说', dialogue: '今晚一起吃饭吗？' }
+    );
+    assert.equal(
+      rescueUnclosedThinkingDialogue('Thinking...\n\nKeep it short, natural bubbles.', {
+        allowFlushHeuristics: true,
+      }),
+      null
+    );
+
+    // 4. Priority 3 in flush(): leading contiguous paren blocks vs pure paren blocks
+    const p3Thoughts = [];
+    const p3 = new LoadedParser({ onThoughtCompleted: (full) => p3Thoughts.push(full) });
+    assert.deepEqual(p3.feed('<think>（内心1）（内心2）好呀（弯起眼睛笑）'), []);
+    assert.deepEqual(p3.flush(), ['好呀（弯起眼睛笑）']);
+    assert.equal(p3Thoughts[0], '（内心1）（内心2）');
+
+    const pureParenThoughts = [];
+    const pPureParen = new LoadedParser({
+      onThoughtCompleted: (full) => pureParenThoughts.push(full),
+    });
+    assert.deepEqual(pPureParen.feed('<think>(内心1)(内心2)'), []);
+    assert.deepEqual(pPureParen.flush(), []);
+    assert.equal(pureParenThoughts[0], '(内心1)(内心2)');
+
+    // 5. sanitizeThoughtForUi returns empty string when filtered empty even on isFinal: true,
+    // and keeps ordinary first-person thoughts intact
+    assert.equal(sanitizeThoughtForUi('系统提示：遵守人设[STATUS: online]', { isFinal: true }), '');
+    assert.equal(
+      sanitizeThoughtForUi('I should check if he arrived safely.', { isFinal: true }),
+      'I should check if he arrived safely.'
+    );
+  });
 });

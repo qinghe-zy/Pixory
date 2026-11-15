@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { colors, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
+import type { PixorySpace } from '../../database';
+import { colors, metrics, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import type { AiModelIconBrand } from '../../ai/aiModelIconService';
 import { aiLightColors } from './aiLightTheme';
 import { AiModelIcon } from './AiModelIcon';
@@ -32,6 +33,8 @@ const COMPOSER_INPUT_MAX_HEIGHT = COMPOSER_INPUT_LINE_HEIGHT * MAX_COMPOSER_LINE
 interface AiChatComposerProps {
   value: string;
   generating: boolean;
+  space?: PixorySpace;
+  clearSignal?: number;
   attachments?: AiComposerAttachment[];
   modelIconBrand?: AiModelIconBrand;
   hideModelIcon?: boolean;
@@ -61,27 +64,11 @@ interface AiChatComposerProps {
   onStop: () => void;
 }
 
-function getAttachmentIcon(kind: AiComposerAttachment['kind']): keyof typeof Ionicons.glyphMap {
-  if (kind === 'image') {
-    return 'image-outline';
-  }
-  return 'document-text-outline';
-}
-
-function formatAttachmentSize(size?: number | null): string | null {
-  if (!size || size <= 0) {
-    return null;
-  }
-  if (size >= 1024 * 1024) {
-    return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  }
-  return `${Math.max(1, Math.round(size / 1024))} KB`;
-}
-
-
 export function AiChatComposer({
   value,
   generating,
+  space = 'normal',
+  clearSignal,
   attachments = [],
   modelIconBrand = 'default',
   hideModelIcon = false,
@@ -113,6 +100,8 @@ export function AiChatComposer({
   const canSend = (value.trim().length > 0 || attachments.length > 0) && !generating;
   const inputRef = useRef<TextInput>(null);
   const attachmentCountRef = useRef(attachments.length);
+  const prevValueLengthRef = useRef(value.length);
+  const prevClearSignalRef = useRef(clearSignal);
   const inputHeightRef = useRef(COMPOSER_INPUT_MIN_HEIGHT);
   const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
   const [attachmentPopoverVisible, setAttachmentPopoverVisible] = useState(false);
@@ -124,11 +113,14 @@ export function AiChatComposer({
   const [fullscreenEditVisible, setFullscreenEditVisible] = useState(false);
 
   const updateInputHeight = useCallback((measuredHeight: number) => {
+    if (!Number.isFinite(measuredHeight)) {
+      return;
+    }
     const nextHeight = Math.min(
       COMPOSER_INPUT_MAX_HEIGHT,
-      Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.ceil(measuredHeight))
+      Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.round(measuredHeight))
     );
-    if (nextHeight === inputHeightRef.current) {
+    if (Math.abs(nextHeight - inputHeightRef.current) < 1) {
       return;
     }
     inputHeightRef.current = nextHeight;
@@ -155,11 +147,27 @@ export function AiChatComposer({
   }, [attachments.length, onComposerHeightChange]);
 
   useEffect(() => {
+    const previousLength = prevValueLengthRef.current;
+    prevValueLengthRef.current = value.length;
+    const clearRequested = clearSignal !== undefined && clearSignal !== prevClearSignalRef.current;
+    prevClearSignalRef.current = clearSignal;
+
     if (value.length !== 0) {
       return;
     }
-    updateInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-  }, [updateInputHeight, value]);
+
+    const shouldClearNativeInput = clearSignal !== undefined ? clearRequested : previousLength > 0;
+    if (shouldClearNativeInput) {
+      try {
+        inputRef.current?.clear?.();
+      } catch {
+        // Ignore clear failures if the native TextInput was already torn down.
+      }
+      updateInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+    } else if (clearSignal === undefined) {
+      updateInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+    }
+  }, [clearSignal, updateInputHeight, value]);
 
   return (
     <View style={styles.container}>
@@ -184,6 +192,7 @@ export function AiChatComposer({
         <AiComposerAttachmentBar
           attachments={attachments}
           onRemoveAttachment={onRemoveAttachment}
+          space={space}
         />
 
         {/* --- Text input area --- */}
@@ -239,6 +248,7 @@ export function AiChatComposer({
               <Pressable
                 accessibilityLabel="AI 帮答"
                 accessibilityRole="button"
+                accessibilityState={{ disabled: replyAssistDisabled }}
                 disabled={replyAssistDisabled}
                 hitSlop={spacing[2]}
                 onPress={onReplyAssist}
@@ -290,6 +300,7 @@ export function AiChatComposer({
                 accessibilityHint="点按切换；按住说话，松开结束，上滑取消"
                 accessibilityLabel={voiceActive ? '结束语音输入' : '语音输入'}
                 accessibilityRole="button"
+                accessibilityState={{ disabled: generating, selected: voiceActive }}
                 disabled={generating}
                 hitSlop={spacing[2]}
                 onLongPress={() => {
@@ -392,6 +403,7 @@ export function AiChatComposer({
               <Pressable
                 accessibilityLabel="添加附件"
                 accessibilityRole="button"
+                accessibilityState={{ disabled: generating, expanded: attachmentPopoverVisible }}
                 disabled={generating}
                 hitSlop={spacing[2]}
                 onPress={() => setAttachmentPopoverVisible((current) => !current)}
@@ -409,6 +421,7 @@ export function AiChatComposer({
               <Pressable
                 accessibilityLabel="发送"
                 accessibilityRole="button"
+                accessibilityState={{ disabled: !canSend }}
                 disabled={!canSend}
                 hitSlop={spacing[2]}
                 onPress={onSend}
@@ -439,51 +452,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[2],
     ...shadows.sm,
   },
-  /* --- Attachment rail --- */
-  attachmentRail: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.microGap,
-    marginBottom: spacing[2],
-  },
-  attachmentChip: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-    maxWidth: '100%',
-    minHeight: 40,
-    paddingLeft: spacing[2],
-    paddingRight: spacing[1],
-    paddingVertical: spacing[1],
-  },
-  attachmentCopy: {
-    maxWidth: 190,
-    minWidth: 0,
-  },
-  attachmentThumb: {
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.sm,
-    height: 28,
-    width: 28,
-  },
-  attachmentName: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.ink,
-  },
-  attachmentMeta: {
-    ...typography.textStyles.micro,
-    color: aiLightColors.muted,
-  },
-  attachmentRemove: {
-    alignItems: 'center',
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
-  },
   /* --- Text input --- */
   inputArea: {
     position: 'relative',
@@ -492,7 +460,7 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
     fontFamily: typography.family.base,
     fontSize: typography.size.body,
-    fontWeight: '400',
+    fontWeight: typography.weight.regular,
     includeFontPadding: false,
     lineHeight: COMPOSER_INPUT_LINE_HEIGHT,
     maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
@@ -564,15 +532,15 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   attachmentPopover: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: aiLightColors.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     position: 'absolute',
-    bottom: spacing[8] + 5,
+    bottom: spacing[8] + spacing[1],
     right: 0,
-    width: 156,
+    width: 156, // Fixed popover menu width matching attachment label column
     zIndex: 100,
     elevation: 8,
     ...shadows.floating,
@@ -581,7 +549,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[3],
-    height: 44,
+    height: metrics.minTouchSize,
     paddingHorizontal: spacing[4],
   },
   attachmentOptionRowPressed: {
@@ -594,7 +562,6 @@ const styles = StyleSheet.create({
   attachmentOptionLabel: {
     ...typography.textStyles.body,
     color: colors.text.primary,
-    fontSize: 14,
   },
   addButton: {
     alignItems: 'center',

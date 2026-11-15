@@ -577,6 +577,7 @@ test('assistant clock includes the sampled date and zone and changes only a dyna
   for (const id of ['pixory-system-assistant', 'ordinary']) {
     const context = { thread: { id, space: 'normal' }, coverage: { plan: { branchRouteHash: 'branch' } },
       options: {}, artifactSelection: null, companionMemoryPrefix: '',
+      dynamicRelationshipObservation: '', memoryContextPlan: { projectionVersion: 0 },
       isSystemAssistantThread: id => id === 'pixory-system-assistant', buildSystemAssistantClockContext: () => one,
       estimatePromptTokens: text => text.length };
     vm.runInNewContext(code, context);

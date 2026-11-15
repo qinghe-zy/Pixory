@@ -75,10 +75,13 @@ test('HDSI Living State & Agency 5 Vulnerabilities Guard Verification', async (t
       '2026/10/26 20:00:00',
       ''
     );
-    // 关键断言：绝不能输出“已持续 360 分钟”，必须输出已自然结束并引导推进最新生活动作
+    // 关键断言：绝不能输出“已持续 360 分钟”，必须输出已自然结束的客观时间状态（无行为说教）
     assert.doesNotMatch(expiredAnchor, /已持续 360 分钟/);
-    assert.match(expiredAnchor, /上一阶段做的事: "在浴室冲热水澡" 已于 330 分钟前自然结束/);
-    assert.match(expiredAnchor, /请结合当前时间 \(2026\/10\/26 20:00:00\) 与人设作息，在本次回复中自然推进你的最新生活动作/);
+    assert.match(
+      expiredAnchor,
+      /上一阶段做的事: "在浴室冲热水澡" 已于 330 分钟前自然结束（当前时间: 2026\/10\/26 20:00:00）。/
+    );
+    assert.doesNotMatch(expiredAnchor, /请结合当前时间/);
   });
 
   // --------------------------------------------------------------------------
