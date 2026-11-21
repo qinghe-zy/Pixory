@@ -14,6 +14,7 @@ import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { mergeDelimitedDraftTagNames } from '../utils/tagDrafts';
+import { formatDuration } from '../utils/formatters';
 import { formatImageAssetCode } from '../utils/imageAssetCode';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
@@ -24,6 +25,7 @@ interface QuickOrganizeScreenProps {
   onBack: () => void;
   onChanged: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail?: (imageId: number, context?: ImageViewerContext) => void;
 }
 
 type LastOrganizeAction =
@@ -31,7 +33,15 @@ type LastOrganizeAction =
   | { type: 'tags'; tags: string[]; label: string }
   | { type: 'favorite'; label: string };
 
-export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'normal', onBack, onChanged, onOpenImage }: QuickOrganizeScreenProps) {
+export function QuickOrganizeScreen({
+  ipId,
+  importBatchId = null,
+  space = 'normal',
+  onBack,
+  onChanged,
+  onOpenImage,
+  onOpenImageDetail,
+}: QuickOrganizeScreenProps) {
   const { showToast } = useToast();
   const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ images: ImageListItem[]; groups: GroupRecord[]; tags: TagUsageItem[] }>(
     async () => {
@@ -259,7 +269,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
           }
         : currentData
     );
-    showToast(`已把 #${tags.join(' #')} 加到当前起 ${targets.length} 张`);
+    showToast(`已把 #${tags.join(' #')} 加到当前起 ${targets.length} 项`);
     onChanged();
   }
 
@@ -293,13 +303,13 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
       <ScreenScaffold backgroundColor="#f9f9f9" decorativeTitle="Queue" onBack={onBack} scrollable title="待整理">
         <PageStateBlock
         loadingComponent={<GallerySkeleton />}
-          emptyDescription="还没有分组的图片都已处理完。无标签图片会在进度里单独提醒。"
+          emptyDescription="还没有分组的素材都已处理完。无标签素材会在进度里单独提醒。"
           emptyIconName="checkmark-circle-outline"
           emptyTitle="整理完成"
           errorMessage={errorMessage}
           isEmpty={!isLoading && images.length === 0}
           loading={isLoading}
-          loadingDescription="正在读取还没有分组的图片。"
+          loadingDescription="正在读取还没有分组的素材。"
           loadingTitle="读取待整理队列"
           onRetry={reload}
         >
@@ -314,14 +324,31 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
                 </Text>
               </View>
 
-              <Pressable onPress={() => onOpenImage(current.id, getViewerContext(current))} style={styles.previewWrap} {...previewPanResponder.panHandlers}>
-                {current.thumbnailFileUri ? (
-                  <SecureImage contentFit="cover" space={space} style={styles.previewImage} uri={current.thumbnailFileUri} />
+              <Pressable
+                onPress={() => {
+                  const context = getViewerContext(current);
+                  if (current.mediaType === 'video' && onOpenImageDetail) {
+                    onOpenImageDetail(current.id, context);
+                    return;
+                  }
+                  onOpenImage(current.id, context);
+                }}
+                style={styles.previewWrap}
+                {...previewPanResponder.panHandlers}
+              >
+                {current.coverThumbnailFileUri ?? current.thumbnailFileUri ? (
+                  <SecureImage contentFit="cover" space={space} style={styles.previewImage} uri={(current.coverThumbnailFileUri ?? current.thumbnailFileUri)!} />
                 ) : (
                   <View style={styles.previewFallback}>
-                    <Ionicons color={colors.text.secondary} name="image-outline" size={28} />
+                    <Ionicons color={colors.text.secondary} name={current.mediaType === 'video' ? 'videocam-outline' : 'image-outline'} size={28} />
                   </View>
                 )}
+                {current.mediaType === 'video' ? (
+                  <View style={styles.previewVideoBadge}>
+                    <Ionicons color={colors.text.inverse} name="play" size={11} />
+                    <Text style={styles.previewVideoBadgeText}>{formatDuration(current.durationMs)}</Text>
+                  </View>
+                ) : null}
               </Pressable>
               <View style={styles.gestureHintRow}>
                 <Text style={styles.gestureHint}>左滑跳过</Text>
@@ -330,17 +357,25 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
 
               {images.length > 1 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.queueStrip} contentContainerStyle={styles.queueStripContent}>
-                  {images.map((image, index) => (
-                    <Pressable key={image.id} onPress={() => setCurrentIndex(index)} style={[styles.queueTile, index === currentIndex ? styles.selectedQueueTile : null]}>
-                      {image.thumbnailFileUri ? (
-                        <SecureImage contentFit="cover" space={space} style={styles.queueImage} uri={image.thumbnailFileUri} />
-                      ) : (
-                        <View style={styles.queueFallback}>
-                          <Ionicons color={colors.text.tertiary} name="image-outline" size={14} />
-                        </View>
-                      )}
-                    </Pressable>
-                  ))}
+                  {images.map((image, index) => {
+                    const tileUri = image.coverThumbnailFileUri ?? image.thumbnailFileUri;
+                    return (
+                      <Pressable key={image.id} onPress={() => setCurrentIndex(index)} style={[styles.queueTile, index === currentIndex ? styles.selectedQueueTile : null]}>
+                        {tileUri ? (
+                          <SecureImage contentFit="cover" space={space} style={styles.queueImage} uri={tileUri} />
+                        ) : (
+                          <View style={styles.queueFallback}>
+                            <Ionicons color={colors.text.tertiary} name={image.mediaType === 'video' ? 'videocam-outline' : 'image-outline'} size={14} />
+                          </View>
+                        )}
+                        {image.mediaType === 'video' ? (
+                          <View style={styles.queueVideoBadge}>
+                            <Ionicons color={colors.text.inverse} name="play" size={9} />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
                 </ScrollView>
               ) : null}
 
@@ -348,12 +383,12 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
                 <QueueActionButton
                   disabled={!lastAction}
                   icon="repeat-outline"
-                  label={lastAction ? `沿用 ${lastAction.label}` : '沿用上一张'}
+                  label={lastAction ? `沿用 ${lastAction.label}` : '沿用上一项'}
                   onPress={handleRepeatLastAction}
                 />
                 <QueueActionButton
                   icon="copy-outline"
-                  label={bulkTagTargetCount <= 1 ? '同标签给当前这张' : `同标签给当前起${bulkTagTargetCount}张`}
+                  label={bulkTagTargetCount <= 1 ? '同标签给当前这项' : `同标签给当前起${bulkTagTargetCount}项`}
                   onPress={handleApplyTagsToNext20}
                 />
               </View>
@@ -399,8 +434,8 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
               </View>
 
               <View style={styles.actions}>
-                <QueueActionButton disabled={currentIndex === 0} icon="arrow-back-outline" label="上一张" onPress={handlePreviousImage} />
-                <QueueActionButton disabled={currentIndex >= images.length - 1} icon="arrow-forward-outline" label="下一张" onPress={handleNextImage} />
+                <QueueActionButton disabled={currentIndex === 0} icon="arrow-back-outline" label="上一项" onPress={handlePreviousImage} />
+                <QueueActionButton disabled={currentIndex >= images.length - 1} icon="arrow-forward-outline" label="下一项" onPress={handleNextImage} />
                 <QueueActionButton icon="star-outline" label="收藏" onPress={handleFavorite} />
                 <QueueActionButton danger icon="trash-outline" label="回收站" onPress={() => setDeleteTarget(current)} />
               </View>
@@ -410,7 +445,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
       </ScreenScaffold>
       <AppDialog
         danger
-        message="这张图片会进入回收站，原图和缩略图仍保留在本地。"
+        message="这条素材会进入回收站，原文件和缩略图仍保留在本地。"
         onClose={() => setDeleteTarget(null)}
         onPrimary={confirmDelete}
         primaryLabel="删除到回收站"
@@ -495,6 +530,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  previewVideoBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(30, 38, 29, 0.72)',
+    borderRadius: radius.pill,
+    bottom: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 24,
+    paddingHorizontal: spacing[2],
+    position: 'absolute',
+    right: spacing[3],
+  },
+  previewVideoBadgeText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '700',
+  },
   gestureHintRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -533,6 +585,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
+  },
+  queueVideoBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(30, 38, 29, 0.72)',
+    borderRadius: radius.pill,
+    bottom: spacing[1],
+    height: 16,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[1],
+    width: 16,
   },
   continuityPanel: {
     flexDirection: 'row',

@@ -403,7 +403,20 @@ export async function listImThreads(
   // 3. 排序策略：置顶优先 > 聊过且最近聊过的优先（随着最接近聊天降序排列） > 未聊过的按添加/更新时间倒序
   // 4. 联合查询兜底孤儿会话，确保历史数据不丢失
   const rows = await db.getAllAsync<ImContactRow>(
-    `SELECT * FROM (
+    `WITH im_msg_stats AS (
+       SELECT
+         m.threadId,
+         MAX(COALESCE(m.completedAt, m.createdAt)) AS lastImMsgAt
+       FROM ai_messages m
+       INNER JOIN ai_threads im_t
+         ON im_t.id = m.threadId
+         AND im_t.chat_mode = 'im'
+         AND im_t.space = ?
+       WHERE m.role IN ('user', 'assistant')
+         AND ((m.delivery_status = 'delivered') OR (m.delivery_status IS NULL AND m.visible_at IS NULL))
+       GROUP BY m.threadId
+     )
+     SELECT * FROM (
        SELECT
          r.id AS roleCardId,
          r.name AS roleName,
@@ -429,15 +442,7 @@ export async function listImThreads(
          ON t.roleCardId = r.id
          AND t.chat_mode = 'im'
          AND t.space = r.space
-       LEFT JOIN (
-         SELECT
-           threadId,
-           MAX(COALESCE(completedAt, createdAt)) AS lastImMsgAt
-         FROM ai_messages
-         WHERE role IN ('user', 'assistant')
-           AND ((delivery_status = 'delivered') OR (delivery_status IS NULL AND visible_at IS NULL))
-         GROUP BY threadId
-       ) im_msg ON im_msg.threadId = t.id
+       LEFT JOIN im_msg_stats im_msg ON im_msg.threadId = t.id
        LEFT JOIN (
          SELECT
            th.roleCardId AS roleCardId,
@@ -469,15 +474,7 @@ export async function listImThreads(
          t.updatedAt AS threadUpdatedAt,
          COALESCE(im_msg_orphan.lastImMsgAt, t.updatedAt) AS lastChatAt
        FROM ai_threads t
-       LEFT JOIN (
-         SELECT
-           threadId,
-           MAX(COALESCE(completedAt, createdAt)) AS lastImMsgAt
-         FROM ai_messages
-         WHERE role IN ('user', 'assistant')
-           AND ((delivery_status = 'delivered') OR (delivery_status IS NULL AND visible_at IS NULL))
-         GROUP BY threadId
-       ) im_msg_orphan ON im_msg_orphan.threadId = t.id
+       LEFT JOIN im_msg_stats im_msg_orphan ON im_msg_orphan.threadId = t.id
        WHERE t.chat_mode = 'im' AND t.space = ?
          AND (t.roleCardId IS NULL OR t.roleCardId NOT IN (SELECT id FROM ai_role_cards WHERE space = ? AND archivedAt IS NULL))
      )
@@ -487,7 +484,7 @@ export async function listImThreads(
        lastChatAt DESC,
        roleUpdatedAt DESC,
        roleName ASC;`,
-    [space, space, space, space]
+    [space, space, space, space, space]
   );
 
   const items: ImThreadListItem[] = rows.map((row) => {
@@ -543,6 +540,24 @@ export async function clearImThreadHistory(space: PixorySpace, threadId: string)
       [now, threadId]
     );
   });
+
+  try {
+    const { abortActiveStream } = await import('../services/imBackgroundStreamService');
+    abortActiveStream(space, threadId);
+  } catch {}
+
+  try {
+    const { cancelStagedMessageAlarm, cancelProactivePingAlarm } = await import('../services/imNotificationManager');
+    await Promise.all([
+      cancelStagedMessageAlarm(threadId).catch(() => false),
+      cancelProactivePingAlarm(threadId).catch(() => false),
+    ]);
+  } catch {}
+
+  try {
+    const { GlobalHeartbeatEngine } = await import('../heartbeat/globalHeartbeatEngine');
+    GlobalHeartbeatEngine.shared.notifyListeners(threadId, space);
+  } catch {}
 }
 
 async function runPostPurgeCleanup(
@@ -578,6 +593,11 @@ async function runPostPurgeCleanup(
       invalidateRoleMemoryPrefetch(space, roleCardId);
     } catch {}
   }
+
+  try {
+    const { GlobalHeartbeatEngine } = await import('../heartbeat/globalHeartbeatEngine');
+    GlobalHeartbeatEngine.shared.notifyListeners(threadId, space);
+  } catch {}
 }
 
 async function purgeImThreadData(
@@ -1583,6 +1603,35 @@ export async function markImThreadRead(
       const { cancelCompanionNotification } = await import('../../native/pixoryMediaModule');
       void cancelCompanionNotification(threadId);
     }
+    const { GlobalHeartbeatEngine } = await import('../heartbeat/globalHeartbeatEngine');
+    GlobalHeartbeatEngine.shared.notifyListeners(threadId, space);
+  } catch {}
+}
+
+/**
+ * 清空指定空间下所有伴聊会话的未读红点计数 (一键清空全部未读)
+ */
+export async function clearAllImUnread(space: PixorySpace): Promise<void> {
+  const db = await initDatabase(space);
+  try {
+    await db.runAsync(
+      `UPDATE ai_threads
+       SET im_unread_count = 0
+       WHERE chat_mode = 'im' AND (im_unread_count IS NOT NULL AND im_unread_count > 0);`
+    );
+    if (space === 'normal') {
+      try {
+        const { cancelCompanionNotification } = await import('../../native/pixoryMediaModule');
+        const rows = await db.getAllAsync<{ id: string }>(
+          `SELECT id FROM ai_threads WHERE chat_mode = 'im';`
+        );
+        for (const row of rows) {
+          void cancelCompanionNotification(row.id);
+        }
+      } catch {}
+    }
+    const { GlobalHeartbeatEngine } = await import('../heartbeat/globalHeartbeatEngine');
+    GlobalHeartbeatEngine.shared.notifyListeners('', space);
   } catch {}
 }
 
@@ -1620,8 +1669,25 @@ export async function getThreadUnreadCount(space: PixorySpace, threadId: string)
 export async function getTotalImUnreadCount(space: PixorySpace): Promise<number> {
   try {
     const db = await initDatabase(space);
+    // 自愈检查：若会话无任何消息，自动将残留的脏未读数纠偏归零
+    try {
+      await db.runAsync(
+        `UPDATE ai_threads
+         SET im_unread_count = 0
+         WHERE chat_mode = 'im'
+           AND COALESCE(im_unread_count, 0) > 0
+           AND id NOT IN (
+             SELECT DISTINCT threadId FROM ai_messages
+           );`
+      );
+    } catch {}
+
     const row = await db.getFirstAsync<{ total: number }>(
-      'SELECT SUM(COALESCE(im_unread_count, 0)) as total FROM ai_threads;'
+      `SELECT SUM(COALESCE(im_unread_count, 0)) as total
+       FROM ai_threads
+       WHERE chat_mode = 'im'
+         AND archivedAt IS NULL
+         AND COALESCE(im_hidden_from_list, 0) = 0;`
     );
     return row?.total ?? 0;
   } catch {

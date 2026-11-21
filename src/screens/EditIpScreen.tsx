@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -14,6 +15,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppScreen } from "../components/AppScreen";
+import { useToast } from "../components/AppToast";
 import {
   DESCRIPTION_MAX_LENGTH,
   IP_NAME_MAX_LENGTH,
@@ -66,6 +68,7 @@ export function EditIpScreen({
   const { isSubmitting, submitError, clearSubmitError, runSubmit } =
     useSubmitState();
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
 
   const trimmedName = useMemo(() => name.trim(), [name]);
 
@@ -78,6 +81,7 @@ export function EditIpScreen({
   }, [ip]);
 
   function handleSave() {
+    Keyboard.dismiss();
     void runSubmit(
       async () => {
         const updated = await runWithDatabaseSpace(space, (db) => ipRepository.update(db, ipId, {
@@ -90,6 +94,7 @@ export function EditIpScreen({
           throw new Error('保存失败，当前 IP 不存在。');
         }
 
+        showToast({ message: "已保存 IP 修改", tone: "success" });
         onSaved();
       },
       {

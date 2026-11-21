@@ -1,18 +1,21 @@
 {
-  "version": "2.9.4",
-  "versionCode": 29007,
+  "version": "2.9.5",
+  "versionCode": 29008,
   "enabled": true,
   "forceUpdate": false,
   "minSupportVersion": "2.1.2",
   "message": "本次更新带来以下主要功能与体验优化，可前往官网下载区获取最新版：",
   "detailLines": [
+    "素材导入支持自动清理相册：导入素材时支持自动删除相册原文件，授权后可静默完成清理。",
+    "隐私空间安全体系全面升级：支持硬件级生物识别绑定与验证保护，增强后台防窥防护。",
+    "伴聊专属记忆与常驻设定增强：支持将对话文档设为常驻背景知识，优化记忆关联召回与整理。",
     "体验与稳定性优化：优化了部分场景的使用体验，解决了一些已知问题。"
   ],
-  "latestVersion": "2.9.4",
-  "latestVersionCode": 29007,
+  "latestVersion": "2.9.5",
+  "latestVersionCode": 29008,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "体验与稳定性优化：优化了部分场景的使用体验，解决了一些已知问题。",
   "releaseNotes": "体验与稳定性优化：优化了部分场景的使用体验，解决了一些已知问题。",
   "sha256": "a364d8c2ea96fd0b2d899b8076551721f5bd1dc66873fb8a569f17f4abdd4365",
-  "releaseDate": "2026-11-09"
+  "releaseDate": "2026-11-21"
 }

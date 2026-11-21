@@ -51,7 +51,7 @@ function getAppStorageRootDir(): string {
   return normalizeDirectoryUri(`${getDocumentDirectoryOrThrow()}${APP_STORAGE_ROOT_DIR_NAME}`);
 }
 
-function getStorageRootDir(space: PixorySpace = 'normal'): string {
+export function getStorageRootDir(space: PixorySpace = 'normal'): string {
   const rootName = space === 'personal' ? PERSONAL_STORAGE_ROOT_DIR_NAME : APP_STORAGE_ROOT_DIR_NAME;
   return normalizeDirectoryUri(`${getDocumentDirectoryOrThrow()}${rootName}`);
 }

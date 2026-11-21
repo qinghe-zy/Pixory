@@ -48,6 +48,18 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.pixory.app.diary.DiaryAlarmReceiver
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.security.keystore.KeyProperties
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
+import com.pixory.app.MainActivity
+import java.security.KeyStore
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -76,6 +88,10 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   private var activeRecordingStartTime: Long = 0L
   private var speechRecognitionPromise: Promise? = null
   private var mediaDeletePromise: Promise? = null
+  private var smartMediaDeletePromise: Promise? = null
+  private var smartMediaDeleteRequestedCount: Int = 0
+  private var smartMediaDeleteAlreadyDeletedCount: Int = 0
+  private var smartMediaDeleteTotalItems: Int = 0
   private var directSpeechRecognizer: SpeechRecognizer? = null
   private var directSpeechListening = false
   private var directSpeechOnDevice = false
@@ -89,6 +105,25 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
         return
       }
       if (requestCode != SPEECH_RECOGNITION_REQUEST_CODE) {
+        if (requestCode == SMART_MEDIA_DELETE_REQUEST_CODE) {
+          val smartPromise = smartMediaDeletePromise ?: return
+          val requested = smartMediaDeleteRequestedCount
+          val alreadyDeleted = smartMediaDeleteAlreadyDeletedCount
+          val total = smartMediaDeleteTotalItems
+          smartMediaDeletePromise = null
+          smartMediaDeleteRequestedCount = 0
+          smartMediaDeleteAlreadyDeletedCount = 0
+          smartMediaDeleteTotalItems = 0
+          val deletedCount = alreadyDeleted + (if (resultCode == Activity.RESULT_OK) requested else 0)
+          val result = Arguments.createMap().apply {
+            putInt("deletedCount", deletedCount)
+            putInt("failedCount", (total - deletedCount).coerceAtLeast(0))
+            putString("mode", if (resultCode == Activity.RESULT_OK) "confirmation" else "cancelled")
+          }
+          smartPromise.resolve(result)
+        }
+        return
+      }
         return
       }
       val promise = speechRecognitionPromise ?: return
@@ -773,7 +808,8 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   @ReactMethod
   fun renderPdfPageToFile(sourceUri: String, pageIndex: Int, destinationUri: String, width: Int, promise: Promise) {
     runOnIo(promise, "PIXORY_PDF_RENDER_FAILED") {
-      val safeWidth = width.coerceIn(240, 2400)
+      val safeWidth = width.coerceIn(240, 3840)
+      var computedHeight = safeWidth
       val destination = fileFromUri(destinationUri)
       destination.parentFile?.mkdirs()
       openPdfDescriptor(Uri.parse(sourceUri)).use { descriptor ->
@@ -783,6 +819,7 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
           }
           renderer.openPage(pageIndex).use { page ->
             val safeHeight = ((page.height.toFloat() / page.width.toFloat()) * safeWidth).toInt().coerceAtLeast(1)
+            computedHeight = safeHeight
             val bitmap = Bitmap.createBitmap(safeWidth, safeHeight, Bitmap.Config.ARGB_8888)
             try {
               bitmap.eraseColor(Color.WHITE)
@@ -969,22 +1006,546 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   }
 
   @ReactMethod
+  fun setPersonalRecentsBlurEnabled(enabled: Boolean, promise: Promise) {
+    MainActivity.sPersonalRecentsBlurEnabled = enabled
+    val activity = reactApplicationContext.currentActivity as? MainActivity
+    activity?.setPersonalRecentsBlurEnabled(enabled)
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun enrollBiometricKey(promise: Promise) {
+    val activity = reactApplicationContext.currentActivity as? FragmentActivity
+    if (activity == null) {
+      promise.reject("BIOMETRIC_NO_ACTIVITY", "当前页面无法启动生物识别验证。")
+      return
+    }
+    val biometricManager = BiometricManager.from(reactContext)
+    val canAuth = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+    if (canAuth == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
+      promise.reject("BIOMETRIC_NONE_ENROLLED", "请先在手机系统设置中录入指纹。")
+      return
+    }
+    if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
+      promise.reject("BIOMETRIC_UNAVAILABLE", "当前设备不支持强生物识别安全绑定。")
+      return
+    }
+
+    val cipher: Cipher
+    try {
+      val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE_PROVIDER).apply { load(null) }
+      if (keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) {
+        keyStore.deleteEntry(BIOMETRIC_KEY_ALIAS)
+      }
+      val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE_PROVIDER)
+      val builder = KeyGenParameterSpec.Builder(
+        BIOMETRIC_KEY_ALIAS,
+        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+      )
+        .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
+        .setUserAuthenticationRequired(true)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        builder.setInvalidatedByBiometricEnrollment(true)
+      }
+      keyGenerator.init(builder.build())
+      val secretKey = keyGenerator.generateKey()
+      cipher = Cipher.getInstance("${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_CBC}/${KeyProperties.ENCRYPTION_PADDING_PKCS7}")
+      cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+    } catch (error: Exception) {
+      deleteBiometricKeyAliasQuietly()
+      promise.reject("BIOMETRIC_KEY_CREATE_FAILED", error.message ?: "无法创建安全生物识别密钥。", error)
+      return
+    }
+
+    reactContext.runOnUiQueueThread {
+      val settled = AtomicBoolean(false)
+      val callback = object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+          if (!settled.compareAndSet(false, true)) return
+          try {
+            result.cryptoObject?.cipher?.doFinal("pixory_bind".toByteArray(Charsets.UTF_8))
+            promise.resolve(true)
+          } catch (error: Exception) {
+            deleteBiometricKeyAliasQuietly()
+            promise.reject("BIOMETRIC_BIND_FAILED", error.message ?: "生物识别密钥校验失败。", error)
+          }
+        }
+
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+          if (!settled.compareAndSet(false, true)) return
+          deleteBiometricKeyAliasQuietly()
+          if (
+            errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+            errorCode == BiometricPrompt.ERROR_CANCELED
+          ) {
+            promise.reject("BIOMETRIC_CANCELLED", "已取消指纹验证。")
+          } else {
+            promise.reject("BIOMETRIC_ERROR", errString.toString().ifBlank { "指纹验证失败。" })
+          }
+        }
+      }
+      try {
+        val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(reactContext), callback)
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+          .setTitle("验证指纹以开启隐私解锁")
+          .setSubtitle("若手机系统后续新增指纹，此授权将自动失效")
+          .setNegativeButtonText("取消")
+          .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+          .build()
+        prompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+      } catch (error: Exception) {
+        if (settled.compareAndSet(false, true)) {
+          deleteBiometricKeyAliasQuietly()
+          promise.reject("BIOMETRIC_PROMPT_FAILED", error.message ?: "无法拉起指纹验证弹窗。", error)
+        }
+      }
+    }
+  }
+
+  @ReactMethod
+  fun verifyBiometricKey(promptTitle: String, promise: Promise) {
+    val activity = reactApplicationContext.currentActivity as? FragmentActivity
+    if (activity == null) {
+      promise.reject("BIOMETRIC_NO_ACTIVITY", "当前页面无法启动生物识别验证。")
+      return
+    }
+    val cipher: Cipher
+    try {
+      val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE_PROVIDER).apply { load(null) }
+      val secretKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as? SecretKey
+      if (secretKey == null) {
+        promise.reject("BIOMETRIC_KEY_MISSING", "尚未绑定生物识别密钥，请用隐私密码解锁后重新开启指纹解锁。")
+        return
+      }
+      cipher = Cipher.getInstance("${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_CBC}/${KeyProperties.ENCRYPTION_PADDING_PKCS7}")
+      cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+    } catch (error: KeyPermanentlyInvalidatedException) {
+      deleteBiometricKeyAliasQuietly()
+      promise.reject("BIOMETRIC_ENROLLMENT_CHANGED", "检测到系统生物识别信息已变更，请先输入隐私密码重新验证。", error)
+      return
+    } catch (error: Exception) {
+      promise.reject("BIOMETRIC_KEY_INVALID", error.message ?: "生物识别密钥校验失败。", error)
+      return
+    }
+
+    reactContext.runOnUiQueueThread {
+      val settled = AtomicBoolean(false)
+      val callback = object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+          if (!settled.compareAndSet(false, true)) return
+          try {
+            result.cryptoObject?.cipher?.doFinal("pixory_auth".toByteArray(Charsets.UTF_8))
+            promise.resolve(true)
+          } catch (error: Exception) {
+            promise.reject("BIOMETRIC_AUTH_FAILED", error.message ?: "指纹验证未通过。", error)
+          }
+        }
+
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+          if (!settled.compareAndSet(false, true)) return
+          when (errorCode) {
+            BiometricPrompt.ERROR_USER_CANCELED,
+            BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+            BiometricPrompt.ERROR_CANCELED -> {
+              promise.reject("BIOMETRIC_CANCELLED", "已取消指纹验证。")
+            }
+            BiometricPrompt.ERROR_LOCKOUT,
+            BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> {
+              promise.reject("BIOMETRIC_LOCKOUT", "系统指纹失败次数过多，请改用隐私密码解锁。")
+            }
+            else -> {
+              promise.reject("BIOMETRIC_ERROR", errString.toString().ifBlank { "指纹验证失败。" })
+            }
+          }
+        }
+      }
+      try {
+        val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(reactContext), callback)
+        val safeTitle = promptTitle.trim().ifEmpty { "验证指纹进入隐私空间" }
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+          .setTitle(safeTitle)
+          .setNegativeButtonText("使用密码")
+          .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+          .build()
+        prompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+      } catch (error: Exception) {
+        if (settled.compareAndSet(false, true)) {
+          promise.reject("BIOMETRIC_PROMPT_FAILED", error.message ?: "无法拉起指纹验证弹窗。", error)
+        }
+      }
+    }
+  }
+
+  private fun deleteBiometricKeyAliasQuietly() {
+    try {
+      val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE_PROVIDER).apply { load(null) }
+      if (keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) {
+        keyStore.deleteEntry(BIOMETRIC_KEY_ALIAS)
+      }
+    } catch (_: Exception) {}
+  }
+
+  @ReactMethod
+  fun getManageMediaPermissionStatus(promise: Promise) {
+    val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val granted = if (supported) {
+      try {
+        MediaStore.canManageMedia(reactContext)
+      } catch (_: Exception) {
+        false
+      }
+    } else {
+      false
+    }
+    promise.resolve(Arguments.createMap().apply {
+      putBoolean("supported", supported)
+      putBoolean("granted", granted)
+      putInt("apiLevel", Build.VERSION.SDK_INT)
+    })
+  }
+
+  @ReactMethod
+  fun requestManageMediaPermission(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      promise.resolve(false)
+      return
+    }
+    try {
+      val intent = Intent(
+        Settings.ACTION_REQUEST_MANAGE_MEDIA,
+        Uri.parse("package:${reactContext.packageName}")
+      )
+      val activity = reactApplicationContext.currentActivity
+      if (activity != null) {
+        activity.startActivity(intent)
+      } else {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        reactContext.startActivity(intent)
+      }
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("PIXORY_MANAGE_MEDIA_SETTINGS_FAILED", error.message ?: "无法打开媒体管理权限页面。", error)
+    }
+  }
+
+  @ReactMethod
+  fun deleteMediaStoreAssetsSmart(items: ReadableArray, promise: Promise) {
+    runOnIo(promise, "PIXORY_MEDIA_DELETE_FAILED") {
+      val totalItems = items.size()
+      if (totalItems == 0) {
+        promise.resolve(Arguments.createMap().apply {
+          putInt("deletedCount", 0)
+          putInt("failedCount", 0)
+          putString("mode", "none")
+        })
+        return@runOnIo
+      }
+
+      val resolvedUris = LinkedHashSet<Uri>()
+      for (index in 0 until totalItems) {
+        val item = items.getMap(index) ?: continue
+        val assetId = if (item.hasKey("assetId") && !item.isNull("assetId")) item.getString("assetId") else null
+        val sourceUri = if (item.hasKey("sourceUri") && !item.isNull("sourceUri")) item.getString("sourceUri") else null
+        val importedFileUri = if (item.hasKey("importedFileUri") && !item.isNull("importedFileUri")) item.getString("importedFileUri") else null
+        val originalFilename = if (item.hasKey("originalFilename") && !item.isNull("originalFilename")) item.getString("originalFilename") else null
+        val fileSize = if (item.hasKey("fileSize") && !item.isNull("fileSize")) item.getDouble("fileSize").toLong() else -1L
+        val mediaType = if (item.hasKey("mediaType") && !item.isNull("mediaType")) item.getString("mediaType") else null
+
+        resolveTypedMediaStoreUri(assetId, sourceUri, importedFileUri, originalFilename, fileSize, mediaType)?.let {
+          resolvedUris.add(it)
+        }
+      }
+
+      if (resolvedUris.isEmpty()) {
+        promise.resolve(Arguments.createMap().apply {
+          putInt("deletedCount", 0)
+          putInt("failedCount", totalItems)
+          putString("mode", "none")
+        })
+        return@runOnIo
+      }
+
+      val resolver = reactApplicationContext.contentResolver
+      val canSilentManage = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && MediaStore.canManageMedia(reactContext)
+      if (canSilentManage || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        var deletedCount = 0
+        val remainingForConfirmation = mutableListOf<Uri>()
+        for (uri in resolvedUris) {
+          try {
+            val rows = resolver.delete(uri, null, null)
+            if (rows > 0) {
+              deletedCount += 1
+            } else {
+              remainingForConfirmation.add(uri)
+            }
+          } catch (_: Exception) {
+            remainingForConfirmation.add(uri)
+          }
+        }
+        if (remainingForConfirmation.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+          promise.resolve(Arguments.createMap().apply {
+            putInt("deletedCount", deletedCount)
+            putInt("failedCount", (totalItems - deletedCount).coerceAtLeast(0))
+            putString("mode", if (canSilentManage) "silent" else "legacy")
+          })
+          return@runOnIo
+        }
+
+        val activity = reactApplicationContext.currentActivity
+        if (activity == null || smartMediaDeletePromise != null) {
+          promise.resolve(Arguments.createMap().apply {
+            putInt("deletedCount", deletedCount)
+            putInt("failedCount", (totalItems - deletedCount).coerceAtLeast(0))
+            putString("mode", "silent")
+          })
+          return@runOnIo
+        }
+
+        val request = MediaStore.createDeleteRequest(resolver, remainingForConfirmation)
+        smartMediaDeletePromise = promise
+        smartMediaDeleteRequestedCount = remainingForConfirmation.size
+        smartMediaDeleteAlreadyDeletedCount = deletedCount
+        smartMediaDeleteTotalItems = totalItems
+        reactContext.runOnUiQueueThread {
+          try {
+            activity.startIntentSenderForResult(
+              request.intentSender,
+              SMART_MEDIA_DELETE_REQUEST_CODE,
+              null,
+              0,
+              0,
+              0
+            )
+          } catch (error: Exception) {
+            smartMediaDeletePromise = null
+            promise.resolve(Arguments.createMap().apply {
+              putInt("deletedCount", deletedCount)
+              putInt("failedCount", (totalItems - deletedCount).coerceAtLeast(0))
+              putString("mode", "silent")
+            })
+          }
+        }
+        return@runOnIo
+      }
+
+      val activity = reactApplicationContext.currentActivity
+      if (activity == null) {
+        promise.reject("PIXORY_MEDIA_DELETE_NO_ACTIVITY", "当前页面无法请求删除确认。")
+        return@runOnIo
+      }
+      if (smartMediaDeletePromise != null) {
+        promise.reject("PIXORY_MEDIA_DELETE_BUSY", "删除确认正在进行中。")
+        return@runOnIo
+      }
+
+      val uriList = resolvedUris.toList()
+      val request = MediaStore.createDeleteRequest(resolver, uriList)
+      smartMediaDeletePromise = promise
+      smartMediaDeleteRequestedCount = uriList.size
+      smartMediaDeleteAlreadyDeletedCount = 0
+      smartMediaDeleteTotalItems = totalItems
+      reactContext.runOnUiQueueThread {
+        try {
+          activity.startIntentSenderForResult(
+            request.intentSender,
+            SMART_MEDIA_DELETE_REQUEST_CODE,
+            null,
+            0,
+            0,
+            0
+          )
+        } catch (error: Exception) {
+          smartMediaDeletePromise = null
+          promise.reject("PIXORY_MEDIA_DELETE_FAILED", error.message, error)
+        }
+      }
+    }
+  }
+
+  private fun resolveTypedMediaStoreUri(
+    assetId: String?,
+    sourceUri: String?,
+    importedFileUri: String?,
+    originalFilename: String?,
+    fileSize: Long,
+    mediaType: String?
+  ): Uri? {
+    val resolver = reactApplicationContext.contentResolver
+    val collections = if (mediaType == "video") {
+      listOf(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+    } else {
+      listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+    }
+
+    val cleanAssetId = assetId?.trim().orEmpty()
+    if (cleanAssetId.isNotEmpty()) {
+      if (cleanAssetId.startsWith("content://")) {
+        val parsed = Uri.parse(cleanAssetId)
+        if (!cleanAssetId.contains("/files/") && mediaRowExists(resolver, parsed)) {
+          return parsed
+        }
+        val tailId = parsed.lastPathSegment?.toLongOrNull()
+        if (tailId != null) {
+          for (col in collections) {
+            val candidate = ContentUris.withAppendedId(col, tailId)
+            if (mediaRowExists(resolver, candidate)) return candidate
+          }
+        }
+      } else {
+        val mediaId = cleanAssetId.toLongOrNull()
+        if (mediaId != null) {
+          for (col in collections) {
+            val candidate = ContentUris.withAppendedId(col, mediaId)
+            if (mediaRowExists(resolver, candidate)) return candidate
+          }
+        }
+      }
+    }
+
+    val cleanSourceUri = sourceUri?.trim().orEmpty()
+    if (cleanSourceUri.startsWith("content://")) {
+      val parsedSource = Uri.parse(cleanSourceUri)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        try {
+          val mediaUri = MediaStore.getMediaUri(reactContext, parsedSource)
+          if (mediaUri != null && mediaRowExists(resolver, mediaUri)) {
+            return mediaUri
+          }
+        } catch (_: Exception) {}
+      }
+      val authority = parsedSource.authority.orEmpty()
+      if (authority == "media" || authority.contains("media")) {
+        val tailId = parsedSource.lastPathSegment?.toLongOrNull()
+        if (tailId != null) {
+          for (col in collections) {
+            val candidate = ContentUris.withAppendedId(col, tailId)
+            if (mediaRowExists(resolver, candidate)) return candidate
+          }
+        }
+      }
+    }
+
+    val cleanImportedUri = importedFileUri?.trim().orEmpty()
+    if (cleanImportedUri.isNotEmpty()) {
+      val localFile = try {
+        fileFromUri(cleanImportedUri)
+      } catch (_: Exception) {
+        null
+      }
+      if (localFile != null && localFile.exists() && localFile.isFile) {
+        val targetSize = localFile.length()
+        if (targetSize > 0L) {
+          val targetPrefixHash = computePrefixSha256(FileInputStream(localFile), 256 * 1024)
+          val candidateNames = LinkedHashSet<String>().apply {
+            originalFilename?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+            if (cleanSourceUri.startsWith("content://")) {
+              resolveDisplayName(Uri.parse(cleanSourceUri))?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+            }
+          }
+          for (col in collections) {
+            val matched = findMatchingMediaStoreUri(resolver, col, targetSize, candidateNames, targetPrefixHash)
+            if (matched != null) return matched
+          }
+        }
+      }
+    } else if (fileSize > 0L && !originalFilename.isNullOrBlank()) {
+      return null
+    }
+    return null
+  }
+
+  private fun mediaRowExists(resolver: ContentResolver, uri: Uri): Boolean {
+    return try {
+      resolver.query(uri, arrayOf(MediaStore.MediaColumns._ID), null, null, null)?.use { cursor ->
+        cursor.moveToFirst()
+      } ?: false
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  private fun findMatchingMediaStoreUri(
+    resolver: ContentResolver,
+    collectionUri: Uri,
+    targetSize: Long,
+    preferredNames: Set<String>,
+    targetPrefixHash: String
+  ): Uri? {
+    val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
+    val selection = "${MediaStore.MediaColumns.SIZE} = ?"
+    val selectionArgs = arrayOf(targetSize.toString())
+    val candidates = mutableListOf<Pair<Uri, Boolean>>()
+    try {
+      resolver.query(
+        collectionUri,
+        projection,
+        selection,
+        selectionArgs,
+        "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+      )?.use { cursor ->
+        val idIndex = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
+        val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+        while (cursor.moveToNext()) {
+          if (idIndex < 0) continue
+          val id = cursor.getLong(idIndex)
+          val displayName = if (nameIndex >= 0) cursor.getString(nameIndex) else null
+          val uri = ContentUris.withAppendedId(collectionUri, id)
+          val nameMatches = displayName != null && preferredNames.contains(displayName)
+          candidates.add(uri to nameMatches)
+        }
+      }
+    } catch (_: Exception) {
+      return null
+    }
+
+    val ordered = candidates.sortedByDescending { it.second }
+    for ((candidateUri, _) in ordered) {
+      try {
+        resolver.openInputStream(candidateUri)?.use { stream ->
+          val candidateHash = computePrefixSha256(stream, 256 * 1024)
+          if (candidateHash == targetPrefixHash) {
+            return candidateUri
+          }
+        }
+      } catch (_: Exception) {}
+    }
+    return null
+  }
+
+  private fun computePrefixSha256(input: InputStream, maxBytes: Int): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    val buffer = ByteArray(16 * 1024)
+    var remaining = maxBytes
+    input.use { stream ->
+      while (remaining > 0) {
+        val read = stream.read(buffer, 0, minOf(buffer.size, remaining))
+        if (read <= 0) break
+        digest.update(buffer, 0, read)
+        remaining -= read
+      }
+    }
+    return bytesToHex(digest.digest())
+  }
+
+  @ReactMethod
   fun deleteMediaStoreAssetsWithConfirmation(assetIds: ReadableArray, promise: Promise) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
       promise.reject("PIXORY_MEDIA_DELETE_UNSUPPORTED", "Android 11 及以上才支持系统删除确认。")
       return
     }
 
-    val uris = mutableListOf<Uri>()
-    val filesUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+    val uris = LinkedHashSet<Uri>()
+    // Resolve against Images.Media / Video.Media collections instead of MediaStore.Files
     for (index in 0 until assetIds.size()) {
       val assetId = assetIds.getString(index)?.trim().orEmpty()
       if (assetId.isEmpty()) continue
       val uri = if (assetId.startsWith("content://")) {
-        Uri.parse(assetId)
+        resolveTypedMediaStoreUri(assetId, null, null, null, -1L, null) ?: continue
       } else {
         val mediaId = assetId.toLongOrNull() ?: continue
-        ContentUris.withAppendedId(filesUri, mediaId)
+        resolveTypedMediaStoreUri(mediaId.toString(), null, null, null, -1L, null) ?: continue
       }
       uris.add(uri)
     }
@@ -1005,7 +1566,7 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     }
 
     try {
-      val request = MediaStore.createDeleteRequest(reactApplicationContext.contentResolver, uris)
+      val request = MediaStore.createDeleteRequest(reactApplicationContext.contentResolver, uris.toList())
       mediaDeletePromise = promise
       activity.startIntentSenderForResult(
         request.intentSender,
@@ -1545,6 +2106,9 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     private const val MAX_ZIP_ENTRY_BYTES = 256L * 1024L * 1024L
     private const val MAX_ZIP_DECLARED_BYTES = 4L * 1024L * 1024L * 1024L
     private const val MEDIA_DELETE_REQUEST_CODE = 7305
+    private const val SMART_MEDIA_DELETE_REQUEST_CODE = 7306
+    private const val ANDROID_KEYSTORE_PROVIDER = "AndroidKeyStore"
+    private const val BIOMETRIC_KEY_ALIAS = "pixory_personal_biometric_v1"
     private const val SPEECH_RECOGNITION_REQUEST_CODE = 7304
   }
 }

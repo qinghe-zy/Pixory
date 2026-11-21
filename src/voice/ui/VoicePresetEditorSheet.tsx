@@ -2,9 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { colors, radius, spacing, typography } from '../../design/tokens';
 import type { PixorySpace } from '../../database';
 import type { VoicePresetRecord, VoiceEngineKind } from '../types';
@@ -230,13 +229,9 @@ export function VoicePresetEditorSheet({
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView behavior="padding" style={styles.overlay}>
         <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFillObject} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardAvoidingSheet}
-        >
-          <View style={styles.sheetContainer}>
+        <View style={styles.sheetContainer}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>{isEditing ? '编辑声音模型预设' : '新建声音模型预设'}</Text>
@@ -262,7 +257,7 @@ export function VoicePresetEditorSheet({
             </View>
           </View>
 
-          <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
             {/* 预设名称 */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>预设名称</Text>
@@ -518,8 +513,7 @@ export function VoicePresetEditorSheet({
             </Pressable>
           </View>
         </View>
-        </KeyboardAvoidingView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -530,16 +524,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
   },
-  keyboardAvoidingSheet: {
-    width: '100%',
-    maxHeight: '90%',
-  },
   sheetContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '90%',
     paddingBottom: 24,
+    width: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -560,6 +551,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   content: {
+    flexShrink: 1,
     paddingHorizontal: 20,
   },
   contentInner: {

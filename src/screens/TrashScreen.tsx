@@ -4,7 +4,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View, type NativeSyn
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
-import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, GridIcon, JustifiedIcon, useCompactHeaderAnimation } from '../components/GalleryHeaders';
 import Animated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -183,11 +183,9 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
 
   const scrollY = useSharedValue(0);
   const scrollOffsetRef = useRef(0);
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    return {
-      opacity: interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP),
-      transform: [{ translateY: interpolate(scrollY.value, [10, 30], [-5, 0], Extrapolation.CLAMP) }],
-    };
+  const { compactHeaderStyle, compactAnimatedProps } = useCompactHeaderAnimation(scrollY, {
+    threshold: [10, 30],
+    translateYRange: [-5, 0],
   });
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -249,7 +247,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
   return (
     <>
       <ScreenScaffold
-        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
+        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }} backgroundColor="#FFFFFF" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} showHeader={false} fullScreen={true}>
         <GalleryCompactHeader
           title={titleSlot ? '' : "回收站"}
           centerSlot={titleSlot}
@@ -257,6 +255,7 @@ export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMod
           space={space}
           onBack={onBack}
           animatedStyle={compactHeaderStyle}
+          animatedProps={compactAnimatedProps}
           rightActions={rightAction}
         />
         <PageStateBlock

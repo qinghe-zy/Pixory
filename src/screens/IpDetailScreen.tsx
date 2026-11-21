@@ -9,6 +9,7 @@ import { AppDialog } from '../components/AppDialog';
 import { AssetDetailRow } from '../components/AssetDetailRow';
 import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { IpDetailDrawer } from '../components/IpDetailDrawer';
+import { MediaCountMeta } from '../components/MediaCountMeta';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
@@ -514,7 +515,7 @@ export function IpDetailScreen({
               {needsOrganizingCount > 0 ? (
                 <Pressable onPress={() => { setIsDrawerVisible(false); setTimeout(() => onOpenNeedsOrganizing(), 300); }} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
                   <View style={styles.needsCopy}>
-                    <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
+                    <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 项</Text>
                   </View>
                   <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
                 </Pressable>
@@ -530,9 +531,9 @@ export function IpDetailScreen({
                     <View style={[styles.progressFill, { width: `${organizationProgress.organizationPercent}%` }]} />
                   </View>
                   <View style={styles.progressFacts}>
-                    <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 张</Text>
-                    <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 张</Text>
-                    <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
+                    <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 项</Text>
+                    <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 项</Text>
+                    <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 项</Text>
                   </View>
                 </Pressable>
               ) : null}
@@ -546,7 +547,7 @@ export function IpDetailScreen({
                         <View style={styles.batchCopy}>
                           <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
                           <Text numberOfLines={1} style={styles.batchMeta}>
-                            {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
+                            {formatDateTime(batch.createdAt)} · {batch.activeCount} 项 · 整理度 {percent}%
                           </Text>
                         </View>
                         <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
@@ -585,7 +586,18 @@ export function IpDetailScreen({
                     </View>
                     <View style={styles.groupEntryCopy}>
                       <Text numberOfLines={1} style={styles.groupEntryTitle}>{group.name}</Text>
-                      <Text style={styles.groupEntryMeta}>{getGroupTypeLabel(group.type)} · {group.imageCount} 张</Text>
+                      <View style={styles.groupEntryMetaRow}>
+                        <Text style={styles.groupEntryMeta}>{getGroupTypeLabel(group.type)}</Text>
+                        <MediaCountMeta
+                          color={colors.text.secondary}
+                          groupGap={spacing[2]}
+                          iconSize={12}
+                          imageCount={group.imageCount}
+                          itemGap={spacing[1]}
+                          textStyle={styles.groupEntryMeta}
+                          videoCount={group.videoCount}
+                        />
+                      </View>
                     </View>
                     <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
                   </Pressable>
@@ -622,7 +634,7 @@ export function IpDetailScreen({
                   if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
                   if (a.type !== b.type) return a.type.localeCompare(b.type);
                   if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-                  return b.imageCount - a.imageCount;
+                  return (b.imageCount + b.videoCount) - (a.imageCount + a.videoCount);
                 });
                 return { ...current, groups: newGroups };
               });
@@ -1048,8 +1060,16 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
   },
+  groupEntryMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing[2],
+    rowGap: 2,
+  },
   groupEntryMeta: {
     ...typography.textStyles.micro,
+    lineHeight: 14,
     color: colors.text.secondary,
   },
   emptyGroupEntry: {

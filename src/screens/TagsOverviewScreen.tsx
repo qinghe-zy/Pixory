@@ -19,6 +19,7 @@ import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 interface TagsOverviewScreenProps {
   space?: PixorySpace;
+  isActive?: boolean;
   refreshToken: number;
   footer?: ReactNode;
   mode?: OrganizeMode;
@@ -33,7 +34,7 @@ interface TagOverviewMeta {
   recentTags: TagUsageItem[];
 }
 
-export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mode, onSelectMode, onOpenTag }: TagsOverviewScreenProps) {
+export function TagsOverviewScreen({ space = 'normal', isActive = true, refreshToken, footer, mode, onSelectMode, onOpenTag }: TagsOverviewScreenProps) {
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
@@ -77,6 +78,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mod
       };
     }),
     {
+      deferUntilInteractions: true,
       requestKey: JSON.stringify([space, debouncedSearchText.trim(), refreshToken]),
       getItemKey: (tag) => tag.id,
       initialMeta: { popularTags: [], recentTags: [] },
@@ -363,7 +365,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, mod
         </View>
       ) : null}
       <PageStateBlock
-        loadingComponent={<TagSkeleton />}
+        loadingComponent={<TagSkeleton active={isActive} />}
         emptyActionLabel={undefined}
         emptyDescription="给图片添加标签后，这里会展示标签名称、使用次数和结果入口。"
         emptyIconName="pricetags-outline"

@@ -89,7 +89,7 @@ test('share collection imports external URI copies into Pixory storage before da
   assert.match(shareScreen, /importSingleImage/);
   assert.match(shareScreen, /importVideosToIp/);
   assert.match(shareScreen, /finishNativeShareActivity/);
-  assert.match(shareScreen, /require\('\.\.\/\.\.\/docs\/black\.png'\)/);
+  assert.match(shareScreen, /require\('\.\.\/\.\.\/(?:docs|assets)\/black\.png'\)/);
   assert.match(shareScreen, /styles\.sheetPatternImage/);
   assert.match(shareScreen, /styles\.previewModalPatternImage/);
   assert.match(shareScreen, /resizeMode="stretch"/);

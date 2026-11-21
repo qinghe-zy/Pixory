@@ -14,7 +14,7 @@ import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
 import { formatMessagePreview } from '../utils/formatMessagePreview';
 import Reanimated, { useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
-import { GalleryNormalHeader, GalleryCompactHeader } from '../components/GalleryHeaders';
+import { GalleryNormalHeader, GalleryCompactHeader, useCompactHeaderAnimation } from '../components/GalleryHeaders';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
@@ -202,11 +202,9 @@ export function AiHistoryScreen({
 
   const scrollY = useSharedValue(0);
   const scrollOffsetRef = useRef(0);
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    return {
-      opacity: interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP),
-      transform: [{ translateY: interpolate(scrollY.value, [10, 30], [-5, 0], Extrapolation.CLAMP) }],
-    };
+  const { compactHeaderStyle, compactAnimatedProps } = useCompactHeaderAnimation(scrollY, {
+    threshold: [10, 30],
+    translateYRange: [-5, 0],
   });
 
   const handleScroll = useCallback((event: any) => {
@@ -567,6 +565,7 @@ export function AiHistoryScreen({
             count={items.length}
             space={space}
             animatedStyle={compactHeaderStyle}
+            animatedProps={compactAnimatedProps}
             rightActions={trashRightAction}
           />
           {innerContent}

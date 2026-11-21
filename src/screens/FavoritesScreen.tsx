@@ -13,12 +13,13 @@ import { EmptyState } from '../components/EmptyState';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { GallerySkeleton } from '../components/GallerySkeleton';
-import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon, useCompactHeaderAnimation } from '../components/GalleryHeaders';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { SecureImage } from '../components/SecureImage';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { listFavoriteAssistantMessagePage, type AiMessageFavoriteListItem } from '../ai/aiChatService';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
@@ -144,16 +145,15 @@ export function FavoritesScreen({
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const scrollY = useSharedValue(0);
   const scrollOffsetRef = useRef(0);
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
-    const display = opacity > 0 ? 'flex' : 'none';
-    return { opacity, transform: [{ translateY }], display };
+  const { compactHeaderStyle, compactAnimatedProps, heroStyle } = useCompactHeaderAnimation(scrollY, {
+    threshold: [10, 30],
+    translateYRange: [5, 0],
   });
-  const heroStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
-    return { opacity };
-  });
+
+  const selectionListContentContainerStyle = useMemo(
+    () => (multiSelect.isSelectionMode ? { paddingBottom: insets.bottom + metrics.bottomActionHeight + spacing[5] } : undefined),
+    [multiSelect.isSelectionMode, insets.bottom]
+  );
 
   const handleScroll = (event: any) => {
     const y = event.nativeEvent.contentOffset.y;
@@ -297,6 +297,7 @@ export function FavoritesScreen({
       >
 
         <VirtualizedAssetCollection
+          contentContainerStyle={selectionListContentContainerStyle}
           emptyComponent={
             !combinedLoading && images.length === 0 ? (
               <View style={{ marginTop: 100 }}>
@@ -315,7 +316,6 @@ export function FavoritesScreen({
               </View>
             ) : null
           }
-          contentContainerStyle={{}}
           scrollOffsetRef={scrollOffsetRef}
           headerComponent={
             <GalleryNormalHeader
@@ -465,7 +465,12 @@ export function FavoritesScreen({
           >
             <View style={styles.aiFavoriteHeader}>
               {favorite.roleAvatarUri ? (
-                <Image source={{ uri: favorite.roleAvatarUri }} style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#F3F4F6' }} contentFit="cover" />
+                <SecureImage
+                  contentFit="cover"
+                  space={space}
+                  style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#F3F4F6' }}
+                  uri={favorite.roleAvatarUri}
+                />
               ) : (
                 <Ionicons name="chatbubble-ellipses-outline" size={14} color="#9CA3AF" />
               )}
@@ -494,7 +499,7 @@ export function FavoritesScreen({
       footerNaked={true}
       showHeader={false}
       fullScreen={true}
-      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
       <GalleryCompactHeader
         title=""
@@ -502,6 +507,7 @@ export function FavoritesScreen({
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
+        animatedProps={compactAnimatedProps}
         leftActions={
           <View style={[styles.favoriteModeTabs, { padding: 3, minHeight: 32 }]}>
             <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? { backgroundColor: '#111827' } : null, pressed && styles.pressed, { minHeight: 26, paddingHorizontal: 12 }]}>

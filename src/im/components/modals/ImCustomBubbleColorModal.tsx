@@ -5,11 +5,11 @@ import {
   Text,
   TextInput,
   Pressable,
+  ScrollView,
   StyleSheet,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { calculateContrastingTextColor } from '../../theme/imTheme';
@@ -95,7 +95,7 @@ export function ImCustomBubbleColorModal({
       visible={visible}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.backdrop}
       >
         <Pressable
@@ -120,58 +120,66 @@ export function ImCustomBubbleColorModal({
             </Pressable>
           </View>
 
-          {/* 实时气泡预览 */}
-          <View style={styles.previewBox}>
-            <Text style={styles.previewCaption}>实时视觉预览</Text>
-            <View style={[styles.bubblePreview, { backgroundColor: selectedColor }]}>
-              <Text style={[styles.bubbleText, { color: previewTextColor }]}>
-                这是一条专属气泡配色预览效果 ✨
-              </Text>
+          <ScrollView
+            bounces={false}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={styles.bodyScroll}
+          >
+            {/* 实时气泡预览 */}
+            <View style={styles.previewBox}>
+              <Text style={styles.previewCaption}>实时视觉预览</Text>
+              <View style={[styles.bubblePreview, { backgroundColor: selectedColor }]}>
+                <Text style={[styles.bubbleText, { color: previewTextColor }]}>
+                  这是一条专属气泡配色预览效果 ✨
+                </Text>
+              </View>
             </View>
-          </View>
 
-          {/* 色号输入框 */}
-          <View style={styles.inputSection}>
-            <Text style={styles.sectionLabel}>色号 (HEX):</Text>
-            <View style={styles.inputRow}>
-              <View style={[styles.colorBadge, { backgroundColor: selectedColor }]} />
-              <TextInput
-                accessibilityLabel="十六进制色号"
-                autoCapitalize="characters"
-                maxLength={9}
-                onChangeText={handleHexChange}
-                placeholder="#3B82F6"
-                placeholderTextColor="#9CA3AF"
-                style={styles.textInput}
-                value={hexInput}
-              />
+            {/* 色号输入框 */}
+            <View style={styles.inputSection}>
+              <Text style={styles.sectionLabel}>色号 (HEX):</Text>
+              <View style={styles.inputRow}>
+                <View style={[styles.colorBadge, { backgroundColor: selectedColor }]} />
+                <TextInput
+                  accessibilityLabel="十六进制色号"
+                  autoCapitalize="characters"
+                  maxLength={9}
+                  onChangeText={handleHexChange}
+                  placeholder="#3B82F6"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.textInput}
+                  value={hexInput}
+                />
+              </View>
             </View>
-          </View>
 
-          {/* 精选色卡矩阵 */}
-          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>精选灵感色卡</Text>
-          <View style={styles.paletteGrid}>
-            {PALETTE_PRESETS.map((item) => {
-              const isSelected = selectedColor.toLowerCase() === item.color.toLowerCase();
-              return (
-                <Pressable
-                  accessibilityLabel={`选择颜色：${item.label}`}
-                  accessibilityRole="button"
-                  key={item.color}
-                  onPress={() => handleSelectPalette(item.color)}
-                  style={[styles.paletteItem, isSelected && styles.paletteItemSelected]}
-                >
-                  <View style={[styles.paletteCircle, { backgroundColor: item.color }]} />
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.paletteText, isSelected && styles.paletteTextSelected]}
+            {/* 精选色卡矩阵 */}
+            <Text style={[styles.sectionLabel, { marginTop: 12 }]}>精选灵感色卡</Text>
+            <View style={styles.paletteGrid}>
+              {PALETTE_PRESETS.map((item) => {
+                const isSelected = selectedColor.toLowerCase() === item.color.toLowerCase();
+                return (
+                  <Pressable
+                    accessibilityLabel={`选择颜色：${item.label}`}
+                    accessibilityRole="button"
+                    key={item.color}
+                    onPress={() => handleSelectPalette(item.color)}
+                    style={[styles.paletteItem, isSelected && styles.paletteItemSelected]}
                   >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                    <View style={[styles.paletteCircle, { backgroundColor: item.color }]} />
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.paletteText, isSelected && styles.paletteTextSelected]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
 
           {/* 底部确认操作 */}
           <View style={styles.footer}>
@@ -209,6 +217,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 380,
+    maxHeight: '88%',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
@@ -217,6 +226,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
+  },
+  bodyScroll: {
+    flexShrink: 1,
   },
   header: {
     flexDirection: 'row',

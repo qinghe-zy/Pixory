@@ -4,7 +4,7 @@ import { AccessibilityInfo, Animated, Easing, StyleSheet, View, type LayoutChang
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
-export function IPCardSkeleton() {
+export function IPCardSkeleton({ active = true }: { active?: boolean }) {
   const shimmerProgress = useRef(new Animated.Value(0)).current;
   const [cardWidth, setCardWidth] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -29,7 +29,7 @@ export function IPCardSkeleton() {
   useEffect(() => {
     shimmerProgress.stopAnimation();
     shimmerProgress.setValue(0);
-    if (reduceMotion || cardWidth <= 0) {
+    if (!active || reduceMotion || cardWidth <= 0) {
       return;
     }
 
@@ -43,7 +43,7 @@ export function IPCardSkeleton() {
     );
     animation.start();
     return () => animation.stop();
-  }, [cardWidth, reduceMotion, shimmerProgress]);
+  }, [active, cardWidth, reduceMotion, shimmerProgress]);
 
   const shimmerTranslateX = shimmerProgress.interpolate({
     inputRange: [0, 1],

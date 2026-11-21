@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View, Platform, ToastAndroid } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View, Platform, ToastAndroid } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { generateAndSetRecoveryKey } from '../services/personalSystemService';
@@ -75,7 +76,7 @@ export function RecoveryKeyModal({ visible, onClose, initialKey }: Props) {
 
   return (
     <Modal animationType="fade" statusBarTranslucent transparent visible={visible} onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.backdrop}>
           <View style={styles.panel}>
           

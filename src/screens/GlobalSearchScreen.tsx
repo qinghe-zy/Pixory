@@ -19,6 +19,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, settingsRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { SecureImage } from '../components/SecureImage';
+import { MediaCountMeta } from '../components/MediaCountMeta';
 import {
   addSearchHistoryItem,
   clearSearchHistory,
@@ -681,7 +682,15 @@ function GroupSection({ items, totalCount, onOpen, query, space, activeFilter, o
                   <HighlightedText text={item.name} keyword={query} style={protoStyles.groupTitle} highlightWrapperStyle={protoStyles.highlightBox} />
                   <Text style={protoStyles.groupSub} numberOfLines={1}>归属于 {item.ipName}</Text>
                 </View>
-                <Text style={protoStyles.groupCountText}>{item.imageCount} 项</Text>
+                <MediaCountMeta
+                  color={htmlColors.outline}
+                  groupGap={6}
+                  iconSize={12}
+                  imageCount={item.imageCount}
+                  itemGap={3}
+                  textStyle={protoStyles.groupCountText}
+                  videoCount={item.videoCount}
+                />
               </View>
             </View>
           </Pressable>

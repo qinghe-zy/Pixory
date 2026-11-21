@@ -3188,11 +3188,18 @@ export async function listAiHistoryThreads(input: {
   return runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listHistoryItems(db, input.space, input.filter ?? 'all', input.limit ?? 100, input.searchText ?? ''));
 }
 
+const aiHomeThreadsInFlight = new Map<string, Promise<AiHomeThreadItem[]>>();
+
 export async function listAiHomeThreads(input: {
   space: PixorySpace;
   limit?: number;
 }): Promise<AiHomeThreadItem[]> {
-  return runWithDatabaseSpace(input.space, async (db) => {
+  const flightKey = `${input.space}:${input.limit ?? 30}`;
+  const existingFlight = aiHomeThreadsInFlight.get(flightKey);
+  if (existingFlight) {
+    return existingFlight;
+  }
+  const request = runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
     
     const systemAssistantEnabled = await settingsRepository.getSystemAssistantEnabled(db);
@@ -3279,7 +3286,13 @@ export async function listAiHomeThreads(input: {
         roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
       };
     });
+  }).finally(() => {
+    if (aiHomeThreadsInFlight.get(flightKey) === request) {
+      aiHomeThreadsInFlight.delete(flightKey);
+    }
   });
+  aiHomeThreadsInFlight.set(flightKey, request);
+  return request;
 }
 
 export async function ensureSystemAssistantThread(space: PixorySpace): Promise<void> {

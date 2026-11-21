@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
@@ -63,7 +64,7 @@ export function AppDialog({
       visible={visible}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.keyboardAvoiding}
       >
         <View style={styles.overlay}>
@@ -76,6 +77,7 @@ export function AppDialog({
               <ScrollView
                 bounces={false}
                 contentContainerStyle={styles.scrollContentContainer}
+                keyboardDismissMode="on-drag"
                 keyboardShouldPersistTaps="handled"
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={true}
@@ -149,7 +151,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.entryCardGap,
     maxWidth: 360,
-    maxHeight: '82%',
+    maxHeight: '68%',
     padding: spacing[5],
     width: '100%',
   },
@@ -169,6 +171,7 @@ const styles = StyleSheet.create({
   },
   scrollArea: {
     flexShrink: 1,
+    maxHeight: 280,
   },
   scrollContentContainer: {
     gap: rhythm.cardContentGap,

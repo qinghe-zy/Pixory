@@ -1,5 +1,5 @@
+import { useRef, useState } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
-import { BlurView } from "expo-blur";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,13 +22,15 @@ interface IpCoverPickerScreenProps {
 export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged }: IpCoverPickerScreenProps) {
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpDetailRecord | null; images: ImageListItem[] }>(
     () =>
       runWithDatabaseSpace(space, async (db) => {
         const [ip, images] = await Promise.all([
           ipRepository.findDetailById(db, ipId),
-          imageRepository.findByIpId(db, ipId),
+          imageRepository.findByIpId(db, ipId, { mediaType: 'all' }),
         ]);
         return { ip, images };
       }),
@@ -46,6 +48,11 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
   const images = data?.images ?? [];
 
   function chooseCover(imageId: number) {
+    if (submittingRef.current) {
+      return;
+    }
+    submittingRef.current = true;
+    setIsSubmitting(true);
     void (async () => {
       try {
         await runWithDatabaseSpace(space, (db) => ipRepository.setCoverImage(db, ipId, imageId));
@@ -53,12 +60,19 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
         onChanged();
         onBack();
       } catch (error) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
         showToast(error instanceof Error ? `设置封面失败：${error.message}` : '设置封面失败');
       }
     })();
   }
 
   function useDefaultCover() {
+    if (submittingRef.current) {
+      return;
+    }
+    submittingRef.current = true;
+    setIsSubmitting(true);
     void (async () => {
       try {
         await runWithDatabaseSpace(space, (db) => ipRepository.clearCoverImage(db, ipId));
@@ -66,6 +80,8 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
         onChanged();
         onBack();
       } catch (error) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
         showToast(error instanceof Error ? `恢复默认封面失败：${error.message}` : '恢复默认封面失败');
       }
     })();
@@ -86,10 +102,13 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
         >
           <View style={styles.actionContainer}>
             <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting}
               onPress={useDefaultCover}
               style={({ pressed }) => [
                 styles.submitButton,
-                pressed && styles.submitButtonPressed,
+                isSubmitting && styles.submitButtonDisabled,
+                pressed && !isSubmitting && styles.submitButtonPressed,
               ]}
             >
               <Text style={styles.submitButtonText}>使用系统默认封面</Text>
@@ -97,13 +116,13 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
           </View>
 
           <PageStateBlock
-            emptyDescription="导入图片后，可以从这里选择一张作为 IP 封面。"
+            emptyDescription="导入图片或视频后，可以从这里选择一项作为 IP 封面。"
             emptyIconName="images-outline"
-            emptyTitle="还没有可选图片"
+            emptyTitle="还没有可选素材"
             errorMessage={errorMessage}
             isEmpty={!isLoading && images.length === 0}
             loading={isLoading}
-            loadingDescription="正在读取当前 IP 的图片。"
+            loadingDescription="正在读取当前 IP 的图片与视频。"
             loadingTitle="正在读取封面候选"
             onRetry={reload}
           >
@@ -233,6 +252,9 @@ const styles = StyleSheet.create({
   },
   submitButtonPressed: {
     transform: [{ scale: 0.95 }],
+  },
+  submitButtonDisabled: {
+    opacity: 0.55,
   },
   submitButtonText: {
     fontSize: 15,

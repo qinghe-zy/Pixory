@@ -103,12 +103,23 @@ export function serializeSqliteDatabase<T extends SQLiteDatabase>(database: T): 
   let activeTxDepth = 0;
   let activeScopedTxDepth = 0;
   let bareWriteWarnings = 0;
+  let isClosed = false;
   const recentBareWrites: BareWriteAuditEntry[] = [];
   let scopedGatePromise: Promise<void> | null = null;
   let resolveScopedGate: (() => void) | null = null;
 
+  function assertDatabaseOpen(): void {
+    if (isClosed) {
+      throw new Error('SQLiteDatabase connection has been closed.');
+    }
+  }
+
   function enqueueOpScoped<R>(task: AsyncTask<R>): Promise<R> {
-    const next = opTail.then(task, task);
+    const guardedTask = async (): Promise<R> => {
+      assertDatabaseOpen();
+      return task();
+    };
+    const next = opTail.then(guardedTask, guardedTask);
     opTail = next.catch(() => undefined);
     return next;
   }
@@ -523,7 +534,18 @@ export function serializeSqliteDatabase<T extends SQLiteDatabase>(database: T): 
       ? { serializeAsync: { value: (dbName?: string) => scheduleOp(true, () => rawSerializeAsync(dbName)), configurable: true } }
       : {}),
     ...(rawCloseAsync
-      ? { closeAsync: { value: () => enqueueTx(() => enqueueOpScoped(() => rawCloseAsync())), configurable: true } }
+      ? {
+          closeAsync: {
+            value: () =>
+              enqueueTx(() =>
+                enqueueOpScoped(async () => {
+                  isClosed = true;
+                  await rawCloseAsync();
+                }),
+              ),
+            configurable: true,
+          },
+        }
       : {}),
     ...(rawCreateSessionAsync
       ? {

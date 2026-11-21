@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View, ToastAndroid, Platform, ActivityIndicator } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View, ToastAndroid, Platform, ActivityIndicator } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -10,10 +11,15 @@ import { PasswordInput } from './PasswordInput';
 import { PrimaryButton } from './PrimaryButton';
 import { SecurityUnlockModule } from './SecurityUnlockModule';
 import {
+  authenticatePersonalBiometric,
+  formatPersonalLockCountdown,
   getPersonalCredentialConfig,
+  getPersonalLockStatus,
+  MAX_PERSONAL_UNLOCK_FAILURES,
   PersonalCredentialConfig,
+  PersonalLockStatus,
   resetPasswordWithRecoveryKey,
-  setPersonalFingerprintEnabled,
+  subscribePersonalLockStatus,
   verifyPersonalPassword,
   verifyRecoveryKey,
 } from '../services/personalSystemService';
@@ -24,6 +30,7 @@ interface PersonalUnlockModalProps {
   hasCredential: boolean | null;
   loading: boolean;
   visible: boolean;
+  lockedUntil?: string | null;
   title?: string;
   description?: string;
   hideActions?: boolean;
@@ -38,6 +45,7 @@ export function PersonalUnlockModal({
   hasCredential,
   loading,
   visible,
+  lockedUntil: externalLockedUntil,
   title,
   description,
   hideActions,
@@ -66,8 +74,14 @@ export function PersonalUnlockModal({
 
   // New states
   const [config, setConfig] = useState<PersonalCredentialConfig | null>(null);
-  const [biometricSupported, setBiometricSupported] = useState(false);
-  const [promptSeen, setPromptSeen] = useState(true);
+  const [lockStatus, setLockStatus] = useState<PersonalLockStatus>({
+    isLocked: false,
+    lockedUntil: null,
+    remainingMs: 0,
+    failedAttempts: 0,
+    remainingAttempts: MAX_PERSONAL_UNLOCK_FAILURES,
+  });
+  const [lockRemainingMs, setLockRemainingMs] = useState(0);
   
   // Change Password flow states
   type ChangePasswordStep = 'verify_old' | 'choose_new' | 'enter_new_digital' | 'enter_new_pattern' | 'confirm_new_pattern';
@@ -87,11 +101,46 @@ export function PersonalUnlockModal({
   const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   useEffect(() => {
-    LocalAuthentication.hasHardwareAsync().then(setBiometricSupported);
-    SecureStore.getItemAsync('pixory.personal.fingerprintPromptSeen').then(val => {
-      setPromptSeen(val === 'true');
+    const unsubscribe = subscribePersonalLockStatus((status) => {
+      setLockStatus(status);
     });
+    return unsubscribe;
   }, []);
+
+  const effectiveLockedUntil = lockStatus.lockedUntil ?? externalLockedUntil ?? null;
+  const isLockoutActive = lockRemainingMs > 0;
+
+  useEffect(() => {
+    if (!effectiveLockedUntil) {
+      setLockRemainingMs(0);
+      return;
+    }
+    const targetMs = Date.parse(effectiveLockedUntil);
+    if (!Number.isFinite(targetMs)) {
+      setLockRemainingMs(0);
+      return;
+    }
+    const tick = () => {
+      const nextRemaining = Math.max(0, targetMs - Date.now());
+      setLockRemainingMs(nextRemaining);
+      if (nextRemaining <= 0) {
+        setLockStatus((prev) => ({
+          ...prev,
+          isLocked: false,
+          lockedUntil: null,
+          remainingMs: 0,
+          failedAttempts: 0,
+          remainingAttempts: MAX_PERSONAL_UNLOCK_FAILURES,
+        }));
+        setErrorMessage((curr) =>
+          curr && (curr.includes('锁定') || curr.includes('次数过多')) ? null : curr
+        );
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [effectiveLockedUntil]);
 
   useEffect(() => {
     if (!visible) {
@@ -115,12 +164,13 @@ export function PersonalUnlockModal({
       setSetupPatternMethod(null);
       setFirstPattern('');
     } else {
-      getPersonalCredentialConfig().then(cfg => {
+      void Promise.all([getPersonalCredentialConfig(), getPersonalLockStatus()]).then(([cfg, status]) => {
         setConfig(cfg);
+        setLockStatus(status);
         if (cfg.hasCredential) {
           setUnlockMethod(cfg.defaultMethod);
-          if (cfg.fingerprintEnabled) {
-            triggerBiometric();
+          if (cfg.fingerprintEnabled && !status.isLocked) {
+            void triggerBiometric();
           }
         }
       });
@@ -130,6 +180,9 @@ export function PersonalUnlockModal({
   const needsSetup = hasCredential === false;
 
   async function submitPrimary() {
+    if (isLockoutActive) {
+      return;
+    }
     setErrorMessage(null);
     try {
       if (needsSetup) {
@@ -146,28 +199,46 @@ export function PersonalUnlockModal({
         await onUnlock(secret);
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '隐私模式操作失败');
+      const status = await getPersonalLockStatus().catch(() => null);
+      if (status) {
+        setLockStatus(status);
+      }
+      if (status?.isLocked) {
+        setErrorMessage('密码错误次数过多，隐私系统已暂时锁定。');
+      } else if (status && status.failedAttempts > 0) {
+        setErrorMessage(`密码不正确，还可尝试 ${status.remainingAttempts} 次`);
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : '隐私模式操作失败');
+      }
     }
   }
 
   const triggerBiometric = async () => {
+    if (isLockoutActive) {
+      return;
+    }
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: title || '验证指纹/面容进入隐私模式',
-        fallbackLabel: '使用密码',
-        disableDeviceFallback: true,
-      });
-      if (result.success) {
-        handleBiometricUnlock();
-      } else if (result.error && result.error !== 'user_cancel') {
-        setErrorMessage('指纹/面容验证未通过');
+      const result = await authenticatePersonalBiometric(title || '验证指纹进入隐私空间');
+      if (result.ok) {
+        await handleBiometricUnlock();
+      } else {
+        if (result.errorCode === 'BIOMETRIC_ENROLLMENT_CHANGED' || result.errorCode === 'BIOMETRIC_KEY_MISSING') {
+          const cfg = await getPersonalCredentialConfig();
+          setConfig(cfg);
+          setErrorMessage(result.message || '指纹授权已失效，请输入隐私密码。');
+        } else if (result.errorCode && result.errorCode !== 'user_cancel') {
+          setErrorMessage(result.message || '指纹/面容验证未通过');
+        }
       }
     } catch (e) {
-      console.log('Biometric auth error:', e);
+      setErrorMessage(e instanceof Error ? e.message : '指纹验证失败');
     }
   };
 
   async function handlePatternUnlock(patternStr: string) {
+    if (isLockoutActive) {
+      return;
+    }
     setErrorMessage(null);
     setPatternError(false);
     
@@ -196,7 +267,17 @@ export function PersonalUnlockModal({
     try {
       await onUnlock(patternStr);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '验证失败');
+      const status = await getPersonalLockStatus().catch(() => null);
+      if (status) {
+        setLockStatus(status);
+      }
+      if (status?.isLocked) {
+        setErrorMessage('图案错误次数过多，隐私系统已暂时锁定。');
+      } else if (status && status.failedAttempts > 0) {
+        setErrorMessage(`图案不正确，还可尝试 ${status.remainingAttempts} 次`);
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : '验证失败');
+      }
       setPatternError(true);
     }
   }
@@ -280,7 +361,7 @@ export function PersonalUnlockModal({
   return (
     <>
     <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.backdrop}>
           <View style={styles.panel}>
           <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
@@ -289,8 +370,8 @@ export function PersonalUnlockModal({
               <Ionicons color={colors.primary.active} name="lock-closed-outline" size={22} />
             </View>
             <View style={styles.titleCopy}>
-              <Text style={styles.title}>{needsSetup ? '创建隐私模式密码' : '进入隐私模式'}</Text>
-              <Text style={styles.description}>隐私数据保存在独立 SQLite 和独立本地文件目录中。</Text>
+              <Text style={styles.title}>{needsSetup ? '创建隐私模式密码' : (title || '进入隐私模式')}</Text>
+              <Text style={styles.description}>{needsSetup ? '隐私数据保存在独立 SQLite 和独立本地文件目录中。' : (description || '隐私数据保存在独立 SQLite 和独立本地文件目录中。')}</Text>
             </View>
             <Pressable hitSlop={10} onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
               <Ionicons color={colors.text.secondary} name="close" size={18} />
@@ -353,9 +434,19 @@ export function PersonalUnlockModal({
             )
           ) : (
             <>
+              {isLockoutActive ? (
+                <View style={styles.lockoutBanner}>
+                  <Ionicons color={colors.semantic.danger} name="time-outline" size={16} />
+                  <Text style={styles.lockoutBannerText}>
+                    {`尝试次数过多，已锁定，请 ${formatPersonalLockCountdown(lockRemainingMs)} 后重试`}
+                  </Text>
+                </View>
+              ) : null}
+
               {unlockMethod === 'password' ? (
                 <>
                   <PasswordInput
+                    editable={!isLockoutActive}
                     onChangeText={setSecret}
                     placeholder="输入隐私模式密码"
                     secureTextEntry={!showPassword}
@@ -363,18 +454,18 @@ export function PersonalUnlockModal({
                     onToggleShowPassword={() => setShowPassword((current) => !current)}
                     value={secret}
                   />
-                  {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+                  {errorMessage && !isLockoutActive ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
                   <PrimaryButton
-                    disabled={loading || !secret.trim()}
-                    label="验证进入"
+                    disabled={loading || isLockoutActive || !secret.trim()}
+                    label={isLockoutActive ? `请等待 ${formatPersonalLockCountdown(lockRemainingMs)}` : '验证进入'}
                     loading={loading}
                     onPress={() => {
                       void submitPrimary();
                     }}
                   />
-                  {hasCredential && config?.fingerprintEnabled ? (
+                  {hasCredential && config?.fingerprintEnabled && !isLockoutActive ? (
                     <View style={{ alignItems: 'center', marginTop: spacing[2] }}>
-                      <Pressable onPress={triggerBiometric} style={({pressed}) => [{ alignItems: 'center', gap: spacing[1], padding: spacing[2] }, pressed && { opacity: 0.7 }]}>
+                      <Pressable onPress={() => void triggerBiometric()} style={({pressed}) => [{ alignItems: 'center', gap: spacing[1], padding: spacing[2] }, pressed && { opacity: 0.7 }]}>
                         <Ionicons name="finger-print" size={42} color={colors.primary.default} />
                         <Text style={{ ...typography.textStyles.caption, color: colors.text.secondary }}>使用指纹/面容解锁</Text>
                       </Pressable>
@@ -385,41 +476,21 @@ export function PersonalUnlockModal({
                 <>
                   <SecurityUnlockModule 
                     key="unlock-pattern"
+                    disabled={isLockoutActive}
                     onUnlockAttempt={handlePatternUnlock}
                     onBiometricSuccess={handleBiometricUnlock}
+                    onBiometricError={(errMsg) => {
+                      setErrorMessage(errMsg);
+                      void getPersonalCredentialConfig().then(setConfig);
+                    }}
                     onUnlockErrorHint={(hint) => setErrorMessage(hint)}
                     isError={patternError}
                     size={260}
-                    disableBiometric={!config?.fingerprintEnabled}
+                    disableBiometric={!config?.fingerprintEnabled || isLockoutActive}
                   />
-                  {errorMessage && !patternError ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+                  {errorMessage && !isLockoutActive ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
                 </>
               )}
-
-              {biometricSupported && !config?.fingerprintEnabled ? (
-                <Pressable
-                  onPress={async () => {
-                    if (!promptSeen) {
-                      setPromptSeen(true);
-                      await SecureStore.setItemAsync('pixory.personal.fingerprintPromptSeen', 'true');
-                    }
-                    try {
-                      const res = await LocalAuthentication.authenticateAsync({ promptMessage: '验证以开启指纹解锁' });
-                      if (res.success) {
-                        await setPersonalFingerprintEnabled(true);
-                        const cfg = await getPersonalCredentialConfig();
-                        setConfig(cfg);
-                      }
-                    } catch (e) {
-                      setErrorMessage('无法开启指纹解锁');
-                    }
-                  }}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing[2] }}
-                >
-                  <Text style={{ ...typography.textStyles.caption, color: colors.text.secondary }}>点击设置指纹密码</Text>
-                  {!promptSeen && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.semantic.danger, marginLeft: spacing[1], marginBottom: 6 }} />}
-                </Pressable>
-              ) : null}
 
               {config?.hasPassword && config?.hasPattern ? (
                 <Pressable
@@ -434,7 +505,7 @@ export function PersonalUnlockModal({
             </>
           )}
 
-          {hasCredential ? (
+          {hasCredential && !hideActions ? (
             <View style={styles.textActions}>
               <View>
                 <Pressable
@@ -467,7 +538,7 @@ export function PersonalUnlockModal({
       </KeyboardAvoidingView>
     </Modal>
     <Modal animationType="fade" onRequestClose={closeChangePasswordDialog} statusBarTranslucent transparent visible={changePasswordVisible}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
           <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
@@ -661,7 +732,7 @@ export function PersonalUnlockModal({
       </KeyboardAvoidingView>
     </Modal>
     <Modal animationType="fade" onRequestClose={closeRecoveryModal} statusBarTranslucent transparent visible={recoveryModalVisible}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
           <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
@@ -925,6 +996,21 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.textStyles.caption,
     color: colors.semantic.danger,
+  },
+  lockoutBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.semantic.dangerBackground,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  lockoutBannerText: {
+    ...typography.textStyles.caption,
+    color: colors.semantic.danger,
+    flex: 1,
+    fontWeight: '600',
   },
   toggleMethodButton: {
     alignItems: 'center',

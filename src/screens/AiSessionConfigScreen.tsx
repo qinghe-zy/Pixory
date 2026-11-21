@@ -1463,7 +1463,7 @@ export function AiSessionConfigScreen({
         title="当前会话模型"
         visible={modelPickerVisible}
       >
-        <ScrollView style={styles.modelPickerScroll}>
+        <ScrollView keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" nestedScrollEnabled style={styles.modelPickerScroll}>
           <View style={styles.modelPickerList}>
             <View style={styles.modelOverrideFields}>
               <Text style={styles.caption}>仅本会话</Text>

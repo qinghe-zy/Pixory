@@ -85,7 +85,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
                 <View style={styles.copy}>
                   <Text numberOfLines={1} style={styles.title}>{batch.name}</Text>
                   <Text numberOfLines={1} style={styles.meta}>
-                    {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
+                    {formatDateTime(batch.createdAt)} · {batch.activeCount} 项 · 整理度 {percent}%
                   </Text>
                   <View style={styles.factRow}>
                     <Text style={styles.fact}>未分组 {batch.ungroupedCount}</Text>

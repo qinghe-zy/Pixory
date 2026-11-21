@@ -50,11 +50,7 @@ export function ImChatScreen({
   roleAvatarUri,
   initialLeftOpen,
   initialRightOpen,
-  onBack,
-  onOpenRoleDetail,
-  onNewRole,
-  onImportRole,
-  onSwitchCompanion,
+  onBack, onOpenRoleDetail, onNewRole, onImportRole, onSwitchCompanion,
 }: ImChatScreenProps) {
   const [leftOpen, setLeftOpen] = useState(initialLeftOpen ?? false);
   const [rightOpen, setRightOpen] = useState(initialRightOpen ?? false);
@@ -67,6 +63,8 @@ export function ImChatScreen({
   const [activeSandbox, setActiveSandbox] = useState<{ code: string; language?: string; title?: string } | null>(null);
   const [activeDocument, setActiveDocument] = useState<{ uri?: string; title?: string; content?: string | Uint8Array; mode?: 'clean' | 'diff' } | null>(null);
   const [selectedTextMessage, setSelectedTextMessage] = useState<ImMessage | null>(null);
+  const isInputGestureActiveRef = useRef(false);
+  const handleInputGestureActiveChange = useCallback((active: boolean) => { isInputGestureActiveRef.current = active; }, []);
   const [spatialPreset] = useAiSidebarSpatialPresetPreference(space);
   const typographyPrefs = useChatTypographyPreferences(space);
   const appearancePrefs = useChatAppearancePreferences(space);
@@ -115,6 +113,7 @@ export function ImChatScreen({
   return (
     <ImThemeProvider theme={activeTheme}>
       <ImPushScaleDrawerStage
+        disableSwipeOpen={() => isInputGestureActiveRef.current}
         leftDrawerVisible={leftOpen} rightDrawerVisible={rightOpen} sidebarMode="push_scale" spatialPreset={spatialPreset}
         onOpenLeftDrawer={() => setLeftOpen(true)} onOpenRightDrawer={() => setRightOpen(true)}
         onCloseLeftDrawer={() => setLeftOpen(false)} onCloseRightDrawer={() => setRightOpen(false)}
@@ -124,7 +123,7 @@ export function ImChatScreen({
         <View style={styles.screen}>
           <ImChatHeader onBack={onBack} onOpenDetails={() => setRightOpen(true)} subText={subText || (livingState?.statusText ? `• ${livingState.statusText}` : null)} title={companionName} />
           <ImChatList backgroundImageUri={threadSettings.backgroundImageUri} bubbleSkinPreset={threadSettings.personalization?.bubbleSkinPreset || undefined} companionAvatarUri={companionAvatarUri} companionName={companionName} highlightedMessageId={highlightedMessageId} isGenerating={Boolean(subText)} isInitialLoading={isInitialLoading} messages={messages} showThoughtBubble={threadSettings.showThoughtBubble !== false} onLongPressMessage={(m, px, py) => handleLongPress(m, px, py)} onNudge={handleNudge} onNudgeSelf={handleNudgeSelf} onOpenDiary={() => setDiaryOpen(true)} onOpenDocument={(doc) => { if (doc.uri && resolveAttachmentKind(undefined, doc.title ?? '', doc.uri, { includeSvg: true }) === 'image') { setViewerImageUri(doc.uri); return; } setActiveDocument(doc); }} onOpenSandbox={(s) => setActiveSandbox(s)} onPressBackground={handleDismissPanels} onPressMessage={(m) => { if (m.type === 'image' && m.imageUri) setViewerImageUri(m.imageUri); }} onQuickIcebreak={(prompt) => { chatListRef.current?.scrollToBottom(true); void handleSend(prompt); }} onRetryMessage={handleRetryMessage} ref={chatListRef} space={space} unreadCount={initialUnreadCount} userAvatarUri={userAvatarUri} />
-          <ImInputBar fillDraftText={fillDraftText} onCameraPress={() => void handleCamera()} onSelectFile={() => void handleFile()} onSelectImage={() => void handlePhoto()} onSelectIp={() => setIpTarget('chat')} onSend={(text) => { chatListRef.current?.scrollToBottom(true); void handleSend(text); }} onSendVoice={(voice) => { chatListRef.current?.scrollToBottom(true); void handleSendVoice(voice); }} onSendSticker={(sticker) => void handleSendSticker(sticker)} onTextChange={handleDraftChange} ref={inputBarRef} space={space} />
+          <ImInputBar fillDraftText={fillDraftText} onCameraPress={() => void handleCamera()} onInputGestureActiveChange={handleInputGestureActiveChange} onSelectFile={() => void handleFile()} onSelectImage={() => void handlePhoto()} onSelectIp={() => setIpTarget('chat')} onSend={(text) => { chatListRef.current?.scrollToBottom(true); void handleSend(text); }} onSendVoice={(voice) => { chatListRef.current?.scrollToBottom(true); void handleSendVoice(voice); }} onSendSticker={(sticker) => void handleSendSticker(sticker)} onTextChange={handleDraftChange} ref={inputBarRef} space={space} />
         </View>
       </ImPushScaleDrawerStage>
       <ImImageViewerModal imageUri={viewerImageUri} onClose={() => setViewerImageUri(null)} space={space} visible={Boolean(viewerImageUri)} />

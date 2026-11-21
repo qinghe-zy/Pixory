@@ -1,4 +1,5 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 export interface NativeCopyProgressEvent {
   taskId: string;
@@ -85,7 +86,34 @@ export interface NativeSpeechEvent {
   onDevice: boolean;
 }
 
+export interface NativeManageMediaPermissionStatus {
+  supported: boolean;
+  granted: boolean;
+  apiLevel: number;
+}
+
+export interface NativeSmartMediaDeletionItem {
+  assetId?: string | null;
+  sourceUri?: string | null;
+  importedFileUri?: string | null;
+  originalFilename?: string | null;
+  fileSize?: number | null;
+  mediaType?: 'image' | 'video' | null;
+}
+
+export interface NativeSmartMediaDeletionResult {
+  deletedCount: number;
+  failedCount: number;
+  mode: 'silent' | 'confirmation' | 'cancelled' | 'legacy' | 'none';
+}
+
 interface PixoryMediaNativeModule {
+  setPersonalRecentsBlurEnabled?(enabled: boolean): Promise<boolean>;
+  enrollBiometricKey?(): Promise<boolean>;
+  verifyBiometricKey?(promptTitle: string): Promise<boolean>;
+  getManageMediaPermissionStatus?(): Promise<NativeManageMediaPermissionStatus>;
+  requestManageMediaPermission?(): Promise<boolean>;
+  deleteMediaStoreAssetsSmart?(items: NativeSmartMediaDeletionItem[]): Promise<NativeSmartMediaDeletionResult>;
   copyUriToFileWithProgress(
     sourceUri: string,
     destinationUri: string,
@@ -242,6 +270,115 @@ export function saveNativeVideoToMediaStore(sourceUri: string, displayName: stri
 
 export function deleteNativeMediaStoreAssetsWithConfirmation(assetIds: string[]): Promise<boolean> {
   return requireNativeModule().deleteMediaStoreAssetsWithConfirmation(assetIds);
+}
+
+export async function setPersonalRecentsBlurEnabled(enabled: boolean): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const mod = nativeModule;
+  if (!mod || typeof mod.setPersonalRecentsBlurEnabled !== 'function') return false;
+  return mod.setPersonalRecentsBlurEnabled(enabled);
+}
+
+/** 检查当前 APK 是否包含 Keystore 生物识别绑定原生方法 */
+export function hasNativeBiometricKeySupport(): boolean {
+  if (Platform.OS !== 'android') return false;
+  return Boolean(nativeModule && typeof nativeModule.enrollBiometricKey === 'function');
+}
+
+export async function enrollNativeBiometricKey(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const mod = nativeModule;
+  // 当前 APK 尚未包含 Keystore 绑定方法时，降级使用 expo-local-authentication 做一次生物识别验证
+  if (!mod || typeof mod.enrollBiometricKey !== 'function') {
+    const res = await LocalAuthentication.authenticateAsync({
+      promptMessage: '验证生物识别以开启解锁',
+      fallbackLabel: '',
+      disableDeviceFallback: true,
+    });
+    if (!res.success) {
+      if (res.error === 'user_cancel' || res.error === 'system_cancel') {
+        throw new Error('已取消指纹验证');
+      }
+      throw new Error('生物识别验证未通过，请检查手机是否已录入指纹。');
+    }
+    return true;
+  }
+  return mod.enrollBiometricKey();
+}
+
+export async function verifyNativeBiometricKey(promptTitle = '验证指纹进入隐私空间'): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const mod = nativeModule;
+  // 当前 APK 尚未包含 Keystore 绑定方法时，降级使用 expo-local-authentication
+  if (!mod || typeof mod.verifyBiometricKey !== 'function') {
+    const res = await LocalAuthentication.authenticateAsync({
+      promptMessage: promptTitle,
+      fallbackLabel: '',
+      disableDeviceFallback: true,
+    });
+    if (!res.success) {
+      if (res.error === 'user_cancel' || res.error === 'system_cancel') {
+        const e = Object.assign(new Error('已取消验证'), { code: 'BIOMETRIC_CANCELLED' });
+        throw e;
+      }
+      // expo-local-authentication AuthenticationError 枚举：lockout 含义为超次锁定（含 permanent）
+      if (res.error === 'lockout') {
+        const e = Object.assign(new Error('系统指纹尝试次数过多，请改用隐私密码解锁。'), { code: 'BIOMETRIC_LOCKOUT' });
+        throw e;
+      }
+      return false;
+    }
+    return true;
+  }
+  return mod.verifyBiometricKey(promptTitle);
+}
+
+export async function getManageMediaPermissionStatus(): Promise<NativeManageMediaPermissionStatus> {
+  if (Platform.OS !== 'android') {
+    return { supported: false, granted: false, apiLevel: 0 };
+  }
+  const mod = nativeModule;
+  if (!mod || typeof mod.getManageMediaPermissionStatus !== 'function') {
+    return { supported: false, granted: false, apiLevel: Number(Platform.Version) || 0 };
+  }
+  return mod.getManageMediaPermissionStatus();
+}
+
+export async function requestManageMediaPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const mod = nativeModule;
+  if (!mod || typeof mod.requestManageMediaPermission !== 'function') return false;
+  return mod.requestManageMediaPermission();
+}
+
+export async function deleteNativeMediaStoreAssetsSmart(
+  items: NativeSmartMediaDeletionItem[]
+): Promise<NativeSmartMediaDeletionResult> {
+  const mod = requireNativeModule();
+  if (typeof mod.deleteMediaStoreAssetsSmart === 'function') {
+    return mod.deleteMediaStoreAssetsSmart(items);
+  }
+  const fallbackIds = items
+    .map((item) => {
+      if (item.assetId && item.assetId.trim()) return item.assetId.trim();
+      const uri = item.sourceUri?.trim();
+      if (uri && uri.startsWith('content://')) {
+        const docMatch = uri.match(/image%3A(\d+)|video%3A(\d+)|media%3A(\d+)/i);
+        const tailMatch = uri.match(/\/(\d+)(?:\?.*)?$/);
+        return docMatch ? (docMatch[1] || docMatch[2] || docMatch[3]) : tailMatch ? tailMatch[1] : uri;
+      }
+      return '';
+    })
+    .filter(Boolean);
+  if (fallbackIds.length === 0) {
+    return { deletedCount: 0, failedCount: items.length, mode: 'none' };
+  }
+  const ok = await mod.deleteMediaStoreAssetsWithConfirmation(fallbackIds);
+  return {
+    deletedCount: ok ? fallbackIds.length : 0,
+    failedCount: ok ? Math.max(0, items.length - fallbackIds.length) : items.length,
+    mode: ok ? 'confirmation' : 'cancelled',
+  };
 }
 
 export function computeFileSha256(sourceUri: string): Promise<string> {

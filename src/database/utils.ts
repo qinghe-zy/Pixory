@@ -114,6 +114,7 @@ export function mapImageDetailRow(row: ImageDetailRow): ImageDetailRecord {
 export function mapIpRow(row: IpRow): IpRecord {
   return {
     ...row,
+    sortOrder: row.sortOrder ?? 0,
     isFavorite: sqliteToBoolean(row.isFavorite),
     isPinned: sqliteToBoolean(row.isPinned),
     coverImageAssetId: row.coverImageAssetId ?? null,
@@ -173,6 +174,7 @@ export function mapGroupListItemRow(row: GroupListItemRow): GroupListItem {
   return {
     ...group,
     imageCount: row.imageCount ?? 0,
+    videoCount: row.videoCount ?? 0,
     recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
     coverSource: row.coverSource === 'custom' ? 'custom' : 'default',

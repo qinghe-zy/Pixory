@@ -11,11 +11,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PixorySpace } from '../../../database';
 import type { ImThreadListItem } from '../../types';
-import { listImThreads } from '../../repository/imThreadRepository';
+import { listImThreads, markImThreadRead } from '../../repository/imThreadRepository';
 import { GlobalHeartbeatEngine } from '../../heartbeat/globalHeartbeatEngine';
 import { SecureImage } from '../../../components/SecureImage';
 import { formatImPreviewText } from '../../utils/formatImPreviewText';
 import { formatWeChatTime } from '../../utils/formatWeChatTime';
+import { DraggableBadge } from '../../../components/common/DraggableBadge';
 
 export interface ImContactDrawerProps {
   space: PixorySpace;
@@ -100,11 +101,17 @@ export function ImContactDrawer({
           </View>
           {isActive ? <View style={styles.activeDot} /> : null}
           {unreadCount > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>
-                {unreadCount > 99 ? '99+' : String(unreadCount)}
-              </Text>
-            </View>
+            <DraggableBadge
+              count={unreadCount}
+              onDismiss={async () => {
+                setThreads((prev) =>
+                  prev.map((t) => (t.id === item.id ? { ...t, unreadCount: 0 } : t))
+                );
+                if (!item.id.startsWith('contact-')) {
+                  await markImThreadRead(space, item.id);
+                }
+              }}
+            />
           ) : null}
         </View>
 

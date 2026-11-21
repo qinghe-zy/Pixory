@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PixorySpace } from '../database';
 import { layout } from '../design/tokens';
+export { useCompactHeaderAnimation } from '../hooks/useCompactHeaderAnimation';
 
 export function FilterIcon({ color = "#4B5563" }: { color?: string }) {
   return (

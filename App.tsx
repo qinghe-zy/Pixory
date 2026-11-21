@@ -1,13 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
+import * as Haptics from 'expo-haptics';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
 import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 import { MaShanZheng_400Regular } from '@expo-google-fonts/ma-shan-zheng';
 import { ZCOOLXiaoWei_400Regular } from '@expo-google-fonts/zcool-xiaowei';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, Dimensions } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AppState, BackHandler, InteractionManager, Linking, Platform, ScrollView, StyleSheet, Text, View, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,8 @@ import { StrictPager } from './src/components/StrictPager';
 import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { clearPersonalImageCache } from './src/components/SecureImage';
+import { clearPagedScreenCache } from './src/hooks/usePagedScreenLoad';
+import { clearScreenLoadCache } from './src/hooks/useScreenLoad';
 import { clearPersonalMediaReaderSessions } from './src/media/mediaReaderSessionCache';
 import { colors, spacing, typography, componentTokens, layout, radius, shadows } from './src/design/tokens';
 import { imageRepository, initDatabase, resetDatabaseSpaceCache, runWithDatabaseSpace, settingsRepository, type IpLibraryFilter, type PixorySpace } from './src/database';
@@ -43,7 +46,8 @@ import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { AboutScreen } from './src/screens/AboutScreen';
-import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
+import { clearFastMediaBytesCache, HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
+import { clearSpaceStorageSnapshotCache } from './src/services/storageUsageSnapshotCache';
 import { GlobalHeartbeatEngine } from './src/im/heartbeat/globalHeartbeatEngine';
 import { AiBranchTreeScreen } from './src/screens/AiBranchTreeScreen';
 import { AiChatScreen } from './src/screens/AiChatScreen';
@@ -51,7 +55,8 @@ import { FileTransferScreen } from './src/screens/FileTransferScreen';
 import { AiChatSearchScreen } from './src/screens/AiChatSearchScreen';
 import { AiDocumentReaderScreen } from './src/screens/AiDocumentReaderScreen';
 import { AiHistoryScreen } from './src/screens/AiHistoryScreen';
-import { AiHomeScreen, preloadAiHomeData } from './src/screens/AiHomeScreen';
+import { AiHomeScreen, clearAiHomeMemoryCache, preloadAiHomeData } from './src/screens/AiHomeScreen';
+import { clearCachedRoleCards } from './src/components/ai/AiRoleCardRail';
 import { AiIpPickerScreen } from './src/screens/AiIpPickerScreen';
 import { AiKnowledgeBaseScreen } from './src/screens/AiKnowledgeBaseScreen';
 import { AiMaterialImportScreen } from './src/screens/AiMaterialImportScreen';
@@ -66,7 +71,7 @@ import { VoiceSettingsScreen } from './src/voice/ui/VoiceSettingsScreen';
 import { ImChatScreen } from './src/im/screens/ImChatScreen';
 import { ImHomeScreen } from './src/im/screens/ImHomeScreen';
 import { ImCompanionSettingsScreen } from './src/im/screens/ImCompanionSettingsScreen';
-import { getOrCreateImThread, getTotalImUnreadCount } from './src/im/repository/imThreadRepository';
+import { getOrCreateImThread, getTotalImUnreadCount, clearAllImUnread } from './src/im/repository/imThreadRepository';
 import { exportRoleContinuityPackage } from './src/ai/aiRoleCardContinuityExportService';
 import { listRoleCards } from './src/ai/aiRoleCardService';
 import { DiaryReaderScreen } from './src/screens/DiaryReaderScreen';
@@ -141,7 +146,10 @@ import {
   verifyPersonalPassword,
   generateAndSetRecoveryKey,
   forceResetPersonalPassword,
-
+  getPersonalBackgroundLockTimeoutMs,
+  subscribePersonalBackgroundLockTimeout,
+  getPersonalLockStatus,
+  subscribePersonalLockStatus,
 } from './src/services/personalSystemService';
 import { createPersonalTaskToken, invalidatePersonalTaskToken, waitForPersonalTasks, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
@@ -150,6 +158,7 @@ import {
   finishNativeShareActivity,
   getInitialExternalOpen,
   getInitialShareIntent,
+  setPersonalRecentsBlurEnabled,
   type NativeExternalOpen,
   type NativeShareIntent,
   type NativeShareItem,
@@ -336,8 +345,6 @@ function buildRootTabWarmupOrder(activeTab: RootTabKey): RootTabKey[] {
     });
 }
 const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 60 * 1000;
-const APPLIED_UPDATE_NOTICE_DURATION_MS = 2200;
-const OTA_UPDATE_FETCH_NOTICE_DURATION_MS = 2200;
 
 function isPersonalRoute(route: AppRoute): boolean {
   return 'space' in route && route.space === 'personal';
@@ -598,34 +605,51 @@ export default function App() {
   const [personalCredentialAvailable, setPersonalCredentialAvailable] = useState<boolean | null>(null);
   const [personalUnlockVisible, setPersonalUnlockVisible] = useState(false);
   const [personalAuthBusy, setPersonalAuthBusy] = useState(false);
+  const [personalLockedUntil, setPersonalLockedUntil] = useState<string | null>(null);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
   const [availableAnnouncement, setAvailableAnnouncement] = useState<RemoteAnnouncementInfo | null>(null);
   const [isImSecondFloorActive, setIsImSecondFloorActive] = useState(false);
   const personalGenerationRef = useRef(0);
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
   const personalSessionStateRef = useRef(personalSessionState);
+  const personalBackgroundLockTimeoutRef = useRef<number>(60 * 1000);
   const personalBackgroundedAtRef = useRef<number | null>(null);
   const backgroundLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundMemoryCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
+  const currentTab = currentRoute.name === 'root' ? currentRoute.tab : undefined;
+  const [renderedTabs, setRenderedTabs] = useState<Set<RootTabKey>>(
+    new Set([currentTab ?? 'home'])
+  );
+  const renderedTabsRef = useRef(renderedTabs);
+  renderedTabsRef.current = renderedTabs;
+  const tabSwitchSourceRef = useRef<'tap' | 'swipe'>('tap');
 
   useEffect(() => {
-    if (isReady) {
-      void initializeDiagnostics(activeSpace).catch(() => undefined);
-      void preloadAiHomeData(activeSpace);
-      GlobalHeartbeatEngine.shared.start();
+    if (!isReady) {
+      return;
     }
+    void initializeDiagnostics(activeSpace).catch(() => undefined);
+    GlobalHeartbeatEngine.shared.start();
+    let interaction: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
+    const timer = setTimeout(() => {
+      interaction = InteractionManager.runAfterInteractions(() => {
+        if (!renderedTabsRef.current.has('ai')) {
+          void preloadAiHomeData(activeSpace);
+        }
+      });
+    }, 1600);
+    return () => {
+      clearTimeout(timer);
+      interaction?.cancel();
+    };
   }, [activeSpace, isReady]);
 
   const currentRouteRef = useRef(currentRoute);
   currentRouteRef.current = currentRoute;
 
-  const currentTab = currentRoute.name === 'root' ? currentRoute.tab : undefined;
-  const [renderedTabs, setRenderedTabs] = useState<Set<RootTabKey>>(
-    new Set([currentTab ?? 'home'])
-  );
   // Incremented when the user navigates back to root from an overlay (e.g.
   // chat). Causes AiHomeScreen to refresh its thread list without unmounting.
   const [aiHomeRefreshToken, setAiHomeRefreshToken] = useState(0);
@@ -638,10 +662,11 @@ export default function App() {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const initialDelayMs = activeSpace === 'personal' ? 1800 : 900;
     const pendingTabs = buildRootTabWarmupOrder(currentTab);
     const interaction = InteractionManager.runAfterInteractions(() => {
       const warmNextTab = () => {
-        if (cancelled) {
+        if (cancelled || currentRouteRef.current.name !== 'root') {
           return;
         }
         const nextTab = pendingTabs.shift();
@@ -656,9 +681,9 @@ export default function App() {
           next.add(nextTab);
           return next;
         });
-        timer = setTimeout(warmNextTab, 450);
+        timer = setTimeout(warmNextTab, 900);
       };
-      warmNextTab();
+      timer = setTimeout(warmNextTab, initialDelayMs);
     });
 
     return () => {
@@ -668,17 +693,28 @@ export default function App() {
         clearTimeout(timer);
       }
     };
-  }, [currentRoute.name, currentTab]);
+  }, [activeSpace, currentRoute.name, currentTab]);
 
   useEffect(() => {
-    if (currentRoute.name === 'root' && currentTab) {
+    if (currentRoute.name !== 'root' || !currentTab) {
+      return;
+    }
+    const mountCurrentTab = () => {
       setRenderedTabs((prev) => {
         if (prev.has(currentTab)) return prev;
         const next = new Set(prev);
         next.add(currentTab);
         return next;
       });
+    };
+    // Tap navigation or already-mounted tabs render immediately; rapid swipe skips unvisited
+    // intermediate tabs unless the user settles on the tab for 140ms.
+    if (tabSwitchSourceRef.current === 'tap' || renderedTabsRef.current.has(currentTab)) {
+      mountCurrentTab();
+      return;
     }
+    const timer = setTimeout(mountCurrentTab, 140);
+    return () => clearTimeout(timer);
   }, [currentRoute.name, currentTab]);
 
   // Refresh AI home data when returning from any overlay to root.
@@ -730,6 +766,25 @@ export default function App() {
   useEffect(() => {
     personalSessionStateRef.current = personalSessionState;
   }, [personalSessionState]);
+
+  useEffect(() => {
+    void getPersonalLockStatus().then((status) => {
+      setPersonalLockedUntil(status.lockedUntil);
+    });
+    void getPersonalBackgroundLockTimeoutMs().then((timeoutMs) => {
+      personalBackgroundLockTimeoutRef.current = timeoutMs;
+    });
+    const unsubscribeLockStatus = subscribePersonalLockStatus((status) => {
+      setPersonalLockedUntil(status.lockedUntil);
+    });
+    const unsubscribeTimeout = subscribePersonalBackgroundLockTimeout((nextTimeoutMs) => {
+      personalBackgroundLockTimeoutRef.current = nextTimeoutMs;
+    });
+    return () => {
+      unsubscribeLockStatus();
+      unsubscribeTimeout();
+    };
+  }, []);
 
   function resumeCompanionRuntimes(): void {
     void reconcileThoughtSessions('normal').then(() => runCompanionMaintenancePass({ space: 'normal' })).catch(() => undefined);
@@ -899,7 +954,8 @@ export default function App() {
         personalBackgroundedAtRef.current = null;
         clearPendingPersonalBackgroundLock();
         clearPendingBackgroundMemoryCacheCleanup();
-        if (personalSessionStateRef.current === 'unlocked' && elapsedMs >= PERSONAL_BACKGROUND_LOCK_GRACE_MS) {
+        const timeoutMs = personalBackgroundLockTimeoutRef.current;
+        if (personalSessionStateRef.current === 'unlocked' && timeoutMs !== -1 && elapsedMs >= timeoutMs) {
           void lockPersonalSpace('background');
           return;
         }
@@ -1027,13 +1083,21 @@ export default function App() {
     }
 
     clearPendingPersonalBackgroundLock();
+    const timeoutMs = personalBackgroundLockTimeoutRef.current;
+    if (timeoutMs === -1) {
+      return;
+    }
+    if (timeoutMs === 0) {
+      void lockPersonalSpace('background');
+      return;
+    }
     backgroundLockTimerRef.current = setTimeout(() => {
       backgroundLockTimerRef.current = null;
       if (personalSessionStateRef.current === 'unlocked') {
         void lockPersonalSpace('background');
         return;
       }
-    }, PERSONAL_BACKGROUND_LOCK_GRACE_MS);
+    }, timeoutMs);
   }
 
   async function unlockPersonalSpace(secret: string) {
@@ -1068,28 +1132,30 @@ export default function App() {
       setPersonalSession(session);
       setPersonalSessionState('unlocked');
       personalSessionStateRef.current = 'unlocked';
+      void setPersonalRecentsBlurEnabled(true).catch(() => undefined);
       aiGenerationManager.resumeSpace('personal');
       resumePersonalCompanionMaintenance();
       resumeCompanionMemoryMaintenance('personal');
       resumeDiaryBackgroundTasks('personal');
       GlobalHeartbeatEngine.shared.setPersonalSpaceUnlocked(true);
-      void coordinateDiaryRuntime({ allowPersonal: true, space: 'personal' }).catch(() => undefined);
-      void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
-      void reconcileThoughtSessions('personal')
-        .then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' }))
-        .catch(() => undefined);
       setPersonalUnlockVisible(false);
       setLibraryRefreshToken((current) => current + 1);
       setTimeout(() => {
         if (taskToken.isActive()) {
           InteractionManager.runAfterInteractions(() => {
-            if (taskToken.isActive()) {
-              void clearExpiredTrashOnIdle('personal').catch((error) => {
-                console.warn('Pixory personal trash idle cleanup failed.', {
-                  message: error instanceof Error ? error.message : 'unknown personal trash cleanup error',
-                });
-              });
+            if (!taskToken.isActive()) {
+              return;
             }
+            void coordinateDiaryRuntime({ allowPersonal: true, space: 'personal' }).catch(() => undefined);
+            void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
+            void reconcileThoughtSessions('personal')
+              .then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' }))
+              .catch(() => undefined);
+            void clearExpiredTrashOnIdle('personal').catch((error) => {
+              console.warn('Pixory personal trash idle cleanup failed.', {
+                message: error instanceof Error ? error.message : 'unknown personal trash cleanup error',
+              });
+            });
           });
         }
       }, 1400);
@@ -1147,12 +1213,13 @@ export default function App() {
 
   async function lockPersonalSpace(reason: PersonalLockReason) {
     clearPendingPersonalBackgroundLock();
-    if (personalSessionStateRef.current === 'locked' && !personalTaskTokenRef.current) {
-      return;
-    }
+    const st = personalSessionStateRef.current;
+    if (st === 'locking' || (st === 'locked' && !personalTaskTokenRef.current)) { return; }
 
     setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
     personalSessionStateRef.current = 'locking';
+    void setPersonalRecentsBlurEnabled(false).catch(() => undefined);
+    setRenderedTabs(new Set([currentRouteRef.current.name === 'root' ? currentRouteRef.current.tab : 'home']));
     const lockingTaskToken = personalTaskTokenRef.current;
     invalidatePersonalTaskToken(lockingTaskToken);
     const runtimeResults = await Promise.allSettled([
@@ -1175,15 +1242,20 @@ export default function App() {
     setPersonalSession(null);
     setPersonalUnlockVisible(false);
     setGlobalSearchQuery('');
-    setLibraryRefreshToken((current) => current + 1);
     clearThreadMessagePrefetch('personal');
 
     const cleanupResults = await Promise.allSettled([
-      clearPersonalMediaReaderSessions(),
       clearPersonalImageCache(),
+      clearPersonalMediaReaderSessions(),
       cleanupOldTempFiles('personal', 0),
       resetDatabaseSpaceCache('personal'),
     ]);
+    clearPagedScreenCache((key) => key.includes('"personal"'));
+    clearScreenLoadCache((key) => key.includes('"personal"'));
+    clearAiHomeMemoryCache('personal');
+    clearCachedRoleCards('personal');
+    clearSpaceStorageSnapshotCache('personal');
+    clearFastMediaBytesCache('personal');
     for (const cleanupResult of cleanupResults) {
       if (cleanupResult.status === 'rejected') {
         console.warn('Pixory personal lock cleanup failed.', {
@@ -1194,6 +1266,7 @@ export default function App() {
 
     setPersonalSessionState('locked');
     personalSessionStateRef.current = 'locked';
+    setLibraryRefreshToken((current) => current + 1);
   }
 
   function pushRoute(route: AppRoute) {
@@ -1351,10 +1424,12 @@ export default function App() {
   }
 
   function resetHome(filter: IpLibraryFilter = 'all') {
+    tabSwitchSourceRef.current = 'tap';
     setRouteStack([{ name: 'root', tab: 'home', initialFilter: filter }]);
   }
 
-  function switchRootTab(tab: RootTabKey) {
+  function switchRootTab(tab: RootTabKey, source: 'tap' | 'swipe' = 'tap') {
+    tabSwitchSourceRef.current = source;
     setRouteStack([{ name: 'root', tab }]);
   }
 
@@ -1583,7 +1658,7 @@ export default function App() {
         onChange={(index) => {
           const tab = ROOT_TABS[index];
           if (tab && baseRootRoute.tab !== tab) {
-            switchRootTab(tab);
+            switchRootTab(tab, 'swipe');
           }
         }}
         scrollOffset={globalScrollOffset}
@@ -1620,6 +1695,7 @@ export default function App() {
         <View style={{ width: sw, flex: 1 }}>
           {renderedTabs.has('organize') ? (
             <OrganizeScreen
+              isActive={currentTab === 'organize'}
               space={activeSpace}
               onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
               onCreateGroup={(ipId) => pushRoute({ name: 'create-group', ipId, space: activeSpace })}
@@ -1721,6 +1797,7 @@ export default function App() {
               onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed', space: activeSpace })}
               onOpenTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
               personalSessionState={personalSessionState}
+              personalLockedUntil={personalLockedUntil}
               refreshToken={libraryRefreshToken}
             />
           ) : null}
@@ -2170,6 +2247,7 @@ export default function App() {
         onBack={popRoute}
         onChanged={refreshLibrary}
         onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
       />
     );
   } else if (currentRoute.name === 'global-search') {
@@ -2280,6 +2358,7 @@ export default function App() {
     content = (
       <BackupExportManagerScreen
         onBack={popRoute}
+        onChanged={refreshLibrary}
         refreshToken={libraryRefreshToken}
         space={currentRoute.space}
       />
@@ -2523,7 +2602,7 @@ export default function App() {
   } else if (currentRoute.name === 'notification-settings') {
     content = <NotificationSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'password-security-settings') {
-    content = <PasswordAndSecurityScreen onBack={popRoute} />;
+    content = <PasswordAndSecurityScreen onBack={popRoute} isPersonalUnlocked={personalSessionState === 'unlocked'} />;
   } else if (currentRoute.name === 'developer-mode-settings') {
     content = <DeveloperModeSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'diagnostics-settings') {
@@ -2823,6 +2902,7 @@ export default function App() {
         <PersonalUnlockModal
           hasCredential={personalCredentialAvailable}
           loading={personalAuthBusy}
+          lockedUntil={personalLockedUntil}
           onChangePassword={updatePersonalPassword}
           onClose={() => setPersonalUnlockVisible(false)}
           onResetPersonalData={resetPersonalDataFromSettings}
@@ -2845,14 +2925,20 @@ export default function App() {
           visible={Boolean(availableUpdate)}
         >
           {availableUpdate?.releaseNotes.length ? (
-            <View style={styles.updateNotes}>
+            <ScrollView
+              bounces={false}
+              contentContainerStyle={styles.updateNotes}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              style={styles.updateNotesScroll}
+            >
               <Text style={styles.updateVersion}>最新版本 {availableUpdate.version}</Text>
               {availableUpdate.releaseNotes.map((note, index) => (
                 <Text key={`${note}-${index}`} style={styles.updateNote}>
                   {note}
                 </Text>
               ))}
-            </View>
+            </ScrollView>
           ) : availableUpdate ? (
             <Text style={styles.updateVersion}>最新版本 {availableUpdate.version}</Text>
           ) : null}
@@ -2867,13 +2953,19 @@ export default function App() {
           visible={Boolean(availableAnnouncement) && !availableUpdate}
         >
           {availableAnnouncement?.detailLines.length ? (
-            <View style={styles.updateNotes}>
+            <ScrollView
+              bounces={false}
+              contentContainerStyle={styles.updateNotes}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              style={styles.updateNotesScroll}
+            >
               {availableAnnouncement.detailLines.map((line, index) => (
                 <Text key={`${line}-${index}`} style={styles.updateNote}>
                   {line}
                 </Text>
               ))}
-            </View>
+            </ScrollView>
           ) : null}
         </AppDialog>
         <StatusBar style="dark" />
@@ -2934,6 +3026,16 @@ function FloatingRootFooter({
     };
   }, [space]);
 
+  const handleClearAllImUnread = useCallback(async () => {
+    setImUnread(0);
+    try {
+      await clearAllImUnread(space);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (err) {
+      console.warn('[App] clearAllImUnread failed:', err);
+    }
+  }, [space]);
+
   return (
     <Animated.View
       pointerEvents={hidden ? 'none' : 'box-none'}
@@ -2947,13 +3049,17 @@ function FloatingRootFooter({
         animatedFooterStyle,
       ]}
     >
-      <BottomTabBar activeTab={activeTab} imUnreadCount={imUnread} onSelectTab={onSelectTab} />
+      <BottomTabBar
+        activeTab={activeTab}
+        imUnreadCount={imUnread}
+        onClearAllImUnread={handleClearAllImUnread}
+        onSelectTab={onSelectTab}
+      />
     </Animated.View>
   );
 }
 
 function AppUpdateAppliedNotice({ isReady }: { isReady: boolean }) {
-  const { showToast } = useToast();
   const notifiedUpdateIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -2980,11 +3086,7 @@ function AppUpdateAppliedNotice({ isReady }: { isReady: boolean }) {
           return;
         }
         notifiedUpdateIdRef.current = updateId;
-        showToast({
-          durationMs: APPLIED_UPDATE_NOTICE_DURATION_MS,
-          message: '已在后台热更新',
-          tone: 'success',
-        });
+        // 静默更新：启动生效时不弹出 toast
       })
       .catch((error) => {
         console.warn('Pixory applied update notice failed.', {
@@ -2995,13 +3097,12 @@ function AppUpdateAppliedNotice({ isReady }: { isReady: boolean }) {
     return () => {
       isMounted = false;
     };
-  }, [isReady, showToast]);
+  }, [isReady]);
 
   return null;
 }
 
 function AppOtaUpdateFetchNotice({ isReady }: { isReady: boolean }) {
-  const { showToast } = useToast();
   const hasCheckedRef = useRef(false);
 
   useEffect(() => {
@@ -3016,21 +3117,12 @@ function AppOtaUpdateFetchNotice({ isReady }: { isReady: boolean }) {
         if (!isMounted || !checkResult.isAvailable) {
           return;
         }
-        showToast({
-          durationMs: OTA_UPDATE_FETCH_NOTICE_DURATION_MS,
-          message: '发现热更新，正在后台更新',
-          tone: 'info',
-        });
-
+        // 静默更新：发现更新时不弹 toast，后台拉取
         const fetchResult = await Updates.fetchUpdateAsync();
         if (!isMounted || (!fetchResult.isNew && !fetchResult.isRollBackToEmbedded)) {
           return;
         }
-        showToast({
-          durationMs: OTA_UPDATE_FETCH_NOTICE_DURATION_MS,
-          message: '热更新已准备好，下次打开生效',
-          tone: 'success',
-        });
+        // 静默更新：拉取完成时不弹 toast，下次打开自动生效
       })
       .catch((error) => {
         console.warn('Pixory OTA update fetch notice failed.', {
@@ -3041,7 +3133,7 @@ function AppOtaUpdateFetchNotice({ isReady }: { isReady: boolean }) {
     return () => {
       isMounted = false;
     };
-  }, [isReady, showToast]);
+  }, [isReady]);
 
   return null;
 }
@@ -3080,8 +3172,13 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     textAlign: 'center',
   },
+  updateNotesScroll: {
+    maxHeight: 220,
+    flexShrink: 1,
+  },
   updateNotes: {
     gap: spacing[2],
+    paddingVertical: spacing[1],
   },
   floatingAnchor: {
     top: spacing[3],

@@ -33,7 +33,7 @@ class TestDatabase {
     this.maxBindParams = maxBindParams;
     this.db = new DatabaseSync(':memory:');
     this.db.exec(`
-      CREATE TABLE ips (id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, isFavorite INTEGER NOT NULL DEFAULT 0, coverImageAssetId INTEGER, coverBlurEnabled INTEGER, coverBlurRadius INTEGER, deletedAt TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
+      CREATE TABLE ips (id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, isFavorite INTEGER NOT NULL DEFAULT 0, isPinned INTEGER NOT NULL DEFAULT 0, sortOrder INTEGER NOT NULL DEFAULT 0, coverImageAssetId INTEGER, coverBlurEnabled INTEGER, coverBlurRadius INTEGER, deletedAt TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
       CREATE TABLE groups (id INTEGER PRIMARY KEY, ipId INTEGER NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, sortOrder INTEGER NOT NULL DEFAULT 0, isPinned INTEGER NOT NULL DEFAULT 0, coverImageAssetId INTEGER, description TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
       CREATE TABLE image_assets (id INTEGER PRIMARY KEY, ipId INTEGER NOT NULL, groupId INTEGER, thumbnailFileUri TEXT, fileSize INTEGER NOT NULL, mediaType TEXT NOT NULL DEFAULT 'image', deletedAt TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, lastViewedAt TEXT);
       CREATE TABLE image_groups (imageAssetId INTEGER NOT NULL, groupId INTEGER NOT NULL, createdAt TEXT NOT NULL, PRIMARY KEY (imageAssetId, groupId));

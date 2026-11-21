@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { colors, radius, spacing, typography } from '../design/tokens';
 
 export function PasswordInput({
+  editable = true,
   onChangeText,
   onToggleShowPassword,
   placeholder,
@@ -11,6 +12,7 @@ export function PasswordInput({
   showPassword,
   value,
 }: {
+  editable?: boolean;
   onChangeText: (value: string) => void;
   onToggleShowPassword: () => void;
   placeholder: string;
@@ -23,6 +25,7 @@ export function PasswordInput({
       <TextInput
         autoCapitalize="none"
         autoCorrect={false}
+        editable={editable}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.text.placeholder}

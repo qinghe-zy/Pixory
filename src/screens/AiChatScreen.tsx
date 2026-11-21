@@ -67,7 +67,19 @@ import {
 import { AppActionSheet, type AppActionSheetItem } from "../components/AppActionSheet";
 import { AppDialog } from "../components/AppDialog";
 import { useToast } from "../components/AppToast";
-import { pinDocumentToKnowledgeBase, unpinDocumentFromKnowledgeBase } from "../ai/aiDocumentPinService";
+import {
+  addDocumentToKnowledgeBase,
+  removeDocumentFromKnowledgeBase,
+  injectDocumentToContext,
+  removeDocumentFromContext,
+  replaceInjectedDocuments,
+  listInjectedDocuments,
+  getDocumentCharCount,
+  type InjectedDocumentItem,
+  pinDocumentToKnowledgeBase,
+  unpinDocumentFromKnowledgeBase,
+} from "../ai/aiDocumentPinService";
+import { AiLoreOverflowSheet } from "../components/ai/AiLoreOverflowSheet";
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import { AiPushScaleDrawerStage } from "../components/ai/AiPushScaleDrawerStage";
 import { AiChatGuideOverlay, type AiChatGuideStep, type GuideHighlightRect } from "../components/ai/AiChatGuideOverlay";
@@ -1074,6 +1086,12 @@ export function AiChatScreen({
   const initialBottomInsetRef = useRef(insets.bottom);
   const { showToast, showUndoSnackbar } = useToast();
   const [pinnedDocumentIds, setPinnedDocumentIds] = useState<Set<string>>(() => new Set());
+  const [inKbDocumentIds, setInKbDocumentIds] = useState<Set<string>>(() => new Set());
+  const [injectedDocumentIds, setInjectedDocumentIds] = useState<Set<string>>(() => new Set());
+  const [documentCharCounts, setDocumentCharCounts] = useState<Record<string, number>>({});
+  const [overflowModalVisible, setOverflowModalVisible] = useState(false);
+  const [overflowIncomingDoc, setOverflowIncomingDoc] = useState<InjectedDocumentItem | null>(null);
+  const [overflowCurrentInjectedDocs, setOverflowCurrentInjectedDocs] = useState<InjectedDocumentItem[]>([]);
   const [pinningDocumentId, setPinningDocumentId] = useState<string | null>(null);
   const [activeDocAction, setActiveDocAction] = useState<{ documentId: string; title: string } | null>(null);
   const statusBarHeight =
@@ -1116,6 +1134,7 @@ export function AiChatScreen({
   spaceRef.current = space;
   const isPushScaleSidebarRef = useRef(true);
   const isMultiSelectModeRef = useRef(false);
+  const isComposerGestureActiveRef = useRef(false);
 
   // Right-swipe opens the left record drawer; left-swipe opens the right config drawer (classic mode; push_scale is handled interactively by AiPushScaleDrawerStage).
   const swipeDrawerPanResponder = useRef(
@@ -1123,6 +1142,7 @@ export function AiChatScreen({
       onMoveShouldSetPanResponder: (_evt, gs) =>
         !isPushScaleSidebarRef.current &&
         !isMultiSelectModeRef.current &&
+        !isComposerGestureActiveRef.current &&
         Math.abs(gs.dx) > DRAWER_SWIPE_ACTIVATION_DISTANCE &&
         Math.abs(gs.dx) > Math.abs(gs.dy) * DRAWER_SWIPE_HORIZONTAL_RATIO,
       onPanResponderRelease: (_evt, gs) => {
@@ -1930,45 +1950,165 @@ export function AiChatScreen({
     []
   );
 
-  const handlePinDocument = useCallback(
+  const handleToggleKnowledgeBase = useCallback(
     async (documentId: string, _title: string) => {
       const currentThreadId = activeThreadId ?? threadId ?? '';
+      const isCurrentlyInKb = inKbDocumentIds.has(documentId);
       try {
         setPinningDocumentId(documentId);
-        const result = await pinDocumentToKnowledgeBase({
-          space,
-          documentId,
-          threadId: currentThreadId || undefined,
-        });
-        setPinnedDocumentIds((prev) => new Set([...prev, documentId]));
-        showUndoSnackbar({
-          message: `已固化到资料库「${result.knowledgeBaseName}」`,
-          undoLabel: '撤销',
-          durationMs: 5000,
-          onUndo: () => {
-            void (async () => {
-              try {
-                await unpinDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
-                setPinnedDocumentIds((prev) => {
-                  const next = new Set(prev);
-                  next.delete(documentId);
-                  return next;
-                });
-                showToast('已撤销固化');
-              } catch {
-                showToast('撤销失败');
-              }
-            })();
-          },
-        });
+        if (isCurrentlyInKb) {
+          await removeDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
+          setInKbDocumentIds((prev) => {
+            const next = new Set(prev);
+            next.delete(documentId);
+            return next;
+          });
+          setInjectedDocumentIds((prev) => {
+            const next = new Set(prev);
+            next.delete(documentId);
+            return next;
+          });
+          setPinnedDocumentIds((prev) => {
+            const next = new Set(prev);
+            next.delete(documentId);
+            return next;
+          });
+          showUndoSnackbar({
+            message: '已从资料库移出',
+            undoLabel: '撤销',
+            durationMs: 5000,
+            onUndo: () => {
+              void (async () => {
+                try {
+                  const res = await addDocumentToKnowledgeBase({ space, documentId, threadId: currentThreadId || undefined });
+                  setInKbDocumentIds((prev) => new Set([...prev, documentId]));
+                  setPinnedDocumentIds((prev) => new Set([...prev, documentId]));
+                  showToast(`已恢复纳入资料库「${res.knowledgeBaseName}」`);
+                } catch {
+                  showToast('恢复失败');
+                }
+              })();
+            },
+          });
+        } else {
+          const result = await addDocumentToKnowledgeBase({
+            space,
+            documentId,
+            threadId: currentThreadId || undefined,
+          });
+          setInKbDocumentIds((prev) => new Set([...prev, documentId]));
+          setPinnedDocumentIds((prev) => new Set([...prev, documentId]));
+          showUndoSnackbar({
+            message: `已纳入资料库「${result.knowledgeBaseName}」`,
+            undoLabel: '撤销',
+            durationMs: 5000,
+            onUndo: () => {
+              void (async () => {
+                try {
+                  await removeDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
+                  setInKbDocumentIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(documentId);
+                    return next;
+                  });
+                  setInjectedDocumentIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(documentId);
+                    return next;
+                  });
+                  setPinnedDocumentIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(documentId);
+                    return next;
+                  });
+                  showToast('已撤销纳入资料库');
+                } catch {
+                  showToast('撤销失败');
+                }
+              })();
+            },
+          });
+        }
       } catch (error) {
-        showToast(error instanceof Error ? error.message : '固化失败');
+        showToast(error instanceof Error ? error.message : '操作失败');
       } finally {
         setPinningDocumentId(null);
       }
     },
-    [space, threadId, activeThreadId, showToast, showUndoSnackbar]
+    [space, threadId, activeThreadId, inKbDocumentIds, showToast, showUndoSnackbar]
   );
+
+  const handleToggleContextInject = useCallback(
+    async (documentId: string, _title: string) => {
+      const currentThreadId = activeThreadId ?? threadId ?? '';
+      if (!currentThreadId) {
+        showToast('请先发送消息建立会话');
+        return;
+      }
+      const isCurrentlyInjected = injectedDocumentIds.has(documentId);
+      try {
+        setPinningDocumentId(documentId);
+        if (isCurrentlyInjected) {
+          await removeDocumentFromContext({ space, documentId, threadId: currentThreadId });
+          setInjectedDocumentIds((prev) => {
+            const next = new Set(prev);
+            next.delete(documentId);
+            return next;
+          });
+          showToast('已取消原文注入（已释放上下文配额，保留在资料库中）');
+        } else {
+          const result = await injectDocumentToContext({
+            space,
+            documentId,
+            threadId: currentThreadId,
+          });
+          if (result.success) {
+            setInjectedDocumentIds((prev) => new Set([...prev, documentId]));
+            setInKbDocumentIds((prev) => new Set([...prev, documentId]));
+            setPinnedDocumentIds((prev) => new Set([...prev, documentId]));
+            showToast('已原文注入上下文');
+          } else if (result.reason === 'too_large') {
+            showToast(`文档超过 ${result.limit} 字符，无法全文常驻，已自动走资料库`);
+          } else if (result.reason === 'overflow') {
+            setOverflowIncomingDoc(result.incomingDoc);
+            setOverflowCurrentInjectedDocs(result.currentInjectedDocs);
+            setOverflowModalVisible(true);
+          }
+        }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '操作失败');
+      } finally {
+        setPinningDocumentId(null);
+      }
+    },
+    [space, threadId, activeThreadId, injectedDocumentIds, showToast]
+  );
+
+  const handleConfirmOverflowReplace = useCallback(
+    async (removeDocumentIds: string[]) => {
+      if (!overflowIncomingDoc) return;
+      const currentThreadId = activeThreadId ?? threadId ?? '';
+      await replaceInjectedDocuments({
+        space,
+        threadId: currentThreadId,
+        removeDocumentIds,
+        addDocumentId: overflowIncomingDoc.id,
+      });
+      setInjectedDocumentIds((prev) => {
+        const next = new Set(prev);
+        for (const rid of removeDocumentIds) next.delete(rid);
+        next.add(overflowIncomingDoc.id);
+        return next;
+      });
+      setInKbDocumentIds((prev) => new Set([...prev, overflowIncomingDoc.id]));
+      setPinnedDocumentIds((prev) => new Set([...prev, overflowIncomingDoc.id]));
+      showToast('已更新注入上下文');
+    },
+    [space, threadId, activeThreadId, overflowIncomingDoc, showToast]
+  );
+
+  const handlePinDocument = handleToggleKnowledgeBase;
+  const handleUnpinDocument = handleToggleKnowledgeBase;
 
   const handleOpenDocumentActionSheet = useCallback((documentId: string, title: string) => {
     setActiveDocAction({ documentId, title });
@@ -1979,7 +2119,17 @@ export function AiChatScreen({
     const { documentId } = activeDocAction;
     const currentThreadId = activeThreadId ?? threadId ?? '';
     try {
-      await unpinDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
+      await removeDocumentFromKnowledgeBase({ space, documentId, threadId: currentThreadId });
+      setInKbDocumentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
+      setInjectedDocumentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
       setPinnedDocumentIds((prev) => {
         const next = new Set(prev);
         next.delete(documentId);
@@ -1993,21 +2143,29 @@ export function AiChatScreen({
     }
   }, [activeDocAction, space, threadId, activeThreadId, showToast]);
 
-  // 从 SQLite 同步消息附件中已固化到资料库的文档状态
-  useEffect(() => {
-    const docIds: string[] = [];
+  // 提取消息中的文档 ID 集合键，避免流式打字期间因消息文本刷新频繁触发数据库同步
+  const messageDocIdsKey = useMemo(() => {
+    const ids: string[] = [];
     for (const msg of messages) {
       if (msg.attachments) {
         for (const att of msg.attachments) {
           if (att.kind === 'document' && att.documentId) {
-            docIds.push(att.documentId);
+            ids.push(att.documentId);
           }
         }
       }
     }
+    return ids.sort().join(',');
+  }, [messages]);
+
+  // 从 SQLite 同步消息附件中已纳入资料库与原文注入的文档状态
+  useEffect(() => {
+    if (!messageDocIdsKey) return;
+    const docIds = messageDocIdsKey.split(',').filter(Boolean);
     if (docIds.length === 0) return;
 
     let cancelled = false;
+    const currentThreadId = activeThreadId ?? threadId ?? '';
     void runWithDatabaseSpace(space, async (db) => {
       try {
         const uniqueDocIds = Array.from(new Set(docIds));
@@ -2017,11 +2175,31 @@ export function AiChatScreen({
           [...uniqueDocIds, space]
         );
         if (!cancelled && rows.length > 0) {
+          setInKbDocumentIds((prev) => {
+            const next = new Set(prev);
+            for (const r of rows) next.add(r.id);
+            return next;
+          });
           setPinnedDocumentIds((prev) => {
             const next = new Set(prev);
             for (const r of rows) next.add(r.id);
             return next;
           });
+        }
+
+        const counts: Record<string, number> = {};
+        for (const dId of uniqueDocIds) {
+          counts[dId] = await getDocumentCharCount(db, space, dId);
+        }
+        if (!cancelled) {
+          setDocumentCharCounts((prev) => ({ ...prev, ...counts }));
+        }
+
+        if (currentThreadId) {
+          const injectedResult = await listInjectedDocuments({ space, threadId: currentThreadId });
+          if (!cancelled) {
+            setInjectedDocumentIds(new Set(injectedResult.items.map((i) => i.id)));
+          }
         }
       } catch {
         // 静默容错
@@ -2030,7 +2208,7 @@ export function AiChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [messages, space]);
+  }, [messageDocIdsKey, space, activeThreadId, threadId]);
 
   const docActionItems: AppActionSheetItem[] = useMemo(() => {
     if (!activeDocAction) return [];
@@ -2243,6 +2421,9 @@ export function AiChatScreen({
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
   const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
+  const handleComposerGestureActiveChange = useCallback((active: boolean) => {
+    isComposerGestureActiveRef.current = active;
+  }, []);
   const [sidebarStyleMode] = useAiSidebarStylePreference(space);
   const [sidebarSpatialPreset] = useAiSidebarSpatialPresetPreference(space);
   const isPushScaleSidebar = sidebarStyleMode === 'push_scale';
@@ -8211,7 +8392,13 @@ export function AiChatScreen({
               message={message}
               pinnedDocumentIds={pinnedDocumentIds}
               pinningDocumentId={pinningDocumentId}
+              inKbDocumentIds={inKbDocumentIds}
+              injectedDocumentIds={injectedDocumentIds}
+              documentCharCounts={documentCharCounts}
+              onToggleKnowledgeBase={handleToggleKnowledgeBase}
+              onToggleContextInject={handleToggleContextInject}
               onPinDocument={handlePinDocument}
+              onUnpinDocument={handleUnpinDocument}
               onOpenDocumentActionSheet={handleOpenDocumentActionSheet}
               onOpenDocument={(target) => {
                 if (
@@ -8895,6 +9082,7 @@ export function AiChatScreen({
                 onComposerHeightChange={handleComposerHeightChange}
                 onComposerShellHeightChange={setComposerShellHeight}
                 onFocus={handleComposerFocus}
+                onInputGestureActiveChange={handleComposerGestureActiveChange}
                 onModelIconPress={() => void handleOpenSessionConfig()}
                 onReplyAssist={() => {
                   void handleOpenReplyAssist();
@@ -9104,6 +9292,7 @@ export function AiChatScreen({
       {isPushScaleSidebar ? (
         <AiPushScaleDrawerStage
           canOpenRightDrawer={activeThreadId !== SYSTEM_ASSISTANT_THREAD_ID}
+          disableSwipeOpen={() => isComposerGestureActiveRef.current}
           leftDrawer={leftRecordDrawerNode}
           leftDrawerVisible={recordDrawerVisible}
           mainCardContentStyle={{ paddingBottom: mainBottomPadding }}
@@ -9317,6 +9506,13 @@ export function AiChatScreen({
         onClose={() => setActiveDocAction(null)}
         title="资料库文档设置"
         visible={Boolean(activeDocAction)}
+      />
+      <AiLoreOverflowSheet
+        currentInjectedDocs={overflowCurrentInjectedDocs}
+        incomingDoc={overflowIncomingDoc}
+        onClose={() => setOverflowModalVisible(false)}
+        onConfirmReplace={handleConfirmOverflowReplace}
+        visible={overflowModalVisible}
       />
       <VoiceMiniPlayer
         bottomOffset={Math.max(104, composerShellHeight + 16)}

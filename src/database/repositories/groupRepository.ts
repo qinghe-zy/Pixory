@@ -26,6 +26,8 @@ async function touchIpUpdatedAt(db: SQLiteDatabase, ipId: number): Promise<void>
   await db.runAsync('UPDATE ips SET updatedAt = ? WHERE id = ?', createTimestamp(), ipId);
 }
 
+const GROUP_TOTAL_ASSET_COUNT_EXPR = 'COUNT(CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END)';
+
 const GROUP_OVERVIEW_SELECT = `
   SELECT
     groups.id,
@@ -41,7 +43,8 @@ const GROUP_OVERVIEW_SELECT = `
     groups.updatedAt,
     ips.coverBlurEnabled AS ipCoverBlurEnabled,
     ips.coverBlurRadius AS ipCoverBlurRadius,
-    COUNT(CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
+    COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image' THEN image_assets.id END) AS imageCount,
+    COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'video' THEN image_assets.id END) AS videoCount,
     MAX(COALESCE(image_assets.updatedAt, groups.updatedAt)) AS recentUpdatedAt,
     COALESCE(customCover.thumbnailFileUri, (
       SELECT image_assets.thumbnailFileUri
@@ -49,7 +52,7 @@ const GROUP_OVERVIEW_SELECT = `
       INNER JOIN image_groups ON image_groups.imageAssetId = image_assets.id
       WHERE image_groups.groupId = groups.id
         AND image_assets.deletedAt IS NULL
-        AND image_assets.mediaType = 'image'
+        AND image_assets.thumbnailFileUri IS NOT NULL
       ORDER BY image_assets.createdAt DESC, image_assets.id DESC
       LIMIT 1
     )) AS coverThumbnailFileUri,
@@ -58,7 +61,6 @@ const GROUP_OVERVIEW_SELECT = `
   INNER JOIN ips ON ips.id = groups.ipId
   LEFT JOIN image_assets AS customCover ON customCover.id = groups.coverImageAssetId
     AND customCover.deletedAt IS NULL
-    AND customCover.mediaType = 'image'
   LEFT JOIN image_groups ON image_groups.groupId = groups.id
   LEFT JOIN image_assets ON image_assets.id = image_groups.imageAssetId
 `;
@@ -166,7 +168,7 @@ export const groupRepository = {
 
   async findOverviewByIpId(db: SQLiteDatabase, ipId: number): Promise<GroupListItem[]> {
     const rows = await db.getAllAsync<GroupListItemRow>(
-      `${GROUP_OVERVIEW_SELECT} WHERE groups.ipId = ? GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`,
+      `${GROUP_OVERVIEW_SELECT} WHERE groups.ipId = ? GROUP BY groups.id ORDER BY groups.type ASC, groups.isPinned DESC, groups.sortOrder ASC, ${GROUP_TOTAL_ASSET_COUNT_EXPR} DESC, groups.updatedAt DESC, groups.id DESC`,
       ipId
     );
     return rows.map(mapGroupListItemRow);
@@ -174,7 +176,7 @@ export const groupRepository = {
 
   async findOverviewPreviewByIpId(db: SQLiteDatabase, ipId: number, limit = 4): Promise<GroupListItem[]> {
     const rows = await db.getAllAsync<GroupListItemRow>(
-      `${GROUP_OVERVIEW_SELECT} WHERE groups.ipId = ? GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC LIMIT ?`,
+      `${GROUP_OVERVIEW_SELECT} WHERE groups.ipId = ? GROUP BY groups.id ORDER BY groups.type ASC, groups.isPinned DESC, groups.sortOrder ASC, ${GROUP_TOTAL_ASSET_COUNT_EXPR} DESC, groups.updatedAt DESC, groups.id DESC LIMIT ?`,
       ipId,
       Math.max(1, Math.min(20, Math.floor(limit)))
     );
@@ -186,7 +188,66 @@ export const groupRepository = {
     const offset = Math.max(0, Math.floor(input?.offset ?? 0));
     const where = input?.ipId == null ? 'ips.deletedAt IS NULL' : 'ips.deletedAt IS NULL AND groups.ipId = ?';
     const rows = await db.getAllAsync<GlobalGroupListItemRow>(
-      `${GROUP_OVERVIEW_SELECT} WHERE ${where} GROUP BY groups.id ORDER BY groups.type ASC, groups.isPinned DESC, imageCount DESC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC LIMIT ? OFFSET ?`,
+      `WITH page_groups AS (
+         SELECT
+           groups.id,
+           groups.ipId,
+           ips.name AS ipName,
+           groups.name,
+           groups.type,
+           groups.sortOrder,
+           groups.isPinned,
+           groups.coverImageAssetId,
+           groups.description,
+           groups.createdAt,
+           groups.updatedAt,
+           ips.coverBlurEnabled AS ipCoverBlurEnabled,
+           ips.coverBlurRadius AS ipCoverBlurRadius,
+           COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image' THEN image_assets.id END) AS imageCount,
+           COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'video' THEN image_assets.id END) AS videoCount,
+           ${GROUP_TOTAL_ASSET_COUNT_EXPR} AS totalAssetCount,
+           MAX(COALESCE(image_assets.updatedAt, groups.updatedAt)) AS recentUpdatedAt
+         FROM groups
+         INNER JOIN ips ON ips.id = groups.ipId
+         LEFT JOIN image_groups ON image_groups.groupId = groups.id
+         LEFT JOIN image_assets ON image_assets.id = image_groups.imageAssetId
+         WHERE ${where}
+         GROUP BY groups.id
+         ORDER BY groups.type ASC, groups.isPinned DESC, groups.sortOrder ASC, totalAssetCount DESC, groups.updatedAt DESC, groups.id DESC
+         LIMIT ? OFFSET ?
+       )
+       SELECT
+         page_groups.id,
+         page_groups.ipId,
+         page_groups.ipName,
+         page_groups.name,
+         page_groups.type,
+         page_groups.sortOrder,
+         page_groups.isPinned,
+         page_groups.coverImageAssetId,
+         page_groups.description,
+         page_groups.createdAt,
+         page_groups.updatedAt,
+         page_groups.ipCoverBlurEnabled,
+         page_groups.ipCoverBlurRadius,
+         page_groups.imageCount,
+         page_groups.videoCount,
+         page_groups.recentUpdatedAt,
+         COALESCE(customCover.thumbnailFileUri, (
+           SELECT image_assets.thumbnailFileUri
+           FROM image_assets
+           INNER JOIN image_groups ON image_groups.imageAssetId = image_assets.id
+           WHERE image_groups.groupId = page_groups.id
+             AND image_assets.deletedAt IS NULL
+             AND image_assets.thumbnailFileUri IS NOT NULL
+           ORDER BY image_assets.createdAt DESC, image_assets.id DESC
+           LIMIT 1
+         )) AS coverThumbnailFileUri,
+         CASE WHEN customCover.id IS NOT NULL THEN 'custom' ELSE 'default' END AS coverSource
+       FROM page_groups
+       LEFT JOIN image_assets AS customCover ON customCover.id = page_groups.coverImageAssetId
+         AND customCover.deletedAt IS NULL
+       ORDER BY page_groups.type ASC, page_groups.isPinned DESC, page_groups.sortOrder ASC, page_groups.totalAssetCount DESC, page_groups.updatedAt DESC, page_groups.id DESC`,
       ...(input?.ipId == null ? [] : [input.ipId]),
       limit + 1,
       offset
@@ -221,7 +282,7 @@ export const groupRepository = {
        WHERE ips.deletedAt IS NULL
          AND (groups.name LIKE ? COLLATE NOCASE OR ips.name LIKE ? COLLATE NOCASE)
        GROUP BY groups.id
-       ORDER BY groups.isPinned DESC, imageCount DESC, groups.updatedAt DESC, groups.id DESC
+       ORDER BY groups.isPinned DESC, ${GROUP_TOTAL_ASSET_COUNT_EXPR} DESC, groups.updatedAt DESC, groups.id DESC
        LIMIT ?`,
       likeValue,
       likeValue,
@@ -232,7 +293,7 @@ export const groupRepository = {
 
   async findOverview(db: SQLiteDatabase): Promise<GlobalGroupListItem[]> {
     const rows = await db.getAllAsync<GlobalGroupListItemRow>(
-      `${GROUP_OVERVIEW_SELECT} WHERE ips.deletedAt IS NULL GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
+      `${GROUP_OVERVIEW_SELECT} WHERE ips.deletedAt IS NULL GROUP BY groups.id ORDER BY groups.isPinned DESC, ${GROUP_TOTAL_ASSET_COUNT_EXPR} DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
     );
     return rows.map(mapGlobalGroupListItemRow);
   },
@@ -295,7 +356,6 @@ export const groupRepository = {
          AND image_groups.groupId = ?
          AND image_assets.ipId = ?
          AND image_assets.deletedAt IS NULL
-         AND image_assets.mediaType = 'image'
        LIMIT 1`,
       imageAssetId,
       groupId,
@@ -303,7 +363,7 @@ export const groupRepository = {
     );
 
     if (!image) {
-      throw new Error('只能选择当前分组内的图片作为封面。');
+      throw new Error('只能选择当前分组内的素材作为封面。');
     }
 
     return this.update(db, groupId, { coverImageAssetId: imageAssetId });
@@ -311,6 +371,34 @@ export const groupRepository = {
 
   async clearCoverImage(db: SQLiteDatabase, groupId: number): Promise<GroupRecord | null> {
     return this.update(db, groupId, { coverImageAssetId: null });
+  },
+
+  async updateSortOrders(
+    db: SQLiteDatabase,
+    updates: Array<{ id: number; sortOrder: number; isPinned?: boolean }>
+  ): Promise<void> {
+    if (updates.length === 0) return;
+    const now = createTimestamp();
+    await db.withTransactionAsync(async () => {
+      for (const item of updates) {
+        if (item.isPinned !== undefined) {
+          await db.runAsync(
+            'UPDATE groups SET sortOrder = ?, isPinned = ?, updatedAt = ? WHERE id = ?',
+            item.sortOrder,
+            booleanToSqlite(item.isPinned),
+            now,
+            item.id
+          );
+        } else {
+          await db.runAsync(
+            'UPDATE groups SET sortOrder = ?, updatedAt = ? WHERE id = ?',
+            item.sortOrder,
+            now,
+            item.id
+          );
+        }
+      }
+    });
   },
 };
 

@@ -4,6 +4,7 @@ import Svg, { Circle, Line } from 'react-native-svg';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { authenticatePersonalBiometric } from '../services/personalSystemService';
 
 const GRID_SIZE = 3;
 const DOT_RADIUS = 6;
@@ -24,6 +25,7 @@ export interface SecurityUnlockModuleProps {
   size?: number;
   isError?: boolean;
   disableBiometric?: boolean;
+  disabled?: boolean;
 }
 
 export function SecurityUnlockModule({
@@ -34,6 +36,7 @@ export function SecurityUnlockModule({
   size = 280,
   isError = false,
   disableBiometric = false,
+  disabled = false,
 }: SecurityUnlockModuleProps) {
   const [activeNodes, setActiveNodes] = useState<number[]>([]);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
@@ -86,11 +89,13 @@ export function SecurityUnlockModule({
 
   const onUnlockAttemptRef = useRef(onUnlockAttempt);
   const isErrorRef = useRef(isError);
+  const disabledRef = useRef(disabled);
 
   useEffect(() => {
     onUnlockAttemptRef.current = onUnlockAttempt;
     isErrorRef.current = isError;
-  }, [onUnlockAttempt, isError]);
+    disabledRef.current = disabled;
+  }, [onUnlockAttempt, isError, disabled]);
 
   // Handle external isError changes
   useEffect(() => {
@@ -128,16 +133,12 @@ export function SecurityUnlockModule({
     pulseLoop.start();
 
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: '验证指纹/面容进入隐私模式',
-        fallbackLabel: '使用密码',
-        disableDeviceFallback: true,
-      });
+      const result = await authenticatePersonalBiometric('验证指纹进入隐私空间');
 
       pulseLoop.stop();
       biometricAnim.setValue(1);
 
-      if (result.success) {
+      if (result.ok) {
         setBiometricState('success');
         setBiometricFeedbackMsg('指纹验证成功');
         cancelBiometricTimer();
@@ -146,10 +147,10 @@ export function SecurityUnlockModule({
         }, 320);
       } else {
         setBiometricState('failed');
-        setBiometricFeedbackMsg(result.error === 'user_cancel' ? '已取消验证' : '指纹不匹配，请重试');
+        setBiometricFeedbackMsg(result.message || '指纹不匹配，请重试');
         triggerShake();
-        if (result.error && result.error !== 'user_cancel') {
-          onBiometricError?.(result.error);
+        if (result.errorCode && result.errorCode !== 'user_cancel') {
+          onBiometricError?.(result.message || result.errorCode);
         }
         cancelBiometricTimer();
         biometricTimerRef.current = setTimeout(() => {
@@ -197,10 +198,10 @@ export function SecurityUnlockModule({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
+      onStartShouldSetPanResponder: () => !disabledRef.current,
+      onStartShouldSetPanResponderCapture: () => !disabledRef.current,
+      onMoveShouldSetPanResponder: () => !disabledRef.current,
+      onMoveShouldSetPanResponderCapture: () => !disabledRef.current,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (evt) => {
         cancelPendingClear();
@@ -347,8 +348,8 @@ export function SecurityUnlockModule({
         <Animated.View style={{ transform: [{ scale: biometricAnim }, { translateX: shakeAnim }], alignItems: 'center' }}>
           <Pressable
             onPress={triggerBiometric}
-            disabled={biometricState === 'scanning'}
-            style={({pressed}) => [styles.biometricButton, pressed && styles.pressed]}
+            disabled={disabled || biometricState === 'scanning'}
+            style={({pressed}) => [styles.biometricButton, (disabled || pressed) && styles.pressed]}
           >
             <View style={[
               styles.biometricIconWrapper,

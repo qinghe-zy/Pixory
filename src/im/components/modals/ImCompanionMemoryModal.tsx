@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import type { PixorySpace } from '../../../database';
 import { memoryRepository } from '../../../core/memory/memoryRepository';
@@ -645,6 +645,8 @@ export function ImCompanionMemoryModal({
           <FlatList
             contentContainerStyle={memories.length === 0 ? styles.emptyListContent : styles.listContent}
             data={memories}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
             keyExtractor={memoryKeyExtractor}
             ListEmptyComponent={loading && memories.length === 0 ? renderLoadingState : renderEmptyState}
             renderItem={renderMemoryItem}
@@ -676,7 +678,7 @@ export function ImCompanionMemoryModal({
             visible={editModalVisible}
           >
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              behavior="padding"
               style={{ flex: 1 }}
             >
               <View style={styles.editOverlay}>

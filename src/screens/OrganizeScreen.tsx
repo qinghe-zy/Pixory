@@ -12,6 +12,7 @@ import { type OrganizeMode } from '../components/OrganizeShared';
 
 interface OrganizeScreenProps {
   space?: PixorySpace;
+  isActive?: boolean;
   refreshToken: number;
   footer?: ReactNode;
   onCreateFirstIp?: () => void;
@@ -26,6 +27,7 @@ interface OrganizeScreenProps {
 
 export function OrganizeScreen({
   space = 'normal',
+  isActive = true,
   refreshToken,
   footer,
   onCreateFirstIp,
@@ -43,6 +45,7 @@ export function OrganizeScreen({
     return (
       <TagsOverviewScreen
         footer={footer}
+        isActive={isActive}
         onOpenTag={onOpenTag}
         refreshToken={refreshToken}
         space={space}
@@ -55,6 +58,7 @@ export function OrganizeScreen({
   return (
     <GlobalGroupsScreen
       footer={footer}
+      isActive={isActive}
       onCreateFirstIp={onCreateFirstIp}
       onCreateGroup={onCreateGroup}
       onEditGroup={onEditGroup}

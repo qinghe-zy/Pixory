@@ -1,6 +1,6 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, LayoutAnimation, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -9,6 +9,7 @@ import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
+import { MediaCountMeta } from '../components/MediaCountMeta';
 import { SecureImage } from '../components/SecureImage';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
@@ -20,6 +21,7 @@ import { useToast } from '../components/AppToast';
 import { BlurView } from 'expo-blur';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { formatDate } from '../utils/formatters';
+import { getGroupedItemMoveBoundaries, moveGroupedItem } from '../utils/reorderUtils';
 
 interface GroupOverviewScreenProps {
   ipId: number;
@@ -56,6 +58,7 @@ export function GroupOverviewScreen({
     errorMessage,
     loadMore,
     reload,
+    setData,
   } = usePagedScreenLoad<GroupListItem, IpRecord | null>(
     async (offset) => runWithDatabaseSpace(space, async (db) => {
       const [nextIp, page] = await Promise.all([
@@ -119,6 +122,41 @@ export function GroupOverviewScreen({
     })();
   }
 
+  const { canMoveUp: canGroupMoveUp, canMoveDown: canGroupMoveDown } = useMemo(() => {
+    return getGroupedItemMoveBoundaries(groups, actionGroup);
+  }, [groups, actionGroup]);
+
+  const handleMoveGroupUp = useCallback((targetGroup: GroupListItem) => {
+    const result = moveGroupedItem(groups, targetGroup.id, 'up');
+    if (!result) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setData((prev) => ({ ...prev, items: result.nextItems }));
+
+    void runWithDatabaseSpace(space, (db) => groupRepository.updateSortOrders(db, result.updates)).catch((err) => {
+      console.warn('Move group up failed.', err);
+      showToast('调整排序失败');
+      reload();
+    });
+  }, [groups, space, setData, showToast, reload]);
+
+  const handleMoveGroupDown = useCallback((targetGroup: GroupListItem) => {
+    const result = moveGroupedItem(groups, targetGroup.id, 'down');
+    if (!result) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setData((prev) => ({ ...prev, items: result.nextItems }));
+    if (result.unpinned) {
+      showToast('已取消置顶并下移');
+    }
+
+    void runWithDatabaseSpace(space, (db) => groupRepository.updateSortOrders(db, result.updates)).catch((err) => {
+      console.warn('Move group down failed.', err);
+      showToast('调整排序失败');
+      reload();
+    });
+  }, [groups, space, setData, showToast, reload]);
+
   return (
     <>
     <ScreenScaffold backgroundColor="#f9f9f9" onBack={onBack} rightAction={rightSlot} title="分组">
@@ -160,7 +198,18 @@ export function GroupOverviewScreen({
                   <View style={styles.groupBody}>
                     <View style={styles.groupHeader}><Text numberOfLines={1} style={styles.groupName}>{group.name}</Text><Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text></View>
                     <Text numberOfLines={1} style={styles.groupDescription}>{group.description || '还没有分组说明'}</Text>
-                    <View style={styles.metaRow}><Text style={styles.metaText}>{group.imageCount} 张图片</Text><Text style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text></View>
+                    <View style={styles.metaRow}>
+                      <MediaCountMeta
+                        color={colors.text.secondary}
+                        groupGap={spacing[2]}
+                        iconSize={13}
+                        imageCount={group.imageCount}
+                        itemGap={spacing[1]}
+                        textStyle={styles.metaText}
+                        videoCount={group.videoCount}
+                      />
+                      <Text numberOfLines={1} style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text>
+                    </View>
                   </View>
                 </View>
               </Pressable>
@@ -173,7 +222,21 @@ export function GroupOverviewScreen({
     </ScreenScaffold>
     <AppActionSheet
       items={actionGroup ? [
-        { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
+        { key: 'view', label: '查看素材', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
+        {
+          key: 'move-up',
+          label: '上移',
+          icon: 'arrow-up-outline',
+          disabled: !canGroupMoveUp,
+          onPress: () => handleMoveGroupUp(actionGroup),
+        },
+        {
+          key: 'move-down',
+          label: '下移',
+          icon: 'arrow-down-outline',
+          disabled: !canGroupMoveDown,
+          onPress: () => handleMoveGroupDown(actionGroup),
+        },
         { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.id) },
         { key: 'rename', label: '重命名', icon: 'text-outline', onPress: () => setRenameGroup(actionGroup) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
@@ -191,7 +254,7 @@ export function GroupOverviewScreen({
         },
         { key: 'delete', label: '删除分组', icon: 'trash-outline', danger: true, onPress: () => setDeleteGroup(actionGroup) },
       ] : []}
-      message="删除分组不会删除图片，图片会保留在当前 IP 中。"
+      message="删除分组不会删除素材，素材会保留在当前 IP 中。"
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
       visible={Boolean(actionGroup)}
@@ -205,7 +268,7 @@ export function GroupOverviewScreen({
     />
     <AppDialog
       danger
-      message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内图片会保留并移动到未分组。` : ''}
+      message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内素材会保留并移动到未分组。` : ''}
       onClose={() => setDeleteGroup(null)}
       onPrimary={confirmDeleteGroup}
       primaryLabel="确认删除"
@@ -344,9 +407,13 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    alignItems: 'center',
+    columnGap: rhythm.compactGridGap,
+    rowGap: 2,
   },
   metaText: {
     ...typography.textStyles.caption,
+    lineHeight: 15,
+    flexShrink: 0,
   },
 });

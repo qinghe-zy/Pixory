@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
+  InteractionManager,
   Platform,
   Pressable,
   StyleSheet,
@@ -163,7 +164,11 @@ export function ImHomeScreen({
   );
 
   const [localRefreshTick, setLocalRefreshTick] = useState(0);
-  const [roleCards, setRoleCards] = useState<AiRoleCardRecord[]>(() => getCachedRoleCards(space));
+  const [loadedRoleCards, setLoadedRoleCards] = useState<{ space: PixorySpace; items: AiRoleCardRecord[] }>(() => ({
+    space,
+    items: getCachedRoleCards(space),
+  }));
+  const roleCards = loadedRoleCards.space === space ? loadedRoleCards.items : getCachedRoleCards(space);
   const [isExpanded, setIsExpanded] = useState(false);
   const [drawerStage, setDrawerStage] = useState<0 | 1 | 2>(0);
 
@@ -175,6 +180,14 @@ export function ImHomeScreen({
   } | null>(null);
   const [foldedModalVisible, setFoldedModalVisible] = useState(false);
   const [isPullingDrawer, setIsPullingDrawer] = useState(false);
+  const [mountedSecondFloorSpace, setMountedSecondFloorSpace] = useState<PixorySpace | null>(null);
+  const hasMountedSecondFloor = mountedSecondFloorSpace === space;
+
+  useEffect(() => {
+    if (drawerStage > 0 || isPullingDrawer) {
+      setMountedSecondFloorSpace(space);
+    }
+  }, [drawerStage, isPullingDrawer, space]);
 
   // 顶栏亮暮灰着色共享值（0 = 首页纯白无圆角；1 = 二楼 #4A4668 亮暮灰带 18 圆角）
   const headerTone = useSharedValue(0);
@@ -243,18 +256,53 @@ export function ImHomeScreen({
   layoutParamsRef.current = { expandedHeight, snapThreshold, sfMaxDistance, dockedBarHeight };
 
   const loadRoles = useCallback(async () => {
+    const requestSpace = space;
     try {
-      const list = await listRoleCards(space);
-      setRoleCards(list);
-      setCachedRoleCards(space, list);
+      const list = await listRoleCards(requestSpace);
+      setCachedRoleCards(requestSpace, list);
+      setLoadedRoleCards((current) =>
+        current.space === requestSpace ? { space: requestSpace, items: list } : current
+      );
     } catch {
       // 容错静默
     }
   }, [space]);
 
   useEffect(() => {
-    void loadRoles();
-  }, [loadRoles, refreshToken]);
+    if (drawerStageRef.current > 0) {
+      drawerStageRef.current = 0;
+      setDrawerStage(0);
+      isExpandedRef.current = false;
+      setIsExpanded(false);
+      onSecondFloorStateChange?.(false);
+      translateY.value = 0;
+      sfTranslateY.value = 0;
+      sfExitTranslateY.value = 0;
+      isDirectExitingFromSF.value = false;
+      headerTone.value = 0;
+    }
+  }, [headerTone, isDirectExitingFromSF, onSecondFloorStateChange, sfExitTranslateY, sfTranslateY, space, translateY]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const requestSpace = space;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (isMounted) {
+        void listRoleCards(requestSpace)
+          .then((list) => {
+            setCachedRoleCards(requestSpace, list);
+            if (isMounted) {
+              setLoadedRoleCards({ space: requestSpace, items: list });
+            }
+          })
+          .catch(() => undefined);
+      }
+    });
+    return () => {
+      isMounted = false;
+      interaction.cancel();
+    };
+  }, [space, refreshToken]);
 
   useEffect(() => {
     const unsubscribe = GlobalHeartbeatEngine.shared.subscribe((_, targetSpace) => {
@@ -269,25 +317,31 @@ export function ImHomeScreen({
 
   // 首次进入无文字纯视觉轻引导：延时 450ms 下探 34px 并优雅回弹
   useEffect(() => {
+    let isMounted = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    void runWithDatabaseSpace(space, async (db) => {
-      try {
-        const val = await settingsRepository.getValue(db, GUIDE_STORAGE_KEY);
-        if (!val) {
-          timer = setTimeout(() => {
-            translateY.value = withSequence(
-              withTiming(34, { duration: 320, easing: Easing.out(Easing.cubic) }),
-              withSpring(0, SPRING_JELLY_CLOSE)
-            );
-            void runWithDatabaseSpace(space, (d) => settingsRepository.setValue(d, GUIDE_STORAGE_KEY, 'true'));
-          }, 450);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void runWithDatabaseSpace(space, async (db) => {
+        try {
+          const val = await settingsRepository.getValue(db, GUIDE_STORAGE_KEY);
+          if (isMounted && !val) {
+            timer = setTimeout(() => {
+              if (!isMounted) return;
+              translateY.value = withSequence(
+                withTiming(34, { duration: 320, easing: Easing.out(Easing.cubic) }),
+                withSpring(0, SPRING_JELLY_CLOSE)
+              );
+              void runWithDatabaseSpace(space, (d) => settingsRepository.setValue(d, GUIDE_STORAGE_KEY, 'true'));
+            }, 450);
+          }
+        } catch {
+          // 容错忽略
         }
-      } catch {
-        // 容错忽略
-      }
+      }).catch(() => undefined);
     });
 
     return () => {
+      isMounted = false;
+      interaction.cancel();
       if (timer) clearTimeout(timer);
     };
   }, [space, translateY]);
@@ -932,13 +986,15 @@ export function ImHomeScreen({
           />
         </Animated.View>
         {/* 动态微磨砂蒙层：在下拉前段提供朦胧质感，过半迅速消退至通透 */}
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, blurOverlayAnimatedStyle]}>
-          <BlurView
-            intensity={Platform.select({ android: 12, ios: 20 })}
-            style={StyleSheet.absoluteFill}
-            tint={space === 'personal' ? 'dark' : 'default'}
-          />
-        </Animated.View>
+        {hasMountedSecondFloor ? (
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, blurOverlayAnimatedStyle]}>
+            <BlurView
+              intensity={Platform.select({ android: 12, ios: 20 })}
+              style={StyleSheet.absoluteFill}
+              tint={space === 'personal' ? 'dark' : 'default'}
+            />
+          </Animated.View>
+        ) : null}
         {/* 抽屉底部微光线 (Liquid Glow Seam)，在到位时隐隐透出晶莹高光 */}
         <LinearGradient
           colors={space === 'personal' ? ['rgba(255,255,255,0.08)', 'transparent'] : ['rgba(0,0,0,0.06)', 'transparent']}
@@ -953,49 +1009,51 @@ export function ImHomeScreen({
         pullDistance={translateY}
       />
 
-      {/* 2. 二楼角色库：暮霭微光光学底膜瀑布流与 3D卡牌长廊转场 (作为背景画布置于前景主页面之下) */}
-      <ImRoleSecondFloor
-        active={drawerStage === 2}
-        exitTranslateY={sfExitTranslateY}
-        onCollapseToHome={collapseToHome}
-        onCollapseToRail={collapseToRail}
-        onOpenRoleDetail={(roleCardId) => onOpenRoleCardDetail?.(roleCardId)}
-        onSecondFloorDrag={handleSecondFloorDrag}
-        onSecondFloorRelease={handleSecondFloorRelease}
-        onSelectRole={(roleCardId) => {
-          const targetCard = roleCards.find((r) => r.id === roleCardId);
-          if (targetCard) {
-            onOpenImChat({
-              id: '',
-              space,
-              roleCardId: targetCard.id,
-              title: targetCard.name,
-              avatarUri: targetCard.avatarUri,
-              lastMessagePreview: null,
-              lastMessageAt: null,
-              updatedAt: new Date().toISOString(),
-              isPinned: false,
-              unreadCount: 0,
-            });
-          }
-          // 延迟后台静默复位二楼，确保聊天页已完全覆盖屏幕，绝不走一遍首页
-          setTimeout(() => {
-            drawerStageRef.current = 0;
-            setDrawerStage(0);
-            translateY.value = 0;
-            sfTranslateY.value = 0;
-            sfExitTranslateY.value = 0;
-            isDirectExitingFromSF.value = false;
-            headerTone.value = 0;
-          }, 450);
-        }}
-        onTransitionActiveChange={(active) => {
-          onSecondFloorStateChange?.(active || drawerStageRef.current === 2);
-        }}
-        roleCards={roleCards}
-        sfProgress={sfProgress}
-        space={space}
-      />
+      {/* 2. 二楼角色库：暮霭微光光学底膜瀑布流与 3D卡牌长廊转场 (作为背景画布置于前景主页面之下；首次下拉后再常驻挂载) */}
+      {hasMountedSecondFloor ? (
+        <ImRoleSecondFloor
+          active={drawerStage === 2}
+          exitTranslateY={sfExitTranslateY}
+          onCollapseToHome={collapseToHome}
+          onCollapseToRail={collapseToRail}
+          onOpenRoleDetail={(roleCardId) => onOpenRoleCardDetail?.(roleCardId)}
+          onSecondFloorDrag={handleSecondFloorDrag}
+          onSecondFloorRelease={handleSecondFloorRelease}
+          onSelectRole={(roleCardId) => {
+            const targetCard = roleCards.find((r) => r.id === roleCardId);
+            if (targetCard) {
+              onOpenImChat({
+                id: '',
+                space,
+                roleCardId: targetCard.id,
+                title: targetCard.name,
+                avatarUri: targetCard.avatarUri,
+                lastMessagePreview: null,
+                lastMessageAt: null,
+                updatedAt: new Date().toISOString(),
+                isPinned: false,
+                unreadCount: 0,
+              });
+            }
+            // 延迟后台静默复位二楼，确保聊天页已完全覆盖屏幕，绝不走一遍首页
+            setTimeout(() => {
+              drawerStageRef.current = 0;
+              setDrawerStage(0);
+              translateY.value = 0;
+              sfTranslateY.value = 0;
+              sfExitTranslateY.value = 0;
+              isDirectExitingFromSF.value = false;
+              headerTone.value = 0;
+            }, 450);
+          }}
+          onTransitionActiveChange={(active) => {
+            onSecondFloorStateChange?.(active || drawerStageRef.current === 2);
+          }}
+          roleCards={roleCards}
+          sfProgress={sfProgress}
+          space={space}
+        />
+      ) : null}
 
       {/* 3. 主页面（顶栏 + 消息流列表）：实色背景，作为前景幕帘一体化下移 (zIndex: 5) */}
       <GestureDetector gesture={panGesture}>
@@ -1061,6 +1119,9 @@ export function ImHomeScreen({
         onClose={() => setFoldedModalVisible(false)}
         onHideFromList={(t) => {
           void feed.hideFromList(t);
+        }}
+        onMarkRead={(t) => {
+          void feed.markRead(t);
         }}
         onOpenImChat={onOpenImChat}
         onToggleFold={(t) => {

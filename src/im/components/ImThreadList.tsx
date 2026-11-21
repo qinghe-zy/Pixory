@@ -20,6 +20,7 @@ import { formatImPreviewText } from '../utils/formatImPreviewText';
 import { formatWeChatTime } from '../utils/formatWeChatTime';
 import { useImThreadFeed, type UseImThreadFeedResult } from '../hooks/useImThreadFeed';
 import type { ImFeedItem } from '../utils/buildImThreadFeed';
+import { DraggableBadge } from '../../components/common/DraggableBadge';
 export { formatWeChatTime };
 
 import * as Haptics from 'expo-haptics';
@@ -63,7 +64,7 @@ export function ImThreadList({
   scrollEventThrottle = 16,
 }: ImThreadListProps) {
   const theme = useImTheme();
-  const internalFeed = useImThreadFeed(space, refreshTrigger);
+  const internalFeed = useImThreadFeed(space, refreshTrigger, !externalFeed);
   const feed = externalFeed || internalFeed;
   const { displayItems, initialLoading } = feed;
 
@@ -88,11 +89,12 @@ export function ImThreadList({
             <View style={styles.foldedIconBox}>
               <Ionicons color="#EAB308" name="folder" size={24} />
               {totalUnread > 0 ? (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadBadgeText}>
-                    {totalUnread > 99 ? '99+' : String(totalUnread)}
-                  </Text>
-                </View>
+                <DraggableBadge
+                  count={totalUnread}
+                  onDismiss={() => {
+                    void feed.markBatchRead(foldedList);
+                  }}
+                />
               ) : null}
             </View>
             <View style={styles.copyContainer}>
@@ -182,13 +184,14 @@ export function ImThreadList({
             )}
             {/* 伴侣在线微型呼吸光斑 */}
             <View style={styles.livingIndicator} />
-            {/* 微信风格右上角未读消息红点角标 */}
+            {/* 微信风格右上角未读消息粘性拖拽消除红点角标 */}
             {unreadCount > 0 ? (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadBadgeText}>
-                  {unreadCount > 99 ? '99+' : String(unreadCount)}
-                </Text>
-              </View>
+              <DraggableBadge
+                count={unreadCount}
+                onDismiss={() => {
+                  void feed.markRead(threadItem);
+                }}
+              />
             ) : null}
           </View>
 

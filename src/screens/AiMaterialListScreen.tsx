@@ -7,6 +7,12 @@ import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiMaterialSourceSheet, type AiMaterialSourceKind } from '../components/ai/AiMaterialSourceSheet';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
+import { useToast } from '../components/AppToast';
+import { DocumentBubbleCard } from '../components/document/DocumentBubbleCard';
+import {
+  injectDocumentToContext,
+  removeDocumentFromContext,
+} from '../ai/aiDocumentPinService';
 import {
   listGlobalMaterialGroupPage,
   listMaterialsPage,
@@ -196,12 +202,63 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
     onImportMaterial?.(threadId, source);
   }
 
-  function renderMaterialRow(item: AiDocumentRecord, compact = false) {
-    const selected = selectedIds.includes(item.id);
+  const { showToast } = useToast();
+
+  function getDocCharCountAndInjected(doc: AiDocumentRecord): { charCount: number; isInjected: boolean } {
+    try {
+      const meta = JSON.parse(doc.metadataJson || '{}');
+      return {
+        charCount: typeof meta.charCount === 'number' ? meta.charCount : Math.round((doc.fileSize ?? 1000) / 2),
+        isInjected: Boolean(meta.injectedToContext),
+      };
+    } catch {
+      return { charCount: Math.round((doc.fileSize ?? 1000) / 2), isInjected: false };
+    }
+  }
+
+  async function handleTogglePin(item: AiDocumentRecord, itemThreadId?: string) {
+    const effectiveThreadId = itemThreadId ?? threadId ?? (item.ownerType === 'thread' ? item.ownerId : undefined);
+    if (!effectiveThreadId) {
+      showToast('当前资料库尚未关联具体对话，请先在对话中引用该资料');
+      return;
+    }
+    const { charCount, isInjected } = getDocCharCountAndInjected(item);
+    try {
+      if (isInjected) {
+        await removeDocumentFromContext({ space, documentId: item.id, threadId: effectiveThreadId });
+        showToast('已取消原文注入上下文');
+        await reload();
+      } else {
+        if (charCount >= 2500) {
+          showToast('文档正文超过 2500 字符，无法纳入上下文前缀');
+          return;
+        }
+        const res = await injectDocumentToContext({ space, documentId: item.id, threadId: effectiveThreadId });
+        if (res.success) {
+          showToast('已原文注入上下文');
+          await reload();
+        } else if (res.reason === 'overflow') {
+          showToast('注入原文字符较多，无法增加新的文档');
+        } else if (res.reason === 'too_large') {
+          showToast(`文档超过 ${res.limit} 字符，无法全文常驻`);
+        }
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '操作失败');
+    }
+  }
+
+  function renderMaterialRow(item: AiDocumentRecord, itemThreadId?: string) {
+    const { charCount, isInjected } = getDocCharCountAndInjected(item);
+    const isShort = charCount > 0 && charCount < 2500;
+    const pinState: 'red' | 'gray' | 'none' = isInjected ? 'red' : isShort ? 'gray' : 'none';
+
     return (
-      <View key={item.id} style={[compact ? styles.groupMaterialRow : styles.row, selected && styles.selectedRow]}>
-        <Pressable
-          accessibilityRole="button"
+      <View key={item.id} style={styles.materialRowWrap}>
+        <DocumentBubbleCard
+          charCount={charCount}
+          flatStyle
+          fullWidth
           onLongPress={() => {
             if (globalScrollState.isScrolling) return;
             toggleSelected(item.id);
@@ -213,21 +270,25 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
             }
             onOpenDocument(item.id, item.title);
           }}
-          style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
-        >
-          <View style={styles.iconWrap}>
-            <Ionicons color={aiLightColors.primaryActive} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
-          </View>
-          <View style={styles.copy}>
-            <Text numberOfLines={compact ? 1 : undefined} style={styles.title}>{item.title}</Text>
-            <Text numberOfLines={1} style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.originalFilename ?? '手动文本'}</Text>
-            {!compact && item.parserError ? <Text style={styles.error}>{item.parserError}</Text> : null}
-          </View>
-        </Pressable>
-        {!compact && item.parserStatus === 'failed' ? (
-          <View style={styles.failedActions}>
-            <AiLightButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
-            <AiLightButton label="删除" onPress={() => void removeDocument(item.id)} variant="ghost" />
+          onPressPin={() => void handleTogglePin(item, itemThreadId)}
+          pinState={pinState}
+          selectionState={
+            selectedIds.length > 0
+              ? selectedIds.includes(item.id)
+                ? 'selected'
+                : 'unselected'
+              : 'none'
+          }
+          sizeBytes={item.fileSize ?? undefined}
+          title={item.title}
+        />
+        {item.parserStatus === 'failed' ? (
+          <View style={styles.failedRow}>
+            <Text style={styles.failedText}>{item.parserError ?? '解析失败'}</Text>
+            <View style={styles.failedActions}>
+              <AiLightButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
+              <AiLightButton label="删除" onPress={() => void removeDocument(item.id)} variant="ghost" />
+            </View>
           </View>
         ) : null}
       </View>
@@ -279,70 +340,84 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, ownerTy
     </View>
   );
 
+  const listHeader = (
+    <View style={styles.listHeaderWrap}>
+      {status ? <Text style={styles.statusText}>{status}</Text> : null}
+      {threadId && onImportMaterial ? (
+        <View style={styles.addBtnWrap}>
+          <AiLightButton label="添加资料" onPress={() => setSourceSheetVisible(true)} />
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <AiLightScaffold
       bodyStyle={styles.body}
       footer={selectionFooter}
+      footerNaked
+      fullBleed
+      hideStatusBarShield
       onBack={onBack}
       subtitle={`${spaceLabel} · ${threadId ? '当前会话' : knowledgeBaseId ? '当前知识库' : ownerId ? '当前来源' : '按来源展示'}`}
       title={screenTitle}
     >
       <View style={styles.contentStack}>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
-        {threadId && onImportMaterial ? (
-          <AiLightButton label="添加资料" onPress={() => setSourceSheetVisible(true)} />
-        ) : null}
         {isGlobalView ? (
           <FlatList
             {...createScrollHandlers()}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={styles.fullBleedList}
             data={conversationGroups}
             keyExtractor={(group) => `${group.ownerType}:${group.ownerId}`}
             ListEmptyComponent={renderEmptyComponent()}
             ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
+            ListHeaderComponent={listHeader}
             onEndReached={() => { void loadMore(); }}
             onEndReachedThreshold={0.6}
             renderItem={({ item: group }) => (
-                <View
-                  style={styles.groupRow}
-                >
-                  <View style={styles.groupHeader}>
-                    <View style={styles.copy}>
-                      <Text numberOfLines={1} style={styles.title}>{group.threadTitle}</Text>
-                      <Text style={styles.meta}>{group.ownerLabel} · {group.materialCount} 份资料 · 最近更新 {group.updatedAt.slice(5, 10)}</Text>
-                    </View>
-                    {onOpenMaterialOwner ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => {
-                          if (!selectedIds.length) {
-                            onOpenMaterialOwner(group);
-                          }
-                        }}
-                        style={({ pressed }) => [styles.openGroupButton, pressed && styles.pressed]}
-                      >
-                        <Text style={styles.textActionLabel}>进入</Text>
-                      </Pressable>
-                    ) : null}
+              <View key={`${group.ownerType}:${group.ownerId}`} style={styles.groupSection}>
+                <View style={styles.groupHeaderRow}>
+                  <View style={styles.groupHeaderLeft}>
+                    <Text numberOfLines={1} style={styles.groupTitle}>{group.threadTitle}</Text>
+                    <Text style={styles.groupMeta}>
+                      {group.ownerLabel} · {group.materialCount} 份资料 · 最近更新 {group.updatedAt.slice(5, 10)}
+                    </Text>
                   </View>
-                  <View style={styles.groupMaterialList}>
-                    {group.materials.map((material) => renderMaterialRow(material, true))}
-                  </View>
-                  {group.materialCount > group.materials.length ? (
-                    <Text style={styles.previewNote}>仅预览最近 {group.materials.length} 份，进入后可查看全部</Text>
+                  {onOpenMaterialOwner ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        if (!selectedIds.length) {
+                          onOpenMaterialOwner(group);
+                        }
+                      }}
+                      style={({ pressed }) => [styles.openGroupButton, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.textActionLabel}>进入</Text>
+                    </Pressable>
                   ) : null}
                 </View>
+                <View style={styles.groupCardsWrap}>
+                  {group.materials.map((material) =>
+                    renderMaterialRow(material, group.ownerType === 'thread' ? group.ownerId : undefined)
+                  )}
+                </View>
+                {group.materialCount > group.materials.length ? (
+                  <Text style={styles.previewNote}>仅预览最近 {group.materials.length} 份，进入后可查看全部</Text>
+                ) : null}
+              </View>
             )}
             windowSize={7}
           />
         ) : (
           <FlatList
             {...createScrollHandlers()}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={styles.fullBleedList}
             data={items}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={renderEmptyComponent()}
             ListFooterComponent={loadingMore ? <Text style={styles.loadingMore}>正在加载更多…</Text> : null}
+            ListHeaderComponent={listHeader}
             onEndReached={() => { void loadMore(); }}
             onEndReachedThreshold={0.6}
             renderItem={({ item }) => renderMaterialRow(item)}
@@ -390,115 +465,96 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: rhythm.entryCardGap,
   },
-  status: {
+  fullBleedList: {
+    paddingBottom: 40,
+  },
+  listHeaderWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    gap: 8,
+  },
+  statusText: {
     ...typography.textStyles.caption,
     color: aiLightColors.primaryActive,
+  },
+  addBtnWrap: {
+    marginBottom: 8,
+  },
+  materialRowWrap: {
+    width: '100%',
+  },
+  selectedRow: {
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.primary,
+  },
+  failedRow: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  failedText: {
+    fontSize: 12,
+    color: '#EF4444',
+  },
+  failedActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  groupSection: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  groupHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  groupHeaderLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  groupTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111111',
+  },
+  groupMeta: {
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+  openGroupButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  textActionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: aiLightColors.primary,
+  },
+  groupCardsWrap: {
+    width: '100%',
+  },
+  previewNote: {
+    fontSize: 12,
+    color: '#8E8E93',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
   },
   loadingMore: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
     paddingVertical: spacing[3],
     textAlign: 'center',
-  },
-  list: {
-    gap: rhythm.listCardGap,
-  },
-  row: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
-  },
-  groupRow: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
-  },
-  groupHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    justifyContent: 'space-between',
-  },
-  groupMaterialPreview: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    padding: spacing[2],
-  },
-  groupMaterialList: {
-    gap: rhythm.microGap,
-  },
-  groupMaterialRow: {
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.md,
-    padding: spacing[2],
-  },
-  openGroupButton: {
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
-  selectedRow: {
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.primary,
-  },
-  rowMain: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-  },
-  pressed: {
-    opacity: 0.78,
-  },
-  iconWrap: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.pill,
-    height: 38,
-    justifyContent: 'center',
-    width: 38,
-  },
-  copy: {
-    flex: 1,
-    gap: rhythm.microGap,
-  },
-  title: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-  },
-  previewTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  previewNote: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-  },
-  meta: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-  },
-  textActionLabel: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.primaryActive,
-    fontWeight: '600',
-  },
-  error: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.primaryActive,
-  },
-  failedActions: {
-    gap: rhythm.inlineGap,
   },
   emptyState: {
     alignItems: 'center',
@@ -536,10 +592,10 @@ const styles = StyleSheet.create({
   selectionFooter: {
     backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
-    padding: spacing[3],
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   selectionCopy: {
     gap: rhythm.microGap,
@@ -554,5 +610,8 @@ const styles = StyleSheet.create({
   },
   selectionActions: {
     gap: rhythm.inlineGap,
+  },
+  pressed: {
+    opacity: 0.75,
   },
 });

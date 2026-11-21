@@ -84,8 +84,12 @@ interface AiPushScaleDrawerStageProps {
   leftDrawerVisible: boolean;
   /** 右侧边栏是否展开 */
   rightDrawerVisible: boolean;
-  /** 是否允许手势拉开右侧边栏 */
-  canOpenRightDrawer?: boolean;
+  /** 是否允许手势拉开左侧边栏 (默认 true，支持动态 getter 函数避免无谓 re-render) */
+  canOpenLeftDrawer?: boolean | (() => boolean);
+  /** 是否允许手势拉开右侧边栏 (默认 true，支持动态 getter 函数避免无谓 re-render) */
+  canOpenRightDrawer?: boolean | (() => boolean);
+  /** 是否禁用手势拉开侧边栏（例如用户正在长按选词或输入框交互），仍保留滑动手势收起已展开侧边栏（支持动态 getter 函数） */
+  disableSwipeOpen?: boolean | (() => boolean);
   /** 手势拉开左侧边栏回调 */
   onOpenLeftDrawer?: () => void;
   /** 手势拉开右侧边栏回调 */
@@ -115,7 +119,9 @@ export function AiPushScaleDrawerStage({
   underlayDrawers,
   leftDrawerVisible,
   rightDrawerVisible,
+  canOpenLeftDrawer = true,
   canOpenRightDrawer = true,
+  disableSwipeOpen = false,
   onOpenLeftDrawer,
   onOpenRightDrawer,
   onCloseLeftDrawer,
@@ -140,7 +146,9 @@ export function AiPushScaleDrawerStage({
   const stateRef = useRef({
     leftDrawerVisible,
     rightDrawerVisible,
+    canOpenLeftDrawer,
     canOpenRightDrawer,
+    disableSwipeOpen,
     onOpenLeftDrawer,
     onOpenRightDrawer,
     onCloseLeftDrawer,
@@ -149,7 +157,9 @@ export function AiPushScaleDrawerStage({
   stateRef.current = {
     leftDrawerVisible,
     rightDrawerVisible,
+    canOpenLeftDrawer,
     canOpenRightDrawer,
+    disableSwipeOpen,
     onOpenLeftDrawer,
     onOpenRightDrawer,
     onCloseLeftDrawer,
@@ -323,7 +333,9 @@ export function AiPushScaleDrawerStage({
           const {
             leftDrawerVisible: leftOpen,
             rightDrawerVisible: rightOpen,
-            canOpenRightDrawer: allowRight,
+            canOpenLeftDrawer,
+            canOpenRightDrawer,
+            disableSwipeOpen,
           } = stateRef.current;
 
           // 1. When a drawer is open: capture horizontal swipe toward the close direction
@@ -351,12 +363,24 @@ export function AiPushScaleDrawerStage({
             return false;
           }
 
+          // If swipe-open is disabled (e.g. user selecting/editing in input box), strictly do not capture
+          const isSwipeDisabled =
+            typeof disableSwipeOpen === 'function' ? disableSwipeOpen() : Boolean(disableSwipeOpen);
+          if (isSwipeDisabled) {
+            return false;
+          }
+
+          const allowLeft =
+            typeof canOpenLeftDrawer === 'function' ? canOpenLeftDrawer() : canOpenLeftDrawer !== false;
+          const allowRight =
+            typeof canOpenRightDrawer === 'function' ? canOpenRightDrawer() : canOpenRightDrawer !== false;
+
           // 2. When closed: capture horizontal swipe on the main screen to interactively pull open
           if (
             Math.abs(gs.dx) > SWIPE_OPEN_ACTIVATION_DX &&
             Math.abs(gs.dx) > Math.abs(gs.dy) * SWIPE_OPEN_HORIZONTAL_RATIO
           ) {
-            if (gs.dx > 0 && stateRef.current.onOpenLeftDrawer) {
+            if (gs.dx > 0 && allowLeft && stateRef.current.onOpenLeftDrawer) {
               gestureModeRef.current = 'open-left';
               dragStartDxRef.current = gs.dx;
               return true;

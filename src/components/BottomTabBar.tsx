@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { aiLightColors } from './ai/aiLightTheme';
+import { DraggableBadge } from './common/DraggableBadge';
 import { colors, componentTokens, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'organize' | 'im' | 'ai' | 'me';
@@ -11,6 +12,7 @@ interface BottomTabBarProps {
   activeTab: RootTabKey;
   onSelectTab: (tab: RootTabKey) => void;
   imUnreadCount?: number;
+  onClearAllImUnread?: () => void;
 }
 
 const TAB_ITEMS: Array<{
@@ -29,7 +31,7 @@ function getActiveTintColor(tab: RootTabKey) {
   return tab === 'ai' || tab === 'im' ? aiLightColors.primaryActive : colors.primary.default;
 }
 
-export function BottomTabBar({ activeTab, onSelectTab, imUnreadCount }: BottomTabBarProps) {
+export function BottomTabBar({ activeTab, onSelectTab, imUnreadCount, onClearAllImUnread }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   
   return (
@@ -58,11 +60,12 @@ export function BottomTabBar({ activeTab, onSelectTab, imUnreadCount }: BottomTa
                 size={22}
               />
               {hasImUnread && (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>
-                    {imUnreadCount > 99 ? '99+' : imUnreadCount}
-                  </Text>
-                </View>
+                <DraggableBadge
+                  accessibilityLabel={`${imUnreadCount} 条伴聊未读消息，按住拖拽可一键清空全部未读`}
+                  count={imUnreadCount}
+                  isBottomTab
+                  onDismiss={onClearAllImUnread}
+                />
               )}
             </View>
             <Text style={[

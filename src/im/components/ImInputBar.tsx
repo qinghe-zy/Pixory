@@ -57,6 +57,8 @@ export interface ImInputBarProps {
   fillDraftText?: string | null;
   space?: 'normal' | 'personal';
   onVoiceRecordStateChange?: (state: VoiceRecordHudState) => void;
+  /** 输入框处于手势触摸或文本选中中（供外层按需抑制侧边栏误开） */
+  onInputGestureActiveChange?: (active: boolean) => void;
 }
 
 /**
@@ -84,12 +86,45 @@ export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(funct
     fillDraftText,
     space = 'normal',
     onVoiceRecordStateChange,
+    onInputGestureActiveChange,
   }: ImInputBarProps,
   ref
 ) {
   const theme = useImTheme();
   const [text, setText] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
+
+  const isSelectingRef = useRef(false);
+  const isInteractingRef = useRef(false);
+
+  const notifyGestureActive = useCallback(() => {
+    const active = isSelectingRef.current || isInteractingRef.current;
+    onInputGestureActiveChange?.(active);
+  }, [onInputGestureActiveChange]);
+
+  const handleTouchStart = useCallback(() => {
+    isInteractingRef.current = true;
+    notifyGestureActive();
+  }, [notifyGestureActive]);
+
+  const handleTouchEnd = useCallback(() => {
+    isInteractingRef.current = false;
+    notifyGestureActive();
+  }, [notifyGestureActive]);
+
+  const handleBlur = useCallback(() => {
+    isSelectingRef.current = false;
+    isInteractingRef.current = false;
+    notifyGestureActive();
+  }, [notifyGestureActive]);
+
+  React.useEffect(() => {
+    return () => {
+      if (isSelectingRef.current || isInteractingRef.current) {
+        onInputGestureActiveChange?.(false);
+      }
+    };
+  }, [onInputGestureActiveChange]);
 
   const stt = useSpeechToText({
     space,
@@ -339,6 +374,9 @@ export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(funct
         if (panelVisible) {
           setPanelVisible(false);
         }
+        isSelectingRef.current = false;
+        isInteractingRef.current = false;
+        notifyGestureActive();
       },
       closeEmoticons: () => {
         if (switchTimeoutRef.current) {
@@ -375,6 +413,11 @@ export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(funct
     onSend(trimmed);
     setText('');
     onTextChange?.('');
+    if (isSelectingRef.current || isInteractingRef.current) {
+      isSelectingRef.current = false;
+      isInteractingRef.current = false;
+      notifyGestureActive();
+    }
   };
 
   const handleTogglePanel = React.useCallback(() => {
@@ -569,6 +612,9 @@ export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(funct
           </View>
         ) : (
           <View
+            onTouchCancel={handleTouchEnd}
+            onTouchEnd={handleTouchEnd}
+            onTouchStart={handleTouchStart}
             style={[
               styles.inputContainer,
               {
@@ -582,6 +628,7 @@ export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(funct
             <TextInput
               editable={!disabled}
               multiline
+              onBlur={handleBlur}
               onChangeText={(next) => {
                 setText(next);
                 onTextChange?.(next);
@@ -600,6 +647,11 @@ export const ImInputBar = React.forwardRef<ImInputBarRef, ImInputBarProps>(funct
               }}
               onSelectionChange={(e) => {
                 setSelection(e.nativeEvent.selection);
+                const selecting = e.nativeEvent.selection.start !== e.nativeEvent.selection.end;
+                if (isSelectingRef.current !== selecting) {
+                  isSelectingRef.current = selecting;
+                  notifyGestureActive();
+                }
               }}
               placeholder=""
               placeholderTextColor={theme.colors.inputPlaceholder}

@@ -1,15 +1,139 @@
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Image } from 'expo-image';
+import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { deleteDatabaseAsync } from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 import { PERSONAL_DATABASE_NAME, resetDatabaseSpaceCache } from '../database';
-import { ensureAppDirectories, getExportsDir, getOriginalsDir, getTempDir, getThumbnailsDir } from './fileStorageService';
+import {
+  enrollNativeBiometricKey,
+  hasNativeBiometricKeySupport,
+  verifyNativeBiometricKey,
+} from '../native/pixoryMediaModule';
+import {
+  ensureAppDirectories,
+  getExportsDir,
+  getOriginalsDir,
+  getStorageRootDir,
+  getTempDir,
+  getThumbnailsDir,
+} from './fileStorageService';
 
 export const PERSONAL_CREDENTIAL_KEY = 'pixory.personal.credential.v1';
-export const MAX_PERSONAL_UNLOCK_FAILURES = 50;
+export const PERSONAL_BACKGROUND_LOCK_TIMEOUT_KEY = 'pixory.personal.backgroundLockTimeoutMs.v1';
+export const MAX_PERSONAL_UNLOCK_FAILURES = 15;
 const PERSONAL_CREDENTIAL_VERSION = 4;
-const PERSONAL_LOCK_MS = 5 * 60 * 1000;
+export const PERSONAL_LOCK_MS = 5 * 60 * 1000;
+
+export type PersonalBackgroundLockTimeoutMs = 0 | 10_000 | 30_000 | 60_000 | 300_000 | 1_800_000 | -1;
+
+export const DEFAULT_PERSONAL_BACKGROUND_LOCK_TIMEOUT_MS: PersonalBackgroundLockTimeoutMs = 60_000;
+
+export const PERSONAL_BACKGROUND_LOCK_OPTIONS: ReadonlyArray<{
+  value: PersonalBackgroundLockTimeoutMs;
+  label: string;
+}> = [
+  { value: 0, label: '立即锁定' },
+  { value: 10_000, label: '10 秒' },
+  { value: 30_000, label: '30 秒' },
+  { value: 60_000, label: '1 分钟' },
+  { value: 300_000, label: '5 分钟' },
+  { value: 1_800_000, label: '30 分钟' },
+  { value: -1, label: '永不锁定' },
+];
+
+export interface PersonalLockStatus {
+  isLocked: boolean;
+  lockedUntil: string | null;
+  remainingMs: number;
+  failedAttempts: number;
+  remainingAttempts: number;
+}
+
+const backgroundLockTimeoutListeners = new Set<(timeoutMs: PersonalBackgroundLockTimeoutMs) => void>();
+const lockStatusListeners = new Set<(status: PersonalLockStatus) => void>();
+
+export function isValidPersonalBackgroundLockTimeoutMs(value: unknown): value is PersonalBackgroundLockTimeoutMs {
+  return (
+    value === 0 ||
+    value === 10_000 ||
+    value === 30_000 ||
+    value === 60_000 ||
+    value === 300_000 ||
+    value === 1_800_000 ||
+    value === -1
+  );
+}
+
+export function getPersonalBackgroundLockLabel(timeoutMs: PersonalBackgroundLockTimeoutMs): string {
+  return PERSONAL_BACKGROUND_LOCK_OPTIONS.find((item) => item.value === timeoutMs)?.label ?? '1 分钟';
+}
+
+export function formatPersonalLockCountdown(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+export function subscribePersonalBackgroundLockTimeout(
+  listener: (timeoutMs: PersonalBackgroundLockTimeoutMs) => void
+): () => void {
+  backgroundLockTimeoutListeners.add(listener);
+  return () => {
+    backgroundLockTimeoutListeners.delete(listener);
+  };
+}
+
+export function subscribePersonalLockStatus(
+  listener: (status: PersonalLockStatus) => void
+): () => void {
+  lockStatusListeners.add(listener);
+  return () => {
+    lockStatusListeners.delete(listener);
+  };
+}
+
+function emitLockStatus(credential: PersonalCredential | null): void {
+  const status = computeLockStatus(credential);
+  lockStatusListeners.forEach((listener) => {
+    try {
+      listener(status);
+    } catch {}
+  });
+}
+
+function computeLockStatus(credential: PersonalCredential | null, now = Date.now()): PersonalLockStatus {
+  if (!credential) {
+    return {
+      isLocked: false,
+      lockedUntil: null,
+      remainingMs: 0,
+      failedAttempts: 0,
+      remainingAttempts: MAX_PERSONAL_UNLOCK_FAILURES,
+    };
+  }
+  const lockedUntilMs = credential.lockedUntil != null ? Date.parse(credential.lockedUntil) : NaN;
+  if (Number.isFinite(lockedUntilMs) && lockedUntilMs > now) {
+    return {
+      isLocked: true,
+      lockedUntil: credential.lockedUntil,
+      remainingMs: lockedUntilMs - now,
+      failedAttempts: credential.failedAttempts,
+      remainingAttempts: 0,
+    };
+  }
+  const effectiveFailed = credential.lockedUntil != null ? 0 : Math.min(credential.failedAttempts, MAX_PERSONAL_UNLOCK_FAILURES);
+  return {
+    isLocked: false,
+    lockedUntil: null,
+    remainingMs: 0,
+    failedAttempts: effectiveFailed,
+    remainingAttempts: Math.max(0, MAX_PERSONAL_UNLOCK_FAILURES - effectiveFailed),
+  };
+}
 
 export interface PersonalCredential {
   version: number;
@@ -78,6 +202,41 @@ async function readCredential(): Promise<PersonalCredential | null> {
 
 async function writeCredential(credential: PersonalCredential): Promise<void> {
   await SecureStore.setItemAsync(PERSONAL_CREDENTIAL_KEY, JSON.stringify(credential));
+  emitLockStatus(credential);
+}
+
+export async function getPersonalLockStatus(): Promise<PersonalLockStatus> {
+  const cred = await readCredential();
+  return computeLockStatus(cred);
+}
+
+export async function getPersonalBackgroundLockTimeoutMs(): Promise<PersonalBackgroundLockTimeoutMs> {
+  try {
+    const raw = await SecureStore.getItemAsync(PERSONAL_BACKGROUND_LOCK_TIMEOUT_KEY);
+    if (raw == null) {
+      return DEFAULT_PERSONAL_BACKGROUND_LOCK_TIMEOUT_MS;
+    }
+    const parsed = Number(raw);
+    return isValidPersonalBackgroundLockTimeoutMs(parsed)
+      ? parsed
+      : DEFAULT_PERSONAL_BACKGROUND_LOCK_TIMEOUT_MS;
+  } catch {
+    return DEFAULT_PERSONAL_BACKGROUND_LOCK_TIMEOUT_MS;
+  }
+}
+
+export async function setPersonalBackgroundLockTimeoutMs(
+  timeoutMs: PersonalBackgroundLockTimeoutMs
+): Promise<void> {
+  if (!isValidPersonalBackgroundLockTimeoutMs(timeoutMs)) {
+    throw new Error('不支持的后台锁定时间选项。');
+  }
+  await SecureStore.setItemAsync(PERSONAL_BACKGROUND_LOCK_TIMEOUT_KEY, String(timeoutMs));
+  backgroundLockTimeoutListeners.forEach((listener) => {
+    try {
+      listener(timeoutMs);
+    } catch {}
+  });
 }
 
 export interface PersonalCredentialConfig {
@@ -138,6 +297,8 @@ export async function setPersonalPassword(secret: string): Promise<void> {
     salt,
     hash: newHash,
     patternHash: cred?.patternHash,
+    recoveryKeyHash: cred?.recoveryKeyHash,
+    recoveryKeyPlain: cred?.recoveryKeyPlain,
     fingerprintEnabled: cred?.fingerprintEnabled,
     defaultMethod: cred?.defaultMethod ?? 'password',
     failedAttempts: 0,
@@ -163,6 +324,8 @@ export async function setPersonalPattern(patternStr: string): Promise<void> {
     salt,
     hash: cred?.hash,
     patternHash: newHash,
+    recoveryKeyHash: cred?.recoveryKeyHash,
+    recoveryKeyPlain: cred?.recoveryKeyPlain,
     fingerprintEnabled: cred?.fingerprintEnabled,
     defaultMethod: cred?.hash ? (cred.defaultMethod ?? 'pattern') : 'pattern',
     failedAttempts: 0,
@@ -185,6 +348,87 @@ export async function setPersonalFingerprintEnabled(enabled: boolean): Promise<v
   });
 }
 
+export async function enrollPersonalBiometric(): Promise<void> {
+  const cred = await readCredential();
+  if (!cred) throw new Error('请先设置隐私系统密码。');
+
+  if (Platform.OS === 'android') {
+    // enrollNativeBiometricKey 在原生方法不存在时会自动降级到 expo-local-authentication
+    await enrollNativeBiometricKey();
+  } else {
+    const res = await LocalAuthentication.authenticateAsync({
+      promptMessage: '验证生物识别以开启解锁',
+      fallbackLabel: '使用密码',
+      disableDeviceFallback: true,
+    });
+    if (!res.success) {
+      throw new Error(res.error === 'user_cancel' ? '已取消指纹验证' : '生物识别验证未通过');
+    }
+  }
+
+  await setPersonalFingerprintEnabled(true);
+}
+
+/** 当前设备/APK 是否支持硬件 Keystore 生物识别绑定（即原生 enrollBiometricKey 方法已部署） */
+export function isPersonalBiometricHardwareBound(): boolean {
+  return hasNativeBiometricKeySupport();
+}
+
+export async function authenticatePersonalBiometric(
+  promptTitle = '验证指纹进入隐私空间'
+): Promise<{ ok: boolean; errorCode?: string; message?: string }> {
+  const cred = await readCredential();
+  if (!cred || !cred.fingerprintEnabled) {
+    return { ok: false, errorCode: 'BIOMETRIC_DISABLED', message: '未开启指纹解锁。' };
+  }
+  if (isLocked(cred)) {
+    emitLockStatus(cred);
+    return { ok: false, errorCode: 'PERSONAL_LOCKED', message: '密码错误次数过多，隐私系统已暂时锁定。' };
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      const ok = await verifyNativeBiometricKey(promptTitle);
+      return ok ? { ok: true } : { ok: false, errorCode: 'BIOMETRIC_FAILED', message: '指纹验证未通过' };
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code || '';
+      const rawMessage = error instanceof Error ? error.message : '指纹验证失败';
+      if (code === 'BIOMETRIC_ENROLLMENT_CHANGED' || code === 'BIOMETRIC_KEY_MISSING') {
+        await setPersonalFingerprintEnabled(false).catch(() => undefined);
+        return {
+          ok: false,
+          errorCode: code,
+          message:
+            code === 'BIOMETRIC_ENROLLMENT_CHANGED'
+              ? '检测到手机指纹已变更，已自动关闭指纹解锁，请先用隐私密码解锁。'
+              : '安全升级：请先用隐私密码解锁并在设置中重新开启指纹解锁。',
+        };
+      }
+      if (code === 'BIOMETRIC_CANCELLED') {
+        return { ok: false, errorCode: 'user_cancel', message: '已取消验证' };
+      }
+      if (code === 'BIOMETRIC_LOCKOUT') {
+        return { ok: false, errorCode: 'lockout', message: '系统指纹尝试次数过多，请改用隐私密码解锁。' };
+      }
+      return { ok: false, errorCode: code || 'BIOMETRIC_FAILED', message: rawMessage };
+    }
+  }
+
+  const res = await LocalAuthentication.authenticateAsync({
+    promptMessage: promptTitle,
+    fallbackLabel: '使用密码',
+    disableDeviceFallback: true,
+  });
+  if (res.success) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    errorCode: res.error || 'BIOMETRIC_FAILED',
+    message: res.error === 'user_cancel' ? '已取消验证' : '指纹/面容验证未通过',
+  };
+}
+
 export async function setDefaultUnlockMethod(method: 'password' | 'pattern'): Promise<void> {
   const cred = await readCredential();
   if (!cred) throw new Error('请先设置隐私系统密码。');
@@ -203,8 +447,8 @@ export async function setDefaultUnlockMethod(method: 'password' | 'pattern'): Pr
 }
 
 export async function verifyPersonalPassword(secret: string): Promise<PersonalVerificationResult> {
-  const credential = await readCredential();
-  if (!credential) {
+  const rawCredential = await readCredential();
+  if (!rawCredential) {
     return {
       ok: false,
       lockedUntil: null,
@@ -213,14 +457,20 @@ export async function verifyPersonalPassword(secret: string): Promise<PersonalVe
     };
   }
 
-  if (isLocked(credential)) {
+  if (isLocked(rawCredential)) {
+    emitLockStatus(rawCredential);
     return {
       ok: false,
-      lockedUntil: credential.lockedUntil,
+      lockedUntil: rawCredential.lockedUntil,
       remainingAttempts: 0,
-      message: '隐私系统已暂时锁定，请稍后再试。',
+      message: '密码错误次数过多，隐私系统已暂时锁定。',
     };
   }
+
+  const credential: PersonalCredential =
+    rawCredential.lockedUntil != null || rawCredential.failedAttempts >= MAX_PERSONAL_UNLOCK_FAILURES
+      ? { ...rawCredential, failedAttempts: 0, lockedUntil: null }
+      : rawCredential;
 
   if (credential.version !== PERSONAL_CREDENTIAL_VERSION) {
     return {
@@ -311,15 +561,34 @@ async function deleteDirectoryIfExists(directoryUri: string): Promise<void> {
 }
 
 export async function resetPersonalSystemData(): Promise<void> {
-  await SecureStore.deleteItemAsync(PERSONAL_CREDENTIAL_KEY);
-  await resetDatabaseSpaceCache('personal');
   await Promise.allSettled([
-    deleteDirectoryIfExists(getOriginalsDir('personal')),
-    deleteDirectoryIfExists(getThumbnailsDir('personal')),
-    deleteDirectoryIfExists(getTempDir('personal')),
-    deleteDirectoryIfExists(getExportsDir('personal')),
-    deleteDatabaseAsync(PERSONAL_DATABASE_NAME),
+    SecureStore.deleteItemAsync(PERSONAL_CREDENTIAL_KEY),
+    SecureStore.deleteItemAsync(PERSONAL_BACKGROUND_LOCK_TIMEOUT_KEY),
   ]);
+  await resetDatabaseSpaceCache('personal');
+
+  const cleanupPaths: string[] = [];
+  try {
+    cleanupPaths.push(getStorageRootDir('personal'));
+  } catch {}
+  try {
+    cleanupPaths.push(getOriginalsDir('personal'));
+    cleanupPaths.push(getThumbnailsDir('personal'));
+    cleanupPaths.push(getTempDir('personal'));
+    cleanupPaths.push(getExportsDir('personal'));
+  } catch {}
+  if (FileSystem.documentDirectory) {
+    cleanupPaths.push(`${FileSystem.documentDirectory}voice_cache/personal/`);
+    cleanupPaths.push(`${FileSystem.documentDirectory}pixory_global_search_history_personal.json`);
+  }
+
+  await Promise.allSettled([
+    ...cleanupPaths.map((targetPath) => deleteDirectoryIfExists(targetPath)),
+    deleteDatabaseAsync(PERSONAL_DATABASE_NAME),
+    Image.clearMemoryCache(),
+    Image.clearDiskCache(),
+  ]);
+  emitLockStatus(null);
 }
 
 
@@ -351,9 +620,19 @@ export async function getPersonalRecoveryKeyPlain(): Promise<string | null> {
 }
 
 export async function verifyRecoveryKey(recoveryKey: string): Promise<boolean> {
-  const credential = await readCredential();
-  if (!credential || !credential.recoveryKeyHash) return false;
-  
+  const rawCredential = await readCredential();
+  if (!rawCredential || !rawCredential.recoveryKeyHash) return false;
+
+  if (isLocked(rawCredential)) {
+    emitLockStatus(rawCredential);
+    throw new Error('密码错误次数过多，隐私系统已暂时锁定。');
+  }
+
+  const credential: PersonalCredential =
+    rawCredential.lockedUntil != null || rawCredential.failedAttempts >= MAX_PERSONAL_UNLOCK_FAILURES
+      ? { ...rawCredential, failedAttempts: 0, lockedUntil: null }
+      : rawCredential;
+
   const cleanKey = recoveryKey.replace(/[^A-Z0-9]/gi, '').toUpperCase();
   const inputHash = await hashPersonalSecret(cleanKey, credential.salt);
   if (inputHash === credential.recoveryKeyHash) {

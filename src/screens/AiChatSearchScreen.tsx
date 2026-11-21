@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { searchThreadMessages, type AiChatSearchResult } from '../ai/aiChatService';
@@ -137,7 +138,7 @@ export function AiChatSearchScreen({
   return (
     <AppScreen backgroundColor={aiLightColors.canvas} contentStyle={styles.host}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'android' ? 'height' : undefined}
+        behavior="padding"
         enabled={Platform.OS === 'android'}
         style={[styles.screen, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
       >

@@ -5,7 +5,12 @@ import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixoryS
 import { getExportsDir, getOriginalsDir, getTempDir, getThumbnailsDir, joinStoragePath } from './fileStorageService';
 import { getLocalEntrySize } from './cacheCleanupService';
 import { MAX_FILE_TASK_CONCURRENCY, settleFileTasksWithConcurrency } from './boundedFileConcurrency';
-import { invalidateStorageUsageSnapshot, setCachedStorageUsageSummary } from './storageUsageSnapshotCache';
+import {
+  getLatestStorageTotalBytes,
+  invalidateStorageUsageSnapshot,
+  setCachedStorageUsageSummary,
+  setLatestStorageTotalBytes,
+} from './storageUsageSnapshotCache';
 
 export type StorageUsageCategoryKey =
   | 'original-assets'
@@ -221,6 +226,32 @@ export async function getChatHistoryStats(space: PixorySpace): Promise<{ bytes: 
     const bytes = rows.reduce((sum, r) => sum + (r.sizeBytes || 0), 0);
     return { bytes, count: rows.length };
   });
+}
+
+/** Reads the last scanned StorageUsageScreen total from memory or SecureStore without scanning directories. */
+export async function getLastKnownStorageTotalBytes(space: PixorySpace = 'normal'): Promise<number | null> {
+  const inMemory = getLatestStorageTotalBytes(space);
+  if (inMemory !== undefined) {
+    return inMemory;
+  }
+
+  const previous = await readPreviousSummary(space);
+  const latestAfterAwait = getLatestStorageTotalBytes(space);
+  if (latestAfterAwait !== undefined) {
+    return latestAfterAwait;
+  }
+  if (!previous) {
+    return null;
+  }
+
+  setLatestStorageTotalBytes(space, previous.totalBytes);
+  return previous.totalBytes;
+}
+
+export async function getFastStorageUsageBytes(space: PixorySpace = 'normal'): Promise<number> {
+  return runWithDatabaseSpace(space, (db) =>
+    imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'all' }),
+  ).catch(() => 0);
 }
 
 export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Promise<StorageUsageSummary> {

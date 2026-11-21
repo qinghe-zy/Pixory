@@ -2754,7 +2754,12 @@ export const aiThreadRepository = {
            AND parent_message.branchVersionIndex IS NOT NULL
        ),
        ranked_visible_messages AS (
-         SELECT ai_messages.*,
+         SELECT ai_messages.id,
+                ai_messages.threadId,
+                SUBSTR(ai_messages.content, 1, 500) AS content,
+                ai_messages.createdAt,
+                ai_messages.updatedAt,
+                ai_messages.completedAt,
                 ROW_NUMBER() OVER (
                   PARTITION BY ai_messages.threadId
                   ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
@@ -2776,7 +2781,7 @@ export const aiThreadRepository = {
        ),
        projected_history AS (
          SELECT ranked_visible_messages.threadId,
-                COALESCE(selected_version.content, ranked_visible_messages.content) AS lastMessagePreview,
+                SUBSTR(COALESCE(selected_version.content, ranked_visible_messages.content), 1, 500) AS lastMessagePreview,
                 COALESCE(
                   selected_version.messageCompletedAt,
                   selected_version.messageUpdatedAt,

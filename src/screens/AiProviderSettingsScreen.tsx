@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { useToast } from '../components/AppToast';
@@ -100,7 +99,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [memoryMaintenanceProviderId, setMemoryMaintenanceProviderId] = useState<string | null>(null);
   const [memoryMaintenanceModelDraft, setMemoryMaintenanceModelDraft] = useState('');
   const [maintenanceStatus, setMaintenanceStatus] = useState<ResolvedMemoryMaintenanceModel | null>(null);
-  const [maintenanceInfoExpanded, setMaintenanceInfoExpanded] = useState(false);
+  const [testingMaintenance, setTestingMaintenance] = useState(false);
   const [memoryModelSheetVisible, setMemoryModelSheetVisible] = useState(false);
   const [globalProfileDraft, setGlobalProfileDraft] = useState('');
   const [globalProfileText, setGlobalProfileText] = useState('');
@@ -123,6 +122,59 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const selectedEmbeddingModel = embeddingModels.find((model) => model.modelId === selectedCard?.provider.defaultEmbeddingModelId) ?? null;
   const selectedModelProviderId = selectedModelKeys[0]?.split(':')[0] ?? selectedCard?.provider.id ?? null;
   const providerSelectionMode = selectedModelKeys.length > 0;
+
+  const maintenanceBadge = useMemo(() => {
+    if (!maintenanceStatus) {
+      return { text: '检测中', bg: '#f4f4f5', color: '#71717a', dot: '#a1a1aa' };
+    }
+    if (maintenanceStatus.status === 'ready') {
+      return { text: '已就绪', bg: '#ecfdf5', color: '#059669', dot: '#10b981' };
+    }
+    if (maintenanceStatus.status === 'follow_chat') {
+      return { text: '跟随对话', bg: '#eff6ff', color: '#2563eb', dot: '#3b82f6' };
+    }
+    if (maintenanceStatus.status === 'local_fallback') {
+      return { text: '本地规则', bg: '#fffbeb', color: '#d97706', dot: '#f59e0b' };
+    }
+    return { text: '连接异常', bg: '#fef2f2', color: '#dc2626', dot: '#ef4444' };
+  }, [maintenanceStatus]);
+
+  const maintenanceSubStatus = useMemo(() => {
+    if (!maintenanceStatus) return null;
+    if (maintenanceStatus.lastTestStatus === 'ready' || maintenanceStatus.lastTestStatus === 'follow_chat') {
+      return {
+        icon: 'checkmark-circle' as const,
+        color: '#059669',
+        text: maintenanceStatus.lastTestMessage ?? '连通性测试通过',
+      };
+    }
+    if (maintenanceStatus.lastTestStatus === 'error') {
+      return {
+        icon: 'alert-circle' as const,
+        color: '#dc2626',
+        text: maintenanceStatus.lastTestMessage ?? '连通性测试失败',
+      };
+    }
+    if (maintenanceStatus.status === 'error') {
+      return {
+        icon: 'alert-circle' as const,
+        color: '#dc2626',
+        text: maintenanceStatus.statusText || '缺少 API Key 或模型',
+      };
+    }
+    if (maintenanceStatus.status === 'local_fallback') {
+      return {
+        icon: 'information-circle' as const,
+        color: '#d97706',
+        text: '未配置 API Key，将使用本地规则',
+      };
+    }
+    return {
+      icon: 'information-circle' as const,
+      color: '#71717a',
+      text: '待测试连通性',
+    };
+  }, [maintenanceStatus]);
 
   const loadGlobalProfile = useCallback(async () => {
     const globalProfile = await getUserProfile(space, null, null);
@@ -520,24 +572,20 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
   async function chooseMemoryMaintenanceMode(mode: MemoryMaintenanceMode) {
     setMemoryMaintenanceMode(mode);
+    const targetModelId =
+      memoryMaintenanceModelDraft.trim() ||
+      selectedCard?.provider.defaultChatModelId ||
+      chatModels[0]?.modelId ||
+      null;
+    if (mode === 'custom' && targetModelId && !memoryMaintenanceModelDraft.trim()) {
+      setMemoryMaintenanceModelDraft(targetModelId);
+    }
     await saveMemoryMaintenancePatch({
       memoryMaintenanceMode: mode,
-      memoryMaintenanceProviderId: mode === 'custom' ? memoryMaintenanceProviderId ?? selectedCard?.provider.id ?? null : memoryMaintenanceProviderId,
-      memoryMaintenanceModelId: memoryMaintenanceModelDraft.trim() || null,
+      memoryMaintenanceProviderId:
+        mode === 'custom' ? memoryMaintenanceProviderId ?? selectedCard?.provider.id ?? null : memoryMaintenanceProviderId,
+      memoryMaintenanceModelId: mode === 'custom' ? targetModelId : (memoryMaintenanceModelDraft.trim() || null),
     });
-  }
-
-  async function saveCustomMemoryMaintenanceModel() {
-    if (!selectedCard || !memoryMaintenanceModelDraft.trim()) {
-      return;
-    }
-    setMemoryMaintenanceProviderId(selectedCard.provider.id);
-    await saveMemoryMaintenancePatch({
-      memoryMaintenanceMode: 'custom',
-      memoryMaintenanceModelId: memoryMaintenanceModelDraft.trim(),
-      memoryMaintenanceProviderId: selectedCard.provider.id,
-    });
-    showToast({ message: '记忆维护模型已保存。', tone: 'success' });
   }
 
   async function selectMemoryMaintenanceModel(model: AiProviderModelRecord) {
@@ -569,14 +617,23 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   }
 
   async function testSelectedMemoryMaintenanceModel() {
-
-    const result = await testMemoryMaintenanceModel(space);
-    setMaintenanceStatus(result);
-    showToast({
-      message: result.statusText,
-      tone: result.status === 'error' ? 'error' : result.status === 'local_fallback' ? 'warning' : 'success',
-
-    });
+    if (testingMaintenance) return;
+    setTestingMaintenance(true);
+    try {
+      const result = await testMemoryMaintenanceModel(space);
+      setMaintenanceStatus(result);
+      showToast({
+        message: result.statusText,
+        tone: result.status === 'error' ? 'error' : result.status === 'local_fallback' ? 'warning' : 'success',
+      });
+    } catch (error) {
+      showToast({
+        message: error instanceof Error ? error.message : '测试失败',
+        tone: 'error',
+      });
+    } finally {
+      setTestingMaintenance(false);
+    }
   }
 
   async function focusMaintenanceProviderKey() {
@@ -593,7 +650,6 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const saveDisabled = !selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim());
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
     <AiLightScaffold
       backgroundColor="#ffffff"
       contentContainerStyle={styles.pageContent}
@@ -1049,47 +1105,72 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
       <View style={styles.section}>
         <View style={styles.card}>
-
-          <View style={styles.modeGrid}>
-            {MEMORY_MAINTENANCE_MODES.map((mode) => (
-              <Pressable
-                accessibilityRole="button"
-                key={mode.value}
-                onPress={() => void chooseMemoryMaintenanceMode(mode.value)}
-                style={({ pressed }) => [
-                  styles.modeOption,
-                  memoryMaintenanceMode === mode.value && styles.selectedModeOption,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={[styles.modeOptionText, memoryMaintenanceMode === mode.value && styles.selectedModeOptionText]}>{mode.label}</Text>
-              </Pressable>
-            ))}
+          <View style={[styles.rowItem, styles.rowBorder, { paddingVertical: 12 }]}>
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox2}>
+                <Ionicons name="hardware-chip-outline" size={14} color="#52525b" />
+              </View>
+              <Text style={styles.rowTitle}>记忆维护模型</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: maintenanceBadge.bg }]}>
+              <View style={[styles.statusDot, { backgroundColor: maintenanceBadge.dot }]} />
+              <Text style={[styles.statusBadgeText, { color: maintenanceBadge.color }]}>{maintenanceBadge.text}</Text>
+            </View>
           </View>
 
-          <View style={styles.actionGroup}>
-            <Pressable
-              onPress={() => void focusMaintenanceProviderKey()}
-              style={({ pressed }) => [styles.grayFullBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.grayFullBtnText}>配置 Key</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void testSelectedMemoryMaintenanceModel()}
-              style={({ pressed }) => [styles.primaryBlueBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.primaryBlueBtnText}>测试连通性</Text>
-            </Pressable>
+          <View style={styles.segmentContainer}>
+            {MEMORY_MAINTENANCE_MODES.map((mode) => {
+              const isSelected = memoryMaintenanceMode === mode.value;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={mode.value}
+                  onPress={() => void chooseMemoryMaintenanceMode(mode.value)}
+                  style={({ pressed }) => [
+                    styles.segmentItem,
+                    isSelected && styles.selectedSegmentItem,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={[styles.segmentItemText, isSelected && styles.selectedSegmentItemText]}>
+                    {mode.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.effectiveInfoBox}>
+            <View style={styles.effectiveRow}>
+              <Text style={styles.effectiveLabel}>当前生效</Text>
+              <Text numberOfLines={1} style={styles.effectiveValue}>
+                {maintenanceStatus ? `${maintenanceStatus.providerName} · ${maintenanceStatus.modelName}` : '加载中...'}
+              </Text>
+            </View>
+            {maintenanceSubStatus ? (
+              <View style={styles.effectiveTestRow}>
+                <Ionicons
+                  name={maintenanceSubStatus.icon}
+                  size={12}
+                  color={maintenanceSubStatus.color}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={[styles.effectiveTestText, { color: maintenanceSubStatus.color }]}
+                >
+                  {maintenanceSubStatus.text}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {memoryMaintenanceMode === 'custom' ? (
-            <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
-              <Text style={styles.fieldLabel}>自定义记忆模型</Text>
-              
+            <View style={styles.customModelGroup}>
               <Pressable
+                accessibilityRole="button"
                 disabled={chatModels.length === 0}
                 onPress={() => setMemoryModelSheetVisible((current) => !current)}
-                style={({ pressed }) => [styles.rowItem, styles.rowBorder, chatModels.length === 0 && styles.disabledBtn, pressed && styles.pressed, { paddingVertical: 12, paddingBottom: 12 }]}
+                style={({ pressed }) => [styles.rowItem, styles.rowBorder, chatModels.length === 0 && styles.disabledBtn, pressed && styles.pressed, { paddingVertical: 12 }]}
               >
                 <View style={styles.rowLeft}>
                   <View style={styles.iconBox2}>
@@ -1099,7 +1180,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 </View>
                 <View style={styles.rowRight}>
                   <Text style={styles.rowValueMono}>
-                    {(chatModels.find(m => m.modelId === memoryMaintenanceModelDraft)?.displayName ?? memoryMaintenanceModelDraft) || '请选择模型'}
+                    {(chatModels.find(m => m.modelId === memoryMaintenanceModelDraft)?.displayName ?? memoryMaintenanceModelDraft) || (chatModels.length > 0 ? '请选择模型' : '暂无可用模型')}
                   </Text>
                   <Ionicons name={memoryModelSheetVisible ? 'chevron-up' : 'chevron-down'} size={16} color="#a1a1aa" />
                 </View>
@@ -1130,30 +1211,70 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             </View>
           ) : null}
 
-          <View style={[styles.fieldGroup, { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }]}>
-            <Text style={styles.rowTitle}>全局用户画像</Text>
-            <TextInput
-              multiline
-              onChangeText={setGlobalProfileDraft}
-              placeholder="例如：我希望默认回答简洁直接；我更喜欢中文交流。"
-              placeholderTextColor="#a1a1aa"
-              selectionColor="#2563eb"
-              style={[styles.input, styles.profileInput]}
-              textAlignVertical="top"
-              value={globalProfileDraft}
-            />
+          <View style={styles.secondaryActionRow}>
             <Pressable
-              disabled={globalProfileDraft === globalProfileText}
-              onPress={() => void handleSaveGlobalProfile()}
-              style={({ pressed }) => [styles.grayFullBtn, (globalProfileDraft === globalProfileText) && styles.disabledBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              onPress={() => void focusMaintenanceProviderKey()}
+              style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
             >
-              <Text style={styles.grayFullBtnText}>保存全局画像</Text>
+              <Ionicons color="#71717a" name="key-outline" size={14} />
+              <Text style={styles.secondaryBtnText}>配置 Key</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={testingMaintenance}
+              onPress={() => void testSelectedMemoryMaintenanceModel()}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                testingMaintenance && styles.disabledBtn,
+                pressed && styles.pressed,
+              ]}
+            >
+              {testingMaintenance ? (
+                <ActivityIndicator color="#2563eb" size="small" style={{ marginRight: 4 }} />
+              ) : (
+                <Ionicons color="#2563eb" name="flash-outline" size={14} />
+              )}
+              <Text style={[styles.secondaryBtnText, { color: '#2563eb', fontWeight: '600' }]}>
+                {testingMaintenance ? '测试中...' : '测试连通性'}
+              </Text>
             </Pressable>
           </View>
         </View>
       </View>
+
+      <View style={styles.section}>
+        <View style={styles.card}>
+          <View style={[styles.rowItem, styles.rowBorder, { paddingVertical: 12 }]}>
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox2}>
+                <Ionicons name="person-outline" size={14} color="#52525b" />
+              </View>
+              <Text style={styles.rowTitle}>全局用户画像</Text>
+            </View>
+          </View>
+
+          <TextInput
+            multiline
+            onChangeText={setGlobalProfileDraft}
+            placeholder="例如：我希望默认回答简洁直接；我更喜欢中文交流。"
+            placeholderTextColor="#a1a1aa"
+            selectionColor="#2563eb"
+            style={[styles.input, styles.profileInput]}
+            textAlignVertical="top"
+            value={globalProfileDraft}
+          />
+          <Pressable
+            accessibilityRole="button"
+            disabled={globalProfileDraft === globalProfileText || loading}
+            onPress={() => void handleSaveGlobalProfile()}
+            style={({ pressed }) => [styles.grayFullBtn, (globalProfileDraft === globalProfileText || loading) && styles.disabledBtn, pressed && styles.pressed]}
+          >
+            <Text style={styles.grayFullBtnText}>保存全局画像</Text>
+          </Pressable>
+        </View>
+      </View>
     </AiLightScaffold>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -1475,57 +1596,94 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#ef4444',
   },
-  maintenanceBanner: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#f8f9fa',
-    padding: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    gap: 5,
   },
-  maintenanceBannerIcon: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#d4d4d8',
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  segmentContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f4f4f5',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 36,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 7,
   },
-  maintenanceBannerIconText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#52525b',
+  selectedSegmentItem: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  maintenanceBannerTitle: {
+  segmentItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#71717a',
+  },
+  selectedSegmentItemText: {
+    color: '#18181b',
+    fontWeight: '600',
+  },
+  effectiveInfoBox: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    gap: 4,
+  },
+  effectiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  effectiveLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#71717a',
+  },
+  effectiveValue: {
+    flex: 1,
+    textAlign: 'right',
     fontSize: 12,
     fontWeight: '600',
     color: '#27272a',
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
-  modeGrid: {
+  effectiveTestRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
   },
-  modeOption: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#f4f4f6',
+  effectiveTestText: {
+    fontSize: 11,
+    flex: 1,
   },
-  selectedModeOption: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  modeOptionText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#52525b',
-  },
-  selectedModeOptionText: {
-    color: '#2563eb',
+  customModelGroup: {
+    gap: 8,
   },
 });

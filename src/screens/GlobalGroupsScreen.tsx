@@ -1,7 +1,7 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useState, useMemo } from 'react';
-import { ActivityIndicator, Pressable, SectionList, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
+import { useCallback, useEffect, useState, useMemo } from 'react';
+import { ActivityIndicator, LayoutAnimation, Pressable, SectionList, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
@@ -13,20 +13,24 @@ import { ListSkeleton } from '../components/ListSkeleton';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { IpRail } from '../components/IpRail';
+import { MediaCountMeta } from '../components/MediaCountMeta';
 import { SecureImage } from '../components/SecureImage';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GlobalGroupListItem, type IpListItem, type PixorySpace } from '../database';
-import { radius, typography } from '../design/tokens';
+import { radius, spacing, typography } from '../design/tokens';
 import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
+import { useCompactHeaderAnimation } from '../hooks/useCompactHeaderAnimation';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
+import { getGroupedItemMoveBoundaries, moveGroupedItem } from '../utils/reorderUtils';
 import { OrganizeSegmentedControl, protoColors, type OrganizeMode } from '../components/OrganizeShared';
 import { globalScrollState, createScrollHandlers } from '../utils/scrollState';
 
 interface GlobalGroupsScreenProps {
   space?: PixorySpace;
+  isActive?: boolean;
   refreshToken: number;
   footer?: ReactNode;
   mode?: OrganizeMode;
@@ -45,6 +49,7 @@ const IP_SCOPE_PAGE_SIZE = 30;
 
 export function GlobalGroupsScreen({
   space = 'normal',
+  isActive = true,
   refreshToken,
   footer,
   mode,
@@ -63,6 +68,8 @@ export function GlobalGroupsScreen({
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
 
+  const groupPageSize = space === 'personal' ? 16 : GROUP_PAGE_SIZE;
+
   const {
     items: groups,
     isLoading,
@@ -70,16 +77,18 @@ export function GlobalGroupsScreen({
     errorMessage,
     loadMore,
     reload,
+    setData,
   } = usePagedScreenLoad<GlobalGroupListItem, null>(
     (offset) => runWithDatabaseSpace(space, async (db) => {
       const page = await groupRepository.findOverviewPage(db, {
         ipId: selectedIpId ?? undefined,
-        limit: GROUP_PAGE_SIZE,
+        limit: groupPageSize,
         offset,
       });
       return { items: page.items, hasMore: page.hasMore };
     }),
     {
+      deferUntilInteractions: true,
       requestKey: JSON.stringify([space, selectedIpId, refreshToken]),
       getItemKey: (group) => group.id,
       initialMeta: null,
@@ -97,10 +106,11 @@ export function GlobalGroupsScreen({
     items: ipScopes,
   } = usePagedScreenLoad<IpListItem, null>(
     (offset) => runWithDatabaseSpace(space, async (db) => {
-      const page = await ipRepository.findLibraryItemsPage(db, { limit: IP_SCOPE_PAGE_SIZE, offset });
+      const page = await ipRepository.findLibraryItemsPage(db, { includeTotalCount: false, limit: IP_SCOPE_PAGE_SIZE, offset });
       return { items: page.items, hasMore: page.hasMore };
     }),
     {
+      deferUntilInteractions: true,
       requestKey: JSON.stringify([space, refreshToken]),
       getItemKey: (ip) => ip.id,
       initialMeta: null,
@@ -169,22 +179,48 @@ export function GlobalGroupsScreen({
     })();
   }
 
-  const [isCompactActive, setIsCompactActive] = useState(false);
+  const handleMoveGlobalGroupUp = useCallback((targetGroup: GlobalGroupListItem) => {
+    const result = moveGroupedItem(groups, targetGroup.id, 'up');
+    if (!result) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setData((prev) => ({ ...prev, items: result.nextItems }));
+
+    void runWithDatabaseSpace(space, (db) => groupRepository.updateSortOrders(db, result.updates)).catch((err) => {
+      console.warn('Move global group up failed.', err);
+      showToast('调整排序失败');
+      reload();
+    });
+  }, [groups, space, setData, showToast, reload]);
+
+  const handleMoveGlobalGroupDown = useCallback((targetGroup: GlobalGroupListItem) => {
+    const result = moveGroupedItem(groups, targetGroup.id, 'down');
+    if (!result) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setData((prev) => ({ ...prev, items: result.nextItems }));
+    if (result.unpinned) {
+      showToast('已取消置顶并下移');
+    }
+
+    void runWithDatabaseSpace(space, (db) => groupRepository.updateSortOrders(db, result.updates)).catch((err) => {
+      console.warn('Move global group down failed.', err);
+      showToast('调整排序失败');
+      reload();
+    });
+  }, [groups, space, setData, showToast, reload]);
+
   const scrollY = useSharedValue(0);
 
-  const handleScrollJS = (y: number) => {
-    if (y > 10 && !isCompactActive) {
-      setIsCompactActive(true);
-    } else if (y <= 10 && isCompactActive) {
-      setIsCompactActive(false);
-    }
-  };
+  const { compactHeaderStyle, compactAnimatedProps } = useCompactHeaderAnimation(scrollY, {
+    threshold: [10, 30],
+    translateYRange: [-10, 0],
+  });
 
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
       scrollY.value = event.contentOffset.y;
-      runOnJS(handleScrollJS)(event.contentOffset.y);
     },
   });
 
@@ -239,14 +275,8 @@ export function GlobalGroupsScreen({
     </Animated.View>
   );
 
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [10, 30], [-10, 0], Extrapolation.CLAMP);
-    return { opacity, transform: [{ translateY }] };
-  });
-
   const compactHeader = (
-    <Animated.View style={[styles.headerContainer, compactHeaderStyle]} pointerEvents={isCompactActive ? 'auto' : 'none'}>
+    <Animated.View style={[styles.headerContainer, compactHeaderStyle]} animatedProps={compactAnimatedProps}>
       <View style={styles.topSectionCollapsed}>
         {mode && onSelectMode && (
           <OrganizeSegmentedControl mode={mode} onSelect={onSelectMode} rightAction={compactRightAction} collapsed={true} />
@@ -265,6 +295,10 @@ export function GlobalGroupsScreen({
       </View>
     </Animated.View>
   );
+
+  const { canMoveUp: canGlobalGroupMoveUp, canMoveDown: canGlobalGroupMoveDown } = useMemo(() => {
+    return getGroupedItemMoveBoundaries(groups, actionGroupState?.group);
+  }, [groups, actionGroupState]);
 
   return (
     <>
@@ -286,7 +320,7 @@ export function GlobalGroupsScreen({
           ListHeaderComponent={expandedHeader}
           ListEmptyComponent={
             isLoading ? (
-              <ListSkeleton showHeader={false} />
+              <ListSkeleton active={isActive} showHeader={false} />
             ) : groups.length === 0 ? (
               <View style={styles.emptyInline}>
                 <MaterialIcons name="folder-open" size={32} color={protoColors.outlineVariant} />
@@ -330,7 +364,7 @@ export function GlobalGroupsScreen({
                       <View style={[StyleSheet.absoluteFill, styles.coverLayer1]} />
                       <View style={styles.coverImageContainer}>
                         {group.coverThumbnailFileUri ? (
-                          <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                          <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" decodeFormat="rgb" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
                         ) : (
                           <View style={styles.coverEmpty}><MaterialIcons color={protoColors.outlineVariant} name="image" size={22} /></View>
                         )}
@@ -356,6 +390,20 @@ export function GlobalGroupsScreen({
     </ScreenScaffold>
     <AnchoredContextMenu
       actions={actionGroupState ? [
+        {
+          key: 'move-up',
+          label: '上移',
+          icon: 'arrow-up-outline',
+          disabled: !canGlobalGroupMoveUp,
+          onPress: () => handleMoveGlobalGroupUp(actionGroupState.group),
+        },
+        {
+          key: 'move-down',
+          label: '下移',
+          icon: 'arrow-down-outline',
+          disabled: !canGlobalGroupMoveDown,
+          onPress: () => handleMoveGlobalGroupDown(actionGroupState.group),
+        },
         { key: 'cover', label: actionGroupState.group.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroupState.group.ipId, actionGroupState.group.id) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroupState.group.ipId, actionGroupState.group.id) },
         {
@@ -387,7 +435,7 @@ export function GlobalGroupsScreen({
     />
     <AppDialog
       danger
-      message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内图片会保留并移动到未分组。` : ''}
+      message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内素材会保留并移动到未分组。` : ''}
       onClose={() => setDeleteGroup(null)}
       onPrimary={confirmDeleteGroup}
       primaryLabel="确认删除"
@@ -417,11 +465,28 @@ function GroupCardCopy({ group, onOpenGroup, onOpenMenu }: { group: GlobalGroupL
           ) : null}
       </View>
       <View style={styles.groupFooter}>
-        <Text style={styles.groupFooterMeta}>
-          {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
-        </Text>
+        <View style={styles.groupFooterMetaRow}>
+          <MediaCountMeta
+            color={protoColors.outline}
+            groupGap={6}
+            iconSize={12}
+            imageCount={group.imageCount}
+            itemGap={3}
+            textStyle={styles.groupFooterMeta}
+            videoCount={group.videoCount}
+          />
+          <Text numberOfLines={1} style={[styles.groupFooterMeta, styles.groupFooterDate]}>
+            {formatDate(group.recentUpdatedAt)}
+          </Text>
+        </View>
         <View style={styles.groupActions}>
-          <Pressable hitSlop={12} onPress={(e) => onOpenMenu(group, e.nativeEvent.pageX, e.nativeEvent.pageY)} style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}>
+          <Pressable
+            accessibilityLabel={`更多操作：${group.name}`}
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={(e) => onOpenMenu(group, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+            style={({ pressed }) => [styles.groupActionBtn, pressed && styles.pressed]}
+          >
             <MaterialIcons name="more-horiz" size={16} color={protoColors.secondary} />
           </Pressable>
         </View>
@@ -738,17 +803,30 @@ const styles = StyleSheet.create({
   },
   groupFooter: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 4,
+  },
+  groupFooterMetaRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing[2],
+    rowGap: 2, // 极端超长数字折行时保持紧凑行距
+    marginRight: spacing[2],
   },
   groupFooterMeta: {
     fontFamily: typography.family.mono,
     fontSize: 10,
-    lineHeight: 12,
+    lineHeight: 13,
     fontWeight: '500',
-    letterSpacing: 0.8, // 0.08em
+    letterSpacing: 0.15,
     color: protoColors.outline,
+  },
+  groupFooterDate: {
+    flexShrink: 0,
   },
   groupActions: {
     flexDirection: 'row',

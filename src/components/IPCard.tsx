@@ -1,14 +1,15 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import type { ImageProps } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem, PixorySpace } from '../database';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { getIpInitials, formatFileSize, formatUpdatedLabel } from '../utils/formatters';
+import { MediaCountMeta } from './MediaCountMeta';
 import { SecureImage } from './SecureImage';
-import { typography } from '../design/tokens';
+import { colors, typography } from '../design/tokens';
 
 interface IPCardProps {
   index?: number;
@@ -21,9 +22,10 @@ interface IPCardProps {
   onEditPress?: (ipId: number) => void;
   layoutVariant?: 'hero' | 'standard' | 'grid';
   useGyroEffect?: boolean;
+  animateEntrance?: boolean;
 }
 
-export function IPCard({
+export const IPCard = memo(function IPCard({
   index = 0,
   ip,
   imagePriority = 'normal',
@@ -34,14 +36,22 @@ export function IPCard({
   onEditPress,
   layoutVariant,
   useGyroEffect = false,
+  animateEntrance = false,
 }: IPCardProps) {
   const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
   const variant = layoutVariant ?? (useGyroEffect ? 'hero' : 'standard');
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateYAnim = useRef(new Animated.Value(20)).current;
+  const hasAnimatedRef = useRef(false);
+  const fadeAnim = useRef(new Animated.Value(animateEntrance ? 0 : 1)).current;
+  const translateYAnim = useRef(new Animated.Value(animateEntrance ? 20 : 0)).current;
 
   useEffect(() => {
+    if (!animateEntrance || hasAnimatedRef.current) {
+      fadeAnim.setValue(1);
+      translateYAnim.setValue(0);
+      return;
+    }
+    hasAnimatedRef.current = true;
     const delay = Math.min(index * 100, 500); 
     
     Animated.parallel([
@@ -58,7 +68,7 @@ export function IPCard({
         useNativeDriver: true,
       })
     ]).start();
-  }, [index, fadeAnim, translateYAnim]);
+  }, [animateEntrance, index, fadeAnim, translateYAnim]);
 
   const renderContent = () => {
     if (variant === 'hero') {
@@ -75,6 +85,7 @@ export function IPCard({
                 <SecureImage
                   blurRadius={coverBlurRadius}
                   contentFit="cover"
+                  decodeFormat="rgb"
                   priority={imagePriority}
                   recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
                   space={space}
@@ -117,7 +128,7 @@ export function IPCard({
                     <MaterialIcons name="storage" size={13} color="#e2e2e2" />
                     <Text style={[styles.heroMetaText, { color: '#e2e2e2' }]}>{formatFileSize(ip.totalBytes)}</Text>
                   </View>
-                  <Text style={styles.heroMetaTime}>刚更新</Text>
+                  <Text style={styles.heroMetaTime}>{formatUpdatedLabel(ip.updatedAt)}</Text>
                 </View>
               </LinearGradient>
             </Pressable>
@@ -153,6 +164,7 @@ export function IPCard({
               <SecureImage
                 blurRadius={coverBlurRadius}
                 contentFit="cover"
+                decodeFormat="rgb"
                 priority={imagePriority}
                 recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
                 space={space}
@@ -167,19 +179,32 @@ export function IPCard({
             
           </Pressable>
           <View style={styles.gridBody}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1, paddingRight: 4 }}>
-                  <Text style={styles.gridTitle} numberOfLines={1}>{ip.name}</Text>
-                  <Text style={styles.gridSubMeta} numberOfLines={1}>{ip.imageCount} 图 · {formatFileSize(ip.totalBytes)}</Text>
-                </View>
+            <View>
+              <View style={styles.gridHeaderRow}>
+                <Text style={styles.gridTitle} numberOfLines={1}>{ip.name}</Text>
                 <Pressable
+                  accessibilityLabel={`更多操作：${ip.name}`}
+                  accessibilityRole="button"
                   hitSlop={12}
                   onPress={(e) => onOptionsPress?.(ip, e.nativeEvent.pageX, e.nativeEvent.pageY)}
-                  style={styles.moreBtn}
+                  style={styles.gridMoreBtn}
                 >
                   <MaterialIcons name="more-horiz" size={18} color="#747878" />
                 </Pressable>
               </View>
+              <View style={styles.gridMetaRow}>
+                <MediaCountMeta
+                  color="#5e5e5e"
+                  groupGap={6}
+                  iconSize={12}
+                  imageCount={ip.imageCount}
+                  itemGap={3}
+                  textStyle={styles.gridSubMeta}
+                  videoCount={ip.videoCount}
+                />
+                <Text numberOfLines={1} style={styles.gridSizeMeta}>{formatFileSize(ip.totalBytes)}</Text>
+              </View>
+            </View>
             <View style={styles.gridFooterRow}>
               <View style={styles.gridTimeBadge}>
                 <MaterialIcons name="schedule" size={12} color="#747878" />
@@ -207,6 +232,7 @@ export function IPCard({
               <SecureImage
                 blurRadius={coverBlurRadius}
                 contentFit="cover"
+                decodeFormat="rgb"
                 priority={imagePriority}
                 recyclingKey={`${space}:ip:${ip.id}:${ip.coverThumbnailFileUri}`}
                 space={space}
@@ -240,16 +266,15 @@ export function IPCard({
             </View>
             <View style={styles.stdFooterRow}>
               <View style={styles.stdMetaItems}>
-                <View style={styles.stdMetaItem}>
-                  <MaterialIcons name="photo-library" size={13} color="#5e5e5e" />
-                  <Text style={styles.stdMetaText}>{ip.imageCount}</Text>
-                </View>
-                {ip.videoCount > 0 && (
-                  <View style={styles.stdMetaItem}>
-                    <MaterialIcons name="movie" size={13} color="#5e5e5e" />
-                    <Text style={styles.stdMetaText}>{ip.videoCount}</Text>
-                  </View>
-                )}
+                <MediaCountMeta
+                  color="#5e5e5e"
+                  groupGap={10}
+                  iconSize={13}
+                  imageCount={ip.imageCount}
+                  itemGap={4}
+                  textStyle={styles.stdMetaText}
+                  videoCount={ip.videoCount}
+                />
                 <Text style={styles.stdMetaText}>{formatFileSize(ip.totalBytes)}</Text>
               </View>
               <View style={styles.stdActions}>
@@ -273,7 +298,7 @@ export function IPCard({
       {renderContent()}
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   pinBadge: {
@@ -476,11 +501,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  stdMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   stdMetaText: {
     fontSize: 10,
     color: '#5e5e5e',
@@ -557,16 +577,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     flex: 1,
   },
+  gridHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   gridTitle: {
+    flex: 1,
+    paddingRight: 4,
     fontSize: 15,
     fontWeight: '600',
     color: '#1a1c1c',
-    marginBottom: 2,
+  },
+  gridMoreBtn: {
+    padding: 2,
+  },
+  gridMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    columnGap: 6,
+    rowGap: 2,
+    marginTop: 2,
   },
   gridSubMeta: {
     fontSize: 10,
+    lineHeight: 13,
     color: '#5e5e5e',
     fontFamily: typography.family.mono,
+  },
+  gridSizeMeta: {
+    fontSize: 10,
+    lineHeight: 13,
+    color: colors.text.secondary,
+    fontFamily: typography.family.mono,
+    flexShrink: 0,
   },
   gridFooterRow: {
     flexDirection: 'row',

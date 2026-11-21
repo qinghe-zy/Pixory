@@ -18,8 +18,9 @@ import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollec
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, componentTokens, layout, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useCompactHeaderAnimation } from '../hooks/useCompactHeaderAnimation';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
@@ -211,20 +212,19 @@ export function AllImagesScreen({
     [selectableAssets, multiSelect.selectedImageIds]
   );
 
+  const selectionListContentContainerStyle = useMemo(
+    () => (multiSelect.isSelectionMode ? { paddingBottom: insets.bottom + metrics.bottomActionHeight + spacing[5] } : undefined),
+    [multiSelect.isSelectionMode, insets.bottom]
+  );
+
   
   
   
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [90, 110], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [90, 110], [5, 0], Extrapolation.CLAMP);
-    return { opacity, transform: [{ translateY }] };
-  });
-
-  const heroStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [90, 110], [1, 0], Extrapolation.CLAMP);
-    return { opacity };
+  const { compactHeaderStyle, compactAnimatedProps, heroStyle } = useCompactHeaderAnimation(scrollY, {
+    threshold: [90, 110],
+    translateYRange: [5, 0],
   });
 
   const scrollOffsetRef = useRef(0);
@@ -472,14 +472,17 @@ export function AllImagesScreen({
       showHeader={false}
       scrollable={false}
       fullScreen={true}
-      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FAFAFA', zIndex: 20 }} />
       {/* Compact Sticky Header */}
-      <Animated.View style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 48 },
-        compactHeaderStyle
-      ]} pointerEvents="box-none">
+      <Animated.View
+        style={[
+          { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: statusBarHeight, height: statusBarHeight + 48 },
+          compactHeaderStyle,
+        ]}
+        animatedProps={compactAnimatedProps}
+      >
         <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
         {/* iOS Top Status Bar Background */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FFFFFF' }} />
@@ -588,6 +591,7 @@ export function AllImagesScreen({
         loadingTitle="正在读取素材库"
       >
       <VirtualizedAssetCollection
+          contentContainerStyle={selectionListContentContainerStyle}
           headerComponent={headingNode}
           images={images}
           isLoadingMore={media.isLoadingMore}

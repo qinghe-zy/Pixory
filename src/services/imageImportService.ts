@@ -18,6 +18,7 @@ import { devLog } from '../utils/dev';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 import { computeFileSha256, computeImageDHash } from '../native/pixoryMediaModule';
 import type { ImageImportSourceMode, MediaPickerSource } from '../database/repositories/settingsRepository';
+import type { NativeSmartMediaDeletionItem } from '../native/pixoryMediaModule';
 import { deleteMediaStoreAssetsWithConfirmation } from './mediaSourceDeletionService';
 import { sortPickedAssetsByCreationTime } from './mediaImportOrderService';
 import {
@@ -122,6 +123,7 @@ export interface PendingImageAssetImport {
 export interface ImportedImageResult {
   image: ImageAssetRecord;
   pendingSourceDeletionAssetId: string | null;
+  pendingSourceDeletionTarget?: NativeSmartMediaDeletionItem | null;
   sourceDeletionNotice: MoveDeletionNotice | null;
   tags: TagRecord[];
 }
@@ -219,8 +221,17 @@ function buildFallbackFilename(pickedAsset: PickedImageAsset): string {
   return `imported-image.${mimeExtension}`;
 }
 
-function resolvePickedAssetId(assetId: string | null | undefined): string | null {
-  return typeof assetId === 'string' && assetId.trim() ? assetId : null;
+function resolvePickedAssetId(assetId: string | null | undefined, uri?: string | null): string | null {
+  if (typeof assetId === 'string' && assetId.trim()) {
+    return assetId.trim();
+  }
+  const cleanUri = uri?.trim();
+  if (cleanUri && cleanUri.startsWith('content://')) {
+    const docMatch = cleanUri.match(/image%3A(\d+)|video%3A(\d+)|media%3A(\d+)/i);
+    const tailMatch = cleanUri.match(/\/(\d+)(?:\?.*)?$/);
+    return docMatch ? (docMatch[1] || docMatch[2] || docMatch[3]) : tailMatch ? tailMatch[1] : null;
+  }
+  return null;
 }
 
 function resolveMimeType(pickedAsset: PickedImageAsset, filename: string): string {
@@ -487,11 +498,20 @@ async function performSingleImageImport(
 
     let sourceDeletionNotice: MoveDeletionNotice | null = null;
     let pendingSourceDeletionAssetId: string | null = null;
+    let pendingSourceDeletionTarget: NativeSmartMediaDeletionItem | null = null;
     if (pendingImageAsset.imageImportSourceMode === 'move') {
-      if (pendingImageAsset.deferSourceDeletion && pendingImageAsset.sourceAssetId) {
-        pendingSourceDeletionAssetId = pendingImageAsset.sourceAssetId;
-      } else if (pendingImageAsset.deferSourceDeletion) {
-        sourceDeletionNotice = toMoveDeletionNotice(false);
+      if (pendingImageAsset.deferSourceDeletion) {
+        if (pendingImageAsset.sourceAssetId) {
+          pendingSourceDeletionAssetId = pendingImageAsset.sourceAssetId;
+        }
+        pendingSourceDeletionTarget = {
+          assetId: pendingImageAsset.sourceAssetId ?? undefined,
+          sourceUri: pendingImageAsset.sourceUri,
+          importedFileUri: originalFileUri,
+          originalFilename: pendingImageAsset.originalFilename,
+          fileSize: createdImage.fileSize,
+          mediaType: 'image',
+        };
       } else {
         let sourceDeleted = false;
         try {
@@ -506,6 +526,7 @@ async function performSingleImageImport(
     return {
       image: createdImage,
       pendingSourceDeletionAssetId,
+      pendingSourceDeletionTarget,
       sourceDeletionNotice,
       tags: resolvedTags,
     };
@@ -602,7 +623,7 @@ export async function buildImageAssetFromPickedFile(
   const originalFilename = pickedAsset.fileName?.trim() || buildFallbackFilename(pickedAsset);
   const fileSize = pickedAsset.fileSize ?? 0;
   const { width, height } = await resolveDimensionsForPickedAsset(pickedAsset, originalFilename);
-  const sourceAssetId = resolvePickedAssetId(pickedAsset.assetId);
+  const sourceAssetId = resolvePickedAssetId(pickedAsset.assetId, pickedAsset.uri);
   const imageImportSourceMode = resolvePickedAssetImportMode(
     pickedAsset.sourceKind ?? 'album',
     params.imageImportSourceMode ?? 'copy'

@@ -915,12 +915,16 @@ export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise
   return runWithDatabaseSpace(input.space, async (db) => {
     let count = 0;
     let ownerInfo: { ownerType: AiDocumentOwnerType; ownerId: string } | null = null;
+    let deletedDocId: string | null = null;
+    let deletedDocTitle: string | null = null;
     await db.withTransactionAsync(async () => {
       const document = await aiKnowledgeRepository.findDocumentById(db, input.documentId);
       if (!document || document.space !== input.space) {
         return;
       }
       ownerInfo = { ownerType: document.ownerType, ownerId: document.ownerId };
+      deletedDocId = document.id;
+      deletedDocTitle = document.title;
       const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
       count += result.deleted;
       if (result.fileUri) {
@@ -928,8 +932,56 @@ export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise
       }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+
+    // 清理可能注入了该文档的会话前缀快照
+    if (deletedDocId) {
+      try {
+        const threads = await db.getAllAsync<{ id: string; pinnedLoreSnapshot: string | null }>(
+          `SELECT id, pinnedLoreSnapshot FROM ai_threads WHERE space = ? AND pinnedLoreSnapshot LIKE ?`,
+          [input.space, `%#${deletedDocId}】%`]
+        );
+        for (const t of threads) {
+          if (t.pinnedLoreSnapshot) {
+            const escapedId = (deletedDocId as string).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const pattern = new RegExp(`(?:\\r?\\n){0,2}【常驻设定资料：《.*?》#${escapedId}】[\\s\\S]*?(?=(?:\\r?\\n){2}【常驻设定资料：|$)`, 'g');
+            const cleaned = t.pinnedLoreSnapshot.replace(pattern, '').trim();
+            await db.runAsync(
+              `UPDATE ai_threads SET pinnedLoreSnapshot = ? WHERE id = ? AND space = ?`,
+              [cleaned || null, t.id, input.space]
+            );
+          }
+        }
+      } catch {
+        // 容错处理
+      }
+    }
+
     if (ownerInfo) {
       const owner = ownerInfo as { ownerType: AiDocumentOwnerType; ownerId: string };
+      // 若原资料库文档已清零且为专属资料库，自动清理空库
+      if (owner.ownerType === 'knowledge_base') {
+        try {
+          const remaining = await db.getFirstAsync<{ count: number }>(
+            `SELECT COUNT(*) as count FROM ai_documents WHERE ownerType = 'knowledge_base' AND ownerId = ? AND space = ?`,
+            [owner.ownerId, input.space]
+          );
+          if ((remaining?.count ?? 0) === 0) {
+            const kbRow = await db.getFirstAsync<{ category: string | null }>(
+              `SELECT category FROM ai_knowledge_bases WHERE id = ? AND space = ?`,
+              [owner.ownerId, input.space]
+            );
+            if (kbRow?.category === 'thread_bound') {
+              await aiKnowledgeRepository.deleteKnowledgeBase(db, input.space, owner.ownerId);
+              try {
+                const kbDir = getAiKnowledgeBaseDocumentsDir(input.space, owner.ownerId);
+                await deleteLocalFile(kbDir);
+              } catch {}
+            }
+          }
+        } catch {
+          // 容错处理
+        }
+      }
       invalidateOwnerRagCache(input.space, owner.ownerType, owner.ownerId);
     }
     deleteDocumentFromRag(input.space, input.documentId).catch(() => {});
@@ -946,6 +998,7 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
     let count = 0;
     const deletedFileUris: string[] = [];
     const touchedOwners = new Map<string, { ownerType: AiDocumentOwnerType; ownerId: string }>();
+    const deletedDocIds: string[] = [];
     await db.withTransactionAsync(async () => {
       for (const documentId of uniqueIds) {
         const document = await aiKnowledgeRepository.findDocumentById(db, documentId);
@@ -954,6 +1007,7 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
             ownerType: document.ownerType,
             ownerId: document.ownerId,
           });
+          deletedDocIds.push(document.id);
           const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
           count += result.deleted;
           if (result.fileUri) {
@@ -963,7 +1017,54 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
       }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
+
+    // 清理可能注入了被删文档的会话前缀快照
+    for (const docId of deletedDocIds) {
+      try {
+        const threads = await db.getAllAsync<{ id: string; pinnedLoreSnapshot: string | null }>(
+          `SELECT id, pinnedLoreSnapshot FROM ai_threads WHERE space = ? AND pinnedLoreSnapshot LIKE ?`,
+          [input.space, `%#${docId}】%`]
+        );
+        for (const t of threads) {
+          if (t.pinnedLoreSnapshot) {
+            const escapedId = docId.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const pattern = new RegExp(`(?:\\r?\\n){0,2}【常驻设定资料：《.*?》#${escapedId}】[\\s\\S]*?(?=(?:\\r?\\n){2}【常驻设定资料：|$)`, 'g');
+            const cleaned = t.pinnedLoreSnapshot.replace(pattern, '').trim();
+            await db.runAsync(
+              `UPDATE ai_threads SET pinnedLoreSnapshot = ? WHERE id = ? AND space = ?`,
+              [cleaned || null, t.id, input.space]
+            );
+          }
+        }
+      } catch {
+        // 容错处理
+      }
+    }
+
     for (const owner of touchedOwners.values()) {
+      if (owner.ownerType === 'knowledge_base') {
+        try {
+          const remaining = await db.getFirstAsync<{ count: number }>(
+            `SELECT COUNT(*) as count FROM ai_documents WHERE ownerType = 'knowledge_base' AND ownerId = ? AND space = ?`,
+            [owner.ownerId, input.space]
+          );
+          if ((remaining?.count ?? 0) === 0) {
+            const kbRow = await db.getFirstAsync<{ category: string | null }>(
+              `SELECT category FROM ai_knowledge_bases WHERE id = ? AND space = ?`,
+              [owner.ownerId, input.space]
+            );
+            if (kbRow?.category === 'thread_bound') {
+              await aiKnowledgeRepository.deleteKnowledgeBase(db, input.space, owner.ownerId);
+              try {
+                const kbDir = getAiKnowledgeBaseDocumentsDir(input.space, owner.ownerId);
+                await deleteLocalFile(kbDir);
+              } catch {}
+            }
+          }
+        } catch {
+          // 容错处理
+        }
+      }
       invalidateOwnerRagCache(input.space, owner.ownerType, owner.ownerId);
     }
     for (const id of uniqueIds) {

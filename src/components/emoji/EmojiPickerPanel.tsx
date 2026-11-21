@@ -50,11 +50,12 @@ const PRESET_PACK_ID_SET = new Set(PRESET_STICKER_PACKS.map((p) => p.id));
 interface EmojiCellProps {
   item: AnyEmojiItem;
   cellSize: number;
+  cachePolicy: 'memory' | 'memory-disk';
   onPress: (item: AnyEmojiItem) => void;
   onLongPress?: (item: AnyEmojiItem) => void;
 }
 
-const EmojiCell = React.memo(function EmojiCell({ item, cellSize, onPress, onLongPress }: EmojiCellProps) {
+const EmojiCell = React.memo(function EmojiCell({ item, cellSize, cachePolicy, onPress, onLongPress }: EmojiCellProps) {
   const isAnimated = item.type === 'animated';
   const animItem = isAnimated ? (item as AnimatedEmojiItem) : null;
   const staticItem = !isAnimated ? (item as StaticEmojiItem) : null;
@@ -82,7 +83,7 @@ const EmojiCell = React.memo(function EmojiCell({ item, cellSize, onPress, onLon
       {isAnimated && animItem ? (
         <Image
           autoplay
-          cachePolicy="memory-disk"
+          cachePolicy={cachePolicy}
           contentFit="contain"
           recyclingKey={animItem.animatedUri}
           source={{ uri: animItem.animatedUri }}
@@ -105,6 +106,7 @@ export const EmojiPickerPanel = React.memo(function EmojiPickerPanel({
   space = 'normal',
 }: EmojiPickerPanelProps) {
   const { width: screenWidth } = useWindowDimensions();
+  const imageCachePolicy = space === 'personal' ? 'memory' : 'memory-disk';
   const cellSize = useMemo(() => Math.floor((screenWidth - 24) / GRID_COLUMNS), [screenWidth]);
   const kaomojiWidth = useMemo(() => Math.floor((screenWidth - 24 - 16) / 3), [screenWidth]);
 
@@ -396,6 +398,7 @@ export const EmojiPickerPanel = React.memo(function EmojiPickerPanel({
                 <View style={styles.gridContainer}>
                   {displayedRecentItems.map((item) => (
                     <EmojiCell
+                      cachePolicy={imageCachePolicy}
                       cellSize={cellSize}
                       item={item}
                       key={`recent_${item.id}`}
@@ -414,6 +417,7 @@ export const EmojiPickerPanel = React.memo(function EmojiPickerPanel({
             <View style={styles.gridContainer}>
               {ANIMATED_EMOJIS.slice(0, 34).map((item) => (
                 <EmojiCell
+                  cachePolicy={imageCachePolicy}
                   cellSize={cellSize}
                   item={item}
                   key={item.id}
@@ -448,6 +452,7 @@ export const EmojiPickerPanel = React.memo(function EmojiPickerPanel({
             <View style={styles.gridContainer}>
               {STATIC_EMOJIS.map((item) => (
                 <EmojiCell
+                  cachePolicy={imageCachePolicy}
                   cellSize={cellSize}
                   item={item}
                   key={item.id}
@@ -466,6 +471,7 @@ export const EmojiPickerPanel = React.memo(function EmojiPickerPanel({
                 const isDownloaded = downloadedSuperStickers.some((d) => d.id === item.id);
                 return (
                   <EmojiCell
+                    cachePolicy={imageCachePolicy}
                     cellSize={cellSize}
                     item={item}
                     key={item.id}
@@ -574,6 +580,7 @@ export const EmojiPickerPanel = React.memo(function EmojiPickerPanel({
                 <View style={styles.gridContainer}>
                   {userCreatedCustomItems.map((item) => (
                     <EmojiCell
+                      cachePolicy={imageCachePolicy}
                       cellSize={cellSize}
                       item={item}
                       key={item.id}

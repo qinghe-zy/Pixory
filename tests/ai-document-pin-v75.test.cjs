@@ -5,9 +5,11 @@ const fs = require('node:fs');
 
 const root = path.resolve(__dirname, '..');
 
-test('Schema V75: defines DATABASE_VERSION = 75 and MIGRATION_STATEMENTS_V75', () => {
+test('Schema V75: defines DATABASE_VERSION >= 75 and MIGRATION_STATEMENTS_V75', () => {
   const schemaContent = fs.readFileSync(path.join(root, 'src/database/schema.ts'), 'utf8');
-  assert.match(schemaContent, /export const DATABASE_VERSION = 75;/);
+  assert.match(schemaContent, /export const DATABASE_VERSION = \d+;/);
+  const versionMatch = schemaContent.match(/export const DATABASE_VERSION = (\d+);/);
+  assert.ok(versionMatch && Number(versionMatch[1]) >= 75, 'DATABASE_VERSION should be >= 75');
   assert.match(schemaContent, /MIGRATION_STATEMENTS_V75/);
   assert.match(schemaContent, /ALTER TABLE ai_threads ADD COLUMN pinnedLoreSnapshot TEXT;/);
 
@@ -41,7 +43,7 @@ test('PromptBuilder: buildMaterialBoundPrompt merges materialRules with pinnedLo
 test('aiDocumentPinService: defines limits and uses pinnedLoreSnapshot', () => {
   const pinServiceContent = fs.readFileSync(path.join(root, 'src/ai/aiDocumentPinService.ts'), 'utf8');
   assert.match(pinServiceContent, /export const SHORT_LORE_DIRECT_INJECT_LIMIT = 2500;/);
-  assert.match(pinServiceContent, /export const SHORT_LORE_TOTAL_LIMIT = 4500;/);
+  assert.match(pinServiceContent, /export const SHORT_LORE_TOTAL_LIMIT = 5000;/);
   assert.match(pinServiceContent, /pinnedLoreSnapshot/);
   assert.match(pinServiceContent, /invalidateOwnerRagCache/);
 });
@@ -63,8 +65,7 @@ test('aiChatService: passes pinnedLoreSnapshot and protects it from settings/rol
 
 test('AiMessageBubble: renders pinPill action pill for document attachments', () => {
   const bubbleContent = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
-  assert.match(bubbleContent, /attachment\.documentId && onPinDocument/);
-  assert.match(bubbleContent, /onOpenDocumentActionSheet\?\.\(attachment\.documentId/);
-  assert.match(bubbleContent, /设为常驻设定/);
-  assert.match(bubbleContent, /已常驻设定 · 管理/);
+  assert.match(bubbleContent, /attachment\.documentId && \(onToggleKnowledgeBase \|\| onToggleContextInject \|\| onPinDocument \|\| onUnpinDocument\)/);
+  assert.match(bubbleContent, /📌 纳入资料库/);
+  assert.match(bubbleContent, /📌 原文注入/);
 });

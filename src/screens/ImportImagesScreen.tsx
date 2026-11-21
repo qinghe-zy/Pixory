@@ -1,4 +1,4 @@
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
@@ -27,7 +27,13 @@ import {
   assertMixedMediaImportPreflight,
   createMediaImportCommitBudget,
 } from '../services/mediaImportPreflightRuntime';
-import { deleteMediaStoreAssetsWithConfirmation } from '../services/mediaSourceDeletionService';
+import {
+  deleteImportedMediaSources,
+  deleteMediaStoreAssetsWithConfirmation,
+  getAutoDeletePermissionStatus,
+  requestAutoDeletePermission,
+  type MediaSourceDeletionTarget,
+} from '../services/mediaSourceDeletionService';
 import { createNativeVideoThumbnail } from '../native/pixoryMediaModule';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
@@ -175,6 +181,8 @@ export function ImportImagesScreen({
   const [videoImportNamingMode, setVideoImportNamingMode] = useState<VideoImportNamingMode>('preserveOriginal');
   const [moveImportWarningDismissed, setMoveImportWarningDismissed] = useState(false);
   const [moveImportWarningVisible, setMoveImportWarningVisible] = useState(false);
+  const [manageMediaModalVisible, setManageMediaModalVisible] = useState(false);
+  const [autoDeletePermissionGranted, setAutoDeletePermissionGranted] = useState(false);
   const [isIpConflictDialogVisible, setIsIpConflictDialogVisible] = useState(false);
   const progressBarRef = useRef<LinearImportProgressRef>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
@@ -361,11 +369,49 @@ export function ImportImagesScreen({
     screenData?.videoMediaPickerSource,
   ]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const checkPerm = async () => {
+      if (Platform.OS === 'android') {
+        const granted = await getAutoDeletePermissionStatus();
+        if (isMounted) {
+          setAutoDeletePermissionGranted(granted);
+        }
+      }
+    };
+    void checkPerm();
+
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void checkPerm();
+      }
+    });
+    return () => {
+      isMounted = false;
+      sub.remove();
+    };
+  }, []);
+
   function updateImageImportSourceMode(nextMode: ImageImportSourceMode) {
     setImageImportSourceMode(nextMode);
     void runWithDatabaseSpace(space, (db) => settingsRepository.setImageImportSourceMode(db, nextMode));
-    if (nextMode === 'move' && !moveImportWarningDismissed) {
-      setMoveImportWarningVisible(true);
+  }
+
+  async function handleToggleDeleteSourceMode() {
+    const nextMode: ImageImportSourceMode = imageImportSourceMode === 'move' ? 'copy' : 'move';
+    updateImageImportSourceMode(nextMode);
+    if (nextMode === 'move') {
+      if (Platform.OS === 'android') {
+        const granted = await getAutoDeletePermissionStatus();
+        setAutoDeletePermissionGranted(granted);
+        if (!granted && (Platform.Version as number) >= 31) {
+          setManageMediaModalVisible(true);
+          return;
+        }
+      }
+      if (!moveImportWarningDismissed) {
+        setMoveImportWarningVisible(true);
+      }
     }
   }
 
@@ -643,6 +689,7 @@ export function ImportImagesScreen({
       let failedCount = 0;
       let sourceDeletionFailureCount = 0;
       const pendingSourceDeletionAssetIds: string[] = [];
+      const pendingSourceDeletionTargets: MediaSourceDeletionTarget[] = [];
       const mixedPreflight = await assertMixedMediaImportPreflight<PickedImageAsset | PickedVideoAsset>({
         assertActive: () => assertPersonalTaskActive(taskToken),
         assets: [
@@ -690,6 +737,11 @@ export function ImportImagesScreen({
         pendingSourceDeletionAssetIds.push(
           ...imageResult.importedImages.flatMap((item) =>
             item.pendingSourceDeletionAssetId ? [item.pendingSourceDeletionAssetId] : []
+          )
+        );
+        pendingSourceDeletionTargets.push(
+          ...imageResult.importedImages.flatMap((item) =>
+            item.pendingSourceDeletionTarget ? [item.pendingSourceDeletionTarget] : []
           )
         );
         importedAssetIds.push(...imageResult.importedImages.map((item) => item.image.id));
@@ -743,11 +795,28 @@ export function ImportImagesScreen({
             item.pendingSourceDeletionAssetId ? [item.pendingSourceDeletionAssetId] : []
           )
         );
+        pendingSourceDeletionTargets.push(
+          ...videoResult.importedVideos.flatMap((item) =>
+            item.pendingSourceDeletionTarget ? [item.pendingSourceDeletionTarget] : []
+          )
+        );
         importedAssetIds.push(...videoResult.importedVideos.map((item) => item.video.id));
         importBatchId = resolvedPickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
       }
 
-      if (pendingSourceDeletionAssetIds.length > 0) {
+      let deletedSourceCount = 0;
+      if (pendingSourceDeletionTargets.length > 0) {
+        try {
+          const deleteResult = await deleteImportedMediaSources(pendingSourceDeletionTargets);
+          deletedSourceCount = deleteResult.deletedCount;
+          if (deleteResult.failedCount > 0) {
+            sourceDeletionFailureCount += deleteResult.failedCount;
+          }
+        } catch (error) {
+          devLog('Pixory source asset batch deletion was not completed:', error);
+          sourceDeletionFailureCount += pendingSourceDeletionTargets.length;
+        }
+      } else if (pendingSourceDeletionAssetIds.length > 0) {
         let sourceDeleted = false;
         try {
           sourceDeleted = await deleteMediaStoreAssetsWithConfirmation(pendingSourceDeletionAssetIds);
@@ -756,6 +825,8 @@ export function ImportImagesScreen({
         }
         if (!sourceDeleted) {
           sourceDeletionFailureCount += pendingSourceDeletionAssetIds.length;
+        } else {
+          deletedSourceCount = pendingSourceDeletionAssetIds.length;
         }
       }
 
@@ -777,6 +848,7 @@ export function ImportImagesScreen({
         `成功 ${successCount}`,
         skippedCount > 0 ? `跳过 ${skippedCount}` : null,
         failedCount > 0 ? `失败 ${failedCount}` : null,
+        deletedSourceCount > 0 ? `已清理相册原文件 ${deletedSourceCount}` : null,
         sourceDeletionFailureCount > 0 ? `原文件未删除 ${sourceDeletionFailureCount}` : null,
       ].filter(Boolean);
         showToast(`导入完成：${toastParts.join(' · ')}`);
@@ -1153,11 +1225,34 @@ export function ImportImagesScreen({
           </View> : null}
         <View style={styles.metadataGrid}>
           <View style={styles.metadataCard}>
-            <Text style={styles.metadataStarLabel}>FILE NAME</Text>
+            <Text style={styles.metadataStarLabel}>SOURCE</Text>
             <View style={styles.metadataStarRow}>
-              <Text style={styles.metadataStarTitle}>保留原文件名</Text>
-              <Pressable onPress={() => updateVideoImportNamingMode(videoImportNamingMode === 'preserveOriginal' ? 'generated' : 'preserveOriginal')} style={[styles.prototypeSwitch, videoImportNamingMode === 'preserveOriginal' && styles.prototypeSwitchOn]}>
-                <View style={[styles.prototypeSwitchThumb, videoImportNamingMode === 'preserveOriginal' && styles.prototypeSwitchThumbOn]} />
+              <View style={{ flex: 1, marginRight: spacing[2] }}>
+                <Text style={styles.metadataStarTitle}>删除相册文件</Text>
+                {imageImportSourceMode === 'move' ? (
+                  <Text style={{ ...typography.textStyles.caption, color: colors.text.secondary, marginTop: 2 }}>
+                    {Platform.OS === 'android' && (Platform.Version as number) >= 31 && autoDeletePermissionGranted
+                      ? '导入后自动静默删除'
+                      : '导入后弹窗确认删除'}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                accessibilityLabel="删除相册原文件"
+                accessibilityRole="switch"
+                accessibilityState={{ checked: imageImportSourceMode === 'move' }}
+                onPress={handleToggleDeleteSourceMode}
+                style={[
+                  styles.prototypeSwitch,
+                  imageImportSourceMode === 'move' && styles.prototypeSwitchOn,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.prototypeSwitchThumb,
+                    imageImportSourceMode === 'move' && styles.prototypeSwitchThumbOn,
+                  ]}
+                />
               </Pressable>
             </View>
           </View>
@@ -1318,6 +1413,24 @@ export function ImportImagesScreen({
           <Text style={styles.warningOptOutText}>知道了，下次不再弹出</Text>
         </Pressable>
       </AppDialog>
+      <AppDialog
+        dismissible={false}
+        message={'开启后，素材导入成功后将自动删除手机相册中的原文件。Android 12 及以上系统支持授予“媒体管理”权限，开启后删除原文件无需每次重复确认。\n\n如暂不授予，导入后仍会通过系统弹窗提示确认删除。'}
+        onClose={() => {
+          setManageMediaModalVisible(false);
+          if (!moveImportWarningDismissed) {
+            setMoveImportWarningVisible(true);
+          }
+        }}
+        onPrimary={async () => {
+          setManageMediaModalVisible(false);
+          await requestAutoDeletePermission();
+        }}
+        primaryLabel="去设置开启"
+        secondaryLabel="使用单次确认"
+        title="相册文件自动清理授权"
+        visible={manageMediaModalVisible}
+      />
       <AppDialog
         appearance="opaqueMonochrome"
         onClose={() => {

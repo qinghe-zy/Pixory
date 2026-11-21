@@ -109,7 +109,7 @@ export const StickerBubbleRenderer = React.memo(function StickerBubbleRenderer({
           {stickerUri ? (
             <Image
               autoplay
-              cachePolicy="memory-disk"
+              cachePolicy={space === 'personal' ? 'memory' : 'memory-disk'}
               contentFit="contain"
               recyclingKey={stickerUri}
               source={{ uri: stickerUri }}

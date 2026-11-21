@@ -10,8 +10,10 @@ export interface SecureImageProps {
   uri: string;
   space: PixorySpace;
   accessibilityLabel?: string;
+  allowDownscaling?: boolean;
   blurRadius?: number;
   contentFit?: ImageContentFit;
+  decodeFormat?: ImageProps['decodeFormat'];
   onError?: ImageProps['onError'];
   onLoad?: ImageProps['onLoad'];
   placeholder?: ImageProps['placeholder'];
@@ -25,8 +27,10 @@ export function SecureImage({
   uri,
   space,
   accessibilityLabel,
+  allowDownscaling = true,
   blurRadius,
   contentFit = 'cover',
+  decodeFormat,
   onError,
   onLoad,
   placeholder,
@@ -53,9 +57,11 @@ export function SecureImage({
   return (
     <Image
       accessibilityLabel={accessibilityLabel}
+      allowDownscaling={allowDownscaling}
       blurRadius={blurRadius}
       cachePolicy={space === 'personal' ? 'memory' : 'disk'}
       contentFit={contentFit}
+      decodeFormat={decodeFormat}
       onError={(event) => {
         setFailedUri(trimmedUri);
         onError?.(event);

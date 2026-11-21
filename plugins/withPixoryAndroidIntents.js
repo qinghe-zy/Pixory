@@ -37,6 +37,7 @@ const TEMPLATE_FILES = [
 ];
 
 const PDFBOX_DEPENDENCY = 'implementation("com.tom-roush:pdfbox-android:2.0.27.0")';
+const BIOMETRIC_DEPENDENCY = 'implementation("androidx.biometric:biometric:1.1.0")';
 
 function copyTemplateFile(projectRoot, androidRoot, sourceRelativePath, targetRelativePath) {
   const sourcePath = path.join(projectRoot, sourceRelativePath);
@@ -56,6 +57,12 @@ function withPixoryAndroidIntents(config) {
       modConfig.modResults.contents = modConfig.modResults.contents.replace(
         /dependencies\s*\{\n/,
         (match) => `${match}    ${PDFBOX_DEPENDENCY}\n`
+      );
+    }
+    if (!modConfig.modResults.contents.includes(BIOMETRIC_DEPENDENCY)) {
+      modConfig.modResults.contents = modConfig.modResults.contents.replace(
+        /dependencies\s*\{\n/,
+        (match) => `${match}    ${BIOMETRIC_DEPENDENCY}\n`
       );
     }
     return modConfig;

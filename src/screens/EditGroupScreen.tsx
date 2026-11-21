@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
-  ScrollView,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDialog } from '../components/AppDialog';
+import { useToast } from '../components/AppToast';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
 import { DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import {
@@ -113,6 +114,7 @@ export function EditGroupScreen({
   onSaved,
 }: EditGroupScreenProps) {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const [name, setName] = useState('');
   const [type, setType] = useState<string | null>(null);
   const [customType, setCustomType] = useState('');
@@ -120,7 +122,7 @@ export function EditGroupScreen({
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
 
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
-  const { data, errorMessage } = useScreenLoad<{ ip: IpRecord | null; group: GroupRecord | null }>(
+  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; group: GroupRecord | null }>(
     async () => {
       const [ip, group] = await runWithDatabaseSpace(space, (db) =>
         Promise.all([ipRepository.findById(db, ipId), groupRepository.findById(db, groupId)])
@@ -146,6 +148,13 @@ export function EditGroupScreen({
   const ip = data?.ip ?? null;
   const trimmedName = useMemo(() => name.trim(), [name]);
 
+  function handleSelectType(nextType: GroupTypeValue) {
+    setType(nextType);
+    if (submitError) {
+      clearSubmitError();
+    }
+  }
+
   useEffect(() => {
     if (!group) {
       return;
@@ -167,6 +176,7 @@ export function EditGroupScreen({
   }, [group]);
 
   function handleSave() {
+    Keyboard.dismiss();
     const selectedType = type === 'custom' && customType.trim() ? customType.trim() : type;
 
     void runSubmit(
@@ -183,6 +193,7 @@ export function EditGroupScreen({
           throw new Error('没有找到这个分组。');
         }
 
+        showToast({ message: '已保存分组修改', tone: 'success' });
         onSaved();
       },
       {
@@ -228,6 +239,7 @@ export function EditGroupScreen({
           throw new Error('没有找到这个分组。');
         }
 
+        showToast({ message: '已删除分组', tone: 'success' });
         onDeleted();
       },
       {
@@ -266,21 +278,36 @@ export function EditGroupScreen({
           </View>
         </BlurView>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView
-          automaticallyAdjustKeyboardInsets={true}
+        <KeyboardAwareScrollView
+          bottomOffset={28}
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 56, paddingBottom: insets.bottom + atelierSpacing.margin },
           ]}
+          extraKeyboardSpace={16}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          style={styles.scrollView}
         >
           <View style={styles.formContainer}>
-            {errorMessage ? (
-              <Text style={styles.topErrorText}>{errorMessage}</Text>
+            {isLoading && !group ? (
+              <View style={styles.stateBox}>
+                <ActivityIndicator color={atelierColors.primary} size="small" />
+                <Text style={styles.hintText}>正在读取分组信息…</Text>
+              </View>
             ) : null}
-            
+            {errorMessage && !group ? (
+              <View style={styles.stateBox}>
+                <Text style={styles.topErrorText}>{errorMessage}</Text>
+                <Pressable onPress={reload} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
+                  <Text style={styles.reloadLink}>重新加载</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {group ? (
+              <>
             {/* Field 1: 所属 IP */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>所属 IP</Text>
@@ -295,7 +322,7 @@ export function EditGroupScreen({
               <View style={styles.fieldContent}>
                 <TextInput
                   autoCapitalize="none"
-                  editable={!isSubmitting && !!group}
+                  editable={!isSubmitting}
                   enablesReturnKeyAutomatically
                   maxLength={GROUP_NAME_MAX_LENGTH}
                   onChangeText={(value) => {
@@ -304,6 +331,7 @@ export function EditGroupScreen({
                   }}
                   placeholder="例如：2026 夏季、夜景场景、海报KV"
                   placeholderTextColor={atelierColors.outline}
+                  returnKeyType="done"
                   style={styles.textInput}
                   value={name}
                 />
@@ -332,11 +360,11 @@ export function EditGroupScreen({
                         ]}
                       >
                         <Pressable
-                          disabled={isSubmitting || !group}
-                          onPress={() => setType(option.value)}
+                          disabled={isSubmitting}
+                          onPress={() => handleSelectType(option.value)}
                           style={({ pressed }) => [
                             styles.radioOptionInner,
-                            pressed && !isSubmitting && !!group && styles.activePress,
+                            pressed && !isSubmitting && styles.activePress,
                           ]}
                         >
                           <View style={styles.radioOptionTextGroup}>
@@ -367,15 +395,16 @@ export function EditGroupScreen({
                             <View style={styles.customInputField}>
                               <TextInput
                                 autoCapitalize="none"
-                                editable={!isSubmitting && !!group}
+                                editable={!isSubmitting}
                                 enablesReturnKeyAutomatically
                                 maxLength={12}
                                 onChangeText={(value) => {
                                   setCustomType(value);
                                   if (submitError) clearSubmitError();
                                 }}
-                                placeholder=""
+                                placeholder="例如：合集、衍生、活动图（最多12字）"
                                 placeholderTextColor={atelierColors.outline}
+                                returnKeyType="done"
                                 style={styles.customTextInput}
                                 value={customType}
                               />
@@ -389,12 +418,12 @@ export function EditGroupScreen({
                   return (
                     <Pressable
                       key={option.value}
-                      disabled={isSubmitting || !group}
-                      onPress={() => setType(option.value)}
+                      disabled={isSubmitting}
+                      onPress={() => handleSelectType(option.value)}
                       style={({ pressed }) => [
                         styles.radioOption,
                         isSelected ? styles.shadowMd : styles.shadowSm,
-                        pressed && !isSubmitting && !!group && styles.activePress,
+                        pressed && !isSubmitting && styles.activePress,
                       ]}
                     >
                       <View style={styles.radioOptionTextGroup}>
@@ -424,7 +453,7 @@ export function EditGroupScreen({
               </View>
               <View style={[styles.fieldContent, styles.textareaContent]}>
                 <TextInput
-                  editable={!isSubmitting && !!group}
+                  editable={!isSubmitting}
                   maxLength={DESCRIPTION_MAX_LENGTH}
                   multiline
                   onChangeText={(value) => {
@@ -444,12 +473,12 @@ export function EditGroupScreen({
             <View style={styles.submitContainer}>
               {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
               <Pressable
-                disabled={isSubmitting || !group}
+                disabled={isSubmitting}
                 onPress={handleSave}
                 style={({ pressed }) => [
                   styles.submitButton,
-                  pressed && !isSubmitting && !!group && styles.activePress,
-                  (isSubmitting || !group) && { opacity: 0.9 },
+                  pressed && !isSubmitting && styles.activePress,
+                  isSubmitting && { opacity: 0.9 },
                 ]}
               >
                 {isSubmitting ? (
@@ -459,22 +488,21 @@ export function EditGroupScreen({
                 )}
               </Pressable>
 
-              {group && (
-                <Pressable
-                  disabled={isSubmitting}
-                  onPress={handleDelete}
-                  style={({ pressed }) => [
-                    styles.deleteButton,
-                    pressed && !isSubmitting && { opacity: 0.76 },
-                  ]}
-                >
-                  <Text style={styles.deleteButtonText}>删除分组</Text>
-                </Pressable>
-              )}
+              <Pressable
+                disabled={isSubmitting}
+                onPress={handleDelete}
+                style={({ pressed }) => [
+                  styles.deleteButton,
+                  pressed && !isSubmitting && { opacity: 0.76 },
+                ]}
+              >
+                <Text style={styles.deleteButtonText}>删除分组</Text>
+              </Pressable>
             </View>
+              </>
+            ) : null}
           </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
       </View>
 
       <AppDialog
@@ -536,7 +564,24 @@ const styles = StyleSheet.create({
     minWidth: 44,
     minHeight: 44,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {},
+  stateBox: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  hintText: {
+    ...atelierTypography.bodyMd,
+    color: atelierColors.outline,
+  },
+  reloadLink: {
+    ...atelierTypography.bodyMd,
+    color: atelierColors.primary,
+    textDecorationLine: 'underline',
+  },
   formContainer: {
     paddingHorizontal: atelierSpacing.margin,
     paddingTop: atelierSpacing.spaceMd,
@@ -693,13 +738,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(196, 199, 199, 0.6)',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   customTextInput: {
     ...atelierTypography.bodyMd,
     color: atelierColors.onSurface,
     padding: 0,
-    minHeight: 20,
+    minHeight: 24,
   },
   textareaContent: {
     padding: atelierSpacing.margin,
@@ -718,7 +763,6 @@ const styles = StyleSheet.create({
     ...atelierTypography.bodyMd,
     color: atelierColors.error,
     textAlign: 'center',
-    marginBottom: atelierSpacing.spaceMd,
   },
   errorText: {
     ...atelierTypography.bodyMd,

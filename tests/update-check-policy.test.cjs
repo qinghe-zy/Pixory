@@ -113,7 +113,7 @@ test('App shows update and announcement prompts without adding push notification
   assert.match(settingsRepositorySource, /DISMISSED_ANNOUNCEMENT_ID_KEY/);
   assert.doesNotMatch(appSource, /Notifications|expo-notifications|getExpoPushToken|FCM|pushToken/);
 });
-test('App shows a small one-time toast after an OTA update has been applied', () => {
+test('App silently applies OTA updates without intrusive toasts', () => {
   const appSource = readProjectFile('App.tsx');
   const settingsRepositorySource = readProjectFile('src/database/repositories/settingsRepository.ts');
   assert.match(appSource, /import \* as Updates from 'expo-updates'/);
@@ -123,19 +123,16 @@ test('App shows a small one-time toast after an OTA update has been applied', ()
   assert.match(appSource, /Updates\.updateId/);
   assert.match(appSource, /getLastAppliedUpdateNoticeId/);
   assert.match(appSource, /setLastAppliedUpdateNoticeId/);
-  assert.match(appSource, /message:\s*'已在后台热更新'/);
   assert.match(appSource, /<AppUpdateAppliedNotice isReady=\{isReady\} \/>/);
   assert.match(settingsRepositorySource, /LAST_APPLIED_UPDATE_NOTICE_ID_KEY/);
   assert.match(settingsRepositorySource, /getLastAppliedUpdateNoticeId/);
   assert.match(settingsRepositorySource, /setLastAppliedUpdateNoticeId/);
 });
-test('App shows a tiny toast when a production OTA update starts downloading', () => {
+test('App quietly fetches OTA update in the background', () => {
   const appSource = readProjectFile('App.tsx');
   assert.match(appSource, /function AppOtaUpdateFetchNotice/);
   assert.match(appSource, /Updates\.checkForUpdateAsync\(\)/);
   assert.match(appSource, /Updates\.fetchUpdateAsync\(\)/);
-  assert.match(appSource, /message:\s*'发现热更新，正在后台更新'/);
-  assert.match(appSource, /message:\s*'热更新已准备好，下次打开生效'/);
   assert.match(appSource, /<AppOtaUpdateFetchNotice isReady=\{isReady\} \/>/);
   assert.doesNotMatch(appSource, /Updates\.reloadAsync\(/);
 });

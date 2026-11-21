@@ -11,7 +11,11 @@ import {
   type ViewStyle,
   type StyleProp,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import {
+  KeyboardAvoidingView,
+  KeyboardAwareScrollView,
+  type KeyboardAwareScrollViewRef,
+} from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -25,6 +29,7 @@ export const FloatingFooterContext = createContext<number>(0);
 interface AppScreenProps {
   children: ReactNode;
   scrollable?: boolean;
+  keyboardAware?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   backgroundColor?: string;
   footer?: ReactNode;
@@ -40,6 +45,7 @@ interface AppScreenProps {
 export function AppScreen({
   children,
   scrollable = false,
+  keyboardAware = true,
   contentStyle,
   backgroundColor = colors.background.page,
   footer,
@@ -54,31 +60,49 @@ export function AppScreen({
   const insets = useSafeAreaInsets();
   const floatingFooterHeight = useContext(FloatingFooterContext);
   
-  // When footer is present and absolute, we need extra padding so content isn't hidden
-  const footerEstimateHeight = footer ? 100 : 0;
-  const baseBottomInset = footer ? footerEstimateHeight : (floatingFooterHeight > 0 ? 0 : insets.bottom);
-  const bodyBottomPadding = baseBottomInset + layout.pageBottomOffset + floatingFooterHeight;
+  // When footer is present, absolute, and not naked, we need extra padding on scrollable content so it isn't hidden
+  const footerEstimateHeight = (footer && !footerNaked) ? 100 : 0;
+  const baseBottomInset = (footer && !footerNaked) ? footerEstimateHeight : (floatingFooterHeight > 0 ? 0 : insets.bottom);
+  const bodyBottomPadding = scrollable ? (baseBottomInset + layout.pageBottomOffset + floatingFooterHeight) : 0;
 
   const body = scrollable ? (
-    <ScrollView
-      ref={scrollViewRef}
-      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-      keyboardShouldPersistTaps="handled"
-      onScroll={onScroll}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={false}
-      directionalLockEnabled
-      automaticallyAdjustKeyboardInsets
-      contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
-      style={styles.flex}
-    >
-      {children}
-    </ScrollView>
+    keyboardAware ? (
+      <KeyboardAwareScrollView
+        ref={scrollViewRef as RefObject<KeyboardAwareScrollViewRef | null>}
+        bottomOffset={spacing[6]}
+        extraKeyboardSpace={spacing[4]}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        directionalLockEnabled
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
+        style={styles.flex}
+      >
+        {children}
+      </KeyboardAwareScrollView>
+    ) : (
+      <ScrollView
+        ref={scrollViewRef}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        directionalLockEnabled
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
+        style={styles.flex}
+      >
+        {children}
+      </ScrollView>
+    )
   ) : (
-    <View style={[styles.content, { paddingBottom: bodyBottomPadding }, contentStyle]}>{children}</View>
+    <View style={[styles.content, contentStyle]}>{children}</View>
   );
 
-  const bodyContent = Platform.OS === 'ios' ? (
+  const bodyContent = Platform.OS === 'ios' && (!scrollable || !keyboardAware) ? (
     <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       {body}
     </KeyboardAvoidingView>

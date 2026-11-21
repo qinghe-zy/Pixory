@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
+import { ActivityIndicator, InteractionManager, LayoutAnimation, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type ListRenderItemInfo } from 'react-native';
 import { FlatList } from 'react-native-gesture-handler';
 import { Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -27,9 +27,9 @@ import { useIpListPreferences } from '../services/ipListPreferences';
 import { useToast } from '../components/AppToast';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
-import { getStorageUsageSummary } from '../services/storageUsageService';
-import { getCachedStorageUsageSummary } from '../services/storageUsageSnapshotCache';
+import { getFastStorageUsageBytes } from '../services/storageUsageService';
 import { PersonalCredentialPrompt } from '../components/PersonalCredentialPrompt';
+import { getFlatItemMoveBoundaries, moveFlatItem } from '../utils/reorderUtils';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部 IP' },
@@ -37,7 +37,8 @@ const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'recent', label: '最近更新' },
 ];
 
-const IP_LIBRARY_PAGE_SIZE = 20;
+const PERSONAL_IP_LIBRARY_PAGE_SIZE = 8;
+const NORMAL_IP_LIBRARY_PAGE_SIZE = 12;
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
@@ -153,20 +154,34 @@ export function HomeLibraryScreen({
   }
 
   useEffect(() => {
+    setNeedsOrganizingCount(0);
+    setTotalIpCount(0);
+  }, [space]);
+
+  useEffect(() => {
     let isMounted = true;
-    void runWithDatabaseSpace(space, async (db) => {
-      try {
-        const count = await imageRepository.countNeedsOrganizing(db);
-        const totalIps = await ipRepository.count(db);
-        if (isMounted) {
-          setNeedsOrganizingCount(count);
-          setTotalIpCount(totalIps);
-        }
-      } catch (error) {
-      }
+    let delayTimer: ReturnType<typeof setTimeout> | null = null;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      delayTimer = setTimeout(() => {
+        void runWithDatabaseSpace(space, async (db) => {
+          try {
+            const [count, totalIps] = await Promise.all([
+              imageRepository.countNeedsOrganizing(db),
+              ipRepository.count(db),
+            ]);
+            if (isMounted) {
+              setNeedsOrganizingCount(count);
+              setTotalIpCount(totalIps);
+            }
+          } catch {
+          }
+        }).catch(() => undefined);
+      }, 120);
     });
     return () => {
       isMounted = false;
+      interaction.cancel();
+      if (delayTimer !== null) clearTimeout(delayTimer);
     };
   }, [space, refreshKey]);
 
@@ -191,6 +206,8 @@ export function HomeLibraryScreen({
     return () => clearTimeout(timer);
   }, []);
 
+  const pageSize = space === 'personal' ? PERSONAL_IP_LIBRARY_PAGE_SIZE : NORMAL_IP_LIBRARY_PAGE_SIZE;
+
   const {
     items,
     isLoading,
@@ -203,8 +220,9 @@ export function HomeLibraryScreen({
     async (offset) => runWithDatabaseSpace(space, async (db) => {
       const page = await ipRepository.findLibraryItemsPage(db, {
         filter: activeFilter,
+        includeTotalCount: false,
         orderBy: activeSortOrder,
-        limit: IP_LIBRARY_PAGE_SIZE,
+        limit: pageSize,
         offset,
       });
       return { items: page.items, hasMore: page.hasMore };
@@ -242,12 +260,51 @@ export function HomeLibraryScreen({
 
   const handleTogglePin = useCallback(async (ip: IpListItem) => {
     try {
-      await runWithDatabaseSpace(space, (db) => ipRepository.setPinned(db, ip.id, !ip.isPinned));
-      void reload();
+      const nextPinned = !ip.isPinned;
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setData((prev) => {
+        const nextItems = prev.items.map((item) => (item.id === ip.id ? { ...item, isPinned: nextPinned } : item));
+        const pinnedItems = nextItems.filter((item) => item.isPinned);
+        const unpinnedItems = nextItems.filter((item) => !item.isPinned);
+        return { ...prev, items: [...pinnedItems, ...unpinnedItems] };
+      });
+      await runWithDatabaseSpace(space, (db) => ipRepository.setPinned(db, ip.id, nextPinned));
     } catch (error) {
       showToast(ip.isPinned ? '取消置顶失败' : '置顶失败');
+      void reload();
     }
-  }, [space, reload, showToast]);
+  }, [space, reload, showToast, setData]);
+
+  const handleMoveUp = useCallback((targetIp: IpListItem) => {
+    const result = moveFlatItem(items, targetIp.id, 'up');
+    if (!result) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setData((prev) => ({ ...prev, items: result.nextItems }));
+
+    void runWithDatabaseSpace(space, (db) => ipRepository.updateSortOrders(db, result.updates)).catch((error) => {
+      console.warn('Pixory move IP up failed.', error);
+      showToast('调整排序失败');
+      void reload();
+    });
+  }, [items, space, setData, showToast, reload]);
+
+  const handleMoveDown = useCallback((targetIp: IpListItem) => {
+    const result = moveFlatItem(items, targetIp.id, 'down');
+    if (!result) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setData((prev) => ({ ...prev, items: result.nextItems }));
+    if (result.unpinned) {
+      showToast('已取消置顶并下移');
+    }
+
+    void runWithDatabaseSpace(space, (db) => ipRepository.updateSortOrders(db, result.updates)).catch((error) => {
+      console.warn('Pixory move IP down failed.', error);
+      showToast('调整排序失败');
+      void reload();
+    });
+  }, [items, space, setData, showToast, reload]);
 
   const layoutItems = useMemo(() => {
     const result: LayoutItem[] = [];
@@ -268,6 +325,10 @@ export function HomeLibraryScreen({
     return result;
   }, [items]);
 
+  const handleOptionsPress = useCallback((ip: IpListItem, pageX: number, pageY: number) => {
+    setActionMenuState({ ip, anchorX: pageX, anchorY: pageY });
+  }, []);
+
   const renderIpCard = useCallback(
     ({ item, index }: ListRenderItemInfo<LayoutItem>) => {
       if (item.type === 'hero' || item.type === 'standard') {
@@ -277,7 +338,7 @@ export function HomeLibraryScreen({
             imagePriority={item.type === 'hero' ? 'high' : 'normal'}
             layoutVariant={item.type}
             ip={item.item}
-            onOptionsPress={(ip, pageX, pageY) => setActionMenuState({ ip, anchorX: pageX, anchorY: pageY })}
+            onOptionsPress={handleOptionsPress}
             onPress={onOpenIp}
             onImportPress={onImportIp}
             onEditPress={onEditIp}
@@ -292,7 +353,7 @@ export function HomeLibraryScreen({
                 index={index}
                 layoutVariant="grid"
                 ip={item.items[0]}
-                onOptionsPress={(ip, pageX, pageY) => setActionMenuState({ ip, anchorX: pageX, anchorY: pageY })}
+                onOptionsPress={handleOptionsPress}
                 onPress={onOpenIp}
                 onImportPress={onImportIp}
                 onEditPress={onEditIp}
@@ -305,7 +366,7 @@ export function HomeLibraryScreen({
                   index={index}
                   layoutVariant="grid"
                   ip={item.items[1]}
-                  onOptionsPress={(ip, pageX, pageY) => setActionMenuState({ ip, anchorX: pageX, anchorY: pageY })}
+                  onOptionsPress={handleOptionsPress}
                   onPress={onOpenIp}
                   onImportPress={onImportIp}
                   onEditPress={onEditIp}
@@ -318,7 +379,7 @@ export function HomeLibraryScreen({
       }
       return null;
     },
-    [onOpenIp, onImportIp, onEditIp, space]
+    [handleOptionsPress, onOpenIp, onImportIp, onEditIp, space]
   );
 
   const handleListLayout = useCallback((event: LayoutChangeEvent) => {
@@ -334,7 +395,7 @@ export function HomeLibraryScreen({
       try {
         const result = await softDeleteIpToTrash(ip.id, space);
         if (result.ipDeletedCount === 0) throw new Error('没有找到这个 IP。');
-        showToast(`已移入回收站，包含 ${result.imageDeletedCount} 张图片`);
+        showToast(`已移入回收站，包含 ${result.imageDeletedCount} 项素材`);
         setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
       } catch (error) {
         showToast(error instanceof Error ? `移入回收站失败：${error.message}` : '移入回收站失败');
@@ -350,7 +411,7 @@ export function HomeLibraryScreen({
       try {
         const result = await permanentlyDeleteIp(ip.id, space);
         if (result.ipDeletedCount === 0) throw new Error('没有找到这个 IP。');
-        showToast(`已永久删除 ${result.imageDeletedCount} 张图片，文件失败 ${result.fileFailures.length} 个`);
+        showToast(`已永久删除 ${result.imageDeletedCount} 项素材，文件失败 ${result.fileFailures.length} 个`);
         setData((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== ip.id) }));
       } catch (error) {
         showToast(error instanceof Error ? `永久删除失败：${error.message}` : '永久删除失败');
@@ -387,6 +448,93 @@ export function HomeLibraryScreen({
     }
   }
 
+  const isDefaultOrder = activeSortOrder === 'default' && activeFilter === 'all';
+  const { canMoveUp: canIpMoveUp, canMoveDown: canIpMoveDown } = useMemo(() => {
+    if (!actionMenuState) return { canMoveUp: false, canMoveDown: false };
+    return getFlatItemMoveBoundaries(items, actionMenuState.ip.id);
+  }, [actionMenuState, items]);
+
+  const listHeaderElement = useMemo(
+    () => (
+      <View style={styles.topArea}>
+        <View style={[styles.headerTitleRow, { paddingHorizontal: 10 }]}>
+          <HomeBrandHeader space={space} refreshKey={refreshKey} />
+          {rightSlot}
+        </View>
+        <View style={{ paddingHorizontal: 10 }}>
+          <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
+            <Ionicons name="search" size={17} color="#444748" />
+            <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
+          </Pressable>
+        </View>
+        {isNeedsPanelVisible && (
+          <View style={{ paddingHorizontal: 10 }}>
+            <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
+              <View style={styles.needsIcon}>
+                <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
+              </View>
+              <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 项</Text>
+              <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
+              <Pressable
+                hitSlop={15}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setDismissedThreshold(needsOrganizingCount);
+                  void persistDismissThreshold(needsOrganizingCount);
+                }}
+                style={styles.needsCloseButton}
+              >
+                <Ionicons color={colors.text.tertiary} name="close" size={18} />
+              </Pressable>
+            </Pressable>
+          </View>
+        )}
+        <View style={styles.filterRow}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterPillsRow}
+            data={FILTER_OPTIONS}
+            keyExtractor={item => item.key}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => setActiveFilter(item.key)}
+                style={activeFilter === item.key ? styles.filterPillActive : styles.filterPill}
+              >
+                <Text style={activeFilter === item.key ? styles.filterPillTextActive : styles.filterPillText}>
+                  {item.label}
+                </Text>
+                {item.key === 'all' && (
+                  <Text style={[
+                    styles.filterPillCount,
+                    activeFilter === item.key ? { color: 'rgba(255,255,255,0.8)' } : undefined
+                  ]}>
+                    {totalIpCount}
+                  </Text>
+                )}
+              </Pressable>
+            )}
+          />
+          <View style={styles.filterSpacer} />
+          <IpSortMenuButton orderBy={activeSortOrder} onChange={setActiveSortOrder} />
+        </View>
+      </View>
+    ),
+    [
+      activeFilter,
+      activeSortOrder,
+      isNeedsPanelVisible,
+      needsOrganizingCount,
+      onOpenGlobalSearch,
+      onOpenNeedsOrganizing,
+      refreshKey,
+      rightSlot,
+      setActiveSortOrder,
+      space,
+      totalIpCount,
+    ]
+  );
+
   return (
     <>
     <ScreenScaffold
@@ -407,74 +555,10 @@ export function HomeLibraryScreen({
         data={layoutItems}
         initialNumToRender={3}
         keyExtractor={(item: any) => item.id}
-        ListHeaderComponent={
-          <View style={styles.topArea}>
-            <View style={[styles.headerTitleRow, { paddingHorizontal: 10 }]}>
-              <HomeBrandHeader space={space} refreshKey={refreshKey} />
-              {rightSlot}
-            </View>
-            <View style={{ paddingHorizontal: 10 }}>
-              <Pressable style={styles.searchContainer} onPress={onOpenGlobalSearch}>
-                <Ionicons name="search" size={17} color="#444748" />
-                <Text style={styles.searchInputPlaceholder}>搜索 IP企划 / 标签 / 角色 / 备注...</Text>
-              </Pressable>
-            </View>
-            {isNeedsPanelVisible && (
-              <View style={{ paddingHorizontal: 10 }}>
-                <Pressable onPress={onOpenNeedsOrganizing} style={styles.needsPanel}>
-                  <View style={styles.needsIcon}>
-                    <Ionicons color={colors.primary.active} name="sparkles-outline" size={17} />
-                  </View>
-                  <Text numberOfLines={1} style={styles.needsText}>待整理 {needsOrganizingCount} 张</Text>
-                  <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
-                  <Pressable 
-                    hitSlop={15} 
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      setDismissedThreshold(needsOrganizingCount);
-                      void persistDismissThreshold(needsOrganizingCount);
-                    }}
-                    style={styles.needsCloseButton}
-                  >
-                    <Ionicons color={colors.text.tertiary} name="close" size={18} />
-                  </Pressable>
-                </Pressable>
-              </View>
-            )}
-            <View style={styles.filterRow}>
-              <FlatList
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterPillsRow}
-                data={FILTER_OPTIONS}
-                keyExtractor={item => item.key}
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() => setActiveFilter(item.key)}
-                    style={activeFilter === item.key ? styles.filterPillActive : styles.filterPill}
-                  >
-                    <Text style={activeFilter === item.key ? styles.filterPillTextActive : styles.filterPillText}>
-                      {item.label}
-                    </Text>
-                    {item.key === 'all' && (
-                      <Text style={[
-                        styles.filterPillCount,
-                        activeFilter === item.key ? { color: 'rgba(255,255,255,0.8)' } : undefined
-                      ]}>
-                        {totalIpCount}
-                      </Text>
-                    )}
-                  </Pressable>
-                )}
-              />
-              <View style={styles.filterSpacer} />
-              <IpSortMenuButton orderBy={activeSortOrder} onChange={setActiveSortOrder} />
-            </View>
-          </View>
-        }
+        ListHeaderComponent={listHeaderElement}
         ListEmptyComponent={
           isLoading ? (
-            <IPCardSkeleton />
+            <IPCardSkeleton active={isActive} />
           ) : isLibraryCompletelyEmpty ? (
             <HomeEmptyState onCreate={onCreateIp} />
           ) : isSearchOrFilterEmpty && activeFilter === 'favorite' ? (
@@ -511,13 +595,14 @@ export function HomeLibraryScreen({
           )
         }
         ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
-        maxToRenderPerBatch={4}
+        maxToRenderPerBatch={2}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         renderItem={renderIpCard as any}
         showsVerticalScrollIndicator={false}
         style={styles.list}
-        windowSize={5}
+        updateCellsBatchingPeriod={60}
+        windowSize={4}
       />
 
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0 }} pointerEvents="box-none">
@@ -638,6 +723,22 @@ export function HomeLibraryScreen({
             setActionMenuState(null);
           },
         }] : []),
+        ...(isDefaultOrder ? [
+          {
+            key: 'move-up',
+            label: '上移',
+            icon: 'arrow-up-outline' as const,
+            disabled: !canIpMoveUp,
+            onPress: () => handleMoveUp(actionMenuState.ip),
+          },
+          {
+            key: 'move-down',
+            label: '下移',
+            icon: 'arrow-down-outline' as const,
+            disabled: !canIpMoveDown,
+            onPress: () => handleMoveDown(actionMenuState.ip),
+          },
+        ] : []),
         {
           key: 'pin',
           label: actionMenuState.ip.isPinned ? '取消置顶' : 'IP 置顶',
@@ -676,50 +777,76 @@ export function HomeLibraryScreen({
       onClose={() => setActionMenuState(null)}
       visible={Boolean(actionMenuState)}
     />
-      <ParallaxLightSweep fadeOutDuration={750} opacity={0.35} visible={isActive && (showSweep || isLoading)} />
+      <ParallaxLightSweep active={isActive && showSweep} fadeOutDuration={750} opacity={0.35} visible={isActive && showSweep} />
     </>
   );
 }
 
+// Module-level constant: device total disk capacity (constant for the session).
+let cachedTotalDiskCapacity: number | null = null;
+const cachedFastMediaBytes = new Map<PixorySpace, number>();
+
+/** Clears the cached Home media byte count for a space (e.g., when locking Personal space). */
+export function clearFastMediaBytesCache(space?: PixorySpace): void {
+  if (space) {
+    cachedFastMediaBytes.delete(space);
+  } else {
+    cachedFastMediaBytes.clear();
+  }
+}
+
+function getCachedFastMediaText(space: PixorySpace): string {
+  const cached = cachedFastMediaBytes.get(space);
+  return cached !== undefined ? formatGB(cached) : '... GB';
+}
+
+function formatGB(bytes: number): string {
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
 function HomeBrandHeader({ space, refreshKey }: { space: PixorySpace; refreshKey?: number }) {
-  const [appUsedText, setAppUsedText] = useState('... GB');
-  const [totalDiskText, setTotalDiskText] = useState('... GB');
+  const [appUsedText, setAppUsedText] = useState(() => getCachedFastMediaText(space));
+  const [totalDiskText, setTotalDiskText] = useState(() =>
+    cachedTotalDiskCapacity !== null ? formatGB(cachedTotalDiskCapacity) : '... GB'
+  );
 
   useEffect(() => {
+    setAppUsedText(getCachedFastMediaText(space));
     let mounted = true;
     async function fetchStorage() {
       try {
-        const total = await FileSystem.getTotalDiskCapacityAsync();
+        // Home header exclusively reports library media SQL sum + total disk capacity.
+        const [totalCapacity, totalBytes] = await Promise.all([
+          cachedTotalDiskCapacity !== null
+            ? Promise.resolve(cachedTotalDiskCapacity)
+            : FileSystem.getTotalDiskCapacityAsync().then((v) => {
+                cachedTotalDiskCapacity = v;
+                return v;
+              }),
+          getFastStorageUsageBytes(space),
+        ]);
+        cachedFastMediaBytes.set(space, totalBytes);
         if (mounted) {
-          const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
-          setTotalDiskText(`${formatGB(total)} GB`);
-        }
-        
-        const cached = getCachedStorageUsageSummary(space);
-        if (cached && mounted) {
-          const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
-          setAppUsedText(`${formatGB(cached.totalBytes)} GB`);
-        } else {
-          const summary = await getStorageUsageSummary(space);
-          if (mounted) {
-            const formatGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
-            setAppUsedText(`${formatGB(summary.totalBytes)} GB`);
-          }
+          setTotalDiskText(formatGB(totalCapacity));
+          setAppUsedText(formatGB(totalBytes));
         }
       } catch (error) {
         console.warn('Failed to fetch disk storage:', error);
       }
     }
-    void fetchStorage();
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void fetchStorage();
+    });
     return () => {
       mounted = false;
+      interaction.cancel();
     };
   }, [space, refreshKey]);
 
   return (
     <View style={styles.brandHeaderContainer}>
       <Text style={styles.brandGreetingText}>Pixory</Text>
-      <Text style={styles.brandSubtitleText}>{appUsedText} / {totalDiskText}</Text>
+      <Text numberOfLines={1} style={styles.brandSubtitleText}>{appUsedText} / {totalDiskText}</Text>
     </View>
   );
 }

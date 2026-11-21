@@ -38,6 +38,7 @@ import {
   saveNativeVideoToMediaStore,
   computeFileSha256,
   type NativeCopyProgressEvent,
+  type NativeSmartMediaDeletionItem,
 } from '../native/pixoryMediaModule';
 import { deleteMediaStoreAssetsWithConfirmation } from './mediaSourceDeletionService';
 import { sortPickedAssetsByCreationTime } from './mediaImportOrderService';
@@ -85,6 +86,7 @@ export interface VideoImportError {
 
 export interface ImportedVideoResult {
   pendingSourceDeletionAssetId: string | null;
+  pendingSourceDeletionTarget?: NativeSmartMediaDeletionItem | null;
   sourceDeletionNotice: MoveDeletionNotice | null;
   video: ImageAssetRecord;
   tags: TagRecord[];
@@ -196,8 +198,17 @@ function createVideoImportProgressWriter(db: SQLiteDatabase, taskId: string): Vi
   };
 }
 
-function resolvePickedVideoAssetId(assetId: string | null | undefined): string | null {
-  return typeof assetId === 'string' && assetId.trim() ? assetId : null;
+function resolvePickedVideoAssetId(assetId: string | null | undefined, uri?: string | null): string | null {
+  if (typeof assetId === 'string' && assetId.trim()) {
+    return assetId.trim();
+  }
+  const cleanUri = uri?.trim();
+  if (cleanUri && cleanUri.startsWith('content://')) {
+    const docMatch = cleanUri.match(/video%3A(\d+)|image%3A(\d+)|media%3A(\d+)/i);
+    const tailMatch = cleanUri.match(/\/(\d+)(?:\?.*)?$/);
+    return docMatch ? (docMatch[1] || docMatch[2] || docMatch[3]) : tailMatch ? tailMatch[1] : null;
+  }
+  return null;
 }
 
 function normalizeGroupIds(groupIds?: number[]): number[] {
@@ -283,7 +294,7 @@ async function shouldSkipVideoDuplicateImport(
 }
 
 async function deleteImportedSourceVideoAsset(pickedAsset: PickedVideoAsset): Promise<boolean> {
-  const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId);
+  const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId, pickedAsset.uri);
   if (!sourceAssetId) {
     return false;
   }
@@ -436,12 +447,21 @@ async function importSingleVideo({
 
     let sourceDeletionNotice: MoveDeletionNotice | null = null;
     let pendingSourceDeletionAssetId: string | null = null;
+    let pendingSourceDeletionTarget: NativeSmartMediaDeletionItem | null = null;
     if (effectiveImportSourceMode === 'move') {
-      const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId);
-      if (deferSourceDeletion && sourceAssetId) {
-        pendingSourceDeletionAssetId = sourceAssetId;
-      } else if (deferSourceDeletion) {
-        sourceDeletionNotice = toMoveDeletionNotice(false);
+      const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId, pickedAsset.uri);
+      if (deferSourceDeletion) {
+        if (sourceAssetId) {
+          pendingSourceDeletionAssetId = sourceAssetId;
+        }
+        pendingSourceDeletionTarget = {
+          assetId: sourceAssetId ?? undefined,
+          sourceUri: pickedAsset.uri,
+          importedFileUri: originalUri,
+          originalFilename,
+          fileSize: copiedInfo.size ?? createdVideo.fileSize,
+          mediaType: 'video',
+        };
       } else {
         let sourceDeleted = false;
         try {
@@ -455,6 +475,7 @@ async function importSingleVideo({
 
     return {
       pendingSourceDeletionAssetId,
+      pendingSourceDeletionTarget,
       sourceDeletionNotice,
       video: createdVideo,
       tags,

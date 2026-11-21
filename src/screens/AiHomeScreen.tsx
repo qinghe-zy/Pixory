@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState, useContext } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, useContext } from 'react';
+import { Image, InteractionManager, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 
-import Animated, { useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, useAnimatedScrollHandler, interpolate, Extrapolation, runOnJS, withSpring } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { ensureFileTransferThread, ensureSystemAssistantThread, listAiHomeThreads, deleteAiThreads, moveAiThreadsBetweenSpaces, renameAiThread, toggleAiThreadPin, type AiHomeThreadItem } from '../ai/aiChatService';
 import { FILE_TRANSFER_THREAD_ID, SYSTEM_ASSISTANT_THREAD_ID } from '../ai/systemAssistant/capabilityProfile';
@@ -45,6 +45,18 @@ function getCachedHomeThreads(space: PixorySpace): AiHomeThreadItem[] {
 
 function getCachedHomeRoleCards(space: PixorySpace): AiRoleCardRecord[] {
   return homeRoleCardCache[space] ?? [];
+}
+
+export function clearAiHomeMemoryCache(space?: PixorySpace): void {
+  if (!space) {
+    delete homeThreadCache.normal;
+    delete homeThreadCache.personal;
+    delete homeRoleCardCache.normal;
+    delete homeRoleCardCache.personal;
+    return;
+  }
+  delete homeThreadCache[space];
+  delete homeRoleCardCache[space];
 }
 
 export async function preloadAiHomeData(space: PixorySpace): Promise<void> {
@@ -113,6 +125,9 @@ export function AiHomeScreen({
   const [loadedThreads, setLoadedThreads] = useState<{ space: PixorySpace; threads: AiHomeThreadItem[] }>(() => ({ space, threads: getCachedHomeThreads(space) }));
   const [loadedRoleCards, setLoadedRoleCards] = useState<{ space: PixorySpace; roleCards: AiRoleCardRecord[] }>(() => ({ space, roleCards: getCachedHomeRoleCards(space) }));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showStickyBlur, setShowStickyBlur] = useState(false);
+  const lastSyncedThreadsSignatureRef = useRef<string | null>(null);
+  const lastAttemptedThreadsSignatureRef = useRef<string | null>(null);
   const threads = loadedThreads.space === space ? loadedThreads.threads : [];
   const roleCards = loadedRoleCards.space === space ? loadedRoleCards.roleCards : [];
   const spaceLabel = space === 'personal' ? '私密空间 · 本地保存对话、资料与角色' : '普通空间 · 本地保存对话、资料与角色';
@@ -197,30 +212,43 @@ export function AiHomeScreen({
   }
 
   useEffect(() => {
+    const syncSignature = `${space}:${refreshToken ?? 0}`;
+    if (lastSyncedThreadsSignatureRef.current === syncSignature) {
+      return;
+    }
+    if (!isActive && lastAttemptedThreadsSignatureRef.current === syncSignature) {
+      return;
+    }
     const startedAt = Date.now();
     const traceId = 'ai-home-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     recordDiagnosticEvent({ eventType: 'home_load_started', space, traceId, payload: { refresh: refreshToken ?? 0 } });
     let isMounted = true;
     setErrorMessage(null);
     setLoadedThreads({ space, threads: getCachedHomeThreads(space) });
-    void listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space })
-      .then((nextThreads) => {
-        homeThreadCache[space] = nextThreads;
-        if (isMounted) {
-          setLoadedThreads({ space, threads: nextThreads });
-          recordDiagnosticEvent({ eventType: 'home_threads_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextThreads.length } });
-        }
-      })
-      .catch((error) => {
-        if (isMounted) {
-          recordDiagnosticEvent({ eventType: 'home_threads_load_failed', space, traceId, durationMs: Date.now() - startedAt, payload: { errorType: error instanceof Error ? error.name : 'unknown' } });
-          setErrorMessage(error instanceof Error ? error.message : '读取 AI 工作台失败');
-        }
-      });
-    void ensureSystemAssistantThread(space).catch(() => undefined);
-    void ensureFileTransferThread(space).catch(() => undefined);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (!isMounted) return;
+      lastAttemptedThreadsSignatureRef.current = syncSignature;
+      void listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space })
+        .then((nextThreads) => {
+          homeThreadCache[space] = nextThreads;
+          lastSyncedThreadsSignatureRef.current = syncSignature;
+          if (isMounted) {
+            setLoadedThreads({ space, threads: nextThreads });
+            recordDiagnosticEvent({ eventType: 'home_threads_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextThreads.length } });
+          }
+        })
+        .catch((error) => {
+          if (isMounted) {
+            recordDiagnosticEvent({ eventType: 'home_threads_load_failed', space, traceId, durationMs: Date.now() - startedAt, payload: { errorType: error instanceof Error ? error.name : 'unknown' } });
+            setErrorMessage(error instanceof Error ? error.message : '读取 AI 工作台失败');
+          }
+        });
+      void ensureSystemAssistantThread(space).catch(() => undefined);
+      void ensureFileTransferThread(space).catch(() => undefined);
+    });
     return () => {
       isMounted = false;
+      interaction.cancel();
     };
   }, [space, refreshToken, isActive]);
 
@@ -230,29 +258,42 @@ export function AiHomeScreen({
     recordDiagnosticEvent({ eventType: 'home_roles_load_started', space, traceId });
     let isMounted = true;
     setLoadedRoleCards({ space, roleCards: getCachedHomeRoleCards(space) });
-    void listRoleCards(space)
-      .then((nextRoleCards) => {
-        homeRoleCardCache[space] = nextRoleCards;
-        setCachedRoleCards(space, nextRoleCards);
-        if (isMounted) {
-          setLoadedRoleCards({ space, roleCards: nextRoleCards });
-          recordDiagnosticEvent({ eventType: 'home_roles_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextRoleCards.length } });
-        }
-      })
-      .catch((error) => {
-        if (isMounted) {
-          recordDiagnosticEvent({ eventType: 'home_roles_load_failed', space, traceId, durationMs: Date.now() - startedAt, payload: { errorType: error instanceof Error ? error.name : 'unknown' } });
-          setErrorMessage(error instanceof Error ? error.message : '读取角色库失败');
-        }
-      });
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (!isMounted) return;
+      void listRoleCards(space)
+        .then((nextRoleCards) => {
+          homeRoleCardCache[space] = nextRoleCards;
+          setCachedRoleCards(space, nextRoleCards);
+          if (isMounted) {
+            setLoadedRoleCards({ space, roleCards: nextRoleCards });
+            recordDiagnosticEvent({ eventType: 'home_roles_load_completed', space, traceId, durationMs: Date.now() - startedAt, payload: { count: nextRoleCards.length } });
+          }
+        })
+        .catch((error) => {
+          if (isMounted) {
+            recordDiagnosticEvent({ eventType: 'home_roles_load_failed', space, traceId, durationMs: Date.now() - startedAt, payload: { errorType: error instanceof Error ? error.name : 'unknown' } });
+            setErrorMessage(error instanceof Error ? error.message : '读取角色库失败');
+          }
+        });
+    });
     return () => {
       isMounted = false;
+      interaction.cancel();
     };
   }, [space, refreshToken]);
 
   const roleShortcuts = useMemo(() => buildRoleLibraryShortcuts(roleCards), [roleCards]);
 
   const scrollY = useSharedValue(0);
+  useAnimatedReaction(
+    () => scrollY.value >= 140,
+    (nextVisible, prevVisible) => {
+      if (nextVisible !== prevVisible) {
+        runOnJS(setShowStickyBlur)(nextVisible);
+      }
+    },
+    []
+  );
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
@@ -552,10 +593,11 @@ export function AiHomeScreen({
       </AiLightScaffold>
 
       {/* --- STICKY FLOATING HEADER --- */}
-      <Animated.View style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100, paddingTop: insets.top },
-        compactHeaderBgStyle
-      ]} pointerEvents="box-none">
+      {showStickyBlur ? (
+        <Animated.View style={[
+          { position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 48, zIndex: 100, paddingTop: insets.top },
+          compactHeaderBgStyle
+        ]} pointerEvents="box-none">
           <BlurView intensity={space === 'personal' ? 60 : 80} style={StyleSheet.absoluteFill} tint={space === 'personal' ? 'dark' : 'light'} />
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: '#f9f9f9' }} />
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[4], height: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: aiLightColors.hairline }} pointerEvents="box-none">
@@ -606,6 +648,7 @@ export function AiHomeScreen({
             </Animated.View>
           </View>
         </Animated.View>
+      ) : null}
     </View>
   );
 }

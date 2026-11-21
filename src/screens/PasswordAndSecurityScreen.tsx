@@ -2,18 +2,26 @@ import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View, Switch, ToastAndroid, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import {
+  changePersonalPassword,
+  DEFAULT_PERSONAL_BACKGROUND_LOCK_TIMEOUT_MS,
+  enrollPersonalBiometric,
+  generateAndSetRecoveryKey,
+  getPersonalBackgroundLockLabel,
+  getPersonalBackgroundLockTimeoutMs,
   getPersonalCredentialConfig,
+  getPersonalRecoveryKeyPlain,
+  PERSONAL_BACKGROUND_LOCK_OPTIONS,
+  PersonalBackgroundLockTimeoutMs,
   PersonalCredentialConfig,
   setDefaultUnlockMethod,
+  setPersonalBackgroundLockTimeoutMs,
   setPersonalFingerprintEnabled,
-  changePersonalPassword,
-  generateAndSetRecoveryKey,
-  getPersonalRecoveryKeyPlain,
-  verifyPersonalPassword
+  verifyPersonalPassword,
 } from '../services/personalSystemService';
 import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
@@ -27,12 +35,19 @@ import { SecurityUnlockModule } from '../components/SecurityUnlockModule';
 const unlockPatternImage = require('../../assets/black.png');
 
 interface Props {
+  isPersonalUnlocked?: boolean;
   onBack: () => void;
 }
 
-export function PasswordAndSecurityScreen({ onBack }: Props) {
+export function PasswordAndSecurityScreen({ isPersonalUnlocked = false, onBack }: Props) {
   const [config, setConfig] = useState<PersonalCredentialConfig | null>(null);
   const [biometricSupported, setBiometricSupported] = useState(false);
+  const [gateVerified, setGateVerified] = useState(isPersonalUnlocked);
+  const [gateVisible, setGateVisible] = useState(false);
+  const [backgroundLockTimeoutMs, setBackgroundLockTimeoutMs] = useState<PersonalBackgroundLockTimeoutMs>(
+    DEFAULT_PERSONAL_BACKGROUND_LOCK_TIMEOUT_MS
+  );
+  const [lockTimeoutModalVisible, setLockTimeoutModalVisible] = useState(false);
   
   type ChangePasswordStep = 'verify_old' | 'choose_new' | 'enter_new_digital' | 'enter_new_pattern' | 'confirm_new_pattern';
   const [changePasswordStep, setChangePasswordStep] = useState<ChangePasswordStep>('verify_old');
@@ -60,54 +75,60 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
   }, []);
 
   async function loadConfig() {
-    const cfg = await getPersonalCredentialConfig();
+    const [cfg, timeoutMs] = await Promise.all([
+      getPersonalCredentialConfig(),
+      getPersonalBackgroundLockTimeoutMs(),
+    ]);
     setConfig(cfg);
+    setBackgroundLockTimeoutMs(timeoutMs);
+
+    if (cfg.hasCredential && !isPersonalUnlocked && !gateVerified) {
+      setGateVisible(true);
+    } else {
+      setGateVerified(true);
+      setGateVisible(false);
+    }
 
     const seen = await SecureStore.getItemAsync('pixory.personal.recoveryKeyPromptSeen');
     setRedDotSeen(seen === '1');
   }
 
-  async function handleOpenRecoveryVerified() {
-    await SecureStore.setItemAsync('pixory.personal.recoveryKeyPromptSeen', '1');
-    setRedDotSeen(true);
-    setVerifyForRecoveryVisible(false);
-    setCurrentSecret('');
-    setChangePasswordErrorMessage(null);
-
-    const existing = await getPersonalRecoveryKeyPlain();
-    if (!existing) {
-      const newKey = await generateAndSetRecoveryKey();
-      setCurrentRecoveryKey(newKey);
-    } else {
-      setCurrentRecoveryKey(existing);
-    }
-    setRecoveryModalVisible(true);
-  }
-
-  async function submitVerifyForRecovery() {
-    setLoading(true);
-    setChangePasswordErrorMessage(null);
-    try {
-      const res = await verifyPersonalPassword(currentSecret);
-      if (res.ok) {
-        await handleOpenRecoveryVerified();
-      } else {
-        setChangePasswordErrorMessage('密码不正确');
-      }
-    } catch (error) {
-      setChangePasswordErrorMessage(error instanceof Error ? error.message : '验证失败');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleToggleFingerprint(val: boolean) {
     if (val) {
-      const res = await LocalAuthentication.authenticateAsync({ promptMessage: '验证以开启指纹解锁' });
-      if (!res.success) return;
+      if (!config?.hasCredential) {
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('请先设置隐私密码', ToastAndroid.SHORT);
+        } else {
+          Alert.alert('提示', '请先设置隐私密码后再开启指纹解锁。');
+        }
+        return;
+      }
+      try {
+        await enrollPersonalBiometric();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '开启指纹解锁失败';
+        if (!message.includes('已取消')) {
+          if (Platform.OS === 'android') {
+            ToastAndroid.show(message, ToastAndroid.SHORT);
+          } else {
+            Alert.alert('无法开启指纹解锁', message);
+          }
+        }
+        return;
+      }
+    } else {
+      await setPersonalFingerprintEnabled(false);
     }
-    await setPersonalFingerprintEnabled(val);
     await loadConfig();
+  }
+
+  async function handleSelectBackgroundLockTimeout(timeoutMs: PersonalBackgroundLockTimeoutMs) {
+    await setPersonalBackgroundLockTimeoutMs(timeoutMs);
+    setBackgroundLockTimeoutMs(timeoutMs);
+    setLockTimeoutModalVisible(false);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(`后台锁定已设为「${getPersonalBackgroundLockLabel(timeoutMs)}」`, ToastAndroid.SHORT);
+    }
   }
 
   async function handleSetDefaultMethod(method: 'password' | 'pattern') {
@@ -172,8 +193,9 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
 
   function renderChangePasswordDialog() {
     return (
-      <Modal animationType="fade" onRequestClose={closeChangePasswordModal} transparent visible={changePasswordVisible}>
-        <View style={modalStyles.backdrop}>
+      <Modal animationType="fade" onRequestClose={closeChangePasswordModal} statusBarTranslucent transparent visible={changePasswordVisible}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+          <View style={modalStyles.backdrop}>
           <View style={modalStyles.panel}>
             <Image resizeMode="stretch" source={unlockPatternImage} style={modalStyles.patternImage} />
             <View style={modalStyles.header}>
@@ -399,7 +421,8 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
               </View>
             )}
           </View>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     );
   }
@@ -411,6 +434,7 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
       scrollable
       title="密码与安全"
     >
+      {gateVerified ? (
       <View style={styles.container}>
 
         {/* 解锁方式设置 */}
@@ -418,23 +442,24 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
           {biometricSupported && (
             <View style={[styles.row, styles.rowBorder]}>
               <View style={styles.iconWrap}>
-                <Ionicons color="#1A1C1C" name="finger-print-outline" size={20} />
+                <Ionicons color={colors.text.title} name="finger-print-outline" size={20} />
               </View>
               <View style={styles.copy}>
                 <Text style={styles.rowTitle}>指纹/面容解锁</Text>
+                <Text style={styles.rowSubtitle}>使用本机指纹（系统新增指纹时自动失效）</Text>
               </View>
               <Switch
                 value={config?.fingerprintEnabled ?? false}
                 onValueChange={(val) => void handleToggleFingerprint(val)}
-                thumbColor="#FFFFFF"
-                trackColor={{ true: '#1A1C1C', false: colors.border.subtle }}
+                thumbColor={colors.background.surface}
+                trackColor={{ true: colors.primary.active, false: colors.border.subtle }}
               />
             </View>
           )}
 
-          <View style={[styles.row, config?.hasPattern ? styles.rowBorder : null]}>
+          <View style={[styles.row, styles.rowBorder]}>
             <View style={styles.iconWrap}>
-              <Ionicons color="#1A1C1C" name="keypad-outline" size={20} />
+              <Ionicons color={colors.text.title} name="keypad-outline" size={20} />
             </View>
             <View style={styles.copy}>
               <Text style={styles.rowTitle}>优先使用数字/字母密码</Text>
@@ -447,15 +472,15 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
                 }
               }}
               disabled={!config?.hasPassword || !config?.hasPattern}
-              thumbColor="#FFFFFF"
-              trackColor={{ true: '#1A1C1C', false: colors.border.subtle }}
+              thumbColor={colors.background.surface}
+              trackColor={{ true: colors.primary.active, false: colors.border.subtle }}
             />
           </View>
 
           {config?.hasPattern && (
-            <View style={styles.row}>
+            <View style={[styles.row, styles.rowBorder]}>
               <View style={styles.iconWrap}>
-                <Ionicons color="#1A1C1C" name="grid-outline" size={20} />
+                <Ionicons color={colors.text.title} name="grid-outline" size={20} />
               </View>
               <View style={styles.copy}>
                 <Text style={styles.rowTitle}>优先使用图案密码</Text>
@@ -468,11 +493,28 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
                   }
                 }}
                 disabled={!config?.hasPassword || !config?.hasPattern}
-                thumbColor="#FFFFFF"
-                trackColor={{ true: '#1A1C1C', false: colors.border.subtle }}
+                thumbColor={colors.background.surface}
+                trackColor={{ true: colors.primary.active, false: colors.border.subtle }}
               />
             </View>
           )}
+
+          <Pressable
+            onPress={() => setLockTimeoutModalVisible(true)}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.iconWrap}>
+              <Ionicons color={colors.text.title} name="timer-outline" size={20} />
+            </View>
+            <View style={styles.copy}>
+              <Text style={styles.rowTitle}>后台自动锁定</Text>
+              {backgroundLockTimeoutMs === -1 ? (
+                <Text style={styles.rowSubtitle}>退到后台仍会模糊多任务卡片，但不自动退出</Text>
+              ) : null}
+            </View>
+            <Text style={styles.rowValue}>{getPersonalBackgroundLockLabel(backgroundLockTimeoutMs)}</Text>
+            <Ionicons color={colors.text.tertiary} name="chevron-forward" size={17} />
+          </Pressable>
         </View>
 
         {/* 密码管理 */}
@@ -482,12 +524,12 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
             style={({ pressed }) => [styles.row, styles.rowBorder, pressed && styles.pressed]}
           >
             <View style={styles.iconWrap}>
-              <Ionicons color="#1A1C1C" name="shield-checkmark-outline" size={20} />
+              <Ionicons color={colors.text.title} name="shield-checkmark-outline" size={20} />
             </View>
             <View style={styles.copy}>
               <Text style={styles.rowTitle}>更新隐私密码</Text>
             </View>
-            <Ionicons color="#C4C7C7" name="chevron-forward" size={17} />
+            <Ionicons color={colors.text.tertiary} name="chevron-forward" size={17} />
           </Pressable>
 
           <Pressable
@@ -499,7 +541,7 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
             <View style={styles.iconWrap}>
-              <Ionicons color="#1A1C1C" name="key-outline" size={20} />
+              <Ionicons color={colors.text.title} name="key-outline" size={20} />
             </View>
             <View style={styles.copy}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
@@ -509,12 +551,86 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
                 )}
               </View>
             </View>
-            <Ionicons color="#C4C7C7" name="chevron-forward" size={17} />
+            <Ionicons color={colors.text.tertiary} name="chevron-forward" size={17} />
           </Pressable>
         </View>
 
       </View>
+      ) : (
+        <View style={styles.gatePlaceholder} />
+      )}
       {renderChangePasswordDialog()}
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setLockTimeoutModalVisible(false)}
+        statusBarTranslucent
+        transparent
+        visible={lockTimeoutModalVisible}
+      >
+        <Pressable onPress={() => setLockTimeoutModalVisible(false)} style={modalStyles.backdrop}>
+          <Pressable onPress={() => undefined} style={modalStyles.panel}>
+            <View style={modalStyles.header}>
+              <View style={modalStyles.iconWrap}>
+                <Ionicons color={colors.primary.active} name="timer-outline" size={22} />
+              </View>
+              <View style={modalStyles.titleCopy}>
+                <Text style={modalStyles.title}>后台自动锁定时间</Text>
+                <Text style={modalStyles.description}>切换出 App 超过设定时长后自动锁定隐私空间</Text>
+              </View>
+              <Pressable hitSlop={10} onPress={() => setLockTimeoutModalVisible(false)} style={({ pressed }) => [modalStyles.closeButton, pressed && modalStyles.pressed]}>
+                <Ionicons color={colors.text.secondary} name="close" size={18} />
+              </Pressable>
+            </View>
+            <View style={styles.optionList}>
+              {PERSONAL_BACKGROUND_LOCK_OPTIONS.map((option) => {
+                const selected = option.value === backgroundLockTimeoutMs;
+                return (
+                  <Pressable
+                    key={String(option.value)}
+                    onPress={() => void handleSelectBackgroundLockTimeout(option.value)}
+                    style={({ pressed }) => [
+                      styles.optionRow,
+                      selected && styles.optionRowSelected,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
+                      {option.label}
+                    </Text>
+                    {selected ? <Ionicons color={colors.primary.active} name="checkmark" size={18} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <PersonalUnlockModal
+        visible={gateVisible}
+        onClose={() => {
+          setGateVisible(false);
+          onBack();
+        }}
+        hasCredential={config?.hasCredential || false}
+        loading={loading}
+        title="验证隐私密码"
+        description="进入密码与安全设置前，请先完成身份验证。"
+        hideActions={true}
+        onSetup={async () => {}}
+        onChangePassword={async () => {}}
+        onResetPersonalData={async () => {}}
+        onUnlock={async (secret) => {
+          const result = await verifyPersonalPassword(secret);
+          if (result.ok) {
+            setGateVerified(true);
+            setGateVisible(false);
+          } else {
+            throw new Error(result.message ?? '密码或验证失败');
+          }
+        }}
+      />
 
       <PersonalUnlockModal
         visible={verifyForRecoveryVisible}
@@ -531,15 +647,17 @@ export function PasswordAndSecurityScreen({ onBack }: Props) {
           const result = await verifyPersonalPassword(secret);
           if (result.ok) {
             setVerifyForRecoveryVisible(false);
+            await SecureStore.setItemAsync('pixory.personal.recoveryKeyPromptSeen', '1');
+            setRedDotSeen(true);
             let rk = await getPersonalRecoveryKeyPlain();
             if (!rk) {
               rk = await generateAndSetRecoveryKey();
-              setConfig(prev => prev ? { ...prev, hasRecoveryKey: true } : null);
+              setConfig((prev) => (prev ? { ...prev, hasRecoveryKey: true } : null));
             }
             setCurrentRecoveryKey(rk);
             setRecoveryModalVisible(true);
           } else {
-            throw new Error('密码或验证失败');
+            throw new Error(result.message ?? '密码或验证失败');
           }
         }}
       />
@@ -558,22 +676,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   container: {
-    paddingVertical: 10,
-    backgroundColor: '#F9F9F9',
-    gap: 10,
+    paddingVertical: spacing[3],
+    backgroundColor: colors.background.page,
+    gap: spacing[3],
   },
   insetGroup: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    marginHorizontal: 8,
+    backgroundColor: colors.background.surface,
+    borderRadius: radius.sm,
+    marginHorizontal: spacing[2],
     overflow: 'hidden',
   },
   row: {
     alignItems: 'center',
     flexDirection: 'row',
     paddingHorizontal: spacing[4],
-    minHeight: 50,
-    backgroundColor: '#FFFFFF',
+    minHeight: 52,
+    backgroundColor: colors.background.surface,
   },
   rowBorder: {
     borderBottomColor: colors.border.subtle,
@@ -590,12 +708,48 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     ...typography.textStyles.body,
-    fontSize: 15,
-    color: '#1A1C1C',
+    fontSize: typography.size.body,
+    color: colors.text.title,
     fontWeight: '500',
   },
+  rowSubtitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  rowValue: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    marginRight: spacing[1],
+  },
+  gatePlaceholder: {
+    flex: 1,
+    minHeight: 240,
+  },
+  optionList: {
+    gap: spacing[1],
+  },
+  optionRow: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
+  },
+  optionRowSelected: {
+    backgroundColor: colors.primary.weak,
+  },
+  optionLabel: {
+    ...typography.textStyles.body,
+    color: colors.text.title,
+  },
+  optionLabelSelected: {
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
   pressed: {
-    backgroundColor: '#F3F3F4',
+    backgroundColor: colors.primary.weak,
   },
   errorText: {
     color: colors.semantic.danger,

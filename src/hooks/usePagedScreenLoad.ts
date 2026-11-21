@@ -27,7 +27,52 @@ interface PagedScreenData<TItem, TMeta> {
   totalCount?: number;
 }
 
-const pagedScreenCache = new Map<string, PagedScreenData<any, any>>();
+const MAX_PAGED_SCREEN_CACHE_ENTRIES = 24;
+const pagedScreenCache = new Map<string, PagedScreenData<unknown, unknown>>();
+
+function peekPagedScreenCacheEntry<TItem, TMeta>(key: string): PagedScreenData<TItem, TMeta> | undefined {
+  return pagedScreenCache.get(key) as PagedScreenData<TItem, TMeta> | undefined;
+}
+
+function touchPagedScreenCacheEntry(key: string): void {
+  const entry = pagedScreenCache.get(key);
+  if (entry !== undefined) {
+    pagedScreenCache.delete(key);
+    pagedScreenCache.set(key, entry);
+  }
+}
+
+function getPagedScreenCacheEntry<TItem, TMeta>(key: string): PagedScreenData<TItem, TMeta> | undefined {
+  const entry = peekPagedScreenCacheEntry<TItem, TMeta>(key);
+  touchPagedScreenCacheEntry(key);
+  return entry;
+}
+
+function setPagedScreenCacheEntry<TItem, TMeta>(key: string, value: PagedScreenData<TItem, TMeta>): void {
+  if (pagedScreenCache.has(key)) {
+    pagedScreenCache.delete(key);
+  }
+  pagedScreenCache.set(key, value);
+  while (pagedScreenCache.size > MAX_PAGED_SCREEN_CACHE_ENTRIES) {
+    const oldestKey = pagedScreenCache.keys().next().value;
+    if (oldestKey === undefined) {
+      break;
+    }
+    pagedScreenCache.delete(oldestKey);
+  }
+}
+
+export function clearPagedScreenCache(predicate?: (key: string) => boolean): void {
+  if (!predicate) {
+    pagedScreenCache.clear();
+    return;
+  }
+  for (const key of Array.from(pagedScreenCache.keys())) {
+    if (predicate(key)) {
+      pagedScreenCache.delete(key);
+    }
+  }
+}
 
 export function usePagedScreenLoad<TItem, TMeta>(
   loader: (offset: number, meta: TMeta) => Promise<PagedLoadResult<TItem, TMeta>>,
@@ -39,16 +84,22 @@ export function usePagedScreenLoad<TItem, TMeta>(
   const isMountedRef = useRef(true);
   const loadingMoreRef = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const cached = pagedScreenCache.get(options.requestKey) as PagedScreenData<TItem, TMeta> | undefined;
-  const [data, setData] = useState<PagedScreenData<TItem, TMeta>>(
-    cached || {
-    requestKey: options.requestKey,
-    items: [],
-    hasMore: false,
-    meta: options.initialMeta,
+  // peek without LRU-touch on render; touch in effect only
+  const [data, setData] = useState<PagedScreenData<TItem, TMeta>>(() => {
+    const cached = peekPagedScreenCacheEntry<TItem, TMeta>(options.requestKey);
+    if (cached) {
+      touchPagedScreenCacheEntry(options.requestKey);
+      return cached;
+    }
+    return {
+      requestKey: options.requestKey,
+      items: [],
+      hasMore: false,
+      meta: options.initialMeta,
+    };
   });
   const dataRef = useRef(data);
-  const [isLoading, setIsLoading] = useState(!cached);
+  const [isLoading, setIsLoading] = useState(!peekPagedScreenCacheEntry(options.requestKey));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -72,7 +123,7 @@ export function usePagedScreenLoad<TItem, TMeta>(
     setIsLoadingMore(false);
     setIsLoading(true);
     setErrorMessage(null);
-    const currentCached = pagedScreenCache.get(options.requestKey) as PagedScreenData<TItem, TMeta> | undefined;
+    const currentCached = getPagedScreenCacheEntry<TItem, TMeta>(options.requestKey);
     const resetData: PagedScreenData<TItem, TMeta> = currentCached || {
       requestKey: options.requestKey,
       items: [],
@@ -85,15 +136,24 @@ export function usePagedScreenLoad<TItem, TMeta>(
       setIsLoading(false);
     }
 
+    let interactionHandle: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
+
     const run = async () => {
       try {
-        const next = optionsRef.current.deferUntilInteractions
-          ? await new Promise<PagedLoadResult<TItem, TMeta>>((resolve, reject) => {
-              InteractionManager.runAfterInteractions(() => {
-                loaderRef.current(0, optionsRef.current.initialMeta).then(resolve).catch(reject);
-              });
-            })
-          : await loaderRef.current(0, optionsRef.current.initialMeta);
+        let next: PagedLoadResult<TItem, TMeta>;
+        if (optionsRef.current.deferUntilInteractions) {
+          next = await new Promise<PagedLoadResult<TItem, TMeta>>((resolve, reject) => {
+            interactionHandle = InteractionManager.runAfterInteractions(() => {
+              if (!isMountedRef.current || !gate.isCurrent(request)) {
+                reject(new Error('cancelled'));
+                return;
+              }
+              loaderRef.current(0, optionsRef.current.initialMeta).then(resolve).catch(reject);
+            });
+          });
+        } else {
+          next = await loaderRef.current(0, optionsRef.current.initialMeta);
+        }
         if (!isMountedRef.current || !gate.isCurrent(request)) {
           return;
         }
@@ -105,9 +165,12 @@ export function usePagedScreenLoad<TItem, TMeta>(
           totalCount: next.totalCount,
         };
         dataRef.current = nextData;
-        pagedScreenCache.set(request.requestKey, nextData);
+        setPagedScreenCacheEntry(request.requestKey, nextData);
         setData(nextData);
       } catch (error) {
+        if (error instanceof Error && error.message === 'cancelled') {
+          return;
+        }
         if (!isMountedRef.current || !gate.isCurrent(request)) {
           return;
         }
@@ -128,7 +191,10 @@ export function usePagedScreenLoad<TItem, TMeta>(
     };
 
     void run();
-    return () => gate.invalidate();
+    return () => {
+      interactionHandle?.cancel();
+      gate.invalidate();
+    };
   }, [options.requestKey, reloadKey]);
 
   const loadMore = useCallback(() => {
@@ -167,7 +233,7 @@ export function usePagedScreenLoad<TItem, TMeta>(
             meta: next.meta ?? latest.meta,
           };
           dataRef.current = merged;
-          pagedScreenCache.set(request.requestKey, merged);
+          setPagedScreenCacheEntry(request.requestKey, merged);
           return merged;
         });
       } catch (error) {

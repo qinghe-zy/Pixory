@@ -218,7 +218,7 @@ export function ArchiveReaderScreen({ archiveName, archiveUri, onBack }: Archive
             key: String(ip.id),
             label: ip.name,
             icon: 'albums-outline' as const,
-            meta: `${ip.imageCount} 个素材`,
+            meta: `${ip.imageCount + (ip.videoCount ?? 0)} 个素材`,
             onPress: () => void saveCurrentToIp(ip.id),
           })),
         ]}

@@ -2,11 +2,16 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { colors, radius, rhythm, spacing } from '../design/tokens';
 
-export function TagSkeleton() {
+export function TagSkeleton({ active = true }: { active?: boolean }) {
   const opacity = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
-    Animated.loop(
+    opacity.stopAnimation();
+    opacity.setValue(0.3);
+    if (!active) {
+      return;
+    }
+    const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
           toValue: 0.7,
@@ -19,8 +24,10 @@ export function TagSkeleton() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
-  }, [opacity]);
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [active, opacity]);
 
   const pillWidths = [80, 120, 90, 60, 150, 100, 70, 110, 85, 130, 90, 75, 105, 95];
 

@@ -29,7 +29,7 @@ export function ImportResultScreen({
   onOpenImageDetail,
 }: ImportResultScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => runWithDatabaseSpace(space, (db) => imageRepository.findByIds(db, imageIds)),
+    () => runWithDatabaseSpace(space, (db) => imageRepository.findByIds(db, imageIds, { mediaType: 'all' })),
     [imageIds.join(','), space],
     {
       formatError: (error) => {
@@ -65,13 +65,13 @@ export function ImportResultScreen({
       </View>
 
       <PageStateBlock
-        emptyDescription="导入结果里没有可展示图片，可能已被移动到回收站。"
+        emptyDescription="导入结果里没有可展示素材，可能已被移动到回收站。"
         emptyIconName="images-outline"
         emptyTitle="暂无导入结果"
         errorMessage={errorMessage}
         isEmpty={!isLoading && images.length === 0}
         loading={isLoading}
-        loadingDescription="正在读取刚导入的图片。"
+        loadingDescription="正在读取刚导入的素材。"
         loadingTitle="读取导入结果"
         onRetry={reload}
       >

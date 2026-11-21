@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { AppDialog } from '../../components/AppDialog';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import { colors, radius, spacing, typography } from '../../design/tokens';
@@ -511,7 +513,10 @@ export function VoiceSettingsScreen({ space, onBack }: VoiceSettingsScreenProps)
 
   return (
     <ScreenScaffold title="声音与朗读" onBack={onBack} compactBack decorativeTitle="">
-      <ScrollView
+      <KeyboardAwareScrollView
+        bottomOffset={24}
+        extraKeyboardSpace={16}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         style={styles.container}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -891,7 +896,7 @@ export function VoiceSettingsScreen({ space, onBack }: VoiceSettingsScreenProps)
             <Text style={styles.clearBtnText}>清理缓存</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* 模型选择弹窗 */}
       <Modal

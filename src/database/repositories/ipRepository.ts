@@ -53,6 +53,7 @@ const IP_LIBRARY_SELECT = `
         FROM image_assets AS defaultCover
         WHERE defaultCover.ipId = ips.id
           AND defaultCover.deletedAt IS NULL
+          AND defaultCover.thumbnailFileUri IS NOT NULL
         ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
         LIMIT 1
       )
@@ -113,6 +114,7 @@ const IP_DETAIL_SELECT = `
         FROM image_assets AS defaultCover
         WHERE defaultCover.ipId = ips.id
           AND defaultCover.deletedAt IS NULL
+          AND defaultCover.thumbnailFileUri IS NOT NULL
         ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
         LIMIT 1
       )
@@ -155,7 +157,7 @@ function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array
   const whereStatement = whereClauses.length ? ` WHERE ${whereClauses.join(' AND ')}` : '';
   
   let orderBy = filter === 'all'
-    ? 'ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
+    ? 'ips.sortOrder ASC, ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
     : 'ips.updatedAt DESC, ips.id DESC';
 
   if (query?.orderBy) {
@@ -202,7 +204,7 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
   }
 
   let orderBy = filter === 'all'
-    ? 'ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
+    ? 'ips.sortOrder ASC, ips.name COLLATE NOCASE ASC, ips.updatedAt DESC, ips.id DESC'
     : 'ips.updatedAt DESC, ips.id DESC';
 
   if (query?.orderBy) {
@@ -278,6 +280,7 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
           FROM image_assets AS defaultCover
           WHERE defaultCover.ipId = page_ips.id
             AND defaultCover.deletedAt IS NULL
+            AND defaultCover.thumbnailFileUri IS NOT NULL
           ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
           LIMIT 1
         )
@@ -295,7 +298,7 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
     ORDER BY page_ips.isPinned DESC, ${orderBy.replaceAll('ips.', 'page_ips.')}`,
     values: [...values, limit + 1, offset],
     limit,
-    countSql: `SELECT COUNT(*) AS total FROM ips WHERE ${whereClauses.join(' AND ')}`,
+    countSql: `SELECT COUNT(*) AS count FROM ips WHERE ${whereClauses.join(' AND ')}`,
     countValues: values,
   };
 }
@@ -305,13 +308,15 @@ export const ipRepository = {
     const now = createTimestamp();
     const name = requireNonEmptyText(input.name, 'IP name');
     const description = normalizeOptionalText(input.description) ?? null;
+    const sortOrder = input.sortOrder ?? 0;
 
     const result = await db.runAsync(
-      'INSERT INTO ips (name, description, isFavorite, isPinned, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO ips (name, description, isFavorite, isPinned, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
       name,
       description,
       booleanToSqlite(Boolean(input.isFavorite)),
       booleanToSqlite(Boolean(input.isPinned)),
+      sortOrder,
       now,
       now
     );
@@ -330,6 +335,7 @@ export const ipRepository = {
       description: normalizeOptionalText(input.description),
       isFavorite: input.isFavorite !== undefined ? booleanToSqlite(input.isFavorite) : undefined,
       isPinned: input.isPinned !== undefined ? booleanToSqlite(input.isPinned) : undefined,
+      sortOrder: input.sortOrder,
       coverImageAssetId: input.coverImageAssetId,
       coverBlurEnabled: input.coverBlurEnabled === undefined ? undefined : input.coverBlurEnabled == null ? null : booleanToSqlite(input.coverBlurEnabled),
       coverBlurRadius: input.coverBlurRadius,
@@ -351,6 +357,34 @@ export const ipRepository = {
     }
 
     return this.findById(db, id);
+  },
+
+  async updateSortOrders(
+    db: SQLiteDatabase,
+    updates: Array<{ id: number; sortOrder: number; isPinned?: boolean }>
+  ): Promise<void> {
+    if (updates.length === 0) return;
+    const now = createTimestamp();
+    await db.withTransactionAsync(async () => {
+      for (const item of updates) {
+        if (item.isPinned !== undefined) {
+          await db.runAsync(
+            'UPDATE ips SET sortOrder = ?, isPinned = ?, updatedAt = ? WHERE id = ?',
+            item.sortOrder,
+            booleanToSqlite(item.isPinned),
+            now,
+            item.id
+          );
+        } else {
+          await db.runAsync(
+            'UPDATE ips SET sortOrder = ?, updatedAt = ? WHERE id = ?',
+            item.sortOrder,
+            now,
+            item.id
+          );
+        }
+      }
+    });
   },
 
   async findById(db: SQLiteDatabase, id: number): Promise<IpRecord | null> {
@@ -384,15 +418,18 @@ export const ipRepository = {
 
   async findLibraryItemsPage(db: SQLiteDatabase, query?: IpLibraryQuery): Promise<PageResult<IpListItem>> {
     const builtQuery = buildLibraryPageQuery(query);
-    const countRow = await db.getFirstAsync<{ count: number }>(builtQuery.countSql, ...builtQuery.countValues);
-    const totalCount = countRow?.count ?? 0;
-    
+    let totalCount: number | undefined;
+    if (query?.includeTotalCount !== false) {
+      const countRow = await db.getFirstAsync<{ count: number }>(builtQuery.countSql, ...builtQuery.countValues);
+      totalCount = countRow?.count ?? 0;
+    }
+
     const rows = await db.getAllAsync<IpListItemRow>(builtQuery.sql, ...builtQuery.values);
     const hasMore = rows.length > builtQuery.limit;
     return {
       items: rows.slice(0, builtQuery.limit).map(mapIpListItemRow),
       hasMore,
-      totalCount,
+      ...(totalCount !== undefined ? { totalCount } : {}),
     };
   },
 
@@ -447,6 +484,7 @@ export const ipRepository = {
             FROM image_assets AS defaultCover
             WHERE defaultCover.ipId = ips.id
               AND defaultCover.deletedAt IS NULL
+              AND defaultCover.thumbnailFileUri IS NOT NULL
             ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
             LIMIT 1
           )
@@ -465,7 +503,7 @@ export const ipRepository = {
       ipId
     );
     if (!image) {
-      throw new Error('只能选择当前 IP 下未删除的图片作为封面。');
+      throw new Error('只能选择当前 IP 下未删除的素材作为封面。');
     }
 
     return this.update(db, ipId, { coverImageAssetId: imageAssetId });

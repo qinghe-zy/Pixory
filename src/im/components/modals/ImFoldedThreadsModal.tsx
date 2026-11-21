@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { ImThreadListItem } from '../../types';
 import { SecureImage } from '../../../components/SecureImage';
+import { DraggableBadge } from '../../../components/common/DraggableBadge';
 import { colors } from '../../../design/tokens/colors';
 import { spacing } from '../../../design/tokens/spacing';
 import { radius } from '../../../design/tokens/radius';
@@ -28,6 +29,7 @@ export interface ImFoldedThreadsModalProps {
   onToggleFold?: (thread: ImThreadListItem) => void;
   onHideFromList?: (thread: ImThreadListItem) => void;
   onClearHistory?: (thread: ImThreadListItem) => void;
+  onMarkRead?: (thread: ImThreadListItem) => void;
 }
 
 export const ImFoldedThreadsModal = React.memo(function ImFoldedThreadsModal({
@@ -40,6 +42,7 @@ export const ImFoldedThreadsModal = React.memo(function ImFoldedThreadsModal({
   onToggleFold,
   onHideFromList,
   onClearHistory,
+  onMarkRead,
 }: ImFoldedThreadsModalProps) {
   const insets = useSafeAreaInsets();
   const [internalMenuState, setInternalMenuState] = useState<{
@@ -50,6 +53,7 @@ export const ImFoldedThreadsModal = React.memo(function ImFoldedThreadsModal({
 
   const renderItem = useCallback(
     ({ item }: { item: ImThreadListItem }) => {
+      const unreadCount = item.unreadCount ?? 0;
       return (
         <Pressable
           accessibilityLabel={item.title}
@@ -70,17 +74,27 @@ export const ImFoldedThreadsModal = React.memo(function ImFoldedThreadsModal({
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
         >
           <View style={styles.avatarWrap}>
-            {item.avatarUri ? (
-              <SecureImage
-                space={item.space}
-                style={styles.avatarImage}
-                uri={item.avatarUri}
+            <View style={styles.avatarInner}>
+              {item.avatarUri ? (
+                <SecureImage
+                  space={item.space}
+                  style={styles.avatarImage}
+                  uri={item.avatarUri}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarLetter}>{item.title.slice(0, 1)}</Text>
+                </View>
+              )}
+            </View>
+            {unreadCount > 0 ? (
+              <DraggableBadge
+                count={unreadCount}
+                onDismiss={() => {
+                  onMarkRead?.(item);
+                }}
               />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarLetter}>{item.title.slice(0, 1)}</Text>
-              </View>
-            )}
+            ) : null}
           </View>
           <View style={styles.contentWrap}>
             <View style={styles.topLine}>
@@ -255,6 +269,11 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
   },
   avatarWrap: {
+    width: 44,
+    height: 44,
+    position: 'relative',
+  },
+  avatarInner: {
     width: 44,
     height: 44,
     borderRadius: radius.md,

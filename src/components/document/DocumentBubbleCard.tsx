@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -30,6 +31,11 @@ export interface DocumentBubbleCardProps {
   hasRevisions?: boolean;
   isDerived?: boolean;
   versionLabel?: string;
+  fullWidth?: boolean;
+  flatStyle?: boolean;
+  selectionState?: 'none' | 'unselected' | 'selected';
+  pinState?: 'red' | 'gray' | 'none';
+  onPressPin?: () => void;
   onPress?: () => void;
   onShare?: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
@@ -88,6 +94,11 @@ export const DocumentBubbleCard = memo(function DocumentBubbleCard({
   sizeBytes,
   charCount,
   status = 'ready',
+  fullWidth = false,
+  flatStyle = false,
+  selectionState = 'none',
+  pinState = 'none',
+  onPressPin,
   onPress,
   onLongPress,
   accessibilityHint,
@@ -113,8 +124,24 @@ export const DocumentBubbleCard = memo(function DocumentBubbleCard({
       hitSlop={4}
       onLongPress={onLongPress}
       onPress={onPress}
-      style={({ pressed }) => [styles.cardContainer, pressed && !isBusy && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.cardContainer,
+        fullWidth && styles.cardContainerFull,
+        flatStyle && styles.cardContainerFlat,
+        pressed && !isBusy && styles.cardPressed,
+      ]}
     >
+      {/* 仅在多选状态下展示左侧选择标记，未多选状态下绝对不允许有勾 */}
+      {selectionState !== 'none' ? (
+        <View style={styles.selectionCol}>
+          <Ionicons
+            color={selectionState === 'selected' ? '#5B9CF6' : '#C7C7CC'}
+            name={selectionState === 'selected' ? 'checkmark-circle' : 'ellipse-outline'}
+            size={20}
+          />
+        </View>
+      ) : null}
+
       {/* 左侧文字信息列 (stretch, 2行自适应, 上下对齐) */}
       <View style={styles.leftCol}>
         <Text
@@ -139,8 +166,28 @@ export const DocumentBubbleCard = memo(function DocumentBubbleCard({
         )}
       </View>
 
-      {/* 右侧微信原生折角图标 (42x52px) */}
-      <WeChatFileIcon styleConfig={fileStyle} />
+      {/* 右侧微信原生折角图标 (42x52px) 及内部右侧图钉按钮 */}
+      <View style={styles.rightCol}>
+        <WeChatFileIcon styleConfig={fileStyle} />
+        {pinState !== 'none' ? (
+          <Pressable
+            accessibilityLabel={pinState === 'red' ? '已注入上下文，点击取消' : '未注入上下文，点击注入'}
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onPressPin?.();
+            }}
+            style={({ pressed }) => [styles.pinButton, pressed && styles.pinPressed]}
+          >
+            <Ionicons
+              color={pinState === 'red' ? '#E53935' : '#8E8E93'}
+              name="pin"
+              size={18}
+            />
+          </Pressable>
+        ) : null}
+      </View>
     </Pressable>
   );
 });
@@ -168,6 +215,25 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0, 0, 0, 0.06)',
   },
+  cardContainerFull: {
+    width: '100%',
+  },
+  cardContainerFlat: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
+    shadowOpacity: 0,
+    elevation: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  selectionCol: {
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   cardPressed: {
     backgroundColor: '#F5F5F5',
     opacity: 0.92,
@@ -178,6 +244,21 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'space-between',
     alignSelf: 'stretch',
+  },
+  rightCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pinButton: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 28,
+    minHeight: 28,
+  },
+  pinPressed: {
+    opacity: 0.6,
   },
   filenameText: {
     fontSize: 15,

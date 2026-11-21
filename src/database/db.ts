@@ -85,6 +85,7 @@ import {
   MIGRATION_STATEMENTS_V73,
   MIGRATION_STATEMENTS_V74,
   MIGRATION_STATEMENTS_V75,
+  MIGRATION_STATEMENTS_V76,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 export { rebuildAiMemoryFtsIndex } from './aiMemoryFts';
@@ -97,8 +98,12 @@ const MEMORY_SCOPE_GOVERNANCE_SETTING_KEY = 'ai_memory_scope_governance_applied'
 const MEDIA_PERFORMANCE_INDEX_STATEMENTS = `
   CREATE INDEX IF NOT EXISTS idx_image_assets_ip_media_live_created
     ON image_assets(ipId, mediaType, deletedAt, createdAt DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_image_assets_ip_live_updated
+    ON image_assets(ipId, deletedAt, updatedAt DESC, id DESC);
   CREATE INDEX IF NOT EXISTS idx_image_assets_media_live_viewed
     ON image_assets(mediaType, deletedAt, lastViewedAt DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_image_groups_group_asset
+    ON image_groups(groupId, imageAssetId);
   CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_id
     ON ai_messages(threadId, createdAt DESC, id DESC);
   CREATE INDEX IF NOT EXISTS idx_ai_message_versions_thread
@@ -364,12 +369,18 @@ async function execSchemaMigrationStatement(db: SQLiteDatabase, sql: string, con
   }
 }
 
+async function getTableColumnSet(db: SQLiteDatabase, tableName: string): Promise<Set<string>> {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${tableName})`);
+  return new Set(columns.map((column) => column.name));
+}
+
 export async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise<void> {
   // Step A: 新装库保底建表（包含最新 5 种 Tier）
   if (!(await hasTable(db, 'ai_companion_memories'))) {
     await db.execAsync(MIGRATION_STATEMENTS_V68);
   }
   // Step B: 存量旧表增量列安全补全（确保 18 个字段齐全后再查 SELECT）
+  const existingMemoryCols = await getTableColumnSet(db, 'ai_companion_memories');
   const memoryCols = [
     { name: 'expires_at', type: 'INTEGER DEFAULT NULL' },
     { name: 'superseded_by', type: 'TEXT DEFAULT NULL' },
@@ -378,6 +389,9 @@ export async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise
     { name: 'source_mode', type: "TEXT DEFAULT 'im'" },
   ];
   for (const col of memoryCols) {
+    if (existingMemoryCols.has(col.name)) {
+      continue;
+    }
     await execSchemaMigrationStatement(
       db,
       `ALTER TABLE ai_companion_memories ADD COLUMN ${col.name} ${col.type};`,
@@ -409,6 +423,7 @@ export async function ensureAiCompanionMemorySchema(db: SQLiteDatabase): Promise
 }
 
 async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
+  const existingThreadCols = await getTableColumnSet(db, 'ai_threads');
   const columns = [
     { name: 'background_image_uri', type: 'TEXT' },
     { name: 'nudge_text', type: 'TEXT' },
@@ -431,17 +446,23 @@ async function ensureImThreadSettingsSchema(db: SQLiteDatabase): Promise<void> {
     { name: 'im_hidden_from_list', type: 'INTEGER DEFAULT 0' },
   ];
   for (const col of columns) {
+    if (existingThreadCols.has(col.name)) {
+      continue;
+    }
     await execSchemaMigrationStatement(
       db,
       `ALTER TABLE ai_threads ADD COLUMN ${col.name} ${col.type};`,
       `ensureImThreadSettingsSchema.addColumn(${col.name})`,
     );
   }
-  await execSchemaMigrationStatement(
-    db,
-    "ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';",
-    'ensureImThreadSettingsSchema.deliveryStatus',
-  );
+  const existingMessageCols = await getTableColumnSet(db, 'ai_messages');
+  if (!existingMessageCols.has('delivery_status')) {
+    await execSchemaMigrationStatement(
+      db,
+      "ALTER TABLE ai_messages ADD COLUMN delivery_status TEXT DEFAULT 'delivered';",
+      'ensureImThreadSettingsSchema.deliveryStatus',
+    );
+  }
   await execSchemaMigrationStatement(
     db,
     "CREATE INDEX IF NOT EXISTS idx_ai_threads_pending_ping ON ai_threads(pending_ping_at);",
@@ -535,6 +556,21 @@ async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
     MEMORY_SCOPE_GOVERNANCE_SETTING_KEY,
     new Date().toISOString()
   );
+}
+
+export async function ensureIpsSchema(db: SQLiteDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(ips)');
+  const hasSortOrder = columns.some((c) => c.name === 'sortOrder');
+  if (!hasSortOrder) {
+    try {
+      await db.execAsync(`
+        ALTER TABLE ips ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0;
+        CREATE INDEX IF NOT EXISTS idx_ips_sort_order ON ips(sortOrder);
+      `);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column')) throw e;
+    }
+  }
 }
 
 async function cleanupInterruptedAiGenerations(db: SQLiteDatabase, space: PixorySpace): Promise<void> {
@@ -870,6 +906,15 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       }
     }
 
+    if (currentVersion < 76) {
+      try {
+        await database.execAsync(MIGRATION_STATEMENTS_V76);
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) throw e;
+      }
+    }
+
+    await ensureIpsSchema(database);
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
     await ensureAiMemoryLineageSchema(database);
@@ -908,17 +953,47 @@ export async function initDatabase(space: PixorySpace = 'normal'): Promise<SQLit
   return initializationPromises[space];
 }
 
+const activeSpaceTasks: Record<PixorySpace, Set<Promise<unknown>>> = {
+  normal: new Set(),
+  personal: new Set(),
+};
+const closingSpacePromises: Partial<Record<PixorySpace, Promise<void>>> = {};
+
+function trackSpaceTask<T>(space: PixorySpace, promise: Promise<T>): Promise<T> {
+  const tracked = promise.finally(() => {
+    activeSpaceTasks[space].delete(tracked);
+  });
+  activeSpaceTasks[space].add(tracked);
+  return tracked;
+}
+
+async function drainActiveSpaceTasks(space: PixorySpace): Promise<void> {
+  while (activeSpaceTasks[space].size > 0) {
+    const pending = [...activeSpaceTasks[space]];
+    await Promise.allSettled(pending);
+  }
+}
+
+async function runTrackedSpaceTask<T>(space: PixorySpace, fn: (db: SQLiteDatabase) => Promise<T>): Promise<T> {
+  while (closingSpacePromises[space]) {
+    await closingSpacePromises[space];
+  }
+  return trackSpaceTask(space, getDatabase(space).then(fn));
+}
+
 export async function getDatabase(space: PixorySpace): Promise<SQLiteDatabase> {
+  while (closingSpacePromises[space]) {
+    await closingSpacePromises[space];
+  }
   return initDatabase(space);
 }
 
-export async function runWithDatabaseSpace<T>(
+export function runWithDatabaseSpace<T>(
   space: PixorySpace,
   task: (db: SQLiteDatabase) => Promise<T>,
   maxRetries = 5,
 ): Promise<T> {
-  const db = await getDatabase(space);
-  return runWithSqliteRetry(() => task(db), maxRetries);
+  return runTrackedSpaceTask(space, (db) => runWithSqliteRetry(() => task(db), maxRetries));
 }
 
 function isSqliteLockError(error: unknown): boolean {
@@ -978,11 +1053,25 @@ export async function checkpointDatabase(space: PixorySpace): Promise<void> {
 }
 
 export async function resetDatabaseSpaceCache(space: PixorySpace): Promise<void> {
-  const database = await databasePromises[space]?.catch(() => null);
-  if (database) {
-    await checkpointDatabase(space);
-    await database.closeAsync();
+  if (closingSpacePromises[space]) {
+    return closingSpacePromises[space];
   }
-  databasePromises[space] = undefined;
-  initializationPromises[space] = undefined;
+  const closing = (async () => {
+    await drainActiveSpaceTasks(space);
+    const database = await databasePromises[space]?.catch(() => null);
+    if (database) {
+      await checkpointDatabase(space);
+      await database.closeAsync();
+    }
+    databasePromises[space] = undefined;
+    initializationPromises[space] = undefined;
+  })();
+  closingSpacePromises[space] = closing;
+  try {
+    await closing;
+  } finally {
+    if (closingSpacePromises[space] === closing) {
+      closingSpacePromises[space] = undefined;
+    }
+  }
 }

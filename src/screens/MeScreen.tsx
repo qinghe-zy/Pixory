@@ -41,6 +41,7 @@ import {
 import { useScreenLoad } from "../hooks/useScreenLoad";
 import { useToast } from "../components/AppToast";
 import { copyProfileAvatarToAppStorage } from "../services/fileStorageService";
+import { formatPersonalLockCountdown } from "../services/personalSystemService";
 import { formatFileSize } from "../utils/formatters";
 import { UidService } from "../services/uidService";
 import { ProfileRenameDialog } from "../components/ProfileRenameDialog";
@@ -50,6 +51,11 @@ import {
   useProfileInfoPreferences,
   useProfilePageStylePreference,
 } from "../services/aiChatPreferences";
+import { getLastKnownStorageTotalBytes } from "../services/storageUsageService";
+import {
+  getLatestStorageTotalBytes,
+  subscribeLatestStorageTotalBytes,
+} from "../services/storageUsageSnapshotCache";
 import { checkAllAppUpdates, getAppVersion } from "../services/updateCheckService";
 
 interface MeScreenProps {
@@ -57,6 +63,7 @@ interface MeScreenProps {
   isActive?: boolean;
   space?: PixorySpace;
   personalSessionState: PersonalSessionState;
+  personalLockedUntil?: string | null;
   footer?: ReactNode;
   onOpenFavorites: () => void;
   onOpenRecentViewed: () => void;
@@ -221,6 +228,7 @@ export function MeScreen({
   isActive = true,
   space = "normal",
   personalSessionState,
+  personalLockedUntil,
   footer,
   onOpenFavorites,
   onOpenRecentViewed,
@@ -245,7 +253,54 @@ export function MeScreen({
     null,
   );
   const [isRenameDialogVisible, setIsRenameDialogVisible] = useState(false);
+  const [storageTotalBytes, setStorageTotalBytes] = useState<number | null>(
+    () => getLatestStorageTotalBytes(space) ?? null,
+  );
   const isPersonalMode = space === "personal";
+
+  useEffect(() => {
+    const inMemoryTotal = getLatestStorageTotalBytes(space);
+    setStorageTotalBytes(inMemoryTotal ?? null);
+
+    const unsubscribe = subscribeLatestStorageTotalBytes(space, (nextTotal) => {
+      setStorageTotalBytes(nextTotal);
+    });
+
+    let isMounted = true;
+    if (inMemoryTotal === undefined) {
+      void getLastKnownStorageTotalBytes(space).then((knownTotal) => {
+        if (isMounted) {
+          setStorageTotalBytes(knownTotal);
+        }
+      });
+    }
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [space]);
+
+  const [lockRemainingMs, setLockRemainingMs] = useState<number>(0);
+
+  useEffect(() => {
+    if (!personalLockedUntil) {
+      setLockRemainingMs(0);
+      return;
+    }
+    const targetMs = Date.parse(personalLockedUntil);
+    if (!Number.isFinite(targetMs)) {
+      setLockRemainingMs(0);
+      return;
+    }
+    const updateRemaining = () => {
+      const diff = Math.max(0, targetMs - Date.now());
+      setLockRemainingMs(diff);
+    };
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 1000);
+    return () => clearInterval(timer);
+  }, [personalLockedUntil]);
   const isPersonalSwitchBusy =
     personalSessionState === "unlocking" || personalSessionState === "locking";
   const lockTransition = useRef(
@@ -525,11 +580,17 @@ export function MeScreen({
 
             <MinimalistRow
               icon={isPersonalMode ? "lock-open-outline" : "lock-closed-outline"}
-              iconColor={isPersonalMode ? colors.primary.active : "#1A1C1C"}
+              iconColor={isPersonalMode ? colors.primary.active : lockRemainingMs > 0 ? colors.semantic.danger : colors.text.title}
               onPress={handlePersonalToggle}
               showBorder={false}
               title={isPersonalMode ? "隐私空间 (已解锁)" : "隐私空间"}
-              valueText={isPersonalMode ? "轻触返回普通空间" : "轻触解锁进入"}
+              valueText={
+                isPersonalMode
+                  ? "轻触返回普通空间"
+                  : lockRemainingMs > 0
+                    ? `锁定中 · ${formatPersonalLockCountdown(lockRemainingMs)}`
+                    : "轻触解锁进入"
+              }
             />
           </View>
 
@@ -570,7 +631,7 @@ export function MeScreen({
               onPress={() => handleEntryPress("storage-usage")}
               showBorder
               title="存储占用"
-              valueText={formatFileSize(imageBytes + videoBytes)}
+              valueText={storageTotalBytes !== null ? formatFileSize(storageTotalBytes) : "点击统计"}
             />
             <MinimalistRow
               icon="archive-outline"
@@ -680,6 +741,13 @@ export function MeScreen({
               </Animated.View>
             </Animated.View>
           </Pressable>
+          {lockRemainingMs > 0 && !isPersonalMode ? (
+            <View style={styles.lockCountdownBadge}>
+              <Text style={styles.lockCountdownBadgeText}>
+                {formatPersonalLockCountdown(lockRemainingMs)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.profileRow}>
             <MagneticLiquidContainer
               damping={14}
@@ -1275,6 +1343,24 @@ const styles = StyleSheet.create({
   },
   personalLockButtonBusy: {
     opacity: 0.7,
+  },
+  lockCountdownBadge: {
+    position: "absolute",
+    right: spacing[4] + 48,
+    top: spacing[4] + 9,
+    backgroundColor: '#FEF2F2',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#FCA5A5',
+    zIndex: 2,
+  },
+  lockCountdownBadgeText: {
+    color: colors.semantic.danger,
+    fontSize: typography.size.caption,
+    fontFamily: typography.family.base,
+    fontWeight: "700",
   },
   personalLockIconStage: {
     alignItems: "center",
@@ -1920,7 +2006,7 @@ function MinimalistRow({
         <Text style={styles.minimalistRowTitle}>{title}</Text>
         <View style={styles.minimalistRowRight}>
           {valueText ? (
-            <Text style={styles.minimalistRowValue}>{valueText}</Text>
+            <Text numberOfLines={1} style={styles.minimalistRowValue}>{valueText}</Text>
           ) : null}
           <Ionicons color="#C4C7C7" name="chevron-forward" size={17} />
         </View>

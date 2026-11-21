@@ -171,6 +171,9 @@ export function AiKnowledgeBaseScreen({
   return (
     <AiLightScaffold
       footer={selectionFooter}
+      footerNaked
+      fullBleed
+      hideStatusBarShield
       onBack={onBack}
       rightAction={
         <Pressable
@@ -361,8 +364,7 @@ export function AiKnowledgeBaseScreen({
 
 const styles = StyleSheet.create({
   contentStack: {
-    paddingVertical: spacing[2],
-    gap: rhythm.entryCardGap,
+    paddingVertical: 0,
   },
   headerAddBtn: {
     alignItems: 'center',
@@ -370,16 +372,15 @@ const styles = StyleSheet.create({
     padding: spacing[1],
   },
   cardList: {
-    gap: rhythm.listCardGap,
+    gap: 0,
   },
   kbCard: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
-    padding: spacing[3],
-    ...shadows.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   kbCardSelected: {
     borderColor: aiLightColors.primary,

@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 export interface ImPromptModalProps {
   visible: boolean;
@@ -44,12 +43,9 @@ export function ImPromptModal({
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible={visible}>
-      <Pressable onPress={onClose} style={styles.backdrop}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardAvoiding}
-        >
-          <Pressable onPress={(e) => e.stopPropagation()} style={styles.dialogCard}>
+      <KeyboardAvoidingView behavior="padding" style={styles.backdrop}>
+        <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFillObject} />
+        <Pressable onPress={(e) => e.stopPropagation()} style={styles.dialogCard}>
             <Text style={styles.title}>{title}</Text>
             {Boolean(subtitle) && <Text style={styles.subtitle}>{subtitle}</Text>}
 
@@ -91,15 +87,13 @@ export function ImPromptModal({
               </Pressable>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  keyboardAvoiding: { width: '100%', alignItems: 'center' },
   dialogCard: { width: '100%', maxWidth: 320, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.16, shadowRadius: 18, elevation: 12 },
   title: { fontSize: 17, fontWeight: '700', color: '#1A1C1C', textAlign: 'center', marginBottom: 4 },
   subtitle: { fontSize: 13, color: '#666666', textAlign: 'center', marginBottom: 14, lineHeight: 18 },

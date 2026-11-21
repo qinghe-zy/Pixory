@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { InteractionManager } from 'react-native';
 import type { PixorySpace } from '../../database';
 import type { ImThreadListItem } from '../types';
 import {
@@ -8,6 +9,7 @@ import {
   setImThreadFolded,
   setImThreadHidden,
   clearImThreadHistory,
+  markImThreadRead,
 } from '../repository/imThreadRepository';
 import { buildImThreadFeed, type ImFeedResult } from '../utils/buildImThreadFeed';
 
@@ -19,29 +21,58 @@ export interface UseImThreadFeedResult extends ImFeedResult {
   toggleFold: (thread: ImThreadListItem) => Promise<void>;
   hideFromList: (thread: ImThreadListItem) => Promise<void>;
   clearHistory: (thread: ImThreadListItem) => Promise<void>;
+  markRead: (thread: ImThreadListItem) => Promise<void>;
+  markBatchRead: (threads: ImThreadListItem[]) => Promise<void>;
 }
 
 export function useImThreadFeed(
   space: PixorySpace,
-  refreshTrigger?: number
+  refreshTrigger?: number,
+  enabled = true
 ): UseImThreadFeedResult {
   const [threads, setThreads] = useState<ImThreadListItem[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(enabled);
+  const spaceRef = useRef(space);
+
+  useEffect(() => {
+    if (spaceRef.current !== space) {
+      spaceRef.current = space;
+      setThreads([]);
+      setInitialLoading(enabled);
+    }
+  }, [enabled, space]);
 
   const fetchThreads = useCallback(async () => {
+    if (!enabled) {
+      return;
+    }
+    const requestSpace = space;
     try {
-      const items = await listImThreads(space, { onlyChatted: true });
-      setThreads(items);
+      const items = await listImThreads(requestSpace, { onlyChatted: true });
+      if (spaceRef.current === requestSpace) {
+        setThreads(items);
+      }
     } catch (err) {
       console.warn('[useImThreadFeed] listImThreads failed:', err);
     } finally {
-      setInitialLoading(false);
+      if (spaceRef.current === requestSpace) {
+        setInitialLoading(false);
+      }
     }
-  }, [space]);
+  }, [enabled, space]);
 
   useEffect(() => {
-    void fetchThreads();
-  }, [fetchThreads, refreshTrigger]);
+    if (!enabled) {
+      setInitialLoading(false);
+      return;
+    }
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void fetchThreads();
+    });
+    return () => {
+      interaction.cancel();
+    };
+  }, [enabled, fetchThreads, refreshTrigger]);
 
   const { displayItems, foldedList } = useMemo(() => {
     return buildImThreadFeed(threads);
@@ -140,6 +171,42 @@ export function useImThreadFeed(
     [fetchThreads, space]
   );
 
+  const markRead = useCallback(
+    async (thread: ImThreadListItem) => {
+      // 乐观更新未读计数为 0
+      setThreads((prev) =>
+        prev.map((t) => (t.id === thread.id ? { ...t, unreadCount: 0 } : t))
+      );
+      try {
+        const realId = await resolveRealThreadId(thread);
+        await markImThreadRead(space, realId);
+      } catch (err) {
+        console.warn('[useImThreadFeed] markRead failed:', err);
+        await fetchThreads();
+      }
+    },
+    [fetchThreads, resolveRealThreadId, space]
+  );
+
+  const markBatchRead = useCallback(
+    async (targetThreads: ImThreadListItem[]) => {
+      const targetIds = new Set(targetThreads.map((t) => t.id));
+      setThreads((prev) =>
+        prev.map((t) => (targetIds.has(t.id) ? { ...t, unreadCount: 0 } : t))
+      );
+      try {
+        for (const thread of targetThreads) {
+          const realId = await resolveRealThreadId(thread);
+          await markImThreadRead(space, realId);
+        }
+      } catch (err) {
+        console.warn('[useImThreadFeed] markBatchRead failed:', err);
+        await fetchThreads();
+      }
+    },
+    [fetchThreads, resolveRealThreadId, space]
+  );
+
   return {
     threads,
     displayItems,
@@ -150,5 +217,7 @@ export function useImThreadFeed(
     toggleFold,
     hideFromList,
     clearHistory,
+    markRead,
+    markBatchRead,
   };
 }

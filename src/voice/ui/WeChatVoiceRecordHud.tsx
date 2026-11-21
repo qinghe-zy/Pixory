@@ -2,9 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 
 export type VoiceRecordHudState =
@@ -139,7 +138,8 @@ export const WeChatVoiceRecordHud: React.FC<WeChatVoiceRecordHudProps> = ({
             onPress={onCancelTranscribedText}
           />
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
+            pointerEvents="box-none"
             style={styles.previewCardContainer}
           >
             <View style={styles.previewCard}>

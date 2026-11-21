@@ -3,8 +3,8 @@ import { Alert, Linking } from 'react-native';
 import * as Updates from 'expo-updates';
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const FALLBACK_CURRENT_VERSION = '2.9.4';
-const FALLBACK_CURRENT_VERSION_CODE = 29007;
+const FALLBACK_CURRENT_VERSION = '2.9.5';
+const FALLBACK_CURRENT_VERSION_CODE = 29008;
 
 export interface AppUpdateInfo {
   version: string;

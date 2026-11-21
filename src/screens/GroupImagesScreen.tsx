@@ -14,13 +14,13 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { GallerySkeleton } from '../components/GallerySkeleton';
-import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon, useCompactHeaderAnimation } from '../components/GalleryHeaders';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, componentTokens, layout, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useMediaCursorCollection } from '../hooks/useMediaCursorCollection';
@@ -174,15 +174,15 @@ export function GroupImagesScreen({
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const scrollY = useSharedValue(0);
   const scrollOffsetRef = useRef(0);
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [40, 60], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [40, 60], [5, 0], Extrapolation.CLAMP);
-    return { opacity, transform: [{ translateY }] };
+  const { compactHeaderStyle, compactAnimatedProps, heroStyle } = useCompactHeaderAnimation(scrollY, {
+    threshold: [40, 60],
+    translateYRange: [5, 0],
   });
-  const heroStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [40, 60], [1, 0], Extrapolation.CLAMP);
-    return { opacity };
-  });
+
+  const selectionListContentContainerStyle = useMemo(
+    () => (multiSelect.isSelectionMode ? { paddingBottom: insets.bottom + metrics.bottomActionHeight + spacing[5] } : undefined),
+    [multiSelect.isSelectionMode, insets.bottom]
+  );
   const handleScrollJS = (y: number) => {
     const mockEvent = { nativeEvent: { contentOffset: { y } } } as any;
     if (swipeSelection.onScroll) {
@@ -345,7 +345,7 @@ export function GroupImagesScreen({
       footerNaked={true}
       showHeader={false}
       fullScreen={true}
-      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0, flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0, flex: 1 }}
     >
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: statusBarHeight, backgroundColor: '#FAFAFA', zIndex: 20 }} />
       <GalleryCompactHeader
@@ -354,6 +354,7 @@ export function GroupImagesScreen({
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
+        animatedProps={compactAnimatedProps}
         rightActions={
           <>
             {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
@@ -479,6 +480,7 @@ export function GroupImagesScreen({
               }
             />
           }
+          contentContainerStyle={selectionListContentContainerStyle}
           images={images}
           isLoadingMore={media.isLoadingMore}
           listRef={scrollViewRef}

@@ -39,6 +39,9 @@ interface AiLightScaffoldProps {
   title: string;
   titleSlot?: ReactNode;
   customTopPadding?: number;
+  hideStatusBarShield?: boolean;
+  fullBleed?: boolean;
+  footerNaked?: boolean;
 }
 
 export function AiLightScaffold({
@@ -61,6 +64,9 @@ export function AiLightScaffold({
   title,
   titleSlot,
   customTopPadding,
+  hideStatusBarShield = false,
+  fullBleed = false,
+  footerNaked = false,
 }: AiLightScaffoldProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
@@ -69,29 +75,39 @@ export function AiLightScaffold({
 
   return (
     <View style={styles.scaffoldContainer}>
-      {/* 顶部状态栏背景同色遮罩：固定在最顶层，防止页面滚动上滑时内容穿透并与状态栏时钟/电量文字重叠 */}
-      <View
-        pointerEvents="none"
-        style={[
-          styles.statusBarShield,
-          {
-            height: statusBarHeight,
-            backgroundColor: resolvedBgColor,
-          },
-        ]}
-      />
+      {/* 顶部状态栏背景同色遮罩：可根据页面需求隐藏，避免覆盖标题或产生视觉遮挡 */}
+      {!hideStatusBarShield ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.statusBarShield,
+            {
+              height: statusBarHeight,
+              backgroundColor: resolvedBgColor,
+            },
+          ]}
+        />
+      ) : null}
       <AppScreen
         backgroundColor={resolvedBgColor}
         backgroundVariant={backgroundVariant}
-        contentStyle={contentContainerStyle}
+        contentStyle={[fullBleed && { paddingHorizontal: 0 }, contentContainerStyle]}
         footer={footer}
+        footerNaked={footerNaked}
         footerStyle={styles.footer}
         onScroll={onScroll}
         scrollViewRef={scrollViewRef}
         scrollable={scrollable}
       >
         {showHeader ? (
-          <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: computedTopPadding }]}>
+          <View
+            style={[
+              styles.header,
+              !headerDividerVisible && styles.headerNoDivider,
+              fullBleed && { paddingHorizontal: layout.pagePaddingHorizontal },
+              { paddingTop: computedTopPadding },
+            ]}
+          >
             <View style={styles.side}>
               {onBack ? <BackButton onPress={onBack} color={aiLightColors.ink} /> : null}
             </View>

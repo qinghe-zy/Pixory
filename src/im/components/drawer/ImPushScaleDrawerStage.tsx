@@ -22,7 +22,9 @@ export interface ImPushScaleDrawerStageProps {
   rightDrawer?: ReactNode;
   leftDrawerVisible: boolean;
   rightDrawerVisible: boolean;
-  canOpenRightDrawer?: boolean;
+  canOpenLeftDrawer?: boolean | (() => boolean);
+  canOpenRightDrawer?: boolean | (() => boolean);
+  disableSwipeOpen?: boolean | (() => boolean);
   onOpenLeftDrawer?: () => void;
   onOpenRightDrawer?: () => void;
   onCloseLeftDrawer: () => void;
@@ -38,7 +40,9 @@ export function ImPushScaleDrawerStage({
   rightDrawer,
   leftDrawerVisible,
   rightDrawerVisible,
+  canOpenLeftDrawer = true,
   canOpenRightDrawer = true,
+  disableSwipeOpen = false,
   onOpenLeftDrawer,
   onOpenRightDrawer,
   onCloseLeftDrawer,
@@ -61,8 +65,28 @@ export function ImPushScaleDrawerStage({
   const leftPushX = LEFT_DRAWER_WIDTH - scaleInsetCompensation;
   const rightPushX = RIGHT_DRAWER_WIDTH - scaleInsetCompensation;
 
-  const stateRef = useRef({ leftDrawerVisible, rightDrawerVisible, canOpenRightDrawer, onOpenLeftDrawer, onOpenRightDrawer, onCloseLeftDrawer, onCloseRightDrawer });
-  stateRef.current = { leftDrawerVisible, rightDrawerVisible, canOpenRightDrawer, onOpenLeftDrawer, onOpenRightDrawer, onCloseLeftDrawer, onCloseRightDrawer };
+  const stateRef = useRef({
+    leftDrawerVisible,
+    rightDrawerVisible,
+    canOpenLeftDrawer,
+    canOpenRightDrawer,
+    disableSwipeOpen,
+    onOpenLeftDrawer,
+    onOpenRightDrawer,
+    onCloseLeftDrawer,
+    onCloseRightDrawer,
+  });
+  stateRef.current = {
+    leftDrawerVisible,
+    rightDrawerVisible,
+    canOpenLeftDrawer,
+    canOpenRightDrawer,
+    disableSwipeOpen,
+    onOpenLeftDrawer,
+    onOpenRightDrawer,
+    onCloseLeftDrawer,
+    onCloseRightDrawer,
+  };
 
   useEffect(() => {
     if (leftDrawerVisible) {
@@ -78,15 +102,41 @@ export function ImPushScaleDrawerStage({
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gs) => {
         if (!(Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.15)) return false;
-        const { leftDrawerVisible: leftOpen, rightDrawerVisible: rightOpen, canOpenRightDrawer: canRight } = stateRef.current;
-        if (!leftOpen && !rightOpen) return gs.dx > 8 || (gs.dx < -8 && canRight);
+        const {
+          leftDrawerVisible: leftOpen,
+          rightDrawerVisible: rightOpen,
+          canOpenLeftDrawer: canLeft,
+          canOpenRightDrawer: canRight,
+          disableSwipeOpen: swipeDisabled,
+        } = stateRef.current;
+        if (!leftOpen && !rightOpen) {
+          const isSwipeDisabled = typeof swipeDisabled === 'function' ? swipeDisabled() : Boolean(swipeDisabled);
+          if (isSwipeDisabled) return false;
+          const allowLeft = typeof canLeft === 'function' ? canLeft() : canLeft !== false;
+          const allowRight = typeof canRight === 'function' ? canRight() : canRight !== false;
+          return (gs.dx > 8 && allowLeft) || (gs.dx < -8 && allowRight);
+        }
         return (leftOpen && gs.dx < -8) || (rightOpen && gs.dx > 8);
       },
       onPanResponderRelease: (_evt, gs) => {
-        const { leftDrawerVisible: leftOpen, rightDrawerVisible: rightOpen, onOpenLeftDrawer: openLeft, onOpenRightDrawer: openRight, onCloseLeftDrawer: closeLeft, onCloseRightDrawer: closeRight } = stateRef.current;
+        const {
+          leftDrawerVisible: leftOpen,
+          rightDrawerVisible: rightOpen,
+          canOpenLeftDrawer: canLeft,
+          canOpenRightDrawer: canRight,
+          disableSwipeOpen: swipeDisabled,
+          onOpenLeftDrawer: openLeft,
+          onOpenRightDrawer: openRight,
+          onCloseLeftDrawer: closeLeft,
+          onCloseRightDrawer: closeRight,
+        } = stateRef.current;
         if (!leftOpen && !rightOpen) {
-          if (gs.dx > 40 || (gs.dx > 15 && gs.vx > 0.2)) openLeft?.();
-          else if (gs.dx < -40 || (gs.dx < -15 && gs.vx < -0.2)) openRight?.();
+          const isSwipeDisabled = typeof swipeDisabled === 'function' ? swipeDisabled() : Boolean(swipeDisabled);
+          if (isSwipeDisabled) return;
+          const allowLeft = typeof canLeft === 'function' ? canLeft() : canLeft !== false;
+          const allowRight = typeof canRight === 'function' ? canRight() : canRight !== false;
+          if ((gs.dx > 40 || (gs.dx > 15 && gs.vx > 0.2)) && allowLeft) openLeft?.();
+          else if ((gs.dx < -40 || (gs.dx < -15 && gs.vx < -0.2)) && allowRight) openRight?.();
         } else if (leftOpen && (gs.dx < -40 || gs.vx < -0.2)) closeLeft();
         else if (rightOpen && (gs.dx > 40 || gs.vx > 0.2)) closeRight();
       },

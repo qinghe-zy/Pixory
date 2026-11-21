@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type TextInputSelectionChangeEventData,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import type { PixorySpace } from '../../database';
@@ -51,6 +60,9 @@ interface AiChatComposerProps {
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
   onFocus?: () => void;
+  onBlur?: () => void;
+  /** 当输入框处于手势触摸或文本选中时触发（用于外层按需抑制侧边栏误开） */
+  onInputGestureActiveChange?: (active: boolean) => void;
   onComposerHeightChange?: () => void;
   onComposerShellHeightChange?: (height: number) => void;
   onModelIconPress?: () => void;
@@ -84,6 +96,8 @@ export function AiChatComposer({
   onSelectIpImages,
   onChangeText,
   onFocus,
+  onBlur,
+  onInputGestureActiveChange,
   onComposerHeightChange,
   onComposerShellHeightChange,
   onRemoveAttachment,
@@ -111,6 +125,55 @@ export function AiChatComposer({
   const suppressVoiceTapRef = useRef(false);
   const voiceActive = voiceState === 'listening' || voiceState === 'recognizing';
   const [fullscreenEditVisible, setFullscreenEditVisible] = useState(false);
+
+  const isSelectingRef = useRef(false);
+  const isInteractingRef = useRef(false);
+
+  const notifyGestureActive = useCallback(() => {
+    const active = isSelectingRef.current || isInteractingRef.current;
+    onInputGestureActiveChange?.(active);
+  }, [onInputGestureActiveChange]);
+
+  const handleTouchStart = useCallback(() => {
+    isInteractingRef.current = true;
+    notifyGestureActive();
+  }, [notifyGestureActive]);
+
+  const handleTouchEnd = useCallback(() => {
+    isInteractingRef.current = false;
+    notifyGestureActive();
+  }, [notifyGestureActive]);
+
+  const handleSelectionChange = useCallback(
+    (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+      const { start, end } = e.nativeEvent.selection;
+      const selecting = start !== end;
+      if (isSelectingRef.current !== selecting) {
+        isSelectingRef.current = selecting;
+        notifyGestureActive();
+      }
+    },
+    [notifyGestureActive],
+  );
+
+  const handleFocus = useCallback(() => {
+    onFocus?.();
+  }, [onFocus]);
+
+  const handleBlur = useCallback(() => {
+    isSelectingRef.current = false;
+    isInteractingRef.current = false;
+    notifyGestureActive();
+    onBlur?.();
+  }, [notifyGestureActive, onBlur]);
+
+  useEffect(() => {
+    return () => {
+      if (isSelectingRef.current || isInteractingRef.current) {
+        onInputGestureActiveChange?.(false);
+      }
+    };
+  }, [onInputGestureActiveChange]);
 
   const updateInputHeight = useCallback((measuredHeight: number) => {
     if (!Number.isFinite(measuredHeight)) {
@@ -156,6 +219,11 @@ export function AiChatComposer({
       return;
     }
 
+    if (isSelectingRef.current) {
+      isSelectingRef.current = false;
+      notifyGestureActive();
+    }
+
     const shouldClearNativeInput = clearSignal !== undefined ? clearRequested : previousLength > 0;
     if (shouldClearNativeInput) {
       try {
@@ -196,7 +264,12 @@ export function AiChatComposer({
         />
 
         {/* --- Text input area --- */}
-        <View style={[styles.inputArea, { height: inputHeight }]}>
+        <View
+          onTouchCancel={handleTouchEnd}
+          onTouchEnd={handleTouchEnd}
+          onTouchStart={handleTouchStart}
+          style={[styles.inputArea, { height: inputHeight }]}
+        >
           {/* Android can skip content-size events for controlled text updates, so mirror the value for layout. */}
           <Text
             accessible={false}
@@ -217,8 +290,10 @@ export function AiChatComposer({
             ref={inputRef}
             multiline
             numberOfLines={COMPOSER_INPUT_DEFAULT_LINES}
+            onBlur={handleBlur}
             onChangeText={onChangeText}
-            onFocus={onFocus}
+            onFocus={handleFocus}
+            onSelectionChange={handleSelectionChange}
             placeholder={placeholder}
             placeholderTextColor={aiLightColors.mutedSoft}
             selectionColor={aiLightColors.primary}

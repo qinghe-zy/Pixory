@@ -9,7 +9,9 @@ import { globalScrollState } from '../utils/scrollState';
 import { SecureImage } from './SecureImage';
 
 interface ThumbnailTileProps {
-  image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite' | 'mediaType' | 'durationMs'>;
+  image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite' | 'mediaType' | 'durationMs'> & {
+    coverThumbnailFileUri?: string | null;
+  };
   space?: PixorySpace;
   onPress?: (imageId: number) => void;
   onLongPress?: (imageId: number) => void;
@@ -36,6 +38,7 @@ export function ThumbnailTile({
   hideFavoriteBadge = false,
 }: ThumbnailTileProps) {
   const isVideo = image.mediaType === 'video';
+  const previewUri = image.coverThumbnailFileUri ?? image.thumbnailFileUri;
   const accessibilityLabel = isVideo
     ? selected
       ? `打开视频：${image.originalFilename}，已选中`
@@ -46,8 +49,8 @@ export function ThumbnailTile({
   const entering = index !== undefined ? FadeIn.delay(Math.min(index * 20, 200)).duration(500) : FadeIn.duration(400);
   const content = (
     <Animated.View entering={entering} style={[styles.tile, styles.tileFloating, selected ? styles.selectedTile : null, aspectRatio !== 'auto' ? { aspectRatio } : styles.autoFill]}>
-      {image.thumbnailFileUri ? (
-        <SecureImage contentFit="cover" space={space} style={styles.image} uri={image.thumbnailFileUri} />
+      {previewUri ? (
+        <SecureImage contentFit="cover" space={space} style={styles.image} uri={previewUri} />
       ) : (
         <View style={styles.emptyPreview}>
           <Ionicons color={colors.text.secondary} name={isVideo ? 'videocam-outline' : 'image-outline'} size={22} />

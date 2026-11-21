@@ -129,7 +129,13 @@ interface AiMessageBubbleProps {
   onAttachmentPress?: (attachment: AiMessageAttachmentRecord) => void;
   pinnedDocumentIds?: Set<string>;
   pinningDocumentId?: string | null;
+  inKbDocumentIds?: Set<string>;
+  injectedDocumentIds?: Set<string>;
+  documentCharCounts?: Record<string, number>;
+  onToggleKnowledgeBase?: (documentId: string, title: string) => void;
+  onToggleContextInject?: (documentId: string, title: string) => void;
   onPinDocument?: (documentId: string, title: string) => void;
+  onUnpinDocument?: (documentId: string, title: string) => void;
   onOpenDocumentActionSheet?: (documentId: string, title: string) => void;
   onOpenDocument?: (target: { uri?: string; title?: string; content?: string | Uint8Array; mode?: 'clean' | 'diff' }) => void;
   isPlayingVoice?: boolean;
@@ -426,7 +432,13 @@ function AiMessageBubbleComponent({
   onAttachmentPress,
   pinnedDocumentIds,
   pinningDocumentId,
+  inKbDocumentIds,
+  injectedDocumentIds,
+  documentCharCounts,
+  onToggleKnowledgeBase,
+  onToggleContextInject,
   onPinDocument,
+  onUnpinDocument,
   onOpenDocumentActionSheet,
   onOpenDocument,
   isPlayingVoice,
@@ -705,38 +717,93 @@ function AiMessageBubbleComponent({
                         });
                       }}
                     />
-                    {attachment.documentId && onPinDocument ? (
-                      <View style={{ flexDirection: 'row', justifyContent: isUser ? 'flex-end' : 'flex-start', marginTop: 2 }}>
-                        <Pressable
-                          accessibilityLabel={isPinned ? '管理常驻设定' : '设为常驻设定'}
-                          accessibilityRole="button"
-                          accessibilityState={{ busy: isPinning, disabled: isPinning, selected: isPinned }}
-                          disabled={isPinning}
-                          hitSlop={8}
-                          onPress={() => {
-                            if (isPinned) {
-                              onOpenDocumentActionSheet?.(attachment.documentId!, attachment.name);
-                            } else {
-                              onPinDocument(attachment.documentId!, attachment.name);
-                            }
-                          }}
-                          style={({ pressed }) => [
-                            styles.pinPill,
-                            isPinned && styles.pinPillActive,
-                            isPinning && styles.disabledAction,
-                            pressed && !isPinning && styles.pressed,
+                    {attachment.documentId && (onToggleKnowledgeBase || onToggleContextInject || onPinDocument || onUnpinDocument) ? (() => {
+                      const docId = attachment.documentId!;
+                      const isOperating = pinningDocumentId === docId;
+                      const isInKb = inKbDocumentIds ? inKbDocumentIds.has(docId) : (pinnedDocumentIds?.has(docId) ?? false);
+                      const isInjected = injectedDocumentIds ? injectedDocumentIds.has(docId) : false;
+                      const charCount = documentCharCounts?.[docId];
+                      const isShortDoc = charCount !== undefined
+                        ? (charCount > 0 && charCount < 2500)
+                        : (isInjected || (attachment.fileSize ? attachment.fileSize < 15000 : true));
+
+                      return (
+                        <View
+                          style={[
+                            styles.pinActionsRow,
+                            isUser ? styles.pinActionsRowUser : styles.pinActionsRowAssistant,
                           ]}
                         >
-                          <Text style={[styles.pinPillText, isPinned && styles.pinPillTextActive]}>
-                            {isPinning
-                              ? '处理中...'
-                              : isPinned
-                                ? '📌 已常驻设定 · 管理'
-                                : '📌 设为常驻设定'}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    ) : null}
+                          {/* 按钮 1：原文注入 (仅在短文档 < 2500 字符时展示) */}
+                          {isShortDoc ? (
+                            <Pressable
+                              accessibilityLabel={isInjected ? '已原文注入，点击取消' : '点击原文注入'}
+                              accessibilityRole="button"
+                              accessibilityState={{ busy: isOperating, disabled: isOperating, selected: isInjected }}
+                              disabled={isOperating}
+                              hitSlop={8}
+                              onPress={() => {
+                                if (isOperating) return;
+                                if (onToggleContextInject) {
+                                  onToggleContextInject(docId, attachment.name);
+                                } else if (isInjected) {
+                                  onUnpinDocument?.(docId, attachment.name);
+                                } else {
+                                  onPinDocument?.(docId, attachment.name);
+                                }
+                              }}
+                              style={({ pressed }) => [
+                                styles.pinPill,
+                                isInjected && styles.pinPillActive,
+                                isOperating && styles.disabledAction,
+                                pressed && !isOperating && styles.pressed,
+                              ]}
+                            >
+                              <Text style={[styles.pinPillText, isInjected && styles.pinPillTextActive]}>
+                                {isOperating && isInjected
+                                  ? '处理中...'
+                                  : isInjected
+                                    ? '📌 已原文注入'
+                                    : '📌 原文注入'}
+                              </Text>
+                            </Pressable>
+                          ) : null}
+
+                          {/* 按钮 2：纳入资料库 (短文档和长文档均展示) */}
+                          <Pressable
+                            accessibilityLabel={isInKb ? '已纳入资料库，点击移出' : '点击纳入资料库'}
+                            accessibilityRole="button"
+                            accessibilityState={{ busy: isOperating, disabled: isOperating, selected: isInKb }}
+                            disabled={isOperating}
+                            hitSlop={8}
+                            onPress={() => {
+                              if (isOperating) return;
+                              if (onToggleKnowledgeBase) {
+                                onToggleKnowledgeBase(docId, attachment.name);
+                              } else if (isInKb) {
+                                onUnpinDocument?.(docId, attachment.name);
+                              } else {
+                                onPinDocument?.(docId, attachment.name);
+                              }
+                            }}
+                            style={({ pressed }) => [
+                              styles.pinPill,
+                              isInKb && styles.pinPillActive,
+                              isOperating && styles.disabledAction,
+                              pressed && !isOperating && styles.pressed,
+                            ]}
+                          >
+                            <Text style={[styles.pinPillText, isInKb && styles.pinPillTextActive]}>
+                              {isOperating && isInKb
+                                ? '处理中...'
+                                : isInKb
+                                  ? '📌 已纳入资料库'
+                                  : '📌 纳入资料库'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })() : null}
                   </View>
                 );
               });
@@ -1003,6 +1070,23 @@ function AiMessageBubbleComponent({
 }
 
 function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMessageBubbleProps): boolean {
+  // 0. 文档常驻状态与锁定变动优先响应（必须先于历史消息免疫盾，确保气泡能即时切换选中态与取消锁定）
+  const hasDocAttachments = Boolean(
+    previous.message.attachments?.some((a) => a.documentId) ||
+    next.message.attachments?.some((a) => a.documentId)
+  );
+  if (hasDocAttachments) {
+    if (previous.pinningDocumentId !== next.pinningDocumentId) return false;
+    if (previous.inKbDocumentIds !== next.inKbDocumentIds) return false;
+    if (previous.injectedDocumentIds !== next.injectedDocumentIds) return false;
+    if (previous.documentCharCounts !== next.documentCharCounts) return false;
+    if (previous.pinnedDocumentIds !== next.pinnedDocumentIds) return false;
+    if (previous.onToggleKnowledgeBase !== next.onToggleKnowledgeBase) return false;
+    if (previous.onToggleContextInject !== next.onToggleContextInject) return false;
+    if (previous.onPinDocument !== next.onPinDocument) return false;
+    if (previous.onUnpinDocument !== next.onUnpinDocument) return false;
+  }
+
   // 1. 历史消息绝对免疫盾：流式打字期间历史气泡零唤醒、零重渲染
   const isHistorical = !previous.isLatestMessage && !next.isLatestMessage;
   if (isHistorical) {
@@ -1048,12 +1132,6 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     next.message.status === 'failed' ||
     previous.message.versionTotal > 1 ||
     next.message.versionTotal > 1;
-
-  const hasDocAttachments = Boolean(previous.message.attachments?.some((a) => a.documentId));
-  if (hasDocAttachments) {
-    if (previous.pinningDocumentId !== next.pinningDocumentId) return false;
-    if (previous.pinnedDocumentIds !== next.pinnedDocumentIds) return false;
-  }
 
   return (
     previous.message === next.message &&
@@ -1402,21 +1480,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     width: '100%',
   },
+  pinActionsRow: {
+    flexDirection: 'row',
+    gap: spacing[2],
+    marginTop: spacing[1],
+    flexWrap: 'wrap',
+  },
+  pinActionsRowUser: {
+    justifyContent: 'flex-end',
+  },
+  pinActionsRowAssistant: {
+    justifyContent: 'flex-start',
+  },
   pinPill: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 3,
     marginTop: spacing[1],
-    paddingHorizontal: spacing[1.5],
-    paddingVertical: 2,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 3,
   },
   pinPillActive: {
     borderColor: aiLightColors.primary,
-    backgroundColor: aiLightColors.surface,
+    backgroundColor: aiLightColors.primary,
+    borderWidth: 1,
   },
   pinPillText: {
     ...typography.textStyles.micro,
@@ -1424,7 +1515,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   pinPillTextActive: {
-    color: aiLightColors.primary,
+    color: aiLightColors.onPrimary,
     fontWeight: '600',
   },
 });

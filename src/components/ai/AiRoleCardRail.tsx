@@ -41,6 +41,15 @@ export function setCachedRoleCards(space: PixorySpace, cards: AiRoleCardRecord[]
   roleCardCache[space] = cards;
 }
 
+export function clearCachedRoleCards(space?: PixorySpace): void {
+  if (!space) {
+    delete roleCardCache.normal;
+    delete roleCardCache.personal;
+    return;
+  }
+  delete roleCardCache[space];
+}
+
 export function buildRoleLibraryShortcuts(roleCards: AiRoleCardRecord[]): RoleShortcutItem[] {
   return roleCards
     .filter((roleCard): roleCard is AiRoleCardRecord & { avatarUri: string } => Boolean(roleCard.avatarUri))

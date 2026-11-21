@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
-  ScrollView,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useToast } from '../components/AppToast';
 
 import { GROUP_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from '../constants/limits';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
@@ -103,6 +105,7 @@ export function CreateGroupScreen({
   onCreated,
 }: CreateGroupScreenProps) {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const [name, setName] = useState('');
   const [type, setType] = useState<GroupTypeValue | null>(null);
   const [customType, setCustomType] = useState('');
@@ -123,7 +126,15 @@ export function CreateGroupScreen({
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const trimmedName = useMemo(() => name.trim(), [name]);
 
+  function handleSelectType(nextType: GroupTypeValue) {
+    setType(nextType);
+    if (submitError) {
+      clearSubmitError();
+    }
+  }
+
   function handleCreate() {
+    Keyboard.dismiss();
     const selectedType = type === 'custom' && customType.trim() ? customType.trim() : type;
 
     void runSubmit(
@@ -136,6 +147,7 @@ export function CreateGroupScreen({
             description,
           })
         );
+        showToast({ message: '已创建分组', tone: 'success' });
         onCreated();
       },
       {
@@ -188,15 +200,17 @@ export function CreateGroupScreen({
         </View>
       </BlurView>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-        automaticallyAdjustKeyboardInsets={true}
+      <KeyboardAwareScrollView
+        bottomOffset={28}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + 56, paddingBottom: insets.bottom + atelierSpacing.margin },
         ]}
+        extraKeyboardSpace={16}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        style={styles.scrollView}
       >
         <View style={styles.formContainer}>
           {/* Field 1: 所属 IP */}
@@ -222,6 +236,7 @@ export function CreateGroupScreen({
                 }}
                 placeholder="例如：2026 夏季、夜景场景、海报KV"
                 placeholderTextColor={atelierColors.outline}
+                returnKeyType="done"
                 style={styles.textInput}
                 value={name}
               />
@@ -251,7 +266,7 @@ export function CreateGroupScreen({
                     >
                       <Pressable
                         disabled={isSubmitting}
-                        onPress={() => setType(option.value)}
+                        onPress={() => handleSelectType(option.value)}
                         style={({ pressed }) => [
                           styles.radioOptionInner,
                           pressed && !isSubmitting && styles.activePress,
@@ -288,8 +303,9 @@ export function CreateGroupScreen({
                                 setCustomType(value);
                                 if (submitError) clearSubmitError();
                               }}
-                              placeholder=""
+                              placeholder="例如：合集、衍生、活动图（最多12字）"
                               placeholderTextColor={atelierColors.outline}
+                              returnKeyType="done"
                               style={styles.customTextInput}
                               value={customType}
                             />
@@ -304,7 +320,7 @@ export function CreateGroupScreen({
                   <Pressable
                     key={option.value}
                     disabled={isSubmitting}
-                    onPress={() => setType(option.value)}
+                    onPress={() => handleSelectType(option.value)}
                     style={({ pressed }) => [
                       styles.radioOption,
                       isSelected ? styles.shadowMd : styles.shadowSm,
@@ -372,8 +388,7 @@ export function CreateGroupScreen({
             </Pressable>
           </View>
         </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
@@ -424,6 +439,9 @@ const styles = StyleSheet.create({
   headerRightSpacer: {
     minWidth: 44,
     minHeight: 44,
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
     // We handle the safe area inset at the callsite
@@ -588,13 +606,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(196, 199, 199, 0.6)', // border-outline-variant/60
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   customTextInput: {
     ...atelierTypography.bodyMd,
     color: atelierColors.onSurface,
     padding: 0, // Reset default padding
-    minHeight: 20,
+    minHeight: 24,
   },
   textareaContent: {
     padding: atelierSpacing.margin,

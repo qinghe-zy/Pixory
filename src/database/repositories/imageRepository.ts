@@ -1301,7 +1301,6 @@ export const imageRepository = {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
-      "image_assets.mediaType = 'image'",
       'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
     ];
     const values: number[] = [];
@@ -1354,7 +1353,7 @@ export const imageRepository = {
           THEN 1 ELSE 0 END
         ) AS recentImportUnorganizedCount
        FROM image_assets
-       WHERE image_assets.ipId = ? AND image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image'`,
+       WHERE image_assets.ipId = ? AND image_assets.deletedAt IS NULL`,
       ipId
     );
     const totalCount = row?.totalCount ?? 0;
@@ -1374,7 +1373,6 @@ export const imageRepository = {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
-      "image_assets.mediaType = 'image'",
       'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
     ];
     const values: number[] = [];
@@ -2162,21 +2160,21 @@ export const imageRepository = {
 
   async countFavorites(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
-      "SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND mediaType = 'image' AND isFavorite = 1"
+      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND isFavorite = 1'
     );
     return row?.count ?? 0;
   },
 
   async countDeleted(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
-      "SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NOT NULL AND mediaType = 'image'"
+      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NOT NULL'
     );
     return row?.count ?? 0;
   },
 
   async countRecentViewed(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
-      "SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND mediaType = 'image' AND lastViewedAt IS NOT NULL"
+      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND lastViewedAt IS NOT NULL'
     );
     return row?.count ?? 0;
   },

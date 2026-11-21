@@ -18,7 +18,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { GallerySkeleton } from '../components/GallerySkeleton';
-import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon } from '../components/GalleryHeaders';
+import { GalleryNormalHeader, GalleryCompactHeader, galleryHeaderStyles, FilterIcon, GridIcon, JustifiedIcon, useCompactHeaderAnimation } from '../components/GalleryHeaders';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { VirtualizedAssetCollection } from '../components/VirtualizedAssetCollection';
 import { commonButtonCopy } from '../constants/copy';
@@ -157,14 +157,9 @@ export function BatchManageImagesScreen({
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const scrollY = useSharedValue(0);
   const scrollOffsetRef = useRef(0);
-  const compactHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [10, 30], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [10, 30], [5, 0], Extrapolation.CLAMP);
-    return { opacity, transform: [{ translateY }] };
-  });
-  const heroStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP);
-    return { opacity };
+  const { compactHeaderStyle, compactAnimatedProps, heroStyle } = useCompactHeaderAnimation(scrollY, {
+    threshold: [10, 30],
+    translateYRange: [5, 0],
   });
 
   const groups = data?.groups ?? [];
@@ -801,6 +796,7 @@ export function BatchManageImagesScreen({
         space={space}
         onBack={onBack}
         animatedStyle={compactHeaderStyle}
+        animatedProps={compactAnimatedProps}
         rightActions={
           <>
             <Pressable onPress={handleSelectAllToggle} style={galleryHeaderStyles.selectionModeTextButton}>

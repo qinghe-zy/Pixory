@@ -18,9 +18,10 @@ interface BackupExportManagerScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
+  onChanged?: () => void;
 }
 
-export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBack }: BackupExportManagerScreenProps) {
+export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBack, onChanged }: BackupExportManagerScreenProps) {
   const { showToast } = useToast();
   const [activeEntry, setActiveEntry] = useState<BackupExportEntry | null>(null);
   const [deleteEntry, setDeleteEntry] = useState<BackupExportEntry | null>(null);
@@ -77,6 +78,7 @@ export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBa
       await deleteBackupExportEntry(space, deleteEntry.uri);
       setDeleteEntry(null);
       setActiveEntry(null);
+      onChanged?.();
       reload();
       showToast('已删除备份');
     } catch (error) {
@@ -90,6 +92,7 @@ export function BackupExportManagerScreen({ space = 'normal', refreshToken, onBa
     try {
       await Promise.all(targets.map((entry) => deleteBackupExportEntry(space, entry.uri)));
       setSelectedUris([]);
+      onChanged?.();
       reload();
       showToast(`已删除 ${targets.length} 个备份`);
     } catch (error) {

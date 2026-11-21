@@ -62,7 +62,7 @@ function createHistorySchema(db) {
 }
 
 function insertThread(db, id, patch = {}) {
-  db.db.prepare(`INSERT INTO ai_threads VALUES (?, 'normal', 'normal', NULL, NULL, 0, ?, 'fallback', NULL, NULL, NULL, NULL, NULL, '{}', NULL, '{}', 'default', 'auto', 30, 0, 'balanced', '', NULL, NULL, '', ?, ?, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', NULL)`)
+  db.db.prepare(`INSERT INTO ai_threads VALUES (?, 'normal', 'normal', NULL, NULL, 0, ?, 'fallback', NULL, NULL, NULL, NULL, NULL, '{}', NULL, '{}', 'default', 'auto', 30, 0, 'balanced', '', NULL, NULL, '', ?, ?, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', NULL, NULL)`)
     .run(id, patch.title ?? id, patch.root ?? null, patch.version ?? null);
 }
 

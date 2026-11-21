@@ -29,6 +29,7 @@ export interface IpRecord {
   description: string | null;
   isFavorite: boolean;
   isPinned: boolean;
+  sortOrder: number;
   coverImageAssetId: number | null;
   coverBlurEnabled: boolean | null;
   coverBlurRadius: number | null;
@@ -42,6 +43,7 @@ export interface CreateIpInput {
   description?: string | null;
   isFavorite?: boolean;
   isPinned?: boolean;
+  sortOrder?: number;
 }
 
 export interface UpdateIpInput {
@@ -49,6 +51,7 @@ export interface UpdateIpInput {
   description?: string | null;
   isFavorite?: boolean;
   isPinned?: boolean;
+  sortOrder?: number;
   coverImageAssetId?: number | null;
   coverBlurEnabled?: boolean | null;
   coverBlurRadius?: number | null;
@@ -102,6 +105,7 @@ export interface IpLibraryQuery extends PageRequest {
   searchText?: string;
   filter?: IpLibraryFilter;
   orderBy?: IpSortOrder;
+  includeTotalCount?: boolean;
 }
 
 export interface IpListItem extends IpRecord {
@@ -202,6 +206,7 @@ export interface ImageDetailRow extends ImageAssetRow {
 
 export interface GroupListItem extends GroupRecord {
   imageCount: number;
+  videoCount: number;
   recentUpdatedAt: string;
   coverThumbnailFileUri: string | null;
   coverSource: 'custom' | 'default';
@@ -209,6 +214,7 @@ export interface GroupListItem extends GroupRecord {
 
 export interface GroupListItemRow extends GroupRow {
   imageCount: number;
+  videoCount: number;
   recentUpdatedAt: string | null;
   coverThumbnailFileUri: string | null;
   coverSource: 'custom' | 'default' | null;

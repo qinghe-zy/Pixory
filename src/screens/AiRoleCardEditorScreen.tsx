@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiAvatarPicker } from '../components/ai/AiAvatarPicker';
@@ -321,7 +322,7 @@ export function AiRoleCardEditorScreen({
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex1}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
@@ -333,7 +334,14 @@ export function AiRoleCardEditorScreen({
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={28}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
+        extraKeyboardSpace={16}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+        style={styles.scrollView}
+      >
         {/* Field 1: 名称 (Name) */}
         <View style={styles.fieldContainer}>
           <Text style={styles.fieldLabel}>名称</Text>
@@ -477,8 +485,8 @@ export function AiRoleCardEditorScreen({
             onSelectGreeting={setSelectedGreeting}
           />
         ) : null}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

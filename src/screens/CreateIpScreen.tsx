@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -14,6 +15,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppScreen } from "../components/AppScreen";
+import { useToast } from "../components/AppToast";
 import {
   DESCRIPTION_MAX_LENGTH,
   IP_NAME_MAX_LENGTH,
@@ -42,10 +44,12 @@ export function CreateIpScreen({
   const { isSubmitting, submitError, clearSubmitError, runSubmit } =
     useSubmitState();
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
 
   const trimmedName = useMemo(() => name.trim(), [name]);
 
   function handleCreate() {
+    Keyboard.dismiss();
     void runSubmit(
       async () => {
         const createdIp = await runWithDatabaseSpace(space, (db) =>
@@ -55,6 +59,7 @@ export function CreateIpScreen({
             isFavorite,
           }),
         );
+        showToast({ message: "已创建 IP", tone: "success" });
         onCreated(createdIp.id);
       },
       {

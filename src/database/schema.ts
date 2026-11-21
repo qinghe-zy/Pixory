@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 75;
+export const DATABASE_VERSION = 76;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2622,4 +2622,9 @@ ${REBUILD_AI_MEMORY_FTS_V2_SQL}
 
 export const MIGRATION_STATEMENTS_V75 = `
 ALTER TABLE ai_threads ADD COLUMN pinnedLoreSnapshot TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V76 = `
+ALTER TABLE ips ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_ips_sort_order ON ips(sortOrder);
 `;
